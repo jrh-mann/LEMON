@@ -2,8 +2,17 @@
 
 import json
 import random
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Union
+from PIL import Image
+
+# Import request utilities for API calls
+import sys
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+from src.utils.request_utils import make_image_request, image_to_base64
 
 
 class TestCaseGenerator:
@@ -284,6 +293,197 @@ class TestCaseGenerator:
             json.dump(test_cases, f, indent=2)
         
         print(f"✅ Saved {len(test_cases)} test cases to {output_path}")
+    
+    def label_test_cases(
+        self,
+        test_cases: List[Dict[str, Any]],
+        workflow_image_path: str,
+        valid_outputs: List[str],
+        model: str = None,
+        batch_size: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Label test cases with expected outputs using Claude Haiku.
+        
+        Args:
+            test_cases: List of test case dictionaries (with inputs only)
+            workflow_image_path: Path to workflow image file
+            valid_outputs: List of valid output strings from workflow_outputs.json
+            model: Model deployment name to use (defaults to HAIKU_DEPLOYMENT_NAME or tries "haiku")
+            batch_size: Number of test cases to process per API call (default: 20)
+            
+        Returns:
+            List of test case dictionaries with 'expected_output' field added
+        """
+        # Determine which model to use
+        if model is None:
+            model = os.getenv("HAIKU_DEPLOYMENT_NAME")
+            if not model:
+                # Try default haiku name, fallback to main model
+                model = os.getenv("DEPLOYMENT_NAME", "haiku")
+        
+        print(f"🏷️  Labeling {len(test_cases)} test cases using model: {model}")
+        print(f"   Batch size: {batch_size}")
+        
+        # Load workflow image
+        img = Image.open(workflow_image_path)
+        img_format = img.format or 'PNG'
+        format_map = {
+            'JPEG': 'PNG',
+            'JPG': 'PNG',
+            'PNG': 'PNG',
+            'WEBP': 'PNG',
+            'GIF': 'PNG',
+        }
+        format_str = format_map.get(img_format.upper(), 'PNG')
+        
+        labeled_test_cases = []
+        total_batches = (len(test_cases) + batch_size - 1) // batch_size
+        
+        # Process test cases in batches
+        for batch_idx in range(0, len(test_cases), batch_size):
+            batch = test_cases[batch_idx:batch_idx + batch_size]
+            batch_num = (batch_idx // batch_size) + 1
+            
+            print(f"   Processing batch {batch_num}/{total_batches} ({len(batch)} test cases)...")
+            
+            # Create prompt for this batch
+            prompt = self._create_labeling_prompt(batch, valid_outputs)
+            
+            try:
+                # Make API request with image and prompt
+                response = make_image_request(
+                    image=img,
+                    prompt=prompt,
+                    max_tokens=4096,
+                    model=model,
+                    image_format=format_str
+                )
+                
+                response_text = response.content[0].text if response.content else ""
+                
+                # Parse the response to extract expected outputs
+                batch_labeled = self._parse_labeling_response(batch, response_text, valid_outputs)
+                labeled_test_cases.extend(batch_labeled)
+                
+            except Exception as e:
+                print(f"   ⚠️  Error labeling batch {batch_num}: {str(e)}")
+                print(f"   Continuing with unlabeled test cases...")
+                # Add test cases without expected_output (will be handled later)
+                for tc in batch:
+                    labeled_tc = tc.copy()
+                    labeled_tc["expected_output"] = None
+                    labeled_test_cases.append(labeled_tc)
+        
+        # Count successfully labeled
+        labeled_count = sum(1 for tc in labeled_test_cases if tc.get("expected_output") is not None)
+        print(f"✅ Labeled {labeled_count}/{len(test_cases)} test cases successfully")
+        
+        return labeled_test_cases
+    
+    def _create_labeling_prompt(self, test_cases: List[Dict[str, Any]], valid_outputs: List[str]) -> str:
+        """Create prompt for labeling a batch of test cases.
+        
+        Args:
+            test_cases: Batch of test case dictionaries
+            valid_outputs: List of valid output strings
+            
+        Returns:
+            Prompt string for Claude
+        """
+        # Format test cases as JSON
+        test_cases_json = json.dumps(test_cases, indent=2)
+        
+        prompt = f"""You are analyzing a workflow diagram. For each test case below, determine what the expected output should be according to the workflow.
+
+VALID OUTPUTS (you must choose exactly one of these):
+{json.dumps(valid_outputs, indent=2)}
+
+TEST CASES TO LABEL:
+{test_cases_json}
+
+For each test case, determine the expected output by following the workflow logic shown in the image. The output must be EXACTLY one of the valid outputs listed above.
+
+Return your response as a JSON array with the same length as the test cases array. Each element should be a string containing the expected output for that test case.
+
+Example format:
+[
+  "Output string 1",
+  "Output string 2",
+  "Output string 3"
+]
+
+Return ONLY the JSON array, no other text."""
+        
+        return prompt
+    
+    def _parse_labeling_response(
+        self, 
+        test_cases: List[Dict[str, Any]], 
+        response_text: str, 
+        valid_outputs: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Parse Claude's response to extract expected outputs.
+        
+        Args:
+            test_cases: Original test case batch
+            response_text: Claude's response text
+            valid_outputs: List of valid outputs for validation
+            
+        Returns:
+            List of test cases with expected_output field added
+        """
+        import re
+        
+        # Try to extract JSON array from response
+        json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+        if json_match:
+            json_text = json_match.group(0)
+        else:
+            json_text = response_text.strip()
+        
+        try:
+            expected_outputs = json.loads(json_text)
+            
+            # Validate we got the right number of outputs
+            if not isinstance(expected_outputs, list):
+                raise ValueError("Response is not a list")
+            
+            if len(expected_outputs) != len(test_cases):
+                print(f"   ⚠️  Warning: Expected {len(test_cases)} outputs, got {len(expected_outputs)}")
+                # Pad or truncate as needed
+                if len(expected_outputs) < len(test_cases):
+                    expected_outputs.extend([None] * (len(test_cases) - len(expected_outputs)))
+                else:
+                    expected_outputs = expected_outputs[:len(test_cases)]
+            
+            # Add expected_output to each test case
+            labeled_test_cases = []
+            for tc, expected_output in zip(test_cases, expected_outputs):
+                labeled_tc = tc.copy()
+                
+                # Validate output is in valid_outputs
+                if expected_output in valid_outputs:
+                    labeled_tc["expected_output"] = expected_output
+                else:
+                    # Try to find closest match or set to None
+                    if expected_output:
+                        print(f"   ⚠️  Warning: Output '{expected_output}' not in valid outputs list")
+                    labeled_tc["expected_output"] = None
+                
+                labeled_test_cases.append(labeled_tc)
+            
+            return labeled_test_cases
+            
+        except json.JSONDecodeError as e:
+            print(f"   ⚠️  Error parsing JSON response: {str(e)}")
+            print(f"   Response preview: {response_text[:200]}...")
+            # Return test cases without expected_output
+            labeled_test_cases = []
+            for tc in test_cases:
+                labeled_tc = tc.copy()
+                labeled_tc["expected_output"] = None
+                labeled_test_cases.append(labeled_tc)
+            return labeled_test_cases
 
 
 def generate_test_cases_from_file(

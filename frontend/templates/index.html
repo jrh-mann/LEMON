@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEMON - Workflow to Code Pipeline Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍋 LEMON</h1>
+            <p class="subtitle">Latent Expert Model Optimization Network</p>
+            <p class="description">Convert workflow diagrams into deterministic Python code</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Control Panel -->
+            <div class="panel control-panel">
+                <h2>Pipeline Controls</h2>
+                <div class="controls">
+                    <button id="startBtn" class="btn btn-primary">Start Pipeline</button>
+                    <button id="stopBtn" class="btn btn-secondary" disabled>Stop</button>
+                    <div class="config">
+                        <label>
+                            Max Iterations: 
+                            <input type="number" id="maxIterations" value="5" min="1" max="20">
+                        </label>
+                    </div>
+                </div>
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot idle"></span>
+                    <span id="statusText">Ready</span>
+                </div>
+            </div>
+
+            <!-- Progress Timeline -->
+            <div class="panel progress-panel">
+                <h2>Pipeline Progress</h2>
+                <div class="timeline">
+                    <div class="timeline-item" data-stage="setup">
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <h3>Setup</h3>
+                            <p class="timeline-message">Initializing pipeline...</p>
+                        </div>
+                    </div>
+                    <div class="timeline-item" data-stage="analysis">
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <h3>Workflow Analysis</h3>
+                            <p class="timeline-message">Analyzing workflow structure...</p>
+                        </div>
+                    </div>
+                    <div class="timeline-item" data-stage="test_generation">
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <h3>Test Case Generation</h3>
+                            <p class="timeline-message">Generating test cases...</p>
+                        </div>
+                    </div>
+                    <div class="timeline-item" data-stage="refinement">
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <h3>Code Refinement</h3>
+                            <p class="timeline-message">Iteratively improving code...</p>
+                        </div>
+                    </div>
+                    <div class="timeline-item" data-stage="final_validation">
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <h3>Final Validation</h3>
+                            <p class="timeline-message">Validating with edge cases...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Log -->
+            <div class="panel log-panel">
+                <h2>Live Progress Log</h2>
+                <div id="logContainer" class="log-container">
+                    <div class="log-entry">
+                        <span class="log-time">--:--:--</span>
+                        <span class="log-message">Ready to start pipeline...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Dashboard -->
+            <div class="panel metrics-panel">
+                <h2>Metrics Dashboard</h2>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Current Iteration</div>
+                        <div class="metric-value" id="metricIteration">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Test Pass Rate</div>
+                        <div class="metric-value" id="metricPassRate">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Tests Passed</div>
+                        <div class="metric-value" id="metricPassed">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Total Tests</div>
+                        <div class="metric-value" id="metricTotal">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Token Usage</div>
+                        <div class="metric-value" id="metricTokens" style="font-size: 1.2rem;">-</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;">
+                            <div>Input: <span id="metricInputTokens">-</span></div>
+                            <div>Output: <span id="metricOutputTokens">-</span></div>
+                            <div>Requests: <span id="metricRequestCount">-</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generated Code Display -->
+            <div class="panel code-panel">
+                <h2>Generated Code</h2>
+                <div class="code-container">
+                    <pre><code class="language-python" id="codeDisplay"># Generated code will appear here...</code></pre>
+                </div>
+                <button id="refreshCodeBtn" class="btn btn-small">Refresh Code</button>
+            </div>
+
+            <!-- Test Results -->
+            <div class="panel results-panel">
+                <h2>Test Results</h2>
+                <div id="testResults" class="test-results">
+                    <p class="empty-state">Test results will appear here...</p>
+                </div>
+            </div>
+
+            <!-- Workflow Image -->
+            <div class="panel image-panel">
+                <h2>Workflow Diagram</h2>
+                <div class="image-container">
+                    <img id="workflowImage" src="/api/workflow-image" alt="Workflow diagram">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
+
