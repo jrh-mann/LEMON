@@ -96,13 +96,28 @@ def refinement_loop_with_progress(workflow_image="workflow.jpeg", max_iterations
                 "outputs": valid_outputs
             })
         
-        emit_progress("test_generation", "🧪 Generating 1000 initial test cases...")
+        tests_file = project_root / "tests.json"
         gen = TestCaseGenerator(str(project_root / "workflow_inputs.json"))
-        test_cases = gen.generate_test_cases(1000, "comprehensive")
-        gen.save_test_cases(test_cases, str(project_root / "tests.json"))
-        emit_progress("test_generation", f"✅ Generated {len(test_cases)} test cases")
         
-        harness = CodeTestHarness(str(project_root / "tests.json"), valid_outputs)
+        if tests_file.exists():
+            emit_progress("test_generation", "✅ Found existing test cases file, loading...")
+            with open(tests_file) as f:
+                labeled_test_cases = json.load(f)
+            emit_progress("test_generation", f"✅ Loaded {len(labeled_test_cases)} labeled test cases")
+        else:
+            emit_progress("test_generation", "🧪 Generating 1000 initial test cases...")
+            test_cases = gen.generate_test_cases(1000, "comprehensive")
+            
+            emit_progress("test_generation", "🏷️ Labeling test cases with expected outputs...")
+            labeled_test_cases = gen.label_test_cases(
+                test_cases=test_cases,
+                workflow_image_path=str(workflow_image_path),
+                valid_outputs=valid_outputs
+            )
+            gen.save_test_cases(labeled_test_cases, str(tests_file))
+            emit_progress("test_generation", f"✅ Generated and labeled {len(labeled_test_cases)} test cases")
+        
+        harness = CodeTestHarness(str(tests_file), valid_outputs)
         failures = None
         best_score = 0.0
         code = None
@@ -122,7 +137,7 @@ def refinement_loop_with_progress(workflow_image="workflow.jpeg", max_iterations
             })
             
             emit_progress("code_generation", "💻 Generating code...")
-            code = generate_workflow_code(str(workflow_image_path), data, valid_outputs, failures)
+            code = generate_workflow_code(str(workflow_image_path), data, valid_outputs, failures, test_cases_file=str(project_root / "tests.json"))
             
             emit_progress("code_generation", "✅ Code generated", {"code": code})
             
@@ -156,10 +171,27 @@ def refinement_loop_with_progress(workflow_image="workflow.jpeg", max_iterations
         
         if best_score == 1.0:
             emit_progress("final_validation", "🔒 Final Validation (Adversarial Edge Cases)...")
-            final_tests = gen.generate_test_cases(200, "edge_cases")
-            gen.save_test_cases(final_tests, str(project_root / "final_tests.json"))
+            final_tests_file = project_root / "final_tests.json"
             
-            final_harness = CodeTestHarness(str(project_root / "final_tests.json"), valid_outputs)
+            if final_tests_file.exists():
+                emit_progress("final_validation", "✅ Found existing final test cases, loading...")
+                with open(final_tests_file) as f:
+                    final_labeled_tests = json.load(f)
+                emit_progress("final_validation", f"✅ Loaded {len(final_labeled_tests)} final test cases")
+            else:
+                emit_progress("final_validation", "🧪 Generating final edge case test cases...")
+                final_tests = gen.generate_test_cases(200, "edge_cases")
+                
+                emit_progress("final_validation", "🏷️ Labeling final test cases...")
+                final_labeled_tests = gen.label_test_cases(
+                    test_cases=final_tests,
+                    workflow_image_path=str(workflow_image_path),
+                    valid_outputs=valid_outputs
+                )
+                gen.save_test_cases(final_labeled_tests, str(final_tests_file))
+                emit_progress("final_validation", f"✅ Generated and labeled {len(final_labeled_tests)} final test cases")
+            
+            final_harness = CodeTestHarness(str(final_tests_file), valid_outputs)
             final_score = final_harness.score(code)
             
             emit_progress("final_validation", f"🏁 Final Edge Case Score: {final_score['pass_rate']*100:.1f}%", {

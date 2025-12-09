@@ -1,0 +1,83 @@
+[
+  {
+    "input_name": "under_specialist_clinic",
+    "input_type": "bool",
+    "range": [
+      true,
+      false
+    ],
+    "description": "Whether the patient is currently under the care of a specialist clinic. If not coded, assume no."
+  },
+  {
+    "input_name": "total_cholesterol",
+    "input_type": "Float",
+    "range": {
+      "min": 0,
+      "max": 20
+    },
+    "description": "Total cholesterol level from lipid panel test"
+  },
+  {
+    "input_name": "prevention_type",
+    "input_type": "str",
+    "range": [
+      "Primary",
+      "Secondary"
+    ],
+    "description": "Primary means no heart problem has yet occurred (such as MI or Stroke). Secondary means the patient is known to have had CHD, PAD, Ischaemic Stroke, CAD or an MI in the past."
+  },
+  {
+    "input_name": "taking_lipid_lowering_therapy",
+    "input_type": "bool",
+    "range": [
+      true,
+      false
+    ],
+    "description": "Whether the patient is currently taking any lipid lowering medication"
+  },
+  {
+    "input_name": "optimised_on_treatment",
+    "input_type": "bool",
+    "range": [
+      true,
+      false
+    ],
+    "description": "Whether the patient's current treatment is optimised according to targets"
+  },
+  {
+    "input_name": "qrisk2_3_score",
+    "input_type": "Float",
+    "range": {
+      "min": 0,
+      "max": 100
+    },
+    "description": "QRISK2 or QRISK3 cardiovascular risk score - 10-year risk percentage"
+  },
+  {
+    "input_name": "taking_maximally_tolerated_statin",
+    "input_type": "bool",
+    "range": [
+      true,
+      false
+    ],
+    "description": "Whether the patient is on the maximum tolerated dose of statin therapy"
+  },
+  {
+    "input_name": "ldl_cholesterol",
+    "input_type": "Float",
+    "range": {
+      "min": 0,
+      "max": 10
+    },
+    "description": "Low-density lipoprotein cholesterol level"
+  },
+  {
+    "input_name": "months_on_inclisiran",
+    "input_type": "Int",
+    "range": {
+      "min": 0,
+      "max": 120
+    },
+    "description": "Duration of Inclisiran treatment"
+  }
+]

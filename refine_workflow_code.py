@@ -14,6 +14,7 @@ from src.utils.code_generator import generate_workflow_code
 from src.utils.code_test_harness import CodeTestHarness
 from src.utils.workflow_agent import WorkflowAgent
 from src.utils.test_case_generator import TestCaseGenerator
+from src.utils.request_utils import get_token_stats
 
 
 def validate_code_structure(code: str) -> bool:
@@ -51,9 +52,13 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
     model_name = os.getenv("DEPLOYMENT_NAME", "Not set in .env")
     print(f"   Using model: {model_name}")
     
+    # Get initial token stats
+    initial_token_stats = get_token_stats()
+    
     # Check if analysis files already exist
     inputs_file = Path("workflow_inputs.json")
     outputs_file = Path("workflow_outputs.json")
+    analysis_file = Path("workflow_analysis.json")  # Full analysis file
     
     if inputs_file.exists() and outputs_file.exists():
         print("   ✅ Found existing workflow analysis files, skipping analysis step")
@@ -67,17 +72,28 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
         with open(inputs_file) as f:
             standardized_inputs = json.load(f)
         
-        # We still need the workflow_data for code generation, but we can use a minimal version
-        # or load it if it exists, or generate a basic structure
-        data = {
-            "inputs": standardized_inputs,
-            "outputs": [{"name": output} for output in valid_outputs]
-        }
+        # Try to load full workflow analysis if it exists
+        if analysis_file.exists():
+            print(f"      - {analysis_file} (full analysis)")
+            with open(analysis_file) as f:
+                data = json.load(f)
+        else:
+            # Fallback to minimal version if full analysis doesn't exist
+            data = {
+                "inputs": standardized_inputs,
+                "outputs": [{"name": output} for output in valid_outputs]
+            }
     else:
         # Analyze image to get inputs/outputs structure
         print("   Analyzing workflow structure...")
+        token_stats_before = get_token_stats()
         agent = WorkflowAgent(max_tokens=16000)
         data = agent.analyze_workflow_structured(workflow_image)
+        token_stats_after = get_token_stats()
+        tokens_used = token_stats_after['total_tokens'] - token_stats_before['total_tokens']
+        input_tokens = token_stats_after['total_input_tokens'] - token_stats_before['total_input_tokens']
+        output_tokens = token_stats_after['total_output_tokens'] - token_stats_before['total_output_tokens']
+        print(f"   📊 Token usage: {tokens_used:,} total ({input_tokens:,} input + {output_tokens:,} output)")
         
         # Check if analysis failed
         if "error" in data:
@@ -110,6 +126,11 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
         valid_outputs = agent.extract_and_save_outputs(data, "workflow_outputs.json")
         standardized_inputs = agent.extract_and_save_inputs(data, "workflow_inputs.json")
         
+        # Save full workflow analysis for later use
+        with open("workflow_analysis.json", "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"   ✅ Full workflow analysis saved to: workflow_analysis.json")
+        
         # Check if extraction succeeded
         if not valid_outputs:
             print(f"\n❌ Failed to extract valid outputs from workflow analysis!")
@@ -134,20 +155,38 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
             print(f"   This should not happen if extraction succeeded. Check file permissions.")
             return
     
-    # 2. Generate Initial Tests (Comprehensive Strategy)
-    print("🧪 Generating 1000 initial test cases...")
+    # 2. Generate or Load Test Cases
+    tests_file = Path("tests.json")
     gen = TestCaseGenerator("workflow_inputs.json")
-    # 'comprehensive' tries all combinations of discrete values + random continuous
-    test_cases = gen.generate_test_cases(1000, "comprehensive")
     
-    # 3. Label Test Cases with Expected Outputs
-    print("\n🏷️  Labeling test cases with expected outputs using Claude Haiku...")
-    labeled_test_cases = gen.label_test_cases(
-        test_cases=test_cases,
-        workflow_image_path=workflow_image,
-        valid_outputs=valid_outputs
-    )
-    gen.save_test_cases(labeled_test_cases, "tests.json")
+    if tests_file.exists():
+        print("   ✅ Found existing test cases file, loading...")
+        print(f"      - {tests_file}")
+        print("   💡 To regenerate test cases, delete this file and run again")
+        with open(tests_file) as f:
+            labeled_test_cases = json.load(f)
+        print(f"   ✅ Loaded {len(labeled_test_cases)} labeled test cases")
+    else:
+        # Generate Initial Tests (Comprehensive Strategy)
+        print("🧪 Generating 1000 initial test cases...")
+        # 'comprehensive' tries all combinations of discrete values + random continuous
+        test_cases = gen.generate_test_cases(1000, "comprehensive")
+        
+        # 3. Label Test Cases with Expected Outputs
+        print("\n🏷️  Labeling test cases with expected outputs using Claude Haiku...")
+        token_stats_before = get_token_stats()
+        labeled_test_cases = gen.label_test_cases(
+            test_cases=test_cases,
+            workflow_image_path=workflow_image,
+            valid_outputs=valid_outputs
+        )
+        token_stats_after = get_token_stats()
+        tokens_used = token_stats_after['total_tokens'] - token_stats_before['total_tokens']
+        input_tokens = token_stats_after['total_input_tokens'] - token_stats_before['total_input_tokens']
+        output_tokens = token_stats_after['total_output_tokens'] - token_stats_before['total_output_tokens']
+        gen.save_test_cases(labeled_test_cases, "tests.json")
+        print(f"   ✅ Saved {len(labeled_test_cases)} labeled test cases to tests.json")
+        print(f"   📊 Token usage: {tokens_used:,} total ({input_tokens:,} input + {output_tokens:,} output)")
     
     harness = CodeTestHarness("tests.json", valid_outputs)
     
@@ -173,7 +212,15 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
             print(f"\n🔄 Iteration {iteration}" + (f"/{max_iterations}" if max_iterations else ""))
             
             # A. Generate
-            code = generate_workflow_code(workflow_image, data, valid_outputs, failures)
+            # Get token stats before generation
+            token_stats_before = get_token_stats()
+            code = generate_workflow_code(workflow_image, data, valid_outputs, failures, test_cases_file="tests.json")
+            # Get token stats after generation
+            token_stats_after = get_token_stats()
+            tokens_used = token_stats_after['total_tokens'] - token_stats_before['total_tokens']
+            input_tokens = token_stats_after['total_input_tokens'] - token_stats_before['total_input_tokens']
+            output_tokens = token_stats_after['total_output_tokens'] - token_stats_before['total_output_tokens']
+            print(f"   📊 Token usage: {tokens_used:,} total ({input_tokens:,} input + {output_tokens:,} output)")
             
             # B. Static Validation (Quick Win)
             if not validate_code_structure(code):
@@ -243,17 +290,33 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
     # 5. Final Validation (Adversarial/Edge Cases)
     if best_score == 1.0:
         print("\n🔒 Final Validation (Adversarial Edge Cases)...")
-        # Explicitly use 'edge_cases' strategy for final sign-off
-        # This targets min/max/boundary values specifically
-        final_tests = gen.generate_test_cases(200, "edge_cases")
-        # Label the final test cases as well
-        print("🏷️  Labeling final edge case test cases...")
-        final_labeled_tests = gen.label_test_cases(
-            test_cases=final_tests,
-            workflow_image_path=workflow_image,
-            valid_outputs=valid_outputs
-        )
-        gen.save_test_cases(final_labeled_tests, "final_tests.json")
+        final_tests_file = Path("final_tests.json")
+        
+        if final_tests_file.exists():
+            print("   ✅ Found existing final test cases file, loading...")
+            print(f"      - {final_tests_file}")
+            with open(final_tests_file) as f:
+                final_labeled_tests = json.load(f)
+            print(f"   ✅ Loaded {len(final_labeled_tests)} final test cases")
+        else:
+            # Explicitly use 'edge_cases' strategy for final sign-off
+            # This targets min/max/boundary values specifically
+            final_tests = gen.generate_test_cases(200, "edge_cases")
+            # Label the final test cases as well
+            print("🏷️  Labeling final edge case test cases...")
+            token_stats_before = get_token_stats()
+            final_labeled_tests = gen.label_test_cases(
+                test_cases=final_tests,
+                workflow_image_path=workflow_image,
+                valid_outputs=valid_outputs
+            )
+            token_stats_after = get_token_stats()
+            tokens_used = token_stats_after['total_tokens'] - token_stats_before['total_tokens']
+            input_tokens = token_stats_after['total_input_tokens'] - token_stats_before['total_input_tokens']
+            output_tokens = token_stats_after['total_output_tokens'] - token_stats_before['total_output_tokens']
+            gen.save_test_cases(final_labeled_tests, "final_tests.json")
+            print(f"   ✅ Saved {len(final_labeled_tests)} final test cases to final_tests.json")
+            print(f"   📊 Token usage: {tokens_used:,} total ({input_tokens:,} input + {output_tokens:,} output)")
         
         final_harness = CodeTestHarness("final_tests.json", valid_outputs)
         final_score = final_harness.score(code)
@@ -268,6 +331,24 @@ def refinement_loop(workflow_image="workflow.jpeg", max_iterations=None):
     else:
         print("❌ Failed to converge to 100% accuracy.")
         print(f"   Best score achieved: {best_score*100:.1f}%")
+    
+    # Final token usage summary
+    final_token_stats = get_token_stats()
+    total_tokens_used = final_token_stats['total_tokens'] - initial_token_stats['total_tokens']
+    total_input_tokens = final_token_stats['total_input_tokens'] - initial_token_stats['total_input_tokens']
+    total_output_tokens = final_token_stats['total_output_tokens'] - initial_token_stats['total_output_tokens']
+    total_requests = final_token_stats['request_count'] - initial_token_stats['request_count']
+    
+    print("\n" + "="*80)
+    print("TOKEN USAGE SUMMARY")
+    print("="*80)
+    print(f"Total tokens used: {total_tokens_used:,}")
+    print(f"  - Input tokens: {total_input_tokens:,}")
+    print(f"  - Output tokens: {total_output_tokens:,}")
+    print(f"Total API requests: {total_requests}")
+    if total_requests > 0:
+        print(f"Average tokens per request: {total_tokens_used // total_requests:,}")
+    print("="*80)
 
 
 if __name__ == "__main__":
