@@ -1,0 +1,9 @@
+openai
+requests
+anthropic
+python-dotenv
+Pillow
+scikit-learn
+pandas
+numpy
+matplotlib
