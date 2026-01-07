@@ -76,7 +76,6 @@ First, think through the entire workflow systematically:
 IMPORTANT:
 - All outputs should correspond to boxes, and be taken verbatim from that box, if an output is not present in a box, it is not an outcome.
 - Ignore yellow sticky notes, they are not part of the workflow.
-- While listing outputs, they should all be different, there should not be multiple slight variations.
 
 Then, output your analysis in the following JSON format:
 
