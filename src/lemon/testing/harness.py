@@ -77,8 +77,13 @@ print(json.dumps(results))
 
         api_key = os.getenv("E2B_API_KEY")
         if not api_key:
-            failures = [TestFailure(error="E2B_API_KEY not found in environment variables. Please set it in your .env file.", test_case={})]
-            return TestResults(passed=0, total=len(self.test_cases), failures=failures)
+            missing_key_failures = [
+                TestFailure(
+                    error="E2B_API_KEY not found in environment variables. Please set it in your .env file.",
+                    test_case={},
+                )
+            ]
+            return TestResults(passed=0, total=len(self.test_cases), failures=missing_key_failures)
 
         try:
             with Sandbox.create() as sandbox:
@@ -87,23 +92,34 @@ print(json.dumps(results))
                     error_name = getattr(execution.error, "name", "UnknownError")
                     error_value = getattr(execution.error, "value", str(execution.error))
                     msg = f"Syntax/Runtime Error: {error_name}\n{error_value}"
-                    failures = [TestFailure(error=msg, test_case={})]
-                    return TestResults(passed=0, total=len(self.test_cases), failures=failures)
+                    runtime_failures = [TestFailure(error=msg, test_case={})]
+                    return TestResults(
+                        passed=0, total=len(self.test_cases), failures=runtime_failures
+                    )
 
                 if not execution.logs.stdout:
-                    failures = [TestFailure(error="Sandbox produced no output.", test_case={})]
-                    return TestResults(passed=0, total=len(self.test_cases), failures=failures)
+                    no_output_failures = [
+                        TestFailure(error="Sandbox produced no output.", test_case={})
+                    ]
+                    return TestResults(
+                        passed=0, total=len(self.test_cases), failures=no_output_failures
+                    )
 
                 results = json.loads(execution.logs.stdout[0])
                 passed = sum(1 for r in results if r.get("passed"))
                 failures: List[TestFailure] = []
                 for i, res in enumerate(results):
                     if not res.get("passed"):
-                        failures.append(TestFailure(error=res.get("error") or "Unknown error", test_case=self.test_cases[i]))
+                        failures.append(
+                            TestFailure(
+                                error=res.get("error") or "Unknown error",
+                                test_case=self.test_cases[i],
+                            )
+                        )
                 return TestResults(passed=passed, total=len(self.test_cases), failures=failures)
         except Exception as e:
-            failures = [TestFailure(error=f"Sandbox error: {str(e)}", test_case={})]
-            return TestResults(passed=0, total=len(self.test_cases), failures=failures)
+            sandbox_failures = [TestFailure(error=f"Sandbox error: {str(e)}", test_case={})]
+            return TestResults(passed=0, total=len(self.test_cases), failures=sandbox_failures)
 
 
 def _json_to_python_literal(data: Any) -> str:
@@ -113,5 +129,3 @@ def _json_to_python_literal(data: Any) -> str:
     json_str = re.sub(r"\bfalse\b", "False", json_str)
     json_str = re.sub(r"\bnull\b", "None", json_str)
     return json_str
-
-

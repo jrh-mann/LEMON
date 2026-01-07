@@ -1,5 +1,6 @@
 # Environment and secrets
 .env
+.venv/
 
 # Token tracking
 tokens.json
@@ -7,6 +8,8 @@ tokens.json
 # Generated test cases and labels
 test_cases.json
 labeled_test_cases.json
+tests.json
+final_tests.json
 
 # Trained models and outputs
 workflow_model.pkl
@@ -16,6 +19,12 @@ decision_tree.png
 
 # Workflow analysis outputs
 workflow_outputs.json
+workflow_inputs.json
+workflow_analysis.json
+workflow_analysis_raw_response.txt
+
+# Generated code artifacts
+generated_code.py
 
 # Python cache
 __pycache__/
@@ -23,6 +32,7 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.pytest_cache/
 
 # IDE
 .vscode/

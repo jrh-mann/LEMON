@@ -7,5 +7,3 @@ class E2BSandboxClient:
     """Thin wrapper around E2B sandbox creation/execution."""
 
     # Real methods migrated later.
-
-

@@ -15,24 +15,24 @@ from src.lemon.testing.harness import TestHarness
 
 def _json_to_python_literal(data: Any) -> str:
     """Convert JSON-serializable data to Python literal string representation.
-    
+
     This converts JSON-style true/false/null to Python True/False/None.
     """
     json_str = json.dumps(data)
     # Replace JSON booleans and null with Python equivalents
     # Use word boundaries to avoid replacing parts of strings
-    json_str = re.sub(r'\btrue\b', 'True', json_str)
-    json_str = re.sub(r'\bfalse\b', 'False', json_str)
-    json_str = re.sub(r'\bnull\b', 'None', json_str)
+    json_str = re.sub(r"\btrue\b", "True", json_str)
+    json_str = re.sub(r"\bfalse\b", "False", json_str)
+    json_str = re.sub(r"\bnull\b", "None", json_str)
     return json_str
 
 
 class CodeTestHarness:
     """Test harness for executing generated code in secure sandbox."""
-    
+
     def __init__(self, test_cases_file: str, valid_outputs: List[str]):
         """Initialize test harness.
-        
+
         Args:
             test_cases_file: Path to JSON file containing test cases
             valid_outputs: List of valid output strings
@@ -43,10 +43,10 @@ class CodeTestHarness:
 
     def score(self, code: str) -> Dict[str, Any]:
         """Score code against test cases.
-        
+
         Args:
             code: Python code string to test
-            
+
         Returns:
             Dictionary with pass/fail statistics and failure details
         """
@@ -58,4 +58,3 @@ class CodeTestHarness:
             "pass_rate": results.pass_rate,
             "failures": [{"error": f.error, "test_case": f.test_case} for f in results.failures],
         }
-

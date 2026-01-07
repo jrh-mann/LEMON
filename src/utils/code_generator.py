@@ -78,7 +78,9 @@ def analyze_failure_patterns(failures):
     return failures
 
 
-def generate_workflow_code(workflow_image_path, workflow_data, valid_outputs, failures=None, test_cases_file=None):
+def generate_workflow_code(
+    workflow_image_path, workflow_data, valid_outputs, failures=None, test_cases_file=None
+):
     """Generate workflow code (legacy API)."""
     gen = CodeGenerator(max_tokens=8192)
     analysis = WorkflowAnalysis.model_validate(workflow_data)
@@ -97,4 +99,3 @@ def generate_workflow_code(workflow_image_path, workflow_data, valid_outputs, fa
 def _fix_common_syntax_issues(code: str) -> str:
     # Legacy no-op: normalization is done in `src.lemon.generation.formatter`.
     return code
-

@@ -39,7 +39,7 @@ class CodeGenerator:
         context: Optional[GenerationContext] = None,
     ) -> str:
         """Generate Python code implementing the workflow logic."""
-        from src.utils.request_utils import make_request, image_to_base64  # legacy module
+        from src.utils.request_utils import image_to_base64, make_request  # legacy module
 
         ctx = context or GenerationContext()
 
@@ -70,7 +70,10 @@ class CodeGenerator:
                         "type": "image",
                         "source": {"type": "base64", "media_type": media_type, "data": img_base64},
                     },
-                    {"type": "text", "text": CODE_GENERATION_PROMPT + "\n\nCONTEXT:\n" + context_text},
+                    {
+                        "type": "text",
+                        "text": CODE_GENERATION_PROMPT + "\n\nCONTEXT:\n" + context_text,
+                    },
                 ],
             }
         ]
@@ -80,7 +83,7 @@ class CodeGenerator:
             max_tokens=self.max_tokens,
             system=PYTHON_ONLY_SYSTEM_PROMPT,
         )
-        code = response.content[0].text if response.content else ""
+        code: str = response.content[0].text if response.content else ""
 
         # Clean up markdown code blocks if present.
         code = code.replace("```python", "").replace("```", "").strip()
@@ -160,7 +163,9 @@ def analyze_failure_patterns(failures: List[Dict[str, Any]]) -> str:
                 continue
             expected = example_case.get("expected_output", "N/A")
             display_case = {k: v for k, v in example_case.items() if k != "expected_output"}
-            lines.append(f"   Example {ex_idx}: Input={json.dumps(display_case)} | Expected={expected}")
+            lines.append(
+                f"   Example {ex_idx}: Input={json.dumps(display_case)} | Expected={expected}"
+            )
         if len(examples) > 5:
             lines.append(f"   ... and {len(examples) - 5} more similar failures")
 
@@ -215,5 +220,3 @@ REQUIREMENTS:
 OUTPUT FORMAT:
 Return ONLY the valid Python 3 code. No markdown. No explanations. No JavaScript syntax.
 """
-
-

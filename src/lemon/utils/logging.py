@@ -51,7 +51,7 @@ class JsonLogFormatter(logging.Formatter):
             }:
                 continue
 
-            if is_dataclass(value):
+            if is_dataclass(value) and not isinstance(value, type):
                 payload[key] = asdict(value)
             else:
                 payload[key] = value
@@ -90,5 +90,3 @@ def configure_logging(
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
-
-

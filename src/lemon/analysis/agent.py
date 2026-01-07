@@ -20,11 +20,8 @@ def _load_prompts() -> Tuple[str, str, int]:
     """Load analysis prompts from repo-level config (fallback to defaults)."""
     try:
         # Keep compatibility with existing repo layout.
-        from workflow_prompts import (  # type: ignore
-            SYSTEM_PROMPT as WORKFLOW_ANALYSIS_SYSTEM_PROMPT,
-            SINGLE_ANALYSIS_PROMPT,
-            MAX_TOKENS,
-        )
+        from workflow_prompts import MAX_TOKENS, SINGLE_ANALYSIS_PROMPT
+        from workflow_prompts import SYSTEM_PROMPT as WORKFLOW_ANALYSIS_SYSTEM_PROMPT
 
         return WORKFLOW_ANALYSIS_SYSTEM_PROMPT, SINGLE_ANALYSIS_PROMPT, MAX_TOKENS
     except Exception:
@@ -46,7 +43,10 @@ class WorkflowAnalyzer:
 
     def analyze(self, image: Path) -> WorkflowAnalysis:
         """Run workflow analysis and parse into typed model."""
-        from src.utils.request_utils import make_request, image_to_base64  # late import (legacy module)
+        from src.utils.request_utils import (  # late import (legacy module)
+            image_to_base64,
+            make_request,
+        )
 
         img_base64, media_type = self._load_image(image)
         messages = [
@@ -62,7 +62,9 @@ class WorkflowAnalyzer:
             }
         ]
 
-        response = make_request(messages=messages, max_tokens=self.max_tokens, system=self.system_prompt)
+        response = make_request(
+            messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
+        )
         response_text = response.content[0].text if response.content else ""
 
         data = self._parse_json_best_effort(response_text)
@@ -81,7 +83,7 @@ class WorkflowAnalyzer:
             standardized.append(
                 StandardizedInput(
                     input_name=inp.name,
-                    input_type=self._normalize_type(inp.type, inp.format),
+                    input_type=self._normalize_type(inp.type, inp.format),  # type: ignore[arg-type]
                     range=self._extract_range(inp.possible_values, inp.constraints),
                     description=inp.description,
                 )
@@ -122,7 +124,12 @@ class WorkflowAnalyzer:
     def _parse_json_best_effort(self, text: str) -> Dict[str, Any]:
         # First attempt: plain JSON.
         try:
-            return json.loads(text)
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return data
+            raise WorkflowAnalysisError(
+                "Analysis response JSON was not an object", context={"preview": text[:200]}
+            )
         except json.JSONDecodeError:
             pass
 
@@ -130,11 +137,19 @@ class WorkflowAnalyzer:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(0))
+                data2 = json.loads(match.group(0))
+                if isinstance(data2, dict):
+                    return data2
+                raise WorkflowAnalysisError(
+                    "Extracted JSON was not an object",
+                    context={"preview": match.group(0)[:200]},
+                )
             except json.JSONDecodeError:
                 pass
 
-        raise WorkflowAnalysisError("Failed to parse JSON from analysis response", context={"preview": text[:500]})
+        raise WorkflowAnalysisError(
+            "Failed to parse JSON from analysis response", context={"preview": text[:500]}
+        )
 
     def _normalize_type(self, type_str: str, format_str: str) -> str:
         type_lower = (type_str or "").lower()
@@ -191,5 +206,3 @@ class WorkflowAnalyzer:
         if len(nums) >= 2:
             return StandardizedRange(min=min(nums), max=max(nums))
         return StandardizedRange(value=nums[0])
-
-

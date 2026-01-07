@@ -154,4 +154,3 @@ MAX_TOKENS = 4096
 # Whether to use conversation history between steps
 # Set to False if you want each step to be independent (not recommended - loses context)
 USE_CONVERSATION_HISTORY = True
-

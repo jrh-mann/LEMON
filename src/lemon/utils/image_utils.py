@@ -32,5 +32,3 @@ def detect_media_type_and_format(image: Image.Image) -> Tuple[str, str]:
 def generate_green_image(width: int = 512, height: int = 512) -> Image.Image:
     """Generate a solid green image."""
     return Image.new("RGB", (width, height), color=(0, 255, 0))
-
-

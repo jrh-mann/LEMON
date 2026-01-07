@@ -2,7 +2,4 @@
 
 from __future__ import annotations
 
-
 SYSTEM_PROMPT: str = "You are a workflow analysis agent."
-
-

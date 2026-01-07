@@ -33,5 +33,3 @@ class CodeGenerationError(LEMONException):
 
 class TestExecutionError(LEMONException):
     """Raised when sandbox execution or scoring fails."""
-
-

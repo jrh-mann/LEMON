@@ -11,5 +11,3 @@ class AnalysisResult:
     """Temporary placeholder (later replaced with richer domain models)."""
 
     data: Dict[str, Any]
-
-

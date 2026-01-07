@@ -5,7 +5,9 @@ from __future__ import annotations
 import ast
 
 
-def has_entrypoint_function(code: str, *, function_name: str = "determine_workflow_outcome") -> bool:
+def has_entrypoint_function(
+    code: str, *, function_name: str = "determine_workflow_outcome"
+) -> bool:
     """Check whether `code` defines the required entrypoint function."""
     try:
         tree = ast.parse(code)
@@ -13,8 +15,5 @@ def has_entrypoint_function(code: str, *, function_name: str = "determine_workfl
         return False
 
     return any(
-        isinstance(node, ast.FunctionDef) and node.name == function_name
-        for node in ast.walk(tree)
+        isinstance(node, ast.FunctionDef) and node.name == function_name for node in ast.walk(tree)
     )
-
-

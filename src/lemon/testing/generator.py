@@ -14,7 +14,12 @@ from PIL import Image
 
 from ..core.workflow import StandardizedInput
 from ..utils.logging import get_logger
-from .strategies import ComprehensiveStrategy, EdgeCasesStrategy, RandomStrategy, TestGenerationStrategy
+from .strategies import (
+    ComprehensiveStrategy,
+    EdgeCasesStrategy,
+    RandomStrategy,
+    TestGenerationStrategy,
+)
 
 logger = get_logger(__name__)
 
@@ -39,9 +44,14 @@ class TestCaseGenerator:
             raw = json.load(f)
         return [StandardizedInput.model_validate(x) for x in raw]
 
-    def generate_test_cases(self, n: int, strategy: str = "comprehensive", seed: int | None = None) -> List[Dict[str, Any]]:
+    def generate_test_cases(
+        self, n: int, strategy: str = "comprehensive", seed: int | None = None
+    ) -> List[Dict[str, Any]]:
         """Generate N input dictionaries according to strategy."""
-        value_specs = [{"name": inp.input_name, "values": self._generate_values_for_input(inp)} for inp in self.inputs]
+        value_specs = [
+            {"name": inp.input_name, "values": self._generate_values_for_input(inp)}
+            for inp in self.inputs
+        ]
 
         strat: TestGenerationStrategy
         if strategy == "comprehensive":
@@ -55,7 +65,9 @@ class TestCaseGenerator:
 
         return strat.generate(value_specs, n)
 
-    def save_test_cases(self, test_cases: List[Dict[str, Any]], output_file: str = "test_cases.json") -> None:
+    def save_test_cases(
+        self, test_cases: List[Dict[str, Any]], output_file: str = "test_cases.json"
+    ) -> None:
         output_path = Path(output_file)
         with open(output_path, "w") as f:
             json.dump(test_cases, f, indent=2)
@@ -76,7 +88,10 @@ class TestCaseGenerator:
         if model is None:
             model = os.getenv("HAIKU_DEPLOYMENT_NAME") or os.getenv("DEPLOYMENT_NAME", "haiku")
 
-        logger.info("Labeling test cases", extra={"count": len(test_cases), "model": model, "batch_size": batch_size})
+        logger.info(
+            "Labeling test cases",
+            extra={"count": len(test_cases), "model": model, "batch_size": batch_size},
+        )
 
         img = Image.open(workflow_image_path)
         img_format = (img.format or "PNG").upper()
@@ -89,7 +104,9 @@ class TestCaseGenerator:
         for batch_idx in range(0, len(test_cases), batch_size):
             batch = test_cases[batch_idx : batch_idx + batch_size]
             batch_num = (batch_idx // batch_size) + 1
-            logger.info("Processing batch", extra={"batch_num": batch_num, "total_batches": total_batches})
+            logger.info(
+                "Processing batch", extra={"batch_num": batch_num, "total_batches": total_batches}
+            )
 
             prompt = self._create_labeling_prompt(batch, valid_outputs)
             try:
@@ -103,7 +120,10 @@ class TestCaseGenerator:
                 response_text = response.content[0].text if response.content else ""
                 labeled.extend(self._parse_labeling_response(batch, response_text, valid_outputs))
             except Exception as e:
-                logger.warning("Error labeling batch; leaving unlabeled", extra={"batch_num": batch_num, "error": str(e)})
+                logger.warning(
+                    "Error labeling batch; leaving unlabeled",
+                    extra={"batch_num": batch_num, "error": str(e)},
+                )
                 for tc in batch:
                     out = tc.copy()
                     out["expected_output"] = None
@@ -111,7 +131,9 @@ class TestCaseGenerator:
 
         return labeled
 
-    def _create_labeling_prompt(self, test_cases: List[Dict[str, Any]], valid_outputs: List[str]) -> str:
+    def _create_labeling_prompt(
+        self, test_cases: List[Dict[str, Any]], valid_outputs: List[str]
+    ) -> str:
         test_cases_json = json.dumps(test_cases, indent=2)
         return f"""You are analyzing a workflow diagram. For each test case below, determine what the expected output should be according to the workflow.
 
@@ -138,7 +160,10 @@ Return ONLY the JSON array, no other text."""
             if not isinstance(expected_outputs, list):
                 raise ValueError("Response is not a list")
         except Exception as e:
-            logger.warning("Failed parsing labeling response", extra={"error": str(e), "preview": response_text[:200]})
+            logger.warning(
+                "Failed parsing labeling response",
+                extra={"error": str(e), "preview": response_text[:200]},
+            )
             expected_outputs = [None] * len(test_cases)
 
         if len(expected_outputs) != len(test_cases):
@@ -208,5 +233,3 @@ Return ONLY the JSON array, no other text."""
         if input_type == "date":
             return ["2024-01-01", "2024-06-15", "2024-12-31"]
         return [None]
-
-
