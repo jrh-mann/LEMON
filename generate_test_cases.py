@@ -1,10 +1,15 @@
 """Script to generate test cases from workflow inputs."""
 
 import argparse
+
+from src.lemon.utils.logging import configure_logging, get_logger
 from src.utils import generate_test_cases_from_file
 
 
 def main():
+    configure_logging(level="INFO", json_logs=False)
+    logger = get_logger(__name__)
+
     parser = argparse.ArgumentParser(description="Generate test cases from workflow inputs")
     parser.add_argument(
         "-n", "--num-cases",
@@ -40,9 +45,9 @@ def main():
     
     args = parser.parse_args()
     
-    print(f"Generating {args.num_cases} test cases using '{args.strategy}' strategy...")
-    print(f"Input file: {args.inputs_file}")
-    print(f"Output file: {args.output_file}\n")
+    logger.info(f"Generating {args.num_cases} test cases using '{args.strategy}' strategy...")
+    logger.info(f"Input file: {args.inputs_file}")
+    logger.info(f"Output file: {args.output_file}\n")
     
     test_cases = generate_test_cases_from_file(
         inputs_file=args.inputs_file,
@@ -52,9 +57,9 @@ def main():
         seed=args.seed
     )
     
-    print(f"\n✅ Generated {len(test_cases)} test cases")
-    print(f"   Strategy: {args.strategy}")
-    print(f"   Saved to: {args.output_file}")
+    logger.info(f"\nGenerated {len(test_cases)} test cases")
+    logger.info(f"Strategy: {args.strategy}")
+    logger.info(f"Saved to: {args.output_file}")
 
 
 if __name__ == "__main__":

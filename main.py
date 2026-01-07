@@ -1,86 +1,92 @@
-"""Example usage of the workflow agent."""
+"""Example usage of the workflow analyzer."""
 
 import json
-from src.utils import WorkflowAgent, get_token_stats
+from pathlib import Path
 
-# Initialize the workflow agent
-agent = WorkflowAgent(max_tokens=16000)  # Increased for comprehensive JSON output
+from src.lemon.utils.logging import configure_logging, get_logger
+from src.lemon.analysis.agent import WorkflowAnalyzer
+from src.lemon.utils.token_tracker import get_token_stats
+
+# Configure logging for CLI output (keep it human-readable)
+configure_logging(level="INFO", json_logs=False)
+logger = get_logger(__name__)
+
+# Initialize the workflow analyzer
+analyzer = WorkflowAnalyzer(max_tokens=16000)  # Increased for comprehensive JSON output
 
 # Perform single-step comprehensive analysis
-print("=" * 80)
-print("WORKFLOW ANALYSIS - STRUCTURED JSON OUTPUT")
-print("=" * 80)
-print("\nAnalyzing workflow and generating structured JSON...\n")
+logger.info("=" * 80)
+logger.info("WORKFLOW ANALYSIS - STRUCTURED JSON OUTPUT")
+logger.info("=" * 80)
+logger.info("\nAnalyzing workflow and generating structured JSON...\n")
 
-# Get structured JSON output
-workflow_data = agent.analyze_workflow_structured("workflow.jpeg")
+# Get structured analysis
+analysis = analyzer.analyze(Path("workflow.jpeg"))
+workflow_data = analysis.model_dump()
 
 # Extract and save standardized inputs
-standardized_inputs = agent.extract_and_save_inputs(workflow_data, "workflow_inputs.json")
+standardized_inputs_models = analyzer.extract_standardized_inputs(analysis)
+standardized_inputs = [x.model_dump() for x in standardized_inputs_models]
+Path("workflow_inputs.json").write_text(json.dumps(standardized_inputs, indent=2), encoding="utf-8")
 
 # Extract and save standardized outputs
-standardized_outputs = agent.extract_and_save_outputs(workflow_data, "workflow_outputs.json")
+standardized_outputs = analyzer.extract_outputs(analysis)
+Path("workflow_outputs.json").write_text(json.dumps(standardized_outputs, indent=2), encoding="utf-8")
 
 # Display results
-if "error" in workflow_data:
-    print("❌ Error parsing JSON:")
-    print(workflow_data["error_message"])
-    print("\nRaw response:")
-    print(workflow_data["raw_response"])
-else:
-    # Pretty print the JSON
-    print("=" * 80)
-    print("STRUCTURED WORKFLOW ANALYSIS (JSON)")
-    print("=" * 80)
-    print(json.dumps(workflow_data, indent=2))
-    
-    # Also print a summary
-    print("\n" + "=" * 80)
-    print("SUMMARY")
-    print("=" * 80)
-    print(f"\nWorkflow: {workflow_data.get('workflow_description', 'N/A')}")
-    print(f"Domain: {workflow_data.get('domain', 'N/A')}")
-    print(f"\nInputs identified: {len(workflow_data.get('inputs', []))}")
-    print(f"Decision points: {len(workflow_data.get('decision_points', []))}")
-    print(f"Outputs: {len(workflow_data.get('outputs', []))}")
-    print(f"Workflow paths: {len(workflow_data.get('workflow_paths', []))}")
-    
-    if standardized_inputs:
-        print("\n" + "-" * 80)
-        print("STANDARDIZED INPUTS:")
-        print("-" * 80)
-        for inp in standardized_inputs:
-            print(f"\n  • {inp.get('input_name', 'N/A')}")
-            print(f"    Type: {inp.get('input_type', 'N/A')}")
-            range_info = inp.get('range')
-            if range_info:
-                if isinstance(range_info, dict):
-                    if 'min' in range_info and 'max' in range_info:
-                        print(f"    Range: {range_info['min']} - {range_info['max']}")
-                    elif 'min' in range_info:
-                        print(f"    Range: >= {range_info['min']}")
-                    elif 'max' in range_info:
-                        print(f"    Range: <= {range_info['max']}")
-                    elif 'value' in range_info:
-                        print(f"    Value: {range_info['value']}")
-                elif isinstance(range_info, list):
-                    print(f"    Values: {', '.join(str(v) for v in range_info)}")
-            else:
-                print(f"    Range: Unbounded")
-            print(f"    Description: {inp.get('description', 'N/A')}")
+# Pretty print the JSON
+logger.info("=" * 80)
+logger.info("STRUCTURED WORKFLOW ANALYSIS (JSON)")
+logger.info("=" * 80)
+logger.info(json.dumps(workflow_data, indent=2))
 
-print("\n" + "=" * 80)
-print("✅ Workflow analysis complete!")
-print("=" * 80)
+# Also print a summary
+logger.info("\n" + "=" * 80)
+logger.info("SUMMARY")
+logger.info("=" * 80)
+logger.info(f"\nWorkflow: {workflow_data.get('workflow_description', 'N/A')}")
+logger.info(f"Domain: {workflow_data.get('domain', 'N/A')}")
+logger.info(f"\nInputs identified: {len(workflow_data.get('inputs', []))}")
+logger.info(f"Decision points: {len(workflow_data.get('decision_points', []))}")
+logger.info(f"Outputs: {len(workflow_data.get('outputs', []))}")
+logger.info(f"Workflow paths: {len(workflow_data.get('workflow_paths', []))}")
+
+if standardized_inputs:
+    logger.info("\n" + "-" * 80)
+    logger.info("STANDARDIZED INPUTS:")
+    logger.info("-" * 80)
+    for inp in standardized_inputs:
+        logger.info(f"\n  • {inp.get('input_name', 'N/A')}")
+        logger.info(f"    Type: {inp.get('input_type', 'N/A')}")
+        range_info = inp.get("range")
+        if range_info:
+            if isinstance(range_info, dict):
+                if "min" in range_info and "max" in range_info:
+                    logger.info(f"    Range: {range_info['min']} - {range_info['max']}")
+                elif "min" in range_info:
+                    logger.info(f"    Range: >= {range_info['min']}")
+                elif "max" in range_info:
+                    logger.info(f"    Range: <= {range_info['max']}")
+                elif "value" in range_info:
+                    logger.info(f"    Value: {range_info['value']}")
+            elif isinstance(range_info, list):
+                logger.info(f"    Values: {', '.join(str(v) for v in range_info)}")
+        else:
+            logger.info("    Range: Unbounded")
+        logger.info(f"    Description: {inp.get('description', 'N/A')}")
+
+logger.info("\n" + "=" * 80)
+logger.info("Workflow analysis complete!")
+logger.info("=" * 80)
 
 # Display token usage statistics
 token_stats = get_token_stats()
-print("\n" + "=" * 80)
-print("TOKEN USAGE STATISTICS")
-print("=" * 80)
-print(f"\nTotal Requests: {token_stats['request_count']}")
-print(f"Total Input Tokens: {token_stats['total_input_tokens']:,}")
-print(f"Total Output Tokens: {token_stats['total_output_tokens']:,}")
-print(f"Total Tokens: {token_stats['total_tokens']:,}")
-print(f"\nToken tracking saved to: tokens.json")
-print("=" * 80)
+logger.info("\n" + "=" * 80)
+logger.info("TOKEN USAGE STATISTICS")
+logger.info("=" * 80)
+logger.info(f"\nTotal Requests: {token_stats['request_count']}")
+logger.info(f"Total Input Tokens: {token_stats['total_input_tokens']:,}")
+logger.info(f"Total Output Tokens: {token_stats['total_output_tokens']:,}")
+logger.info(f"Total Tokens: {token_stats['total_tokens']:,}")
+logger.info("\nToken tracking saved to: tokens.json")
+logger.info("=" * 80)
