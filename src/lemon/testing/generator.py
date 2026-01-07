@@ -6,11 +6,13 @@ import json
 import os
 import random
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PIL import Image
+from tqdm import tqdm
 
 from ..core.workflow import StandardizedInput
 from ..utils.logging import get_logger
@@ -81,8 +83,20 @@ class TestCaseGenerator:
         valid_outputs: List[str],
         model: str | None = None,
         batch_size: int = 20,
+        max_workers: int = 5,
+        log_responses: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Label test cases with expected outputs using Claude (image + prompt)."""
+        """Label test cases with expected outputs using Azure OpenAI (image + prompt).
+
+        Args:
+            test_cases: Unlabeled test cases to label
+            workflow_image_path: Path to workflow diagram image
+            valid_outputs: List of valid output strings to choose from
+            model: Model name (defaults to HAIKU_DEPLOYMENT_NAME or DEPLOYMENT_NAME)
+            batch_size: Number of test cases per API call
+            max_workers: Maximum parallel API calls (default: 5)
+            log_responses: If True, logs a preview of raw model responses per batch
+        """
         from src.utils.request_utils import make_image_request  # legacy module
 
         if model is None:
@@ -90,7 +104,13 @@ class TestCaseGenerator:
 
         logger.info(
             "Labeling test cases",
-            extra={"count": len(test_cases), "model": model, "batch_size": batch_size},
+            extra={
+                "count": len(test_cases),
+                "model": model,
+                "batch_size": batch_size,
+                "max_workers": max_workers,
+                "log_responses": log_responses,
+            },
         )
 
         img = Image.open(workflow_image_path)
@@ -98,16 +118,21 @@ class TestCaseGenerator:
         format_map = {"JPEG": "PNG", "JPG": "PNG", "PNG": "PNG", "WEBP": "PNG", "GIF": "PNG"}
         format_str = format_map.get(img_format, "PNG")
 
-        labeled: List[Dict[str, Any]] = []
-        total_batches = (len(test_cases) + batch_size - 1) // batch_size
-
+        # Create batches
+        batches = []
         for batch_idx in range(0, len(test_cases), batch_size):
             batch = test_cases[batch_idx : batch_idx + batch_size]
             batch_num = (batch_idx // batch_size) + 1
-            logger.info(
-                "Processing batch", extra={"batch_num": batch_num, "total_batches": total_batches}
-            )
+            batches.append((batch_num, batch))
 
+        total_batches = len(batches)
+        # Pre-allocate with empty dicts (will be replaced)
+        labeled: List[Dict[str, Any] | None] = [None] * len(test_cases)
+
+        def label_batch(
+            batch_num: int, batch: List[Dict[str, Any]], *, log_responses_local: bool
+        ) -> tuple[int, List[Dict[str, Any]]]:
+            """Label a single batch and return (batch_num, labeled_batch)."""
             prompt = self._create_labeling_prompt(batch, valid_outputs)
             try:
                 response = make_image_request(
@@ -118,18 +143,58 @@ class TestCaseGenerator:
                     image_format=format_str,
                 )
                 response_text = response.content[0].text if response.content else ""
-                labeled.extend(self._parse_labeling_response(batch, response_text, valid_outputs))
+                if log_responses_local:
+                    logger.info(
+                        "Model response (preview)",
+                        extra={"batch_num": batch_num, "preview": (response_text or "")[:600]},
+                    )
+                return batch_num, self._parse_labeling_response(batch, response_text, valid_outputs)
             except Exception as e:
                 logger.warning(
                     "Error labeling batch; leaving unlabeled",
                     extra={"batch_num": batch_num, "error": str(e)},
                 )
+                labeled_batch = []
                 for tc in batch:
                     out = tc.copy()
                     out["expected_output"] = None
-                    labeled.append(out)
+                    labeled_batch.append(out)
+                return batch_num, labeled_batch
 
-        return labeled
+        # Process batches in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            for batch_num, batch in batches:
+                fut = executor.submit(
+                    label_batch, batch_num, batch, log_responses_local=log_responses
+                )
+                futures[fut] = (batch_num, batch)
+
+            with tqdm(total=total_batches, desc="Labeling test cases", unit="batch") as pbar:
+                for future in as_completed(futures):
+                    batch_num, batch = futures[future]
+                    try:
+                        result_batch_num, labeled_batch = future.result()
+                        # Find the original indices for this batch
+                        batch_idx = (batch_num - 1) * batch_size
+                        for i, labeled_tc in enumerate(labeled_batch):
+                            if batch_idx + i < len(labeled):
+                                labeled[batch_idx + i] = labeled_tc
+                    except Exception as e:
+                        logger.error(
+                            "Unexpected error processing batch result",
+                            extra={"batch_num": batch_num, "error": str(e)},
+                        )
+                    pbar.update(1)
+
+        # Filter out None entries (shouldn't happen, but safety check)
+        result: List[Dict[str, Any]] = [tc for tc in labeled if tc is not None]
+        if len(result) != len(test_cases):
+            logger.warning(
+                "Some test cases were not labeled",
+                extra={"expected": len(test_cases), "actual": len(result)},
+            )
+        return result
 
     def _create_labeling_prompt(
         self, test_cases: List[Dict[str, Any]], valid_outputs: List[str]
@@ -148,6 +213,43 @@ For each test case, determine the expected output by following the workflow logi
 Return your response as a JSON array with the same length as the test cases array. Each element should be a string containing the expected output for that test case.
 
 Return ONLY the JSON array, no other text."""
+
+    def _normalize_output(self, output: str | None, valid_outputs: List[str]) -> str | None:
+        """Fuzzy match output to valid_outputs with case-insensitive and normalization."""
+        if output is None:
+            return None
+
+        # Exact match first
+        if output in valid_outputs:
+            return output
+
+        # Case-insensitive match
+        output_lower = output.strip().lower()
+        for valid in valid_outputs:
+            if valid.strip().lower() == output_lower:
+                logger.debug(
+                    "Case-insensitive match",
+                    extra={"model_output": output, "matched": valid},
+                )
+                return valid
+
+        # Normalize punctuation and whitespace
+        output_normalized = re.sub(r"\s+", " ", output.strip())
+        for valid in valid_outputs:
+            valid_normalized = re.sub(r"\s+", " ", valid.strip())
+            if valid_normalized.lower() == output_normalized.lower():
+                logger.debug(
+                    "Normalized match",
+                    extra={"model_output": output, "matched": valid},
+                )
+                return valid
+
+        # Log what we couldn't match
+        logger.warning(
+            "Could not match model output to valid outputs",
+            extra={"model_output": output, "valid_outputs": valid_outputs[:5]},
+        )
+        return None
 
     def _parse_labeling_response(
         self, test_cases: List[Dict[str, Any]], response_text: str, valid_outputs: List[str]
@@ -175,7 +277,8 @@ Return ONLY the JSON array, no other text."""
         labeled: List[Dict[str, Any]] = []
         for tc, expected in zip(test_cases, expected_outputs):
             out = tc.copy()
-            out["expected_output"] = expected if expected in valid_outputs else None
+            # Use fuzzy matching instead of strict equality
+            out["expected_output"] = self._normalize_output(expected, valid_outputs)
             labeled.append(out)
         return labeled
 

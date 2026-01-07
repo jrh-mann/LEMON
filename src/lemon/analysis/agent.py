@@ -91,7 +91,12 @@ class WorkflowAnalyzer:
         return standardized
 
     def extract_outputs(self, analysis: WorkflowAnalysis) -> List[str]:
-        """Extract all unique output strings."""
+        """Extract all unique *terminal* output strings.
+
+        Important: We intentionally do NOT treat decision branch `outcome` text as an output.
+        Models often use that field for intermediate actions / transitions (e.g. "Proceed to…"),
+        which pollutes `workflow_outputs.json` with non-terminal steps and near-duplicates.
+        """
         outputs: set[str] = set()
         for out in analysis.outputs:
             if out.name:
@@ -99,10 +104,6 @@ class WorkflowAnalyzer:
         for path in analysis.workflow_paths:
             if path.output:
                 outputs.add(path.output)
-        for dp in analysis.decision_points:
-            for branch in dp.branches:
-                if branch.outcome and not branch.outcome.startswith(("leads to", "next")):
-                    outputs.add(branch.outcome)
         return sorted(outputs)
 
     def _load_image(self, image_path: Path) -> Tuple[str, str]:
