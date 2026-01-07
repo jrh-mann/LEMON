@@ -1,10 +1,22 @@
-"""Workflow analysis agent for reading and analyzing workflow diagrams."""
+"""Workflow analysis agent for reading and analyzing workflow diagrams.
+
+Note: This module remains as a compatibility layer; the core implementation is
+`src.lemon.analysis.agent.WorkflowAnalyzer`.
+"""
+
+from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 from .request_utils import make_request, image_to_base64
 from PIL import Image
+
+from src.lemon.utils.logging import get_logger
+from src.lemon.analysis.agent import WorkflowAnalyzer
+from src.lemon.core.exceptions import WorkflowAnalysisError
+from src.lemon.core.workflow import WorkflowAnalysis as WorkflowAnalysisModel
 
 # Import prompts from the configuration file
 # Add project root to path to import workflow_prompts
@@ -25,10 +37,12 @@ except ImportError:
     DEFAULT_MAX_TOKENS = 4096
 
 
+logger = get_logger(__name__)
+
 class WorkflowAgent:
     """Agent for analyzing workflow diagrams with structured reasoning and task execution."""
     
-    def __init__(self, system_prompt=None, max_tokens=None):
+    def __init__(self, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None):
         """Initialize the workflow agent.
         
         Args:
@@ -38,8 +52,9 @@ class WorkflowAgent:
         self.system_prompt = system_prompt or WORKFLOW_ANALYSIS_SYSTEM_PROMPT
         self.max_tokens = max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS
         self.conversation_history = []
+        self._analyzer = WorkflowAnalyzer(system_prompt=self.system_prompt, max_tokens=self.max_tokens)
     
-    def _load_image(self, image_path):
+    def _load_image(self, image_path: str) -> Tuple[str, str]:
         """Load and prepare image for API request.
         
         Args:
@@ -65,7 +80,7 @@ class WorkflowAgent:
         img_base64 = image_to_base64(img, format=format_str)
         return img_base64, media_type
     
-    def _create_image_message(self, image_path, text_prompt):
+    def _create_image_message(self, image_path: str, text_prompt: str) -> Dict[str, Any]:
         """Create a message with image and text content.
         
         Args:
@@ -95,7 +110,7 @@ class WorkflowAgent:
             ]
         }
     
-    def analyze_workflow(self, image_path, analysis_prompt=None):
+    def analyze_workflow(self, image_path: str, analysis_prompt: Optional[str] = None) -> str:
         """Perform comprehensive workflow analysis and return structured JSON.
         
         This is a single-step analysis that:
@@ -111,29 +126,24 @@ class WorkflowAgent:
         Returns:
             str: JSON string containing structured workflow analysis
         """
-        if analysis_prompt is None:
-            analysis_prompt = SINGLE_ANALYSIS_PROMPT
+        # Keep legacy interface but delegate to the new analyzer for a clean core.
+        if analysis_prompt is not None:
+            # If caller supplied a custom prompt, fall back to legacy behavior.
+            message = self._create_image_message(image_path, analysis_prompt)
+            self.conversation_history.append(message)
+            response = make_request(
+                messages=self.conversation_history,
+                max_tokens=self.max_tokens,
+                system=self.system_prompt,
+            )
+            response_text = response.content[0].text if response.content else ""
+            self.conversation_history.append({"role": "assistant", "content": response_text})
+            return response_text
 
-        message = self._create_image_message(image_path, analysis_prompt)
-        self.conversation_history.append(message)
-        
-        response = make_request(
-            messages=self.conversation_history,
-            max_tokens=self.max_tokens,
-            system=self.system_prompt
-        )
-        
-        response_text = response.content[0].text if response.content else ""
-        
-        # Add assistant response to history
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": response_text
-        })
-        
-        return response_text
+        analysis = self._analyzer.analyze(Path(image_path))
+        return analysis.model_dump_json(indent=2)
     
-    def analyze_workflow_structured(self, image_path):
+    def analyze_workflow_structured(self, image_path: str) -> Dict[str, Any]:
         """Perform workflow analysis and return parsed JSON as a dictionary.
         
         Args:
@@ -145,25 +155,17 @@ class WorkflowAgent:
         import json
         import re
         
-        json_text = self.analyze_workflow(image_path)
-        
-        # Try to extract JSON from the response (in case there's extra text)
-        # Look for JSON object between { and }
-        json_match = re.search(r'\{.*\}', json_text, re.DOTALL)
-        if json_match:
-            json_text = json_match.group(0)
-        
         try:
-            return json.loads(json_text)
-        except json.JSONDecodeError as e:
-            # If parsing fails, return the raw text with error info
+            analysis = self._analyzer.analyze(Path(image_path))
+            return analysis.model_dump()
+        except WorkflowAnalysisError as e:
             return {
                 "error": "Failed to parse JSON",
                 "error_message": str(e),
-                "raw_response": json_text
+                "raw_response": (e.context or {}),
             }
     
-    def extract_and_save_inputs(self, workflow_data, output_file="workflow_inputs.json"):
+    def extract_and_save_inputs(self, workflow_data: Dict[str, Any], output_file: str = "workflow_inputs.json") -> List[Dict[str, Any]]:
         """Extract inputs from workflow analysis and save in standardized format.
         
         Args:
@@ -177,32 +179,38 @@ class WorkflowAgent:
         from pathlib import Path
         
         if "error" in workflow_data:
-            print(f"Warning: Cannot extract inputs from workflow data with error: {workflow_data.get('error_message')}")
+            logger.warning(
+                "Cannot extract inputs from workflow data with error",
+                extra={"error_message": workflow_data.get("error_message")},
+            )
             return []
         
-        standardized_inputs = []
-        inputs = workflow_data.get("inputs", [])
-        
-        for inp in inputs:
-            # Extract and standardize the input
-            standardized = {
-                "input_name": inp.get("name", ""),
-                "input_type": self._normalize_type(inp.get("type", "unknown"), inp.get("format", "")),
-                "range": self._extract_range(inp.get("possible_values", {}), inp.get("constraints", "")),
-                "description": inp.get("description", "")
-            }
-            standardized_inputs.append(standardized)
+        # Prefer the typed analysis path if possible (no additional API calls).
+        try:
+            analysis = WorkflowAnalysisModel.model_validate(workflow_data)
+            standardized_inputs = [x.model_dump() for x in self._analyzer.extract_standardized_inputs(analysis)]
+        except Exception:
+            standardized_inputs = []
+            inputs = workflow_data.get("inputs", [])
+            for inp in inputs:
+                standardized = {
+                    "input_name": inp.get("name", ""),
+                    "input_type": self._normalize_type(inp.get("type", "unknown"), inp.get("format", "")),
+                    "range": self._extract_range(inp.get("possible_values", {}), inp.get("constraints", "")),
+                    "description": inp.get("description", ""),
+                }
+                standardized_inputs.append(standardized)
         
         # Save to JSON file
         output_path = Path(output_file)
         with open(output_path, 'w') as f:
             json.dump(standardized_inputs, f, indent=2)
         
-        print(f"\n✅ Standardized inputs saved to: {output_path}")
+        logger.info("Standardized inputs saved", extra={"path": str(output_path)})
         
         return standardized_inputs
     
-    def extract_and_save_outputs(self, workflow_data, output_file="workflow_outputs.json"):
+    def extract_and_save_outputs(self, workflow_data: Dict[str, Any], output_file: str = "workflow_outputs.json") -> List[str]:
         """Extract all possible outputs from workflow analysis and save in standardized format.
         
         Args:
@@ -216,45 +224,44 @@ class WorkflowAgent:
         from pathlib import Path
         
         if "error" in workflow_data:
-            print(f"Warning: Cannot extract outputs from workflow data with error: {workflow_data.get('error_message')}")
+            logger.warning(
+                "Cannot extract outputs from workflow data with error",
+                extra={"error_message": workflow_data.get("error_message")},
+            )
             return []
         
-        # Extract outputs from multiple sources
-        outputs = set()
-        
-        # From outputs array
-        for output in workflow_data.get("outputs", []):
-            output_name = output.get("name", "")
-            if output_name:
-                outputs.add(output_name)
-        
-        # From workflow_paths (final outputs)
-        for path in workflow_data.get("workflow_paths", []):
-            path_output = path.get("output", "")
-            if path_output:
-                outputs.add(path_output)
-        
-        # From decision point branches (outcomes)
-        for decision in workflow_data.get("decision_points", []):
-            for branch in decision.get("branches", []):
-                branch_outcome = branch.get("outcome", "")
-                if branch_outcome and not branch_outcome.startswith("leads to") and not branch_outcome.startswith("next"):
-                    outputs.add(branch_outcome)
-        
-        # Convert to sorted list for consistency
-        standardized_outputs = sorted(list(outputs))
+        # Prefer typed analysis if possible (no additional API calls).
+        try:
+            analysis = WorkflowAnalysisModel.model_validate(workflow_data)
+            standardized_outputs = self._analyzer.extract_outputs(analysis)
+        except Exception:
+            outputs = set()
+            for output in workflow_data.get("outputs", []):
+                output_name = output.get("name", "")
+                if output_name:
+                    outputs.add(output_name)
+            for path in workflow_data.get("workflow_paths", []):
+                path_output = path.get("output", "")
+                if path_output:
+                    outputs.add(path_output)
+            for decision in workflow_data.get("decision_points", []):
+                for branch in decision.get("branches", []):
+                    branch_outcome = branch.get("outcome", "")
+                    if branch_outcome and not branch_outcome.startswith("leads to") and not branch_outcome.startswith("next"):
+                        outputs.add(branch_outcome)
+            standardized_outputs = sorted(list(outputs))
         
         # Save to JSON file
         output_path = Path(output_file)
         with open(output_path, 'w') as f:
             json.dump(standardized_outputs, f, indent=2)
         
-        print(f"\n✅ Extracted {len(standardized_outputs)} unique outputs")
-        print(f"✅ Standardized outputs saved to: {output_path}")
+        logger.info("Extracted outputs", extra={"count": len(standardized_outputs)})
+        logger.info("Standardized outputs saved", extra={"path": str(output_path)})
         
         return standardized_outputs
     
-    def _normalize_type(self, type_str, format_str):
+    def _normalize_type(self, type_str: str, format_str: str) -> str:
         """Normalize input type to standard format (Int, Float, str, bool, etc.).
         
         Args:
@@ -293,7 +300,7 @@ class WorkflowAgent:
         # Default fallback
         return "str"
     
-    def _extract_range(self, possible_values, constraints):
+    def _extract_range(self, possible_values: Any, constraints: str) -> Any:
         """Extract range information in a clever standardized format.
         
         Args:
@@ -351,7 +358,7 @@ class WorkflowAgent:
         
         return None
     
-    def reset_conversation(self):
+    def reset_conversation(self) -> None:
         """Reset the conversation history."""
         self.conversation_history = []
 
