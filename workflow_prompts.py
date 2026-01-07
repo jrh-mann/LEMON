@@ -73,6 +73,10 @@ First, think through the entire workflow systematically:
 - Understand how inputs flow through decisions to produce outputs
 - Trace all possible paths through the workflow
 
+All your workflow outputs should be lowercase and without any special characters.
+All your workflow outputs should correspond to only what is written in the boxes of the workflow image.
+Do not add detail to those outputs, beyond the verbatim text in the boxes.
+
 Then, output your analysis in the following JSON format:
 
 {
