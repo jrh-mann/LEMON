@@ -81,6 +81,7 @@ class TestCaseGenerator:
         test_cases: List[Dict[str, Any]],
         workflow_image_path: str,
         valid_outputs: List[str],
+        workflow_analysis: Optional[Dict[str, Any]] = None,
         model: str | None = None,
         batch_size: int = 20,
         max_workers: int = 5,
@@ -92,9 +93,10 @@ class TestCaseGenerator:
             test_cases: Unlabeled test cases to label
             workflow_image_path: Path to workflow diagram image
             valid_outputs: List of valid output strings to choose from
+            workflow_analysis: Optional structured workflow analysis for context
             model: Model name (defaults to HAIKU_DEPLOYMENT_NAME or DEPLOYMENT_NAME)
             batch_size: Number of test cases per API call
-            max_workers: Maximum parallel API calls (default: 5)
+            max_workers: int = 5,
             log_responses: If True, logs a preview of raw model responses per batch
         """
         from src.utils.request_utils import make_image_request  # legacy module
@@ -103,20 +105,34 @@ class TestCaseGenerator:
             model = os.getenv("HAIKU_DEPLOYMENT_NAME") or os.getenv("DEPLOYMENT_NAME", "haiku")
 
         logger.info(
-            "Labeling test cases",
+            "🏷️ Starting test case labeling",
             extra={
                 "count": len(test_cases),
                 "model": model,
                 "batch_size": batch_size,
                 "max_workers": max_workers,
+                "total_batches": (len(test_cases) + batch_size - 1) // batch_size,
                 "log_responses": log_responses,
             },
         )
+        
+        if workflow_analysis:
+            logger.info("✓ Using structured workflow analysis for context")
 
+        # Allow loading truncated images (common with JPEG compression)
+        from PIL import ImageFile
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        
+        # Load and convert image to base64 once (thread-safe)
         img = Image.open(workflow_image_path)
         img_format = (img.format or "PNG").upper()
         format_map = {"JPEG": "PNG", "JPG": "PNG", "PNG": "PNG", "WEBP": "PNG", "GIF": "PNG"}
         format_str = format_map.get(img_format, "PNG")
+        
+        # Convert to base64 for thread-safe sharing
+        from ..utils.image_utils import image_to_base64
+        img_base64 = image_to_base64(img, format=format_str)
+        img.close()  # Close original image
 
         # Create batches
         batches = []
@@ -126,32 +142,58 @@ class TestCaseGenerator:
             batches.append((batch_num, batch))
 
         total_batches = len(batches)
+        logger.info(f"📦 Created {total_batches} batches of up to {batch_size} test cases each")
+        
         # Pre-allocate with empty dicts (will be replaced)
         labeled: List[Dict[str, Any] | None] = [None] * len(test_cases)
+        
+        # Track successes and failures
+        successful_batches = 0
+        failed_batches = 0
 
         def label_batch(
             batch_num: int, batch: List[Dict[str, Any]], *, log_responses_local: bool
         ) -> tuple[int, List[Dict[str, Any]]]:
             """Label a single batch and return (batch_num, labeled_batch)."""
-            prompt = self._create_labeling_prompt(batch, valid_outputs)
+            logger.debug(f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch)} test cases)")
+            prompt = self._create_labeling_prompt(batch, valid_outputs, workflow_analysis)
             try:
+                # Recreate image from base64 for this thread
+                from io import BytesIO
+                import base64
+                img_bytes = base64.b64decode(img_base64)
+                img_thread = Image.open(BytesIO(img_bytes))
+                
                 response = make_image_request(
-                    image=img,
+                    image=img_thread,
                     prompt=prompt,
-                    max_tokens=4096,
+                    max_tokens=8096,
                     model=model,
                     image_format=format_str,
                 )
+                img_thread.close()  # Clean up
+                
                 response_text = response.content[0].text if response.content else ""
-                if log_responses_local:
-                    logger.info(
-                        "Model response (preview)",
-                        extra={"batch_num": batch_num, "preview": (response_text or "")[:600]},
+                
+                # Check for empty response
+                if not response_text or not response_text.strip():
+                    logger.error(
+                        f"⚠️ Batch {batch_num}/{total_batches} returned empty response.\n"
+                        f"Response type: {type(response)}\n"
+                        f"Response.content: {response.content}\n"
+                        f"Response object: {response}\n"
+                        f"Has usage? {hasattr(response, 'usage')}\n"
+                        f"Usage: {getattr(response, 'usage', None)}"
                     )
+                
+                if log_responses_local:
+                    preview = (response_text or "")[:800]
+                    logger.info(f"\n{'='*80}\n📝 Batch {batch_num} Model Response:\n{preview}\n{'='*80}")
+                logger.debug(f"✓ Batch {batch_num}/{total_batches} labeled successfully")
                 return batch_num, self._parse_labeling_response(batch, response_text, valid_outputs)
             except Exception as e:
-                logger.warning(
-                    "Error labeling batch; leaving unlabeled",
+                logger.error(
+                    f"⚠️ Error labeling batch {batch_num}/{total_batches}: {str(e)}",
                     extra={"batch_num": batch_num, "error": str(e)},
                 )
                 labeled_batch = []
@@ -162,6 +204,7 @@ class TestCaseGenerator:
                 return batch_num, labeled_batch
 
         # Process batches in parallel
+        logger.info(f"🚀 Starting parallel labeling with {max_workers} workers...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
             for batch_num, batch in batches:
@@ -170,7 +213,7 @@ class TestCaseGenerator:
                 )
                 futures[fut] = (batch_num, batch)
 
-            with tqdm(total=total_batches, desc="Labeling test cases", unit="batch") as pbar:
+            with tqdm(total=total_batches, desc="Labeling batches", unit="batch") as pbar:
                 for future in as_completed(futures):
                     batch_num, batch = futures[future]
                     try:
@@ -180,35 +223,74 @@ class TestCaseGenerator:
                         for i, labeled_tc in enumerate(labeled_batch):
                             if batch_idx + i < len(labeled):
                                 labeled[batch_idx + i] = labeled_tc
+                        
+                        # Check if labeling was successful (has expected_output)
+                        if labeled_batch and labeled_batch[0].get('expected_output') is not None:
+                            successful_batches += 1
+                        else:
+                            failed_batches += 1
+                            
                     except Exception as e:
+                        failed_batches += 1
                         logger.error(
-                            "Unexpected error processing batch result",
+                            f"❌ Unexpected error processing batch {batch_num}: {str(e)}",
                             extra={"batch_num": batch_num, "error": str(e)},
                         )
                     pbar.update(1)
+        
+        logger.info(
+            f"✓ Labeling complete: {successful_batches} successful, {failed_batches} failed batches",
+            extra={"successful": successful_batches, "failed": failed_batches, "total": total_batches}
+        )
 
         # Filter out None entries (shouldn't happen, but safety check)
         result: List[Dict[str, Any]] = [tc for tc in labeled if tc is not None]
+        labeled_count = len([tc for tc in result if tc.get('expected_output') is not None])
+        unlabeled_count = len(result) - labeled_count
+        
         if len(result) != len(test_cases):
             logger.warning(
-                "Some test cases were not labeled",
-                extra={"expected": len(test_cases), "actual": len(result)},
+                "⚠️ Some test cases were not labeled",
+                extra={"expected": len(test_cases), "actual": len(result), "missing": len(test_cases) - len(result)},
             )
+        
+        logger.info(
+            f"📊 Labeling summary: {labeled_count} labeled, {unlabeled_count} unlabeled, {len(result)} total",
+            extra={"labeled": labeled_count, "unlabeled": unlabeled_count, "total": len(result)}
+        )
+        
         return result
 
     def _create_labeling_prompt(
-        self, test_cases: List[Dict[str, Any]], valid_outputs: List[str]
+        self, test_cases: List[Dict[str, Any]], valid_outputs: List[str], workflow_analysis: Optional[Dict[str, Any]] = None
     ) -> str:
         test_cases_json = json.dumps(test_cases, indent=2)
-        return f"""You are analyzing a workflow diagram. For each test case below, determine what the expected output should be according to the workflow.
+        
+        # Build structured context if workflow_analysis is provided
+        context_section = ""
+        if workflow_analysis:
+            context_section = f"""
+WORKFLOW STRUCTURE (use this structured analysis to help determine outputs):
+{json.dumps(workflow_analysis, indent=2)}
 
+This structured analysis includes:
+- inputs: All workflow inputs with their types and ranges
+- decision_points: Decision logic with exact conditions and branches
+- workflow_paths: Complete paths from inputs to outputs
+- outputs: All possible output states
+
+Use this structured information ALONGSIDE the workflow image to accurately determine outputs.
+"""
+        
+        return f"""You are analyzing a workflow diagram. For each test case below, determine what the expected output should be according to the workflow.
+{context_section}
 VALID OUTPUTS (you must choose exactly one of these):
 {json.dumps(valid_outputs, indent=2)}
 
 TEST CASES TO LABEL:
 {test_cases_json}
 
-For each test case, determine the expected output by following the workflow logic shown in the image. The output must be EXACTLY one of the valid outputs listed above.
+For each test case, determine the expected output by following the workflow logic. Use BOTH the workflow image AND the structured workflow analysis provided above. The output must be EXACTLY one of the valid outputs listed.
 
 Return your response as a JSON array with the same length as the test cases array. Each element should be a string containing the expected output for that test case.
 
@@ -262,9 +344,11 @@ Return ONLY the JSON array, no other text."""
             if not isinstance(expected_outputs, list):
                 raise ValueError("Response is not a list")
         except Exception as e:
-            logger.warning(
-                "Failed parsing labeling response",
-                extra={"error": str(e), "preview": response_text[:200]},
+            logger.error(
+                f"❌ Failed parsing labeling response: {str(e)}\n"
+                f"Response preview: {response_text[:800]}\n"
+                f"JSON text extracted: {json_text[:500]}",
+                extra={"error": str(e)},
             )
             expected_outputs = [None] * len(test_cases)
 

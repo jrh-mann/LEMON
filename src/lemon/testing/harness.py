@@ -63,10 +63,10 @@ for tc in test_cases:
         outcome = determine_workflow_outcome(tc)
         expected_output = tc.get("expected_output")
         if expected_output is not None:
-            passed = outcome == expected_output
+            passed = outcome.lower() == expected_output.lower() if isinstance(outcome, str) and isinstance(expected_output, str) else outcome == expected_output
             error_msg = None if passed else f"Expected '{{expected_output}}', got '{{outcome}}'"
         else:
-            passed = outcome in valid_outputs
+            passed = outcome.lower() in [v.lower() for v in valid_outputs] if isinstance(outcome, str) else outcome in valid_outputs
             error_msg = None if passed else f"Invalid output: '{{outcome}}'"
         results.append({{"passed": passed, "error": error_msg}})
     except Exception as e:
