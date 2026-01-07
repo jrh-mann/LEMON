@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from src.lemon.utils.logging import configure_logging, get_logger
 from src.lemon.analysis.agent import WorkflowAnalyzer
+from src.lemon.utils.logging import configure_logging, get_logger
 from src.lemon.utils.token_tracker import get_token_stats
 
 # Configure logging for CLI output (keep it human-readable)
@@ -31,7 +31,9 @@ Path("workflow_inputs.json").write_text(json.dumps(standardized_inputs, indent=2
 
 # Extract and save standardized outputs
 standardized_outputs = analyzer.extract_outputs(analysis)
-Path("workflow_outputs.json").write_text(json.dumps(standardized_outputs, indent=2), encoding="utf-8")
+Path("workflow_outputs.json").write_text(
+    json.dumps(standardized_outputs, indent=2), encoding="utf-8"
+)
 
 # Display results
 # Pretty print the JSON

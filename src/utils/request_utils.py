@@ -1,8 +1,9 @@
 """Utilities for making API requests."""
 
-import os
 import json
+import os
 from pathlib import Path
+
 from PIL import Image
 
 from src.lemon.api.anthropic import (
@@ -12,7 +13,12 @@ from src.lemon.api.anthropic import (
     make_simple_request,
 )
 from src.lemon.utils.image_utils import generate_green_image, image_to_base64
-from src.lemon.utils.token_tracker import get_token_stats, load_token_tracking, save_token_tracking, track_tokens
+from src.lemon.utils.token_tracker import (
+    get_token_stats,
+    load_token_tracking,
+    save_token_tracking,
+    track_tokens,
+)
 
 # Retain TOKENS_FILE for backwards compatibility (used by some callers/tests).
 TOKENS_FILE = Path(__file__).parent.parent.parent / "tokens.json"
@@ -31,4 +37,3 @@ __all__ = [
     "track_tokens",
     "TOKENS_FILE",
 ]
-

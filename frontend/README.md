@@ -1,6 +1,6 @@
 # LEMON Frontend Demo
 
-A beautiful, interactive web frontend for visualizing the LEMON workflow-to-code pipeline in real-time.
+Interactive web UI for visualizing the LEMON workflow-to-code pipeline in real time.
 
 ## Features
 
@@ -14,16 +14,10 @@ A beautiful, interactive web frontend for visualizing the LEMON workflow-to-code
 
 ## Installation
 
-1. Install frontend dependencies:
-```bash
-cd frontend
-pip install -r requirements.txt
-```
+From repo root:
 
-2. Ensure you have the main LEMON dependencies installed (from parent directory):
 ```bash
-cd ..
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 3. Make sure your `.env` file is configured with:
@@ -34,10 +28,8 @@ pip install -r requirements.txt
 
 ## Running the Frontend
 
-1. Start the Flask server:
 ```bash
-cd frontend
-python app.py
+uv run python frontend/app.py
 ```
 
 2. Open your browser and navigate to:

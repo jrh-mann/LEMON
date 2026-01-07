@@ -21,5 +21,3 @@ def test_comprehensive_strategy_produces_combinations_when_small():
     inputs = [{"name": "x", "values": [1, 2]}, {"name": "y", "values": ["a", "b"]}]
     cases = ComprehensiveStrategy(seed=0).generate(inputs, 10)
     assert len(cases) == 4  # full cartesian product
-
-

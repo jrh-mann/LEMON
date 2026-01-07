@@ -45,7 +45,14 @@ def sample_workflow_analysis_dict() -> Dict[str, Any]:
                 ],
             }
         ],
-        "outputs": [{"name": "OutputMinor", "type": "text", "description": "Minor", "produced_by": ["path_1"]}],
+        "outputs": [
+            {
+                "name": "OutputMinor",
+                "type": "text",
+                "description": "Minor",
+                "produced_by": ["path_1"],
+            }
+        ],
         "workflow_paths": [
             {
                 "path_id": "path_1",
@@ -69,5 +76,3 @@ def tmp_workflow_inputs_file(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return p
-
-

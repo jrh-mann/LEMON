@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import random
 from abc import ABC, abstractmethod
 from itertools import product
 from typing import Any, Dict, List
-
-import random
 
 
 class TestGenerationStrategy(ABC):
@@ -109,5 +108,3 @@ class EdgeCasesStrategy(TestGenerationStrategy):
             if tc not in test_cases:
                 test_cases.append(tc)
         return test_cases[:n]
-
-

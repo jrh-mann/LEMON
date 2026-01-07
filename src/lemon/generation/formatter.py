@@ -18,5 +18,3 @@ def normalize_js_literals(code: str) -> str:
     code = re.sub(r"!([^=\s])", r"not \1", code)  # avoid touching "!="
     code = re.sub(r"!\s+", "not ", code)
     return code
-
-

@@ -11,5 +11,3 @@ def test_validator_detects_entrypoint():
 def test_validator_rejects_missing_entrypoint():
     code = "def something_else():\n    return 1\n"
     assert has_entrypoint_function(code) is False
-
-

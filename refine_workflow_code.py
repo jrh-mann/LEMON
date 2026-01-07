@@ -25,7 +25,9 @@ def main() -> None:
     args = parser.parse_args()
 
     pipeline = RefinementPipeline(Settings())
-    result = pipeline.run_with_options(workflow_image=Path(args.workflow_image), max_iterations=args.max_iterations)
+    result = pipeline.run_with_options(
+        workflow_image=Path(args.workflow_image), max_iterations=args.max_iterations
+    )
     logger.info(
         "Pipeline finished",
         extra={
@@ -39,4 +41,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

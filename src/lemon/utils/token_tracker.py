@@ -33,10 +33,18 @@ def load_token_tracking() -> Dict[str, Any]:
     if TOKENS_FILE.exists():
         try:
             with open(TOKENS_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+                return {}
         except Exception:
             pass
-    return {"total_input_tokens": 0, "total_output_tokens": 0, "total_tokens": 0, "request_count": 0}
+    return {
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_tokens": 0,
+        "request_count": 0,
+    }
 
 
 def save_token_tracking(token_data: Dict[str, Any]) -> None:
@@ -45,7 +53,9 @@ def save_token_tracking(token_data: Dict[str, Any]) -> None:
         with open(TOKENS_FILE, "w") as f:
             json.dump(token_data, f, indent=2)
     except Exception as e:
-        logger.warning("Could not save token tracking", extra={"path": str(TOKENS_FILE), "error": str(e)})
+        logger.warning(
+            "Could not save token tracking", extra={"path": str(TOKENS_FILE), "error": str(e)}
+        )
 
 
 def track_tokens(response: Any) -> Dict[str, Any]:
@@ -61,7 +71,9 @@ def track_tokens(response: Any) -> Dict[str, Any]:
     token_data = load_token_tracking()
     token_data["total_input_tokens"] += input_tokens
     token_data["total_output_tokens"] += output_tokens
-    token_data["total_tokens"] = token_data["total_input_tokens"] + token_data["total_output_tokens"]
+    token_data["total_tokens"] = (
+        token_data["total_input_tokens"] + token_data["total_output_tokens"]
+    )
     token_data["request_count"] += 1
     save_token_tracking(token_data)
     return token_data
@@ -70,5 +82,3 @@ def track_tokens(response: Any) -> Dict[str, Any]:
 def get_token_stats() -> Dict[str, Any]:
     """Get current cumulative token usage statistics."""
     return load_token_tracking()
-
-

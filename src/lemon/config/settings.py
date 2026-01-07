@@ -21,6 +21,3 @@ class Settings(BaseSettings):
 
     # Optional secondary model used by test-case labeling.
     haiku_deployment_name: str | None = Field(default=None, alias="HAIKU_DEPLOYMENT_NAME")
-
-
-
