@@ -69,13 +69,14 @@ SINGLE_ANALYSIS_PROMPT = """Analyze this workflow comprehensively and output a s
 First, think through the entire workflow systematically:
 - Identify ALL inputs, their types, formats, and possible values/ranges (this is critical!)
 - Identify ALL decision points and the exact conditions that determine paths
-- Identify ALL outputs and outcomes
+- Identify ALL terminal outputs of the process, that is, boxes with no arrows coming out of them.
 - Understand how inputs flow through decisions to produce outputs
 - Trace all possible paths through the workflow
 
-All your workflow outputs should be lowercase and without any special characters.
-All your workflow outputs should correspond to only what is written in the boxes of the workflow image.
-Do not add detail to those outputs, beyond the verbatim text in the boxes.
+IMPORTANT:
+- All outputs should correspond to boxes, and be taken verbatim from that box, if an output is not present in a box, it is not an outcome.
+- Ignore yellow sticky notes, they are not part of the workflow.
+- While listing outputs, they should all be different, there should not be multiple slight variations.
 
 Then, output your analysis in the following JSON format:
 
