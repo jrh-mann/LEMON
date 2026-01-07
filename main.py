@@ -26,7 +26,7 @@ workflow_data = analysis.model_dump()
 
 # Extract and save standardized inputs
 standardized_inputs_models = analyzer.extract_standardized_inputs(analysis)
-standardized_inputs = [x.model_dump() for x in standardized_inputs_models]
+standardized_inputs = [x.model_dump(exclude_none=True) for x in standardized_inputs_models]
 Path("workflow_inputs.json").write_text(json.dumps(standardized_inputs, indent=2), encoding="utf-8")
 
 # Extract and save standardized outputs

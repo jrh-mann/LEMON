@@ -46,17 +46,17 @@ class ComprehensiveStrategy(TestGenerationStrategy):
                     tc[cname] = rng.choice(cvalues)
                 test_cases.append(tc)
 
-            while len(test_cases) < n:
+            # Fill remaining with random samples (no duplicate checking - unlikely with floats)
+            for _ in range(n - len(test_cases)):
                 tc = {k: rng.choice(v) for k, v in input_value_sets.items()}
-                if tc not in test_cases:
-                    test_cases.append(tc)
+                test_cases.append(tc)
         else:
             # Too many combinations: seed with edge-ish cases then random fill.
             test_cases = EdgeCasesStrategy(seed=self.seed).generate(inputs, min(n // 2, 50))
-            while len(test_cases) < n:
+            # Fill remaining with random samples (no duplicate checking)
+            for _ in range(n - len(test_cases)):
                 tc = {k: rng.choice(v) for k, v in input_value_sets.items()}
-                if tc not in test_cases:
-                    test_cases.append(tc)
+                test_cases.append(tc)
 
         return test_cases[:n]
 
