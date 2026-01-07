@@ -60,10 +60,16 @@ def save_token_tracking(token_data: Dict[str, Any]) -> None:
 
 def track_tokens(response: Any) -> Dict[str, Any]:
     """Update token tracking totals using an Anthropic response object."""
-    if hasattr(response, "usage"):
+    if hasattr(response, "usage") and response.usage is not None:
         usage = response.usage
-        input_tokens = getattr(usage, "input_tokens", 0)
-        output_tokens = getattr(usage, "output_tokens", 0)
+        # Anthropic-style
+        input_tokens = getattr(usage, "input_tokens", None)
+        output_tokens = getattr(usage, "output_tokens", None)
+        # OpenAI/Azure-style
+        if input_tokens is None:
+            input_tokens = getattr(usage, "prompt_tokens", 0)
+        if output_tokens is None:
+            output_tokens = getattr(usage, "completion_tokens", 0)
     else:
         input_tokens = getattr(response, "input_tokens", 0)
         output_tokens = getattr(response, "output_tokens", 0)

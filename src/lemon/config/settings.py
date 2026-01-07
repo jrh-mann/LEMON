@@ -19,5 +19,10 @@ class Settings(BaseSettings):
     api_key: str = Field(alias="API_KEY")
     e2b_api_key: str = Field(alias="E2B_API_KEY")
 
+    # Azure OpenAI
+    azure_openai_api_version: str = Field(
+        default="2024-12-01-preview", alias="AZURE_OPENAI_API_VERSION"
+    )
+
     # Optional secondary model used by test-case labeling.
     haiku_deployment_name: str | None = Field(default=None, alias="HAIKU_DEPLOYMENT_NAME")
