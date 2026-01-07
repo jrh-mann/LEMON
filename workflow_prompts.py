@@ -67,11 +67,24 @@ a given input into its workflow output. You should also be very good at identify
 SINGLE_ANALYSIS_PROMPT = """Analyze this workflow comprehensively and output a structured JSON representation.
 
 First, think through the entire workflow systematically:
-- Identify ALL inputs, their types, formats, and possible values/ranges (this is critical!)
+- Identify ALL inputs, their types, formats, and possible values/ranges (this is ABSOLUTELY CRITICAL!)
 - Identify ALL decision points and the exact conditions that determine paths
 - Identify ALL terminal outputs of the process, that is, boxes with no arrows coming out of them.
 - Understand how inputs flow through decisions to produce outputs
 - Trace all possible paths through the workflow
+
+CRITICAL REQUIREMENTS FOR INPUT RANGES:
+🔴 EVERY numeric/float input MUST have a range with min and max values
+🔴 Look carefully at:
+  - Any axes, scales, or graphs in the image that show ranges
+  - Decision point thresholds (e.g., if checking "> 7.5", the input likely ranges up to at least 10)
+  - Any labels or annotations that mention units or typical values
+  - The clinical/domain context to infer reasonable ranges 
+🔴 If explicit ranges aren't shown, infer reasonable ranges based on:
+  - Decision thresholds visible in the workflow
+  - Domain knowledge (healthcare values have standard clinical ranges)
+  - Units of measurement (percentages are 0-100)
+🔴 DO NOT leave numeric inputs without ranges - test case generation REQUIRES them
 
 IMPORTANT:
 - All outputs should correspond to boxes, and be taken verbatim from that box, if an output is not present in a box, it is not an outcome.
@@ -136,11 +149,14 @@ Then, output your analysis in the following JSON format:
 
 CRITICAL REQUIREMENTS:
 - Be EXTREMELY thorough in identifying ALL possible input values and ranges (this is critical for generating test cases)
-- For numeric inputs, identify exact thresholds, ranges, and units
+- For numeric inputs, identify exact thresholds, ranges, and units - EVERY numeric input must have min/max
 - For categorical inputs, list ALL possible values
 - For decision points, specify the EXACT conditions (e.g., "> 7.5", "== 'Primary'", etc.)
 - Map out ALL possible paths through the workflow
 - Ensure the JSON is valid and can be parsed programmatically
+
+⚠️ REMINDER: If you output a numeric/float input WITHOUT a range (min/max), the downstream test generation will FAIL
+The system cannot generate valid test cases for numeric inputs without knowing their possible value ranges.
 
 Output ONLY valid JSON. Do not include any explanatory text before or after the JSON."""
 

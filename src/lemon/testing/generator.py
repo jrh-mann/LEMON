@@ -282,19 +282,32 @@ This structured analysis includes:
 Use this structured information ALONGSIDE the workflow image to accurately determine outputs.
 """
         
-        return f"""You are analyzing a workflow diagram. For each test case below, determine what the expected output should be according to the workflow.
+        return f"""You are analyzing a workflow diagram to label test cases with their EXACT expected outputs.
 {context_section}
-VALID OUTPUTS (you must choose exactly one of these):
+VALID OUTPUTS (you MUST choose EXACTLY one of these, preserving the exact capitalization and punctuation):
 {json.dumps(valid_outputs, indent=2)}
 
 TEST CASES TO LABEL:
 {test_cases_json}
 
-For each test case, determine the expected output by following the workflow logic. Use BOTH the workflow image AND the structured workflow analysis provided above. The output must be EXACTLY one of the valid outputs listed.
+CRITICAL INSTRUCTIONS:
+1. For EACH test case, trace through the workflow step-by-step from start to finish
+2. Follow EVERY decision point carefully using the EXACT input values provided
+3. Use the structured workflow analysis (decision_points, workflow_paths) to understand the logic
+4. Cross-reference with the workflow image to verify your path
+5. The output MUST be EXACTLY one of the valid outputs listed above (exact match, including capitalization)
+6. If you're unsure between two paths, re-trace the logic carefully - there is only ONE correct answer per test case
 
-Return your response as a JSON array with the same length as the test cases array. Each element should be a string containing the expected output for that test case.
+APPROACH:
+- Start with the first input/decision point
+- For each decision, check the condition against the test case values
+- Follow the branch that matches
+- Continue until you reach a terminal output
+- Double-check: does this output match one of the valid outputs EXACTLY?
 
-Return ONLY the JSON array, no other text."""
+Return your response as a JSON array with the same length as the test cases array. Each element should be a string containing the expected output for that test case. The string must EXACTLY match one of the valid outputs (character-for-character, including case and punctuation).
+
+Return ONLY the JSON array, no explanations or other text."""
 
     def _normalize_output(self, output: str | None, valid_outputs: List[str]) -> str | None:
         """Fuzzy match output to valid_outputs with case-insensitive and normalization."""
@@ -367,8 +380,12 @@ Return ONLY the JSON array, no other text."""
         return labeled
 
     def _generate_values_for_input(self, inp: StandardizedInput, num_samples: int = 5) -> List[Any]:
+        from ..core.workflow import StandardizedRange
+        
         input_type = inp.input_type
         range_info = inp.range
+        
+        logger.debug(f"Generating values for {inp.input_name}: type={input_type}, range={range_info}")
 
         if input_type == "bool":
             return [True, False]
@@ -376,10 +393,16 @@ Return ONLY the JSON array, no other text."""
         if isinstance(range_info, list):
             return range_info
 
-        if isinstance(range_info, dict):
-            min_val = range_info.get("min")
-            max_val = range_info.get("max")
-            value = range_info.get("value")
+        # Handle both dict and StandardizedRange (Pydantic model)
+        if isinstance(range_info, (dict, StandardizedRange)):
+            if isinstance(range_info, StandardizedRange):
+                min_val = range_info.min
+                max_val = range_info.max
+                value = range_info.value
+            else:
+                min_val = range_info.get("min")
+                max_val = range_info.get("max")
+                value = range_info.get("value")
 
             if value is not None:
                 return [value]

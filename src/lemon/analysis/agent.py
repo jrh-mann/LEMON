@@ -186,7 +186,13 @@ class WorkflowAnalyzer:
         if pv_type == "range":
             min_val = getattr(possible_values, "min", None)
             max_val = getattr(possible_values, "max", None)
-            return StandardizedRange(min=min_val, max=max_val)
+            # Return dict instead of StandardizedRange to avoid "value": null in JSON
+            result = {}
+            if min_val is not None:
+                result["min"] = min_val
+            if max_val is not None:
+                result["max"] = max_val
+            return result if result else None
 
         if pv_type == "enum":
             values = getattr(possible_values, "values", []) or []
@@ -205,5 +211,5 @@ class WorkflowAnalyzer:
             return None
         nums = [float(n) for n in numbers]
         if len(nums) >= 2:
-            return StandardizedRange(min=min(nums), max=max(nums))
-        return StandardizedRange(value=nums[0])
+            return {"min": min(nums), "max": max(nums)}
+        return {"value": nums[0]}
