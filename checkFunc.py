@@ -19,8 +19,9 @@ for i, test_case in enumerate(test_cases):
     actual = determine_workflow_outcome(inputs)
     if expected is None:
         expected = ""
+    expected = expected.lower()
     # Compare results
-    if actual.lower() == expected.lower():
+    if actual == expected:
         passed += 1
     else:
         failures.append({

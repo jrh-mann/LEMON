@@ -39,7 +39,7 @@ def determine_workflow_outcome(inputs):
                     elif ldl_cholesterol > 2 and ldl_cholesterol <= 2.5:
                         return "add in ezetimibe"
                     else:
-                        # >2.6
+                        # >= 2.6
                         return "initiate inclisiran"
                         # then you neede to wait 3 months and check ldl again, not sure how to do this here
                 else:
