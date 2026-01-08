@@ -24,16 +24,22 @@ logger.info("\nAnalyzing workflow and generating structured JSON...\n")
 analysis = analyzer.analyze(Path("workflow.jpeg"))
 workflow_data = analysis.model_dump()
 
+# Save full workflow analysis
+Path("workflow_analysis.json").write_text(json.dumps(workflow_data, indent=2), encoding="utf-8")
+logger.info("✓ Saved workflow_analysis.json")
+
 # Extract and save standardized inputs
 standardized_inputs_models = analyzer.extract_standardized_inputs(analysis)
 standardized_inputs = [x.model_dump(exclude_none=True) for x in standardized_inputs_models]
 Path("workflow_inputs.json").write_text(json.dumps(standardized_inputs, indent=2), encoding="utf-8")
+logger.info("✓ Saved workflow_inputs.json")
 
 # Extract and save standardized outputs
 standardized_outputs = analyzer.extract_outputs(analysis)
 Path("workflow_outputs.json").write_text(
     json.dumps(standardized_outputs, indent=2), encoding="utf-8"
 )
+logger.info("✓ Saved workflow_outputs.json")
 
 # Display results
 # Pretty print the JSON

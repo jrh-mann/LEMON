@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEMON 🍋 - Workflow to Code Pipeline</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Custom animations -->
+    <style>
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.8); }
+        }
+        
+        .animate-pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        @keyframes slide-in {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .animate-slide-in {
+            animation: slide-in 0.5s ease-out;
+        }
+        
+        @keyframes pop-out {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .animate-pop-out {
+            animation: pop-out 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+        
+        @keyframes fly-right {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(400px, 0) scale(0.5); opacity: 0; }
+        }
+        
+        @keyframes fly-down-right {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(400px, 300px) scale(0.5); opacity: 0; }
+        }
+        
+        .artifact-particle {
+            position: absolute;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        .glass {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        .step-card {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .step-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .file-badge {
+            position: absolute;
+            bottom: -8px;
+            right: -8px;
+            min-width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-radius: 12px;
+            padding: 0 8px;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 min-h-screen text-white" 
+      x-data="pipelineApp()" 
+      x-init="init()">
+    
+    <!-- Header -->
+    <header class="glass fixed top-0 left-0 right-0 z-50">
+        <div class="container mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="text-4xl">🍋</div>
+                <div>
+                    <h1 class="text-2xl font-bold">LEMON</h1>
+                    <p class="text-sm text-slate-400">Workflow to Code Pipeline</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <p class="text-sm text-slate-400">Token Usage</p>
+                    <p class="text-lg font-bold text-blue-400" x-text="formatNumber(tokenUsage)">0</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm text-slate-400">Test Accuracy</p>
+                    <p class="text-lg font-bold" 
+                       :class="accuracy >= 95 ? 'text-green-400' : accuracy >= 75 ? 'text-yellow-400' : 'text-red-400'"
+                       x-text="accuracy + '%'">-</p>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 pt-32 pb-12">
+        
+        <!-- Pipeline Flow Diagram -->
+        <div class="glass rounded-2xl p-8 mb-8 animate-slide-in" id="pipeline-container">
+            <h2 class="text-2xl font-bold mb-8 flex items-center gap-3">
+                <span>🔄</span>
+                <span>Pipeline Flow</span>
+                <button @click="runFullPipeline()" 
+                        :disabled="isRunning"
+                        class="ml-auto px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                    <span x-show="!isRunning">▶️ Run Full Pipeline</span>
+                    <span x-show="isRunning">⏸️ Running...</span>
+                </button>
+            </h2>
+            
+            <!-- Flow Visualization -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="steps-grid">
+                <template x-for="step in steps" :key="step.id">
+                    <div :id="'step-' + step.id"
+                         class="step-card glass rounded-xl p-6 cursor-pointer"
+                         :class="{
+                             'border-blue-500 animate-pulse-glow': step.status === 'running',
+                             'border-green-500': step.status === 'complete',
+                             'border-red-500': step.status === 'failed',
+                             'border-slate-600': step.status === 'pending'
+                         }"
+                         @click="showStepDetails(step)">
+                        
+                        <!-- Step Icon & Title -->
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl" x-text="step.icon"></div>
+                                <div>
+                                    <h3 class="font-bold text-lg" x-text="step.name"></h3>
+                                    <p class="text-sm text-slate-400" x-text="step.description"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Status Badge -->
+                            <div class="px-3 py-1 rounded-full text-xs font-semibold"
+                                 :class="{
+                                     'bg-blue-500/20 text-blue-400': step.status === 'running',
+                                     'bg-green-500/20 text-green-400': step.status === 'complete',
+                                     'bg-red-500/20 text-red-400': step.status === 'failed',
+                                     'bg-slate-500/20 text-slate-400': step.status === 'pending'
+                                 }">
+                                <span x-text="step.status"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Stats -->
+                        <div class="flex gap-4 text-sm" x-show="step.stats">
+                            <div x-show="step.stats?.duration">
+                                <span class="text-slate-400">Time:</span>
+                                <span class="font-semibold ml-1" x-text="step.stats?.duration"></span>
+                            </div>
+                            <div x-show="step.stats?.count">
+                                <span class="text-slate-400">Items:</span>
+                                <span class="font-semibold ml-1" x-text="step.stats?.count"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2 mt-4">
+                            <button @click.stop="runStep(step.id)" 
+                                    :disabled="isRunning"
+                                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-semibold disabled:opacity-50 transition-all flex-1">
+                                ▶️ Run
+                            </button>
+                            <button @click.stop="configureStep(step.id)" 
+                                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-semibold transition-all">
+                                ⚙️
+                            </button>
+                        </div>
+                        
+                        <!-- File Output Badges -->
+                        <div class="flex flex-wrap gap-2 mt-3" x-show="step.outputFiles && step.outputFiles.length > 0">
+                            <template x-for="file in step.outputFiles" :key="file">
+                                <div class="file-badge animate-pop-out" 
+                                     x-show="files[file]?.exists"
+                                     x-transition
+                                     :title="file">
+                                    📄
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            
+            <!-- Connection Lines (Visual Flow) -->
+            <div class="flex items-center justify-center gap-4 my-6 text-slate-500">
+                <span class="text-2xl">→</span>
+                <span class="text-2xl">→</span>
+                <span class="text-2xl">→</span>
+                <span class="text-2xl">→</span>
+                <span class="text-2xl">→</span>
+            </div>
+        </div>
+        
+        <!-- Live Logs -->
+        <div class="glass rounded-2xl p-8" x-show="logs.length > 0">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-3">
+                <span>📋</span>
+                <span>Live Logs</span>
+                <button @click="logs = []" class="ml-auto text-sm text-slate-400 hover:text-white">Clear</button>
+            </h2>
+            
+            <div class="bg-black/50 rounded-lg p-4 font-mono text-sm max-h-64 overflow-y-auto space-y-1">
+                <template x-for="log in logs" :key="log.id">
+                    <div class="flex items-start gap-2"
+                         :class="{
+                             'text-blue-400': log.level === 'info',
+                             'text-green-400': log.level === 'success',
+                             'text-yellow-400': log.level === 'warning',
+                             'text-red-400': log.level === 'error'
+                         }">
+                        <span class="text-slate-500" x-text="log.timestamp"></span>
+                        <span x-text="log.message"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+        
+    </main>
+    
+    <!-- Configuration Modal -->
+    <div x-show="showModal" 
+         x-transition
+         @click.self="showModal = false"
+         class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="glass rounded-2xl p-8 max-w-md w-full mx-4 animate-slide-in">
+            <h3 class="text-2xl font-bold mb-6" x-text="modalStep?.name"></h3>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">Batch Size</label>
+                    <input type="number" 
+                           x-model="modalStep.config.batchSize"
+                           class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:border-blue-500 outline-none">
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">Voting Rounds</label>
+                    <input type="number" 
+                           x-model="modalStep.config.votingRounds"
+                           class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:border-blue-500 outline-none">
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">Model</label>
+                    <select x-model="modalStep.config.model"
+                            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:border-blue-500 outline-none">
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-5">GPT-5</option>
+                        <option value="haiku">Haiku</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex gap-3 mt-6">
+                <button @click="saveConfig()" 
+                        class="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 transition-all">
+                    💾 Save
+                </button>
+                <button @click="showModal = false" 
+                        class="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold transition-all">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function pipelineApp() {
+            return {
+                steps: [
+                    {
+                        id: 'analyze',
+                        name: 'Analyze Workflow',
+                        description: 'Extract structure from flowchart',
+                        icon: '🔍',
+                        status: 'pending',
+                        progress: 0,
+                        stats: null,
+                        config: { model: 'gpt-5' },
+                        outputFiles: ['workflow_analysis.json', 'workflow_inputs.json', 'workflow_outputs.json']
+                    },
+                    {
+                        id: 'generate',
+                        name: 'Generate Tests',
+                        description: 'Create comprehensive test cases',
+                        icon: '🎲',
+                        status: 'pending',
+                        progress: 0,
+                        stats: null,
+                        config: { count: 100, strategy: 'comprehensive' },
+                        outputFiles: ['test_cases.json']
+                    },
+                    {
+                        id: 'label',
+                        name: 'Label Tests',
+                        description: 'Label with majority voting',
+                        icon: '🏷️',
+                        status: 'pending',
+                        progress: 0,
+                        stats: null,
+                        config: { batchSize: 20, votingRounds: 3, model: 'gpt-5' },
+                        outputFiles: ['labeled_test_cases.json']
+                    },
+                    {
+                        id: 'code',
+                        name: 'Generate Code',
+                        description: 'Create Python implementation',
+                        icon: '💻',
+                        status: 'pending',
+                        progress: 0,
+                        stats: null,
+                        config: { style: 'functional' },
+                        outputFiles: ['workflow_code.py']
+                    },
+                    {
+                        id: 'test',
+                        name: 'Test Code',
+                        description: 'Run in E2B sandbox',
+                        icon: '🧪',
+                        status: 'pending',
+                        progress: 0,
+                        stats: null,
+                        config: {},
+                        outputFiles: []
+                    },
+                    {
+                        id: 'refine',
+                        name: 'Refine',
+                        description: 'Iteratively improve',
+                        icon: '✨',
+                        status: 'pending',
+                        progress: 0,
+                        stats: null,
+                        config: { maxIterations: 5 },
+                        outputFiles: []
+                    }
+                ],
+                
+                logs: [],
+                isRunning: false,
+                tokenUsage: 0,
+                accuracy: 0,
+                showModal: false,
+                modalStep: null,
+                files: {},
+                
+                init() {
+                    this.connectWebSocket();
+                    this.refreshFiles();
+                    this.addLog('info', 'Dashboard initialized');
+                    
+                    // Auto-refresh files every 5 seconds
+                    setInterval(() => this.refreshFiles(), 5000);
+                },
+                
+                async refreshFiles() {
+                    try {
+                        const response = await fetch('/api/files');
+                        this.files = await response.json();
+                    } catch (error) {
+                        console.error('Failed to refresh files:', error);
+                    }
+                },
+                
+                async deleteFile(filename) {
+                    if (!confirm(`Delete ${filename}?`)) return;
+                    
+                    try {
+                        const response = await fetch(`/api/files/${filename}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        if (response.ok) {
+                            this.addLog('info', `🗑️ Deleted ${filename}`);
+                            this.refreshFiles();
+                        } else {
+                            const error = await response.json();
+                            this.addLog('error', `Failed to delete: ${error.error}`);
+                        }
+                    } catch (error) {
+                        this.addLog('error', `Delete error: ${error.message}`);
+                    }
+                },
+                
+                getStepName(stepId) {
+                    const step = this.steps.find(s => s.id === stepId);
+                    return step ? step.name : stepId;
+                },
+                
+                async runFullPipeline() {
+                    this.isRunning = true;
+                    this.addLog('info', '🚀 Starting full pipeline...');
+                    
+                    for (const step of this.steps) {
+                        await this.runStep(step.id);
+                    }
+                    
+                    this.isRunning = false;
+                    this.addLog('success', '✅ Pipeline complete!');
+                },
+                
+                async runStep(stepId) {
+                    const step = this.steps.find(s => s.id === stepId);
+                    if (!step) return;
+                    
+                    step.status = 'running';
+                    step.progress = 10;
+                    this.addLog('info', `▶️ Running ${step.name}...`);
+                    
+                    try {
+                        const response = await fetch(`/api/run/${stepId}`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(step.config)
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                        
+                        const result = await response.json();
+                        console.log('Step started:', result);
+                        
+                        // Poll for status updates
+                        this.pollStepStatus(stepId, step);
+                        
+                    } catch (error) {
+                        step.status = 'failed';
+                        step.progress = 0;
+                        this.addLog('error', `❌ ${step.name} failed: ${error.message}`);
+                        console.error('Step error:', error);
+                    }
+                },
+                
+                async pollStepStatus(stepId, step) {
+                    let attempts = 0;
+                    const maxAttempts = 120; // 2 minutes max
+                    
+                    const poll = async () => {
+                        try {
+                            const response = await fetch(`/api/status/${stepId}`);
+                            const status = await response.json();
+                            
+                            console.log('Status update:', status);
+                            
+                            // Update progress
+                            step.progress = Math.min(10 + (attempts * 2), 90);
+                            
+                            if (status.status === 'complete') {
+                                step.status = 'complete';
+                                step.progress = 100;
+                                step.stats = status.stats;
+                                this.addLog('success', `✅ ${step.name} complete`);
+                                if (status.stats) {
+                                    this.addLog('info', `📊 ${JSON.stringify(status.stats)}`);
+                                }
+                                // Refresh files to show newly created artifacts
+                                this.refreshFiles();
+                            } else if (status.status === 'failed') {
+                                step.status = 'failed';
+                                step.progress = 0;
+                                this.addLog('error', `❌ ${step.name} failed`);
+                                if (status.error) {
+                                    this.addLog('error', `Error: ${status.error}`);
+                                }
+                            } else if (status.status === 'running' && attempts < maxAttempts) {
+                                // Still running, poll again
+                                attempts++;
+                                setTimeout(poll, 1000);
+                            } else if (attempts >= maxAttempts) {
+                                step.status = 'failed';
+                                this.addLog('error', `❌ ${step.name} timed out`);
+                            }
+                            
+                        } catch (error) {
+                            console.error('Polling error:', error);
+                            step.status = 'failed';
+                            this.addLog('error', `❌ Polling failed: ${error.message}`);
+                        }
+                    };
+                    
+                    // Start polling after 1 second
+                    setTimeout(poll, 1000);
+                },
+                
+                configureStep(stepId) {
+                    this.modalStep = this.steps.find(s => s.id === stepId);
+                    this.showModal = true;
+                },
+                
+                saveConfig() {
+                    this.showModal = false;
+                    this.addLog('info', `⚙️ Configuration saved for ${this.modalStep.name}`);
+                },
+                
+                showStepDetails(step) {
+                    this.addLog('info', `👁️ Viewing details for ${step.name}`);
+                },
+                
+                connectWebSocket() {
+                    // Connect to WebSocket for real-time updates
+                    // For now, simulate with polling or SSE
+                },
+                
+                addLog(level, message) {
+                    this.logs.unshift({
+                        id: Date.now(),
+                        timestamp: new Date().toLocaleTimeString(),
+                        level,
+                        message
+                    });
+                    
+                    if (this.logs.length > 50) {
+                        this.logs = this.logs.slice(0, 50);
+                    }
+                },
+                
+                formatNumber(num) {
+                    return num.toLocaleString();
+                },
+                
+                formatBytes(bytes) {
+                    if (bytes === 0) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                }
+            }
+        }
+    </script>
+</body>
+</html>
