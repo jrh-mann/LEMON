@@ -9,11 +9,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..analysis.agent import WorkflowAnalyzer
 from ..config.settings import Settings
+from ..core.evaluator import SolverEvaluator
+from ..core.solver import SolverIteration
 from ..core.workflow import StandardizedInput, WorkflowAnalysis
-from ..generation.generator import CodeGenerator, GenerationContext
-from ..generation.validator import has_entrypoint_function
+from ..generation.generator import CodeGenerator
+from ..solvers.code_solver import AgenticCodeSolver
 from ..testing.generator import TestCaseGenerator
-from ..testing.harness import TestHarness, TestResults
+from ..testing.harness import TestHarness
 from ..utils.logging import get_logger
 
 
@@ -45,7 +47,8 @@ class RefinementPipeline:
         self.logger = get_logger(__name__)
         self._progress_callback = progress_callback
         self.analyzer = WorkflowAnalyzer(max_tokens=16000)
-        self.test_generator = TestCaseGenerator()
+        # Don't create test_generator here - it requires workflow_inputs.json which doesn't exist yet
+        # It will be created when needed in _load_or_generate_tests
         self.code_generator = CodeGenerator()
 
     def _emit(self, stage: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
@@ -57,7 +60,19 @@ class RefinementPipeline:
         return self.run_with_options(workflow_image=workflow_image, max_iterations=None)
 
     def run_with_options(
-        self, *, workflow_image: Path, max_iterations: Optional[int]
+        self,
+        *,
+        workflow_image: Path,
+        max_iterations: Optional[int],
+        num_test_cases: int = 1000,
+        num_final_validation_tests: int = 200,
+        batch_size: int = 20,
+        max_workers: int = 5,
+        best_of_n: int = 3,
+        max_retries: int = 3,
+        backoff_base: float = 1.0,
+        backoff_cap: float = 8.0,
+        log_responses: bool = False,
     ) -> PipelineResult:
         """Run the pipeline with optional iteration cap."""
         base_dir = Path.cwd()
@@ -67,101 +82,101 @@ class RefinementPipeline:
             base_dir=base_dir, workflow_image=workflow_image
         )
         labeled_tests = self._load_or_generate_tests(
-            base_dir=base_dir, workflow_image=workflow_image, valid_outputs=valid_outputs, analysis=analysis
+            base_dir=base_dir,
+            workflow_image=workflow_image,
+            valid_outputs=valid_outputs,
+            analysis=analysis,
+            num_test_cases=num_test_cases,
+            batch_size=batch_size,
+            max_workers=max_workers,
+            best_of_n=best_of_n,
+            max_retries=max_retries,
+            backoff_base=backoff_base,
+            backoff_cap=backoff_cap,
+            log_responses=log_responses,
         )
 
         harness = TestHarness(test_cases=labeled_tests, valid_outputs=valid_outputs)
 
-        failures: Optional[List[Dict[str, Any]]] = None
-        best = 0.0
-        code: str = ""
-        iteration = 0
+        # Create solver (contains the refinement loop)
+        solver = AgenticCodeSolver(
+            workflow_image=workflow_image,
+            workflow_analysis=analysis,
+            valid_outputs=valid_outputs,
+            test_harness=harness,
+            code_generator=self.code_generator,
+            output_path=base_dir / "generated_code.py",
+        )
 
-        self.logger.info("Starting refinement loop")
-        while True:
-            iteration += 1
-            if max_iterations is not None and iteration > max_iterations:
-                self.logger.warning(
-                    "Reached max iterations; stopping", extra={"max_iterations": max_iterations}
-                )
-                self._emit(
-                    "refinement",
-                    "⚠️ Reached max iterations; stopping",
-                    {"max_iterations": max_iterations},
-                )
-                break
+        # Track best score for progress callbacks
+        best_score = 0.0
 
-            self.logger.info(f"Starting iteration {iteration}", extra={"iteration": iteration, "best_pass_rate": best})
+        def on_iteration(iteration_result: SolverIteration) -> None:
+            """Progress callback for solver iterations."""
+            nonlocal best_score
+            best_score = max(best_score, iteration_result.score)
+
             self._emit(
                 "refinement",
-                f"🔄 Iteration {iteration} (best: {best*100:.1f}%)",
-                {"iteration": iteration, "best_pass_rate": best},
+                f"🔄 Iteration {iteration_result.iteration} (best: {best_score*100:.1f}%)",
+                {
+                    "iteration": iteration_result.iteration,
+                    "best_pass_rate": best_score,
+                    "current_score": iteration_result.score,
+                },
             )
-            
-            self.logger.info("Generating code...")
-            self._emit("code_generation", "💻 Generating Python code...")
-            ctx = GenerationContext(failures=failures, test_cases_file=base_dir / "tests.json")
-            code = self.code_generator.generate(
-                workflow_image_path=workflow_image,
-                workflow_data=analysis,
-                valid_outputs=valid_outputs,
-                context=ctx,
-            )
-            self.logger.info("Code generated", extra={"length": len(code)})
 
-            if not has_entrypoint_function(code):
-                self.logger.warning(
-                    "Generated code missing entrypoint; retrying", extra={"iteration": iteration}
-                )
+            # Emit code generation progress
+            if iteration_result.state:  # state is the generated code
                 self._emit(
                     "code_generation",
-                    "❌ Generated invalid code structure; retrying",
-                    {"iteration": iteration},
+                    "✓ Code generated and saved",
+                    {"code": iteration_result.state},
                 )
-                continue
 
-            generated_code_path = base_dir / "generated_code.py"
-            generated_code_path.write_text(code, encoding="utf-8")
-            self.logger.info("Code saved", extra={"path": str(generated_code_path)})
-            self._emit("code_generation", "✓ Code generated and saved", {"code": code})
-
-            self.logger.info("Testing code against labeled test cases...")
-            self._emit("testing", "🧪 Running tests...")
-            results: TestResults = harness.score(code)
-            self.logger.info("Testing complete", extra={"passed": results.passed, "total": results.total})
-            pass_rate = results.pass_rate
-            best = max(best, pass_rate)
-
-            self.logger.info(
-                "Iteration score",
-                extra={
-                    "iteration": iteration,
-                    "pass_rate": pass_rate,
-                    "passed": results.passed,
-                    "total": results.total,
-                    "failures": len(results.failures),
-                },
-            )
-            
-            status_emoji = "✓" if pass_rate == 1.0 else "⚠️" if pass_rate >= 0.9 else "❌"
+            # Emit testing progress
+            status_emoji = "✓" if iteration_result.score == 1.0 else "⚠️" if iteration_result.score >= 0.9 else "❌"
             self._emit(
                 "testing",
-                f"{status_emoji} Score: {pass_rate*100:.1f}% ({results.passed}/{results.total})",
+                f"{status_emoji} Score: {iteration_result.score*100:.1f}%",
                 {
-                    "score": pass_rate,
-                    "passed": results.passed,
-                    "total": results.total,
-                    "failures": [f.__dict__ for f in results.failures[:5]],
+                    "score": iteration_result.score,
+                    "iteration": iteration_result.iteration,
                 },
             )
 
-            if pass_rate == 1.0:
-                self.logger.info("🎉 Perfect score achieved!")
+            if iteration_result.score == 1.0:
                 self._emit("refinement", "✓ 100% pass rate achieved!")
-                break
 
-            self.logger.info(f"Collecting {len(results.failures)} failures for next iteration")
-            failures = [{"error": f.error, "test_case": f.test_case} for f in results.failures]
+        # Create evaluator (thin wrapper that runs solver and collects results)
+        evaluator = SolverEvaluator(
+            score_threshold=1.0,  # Stop at 100%
+            max_iterations=max_iterations,
+            on_iteration=on_iteration,
+        )
+
+        self.logger.info("Starting solver evaluation")
+        self._emit("setup", "Starting refinement solver...")
+
+        # Run solver via evaluator
+        evaluation_result = evaluator.evaluate(
+            solver=solver,
+            test_cases=labeled_tests,  # Passed to solver via harness
+            max_iterations=max_iterations,
+            score_threshold=1.0,
+        )
+
+        # Extract final code from evaluation result
+        code = evaluation_result.final_state or ""
+        best = evaluation_result.best_score
+
+        # Print solver evaluation summary
+        print(f"\n📊 Solver Evaluation Summary:")
+        print(f"   Iterations: {evaluation_result.total_iterations}")
+        print(f"   Best Score: {best*100:.1f}%")
+        print(f"   Best Iteration: {evaluation_result.best_iteration}")
+        if best == 1.0:
+            print(f"   ✓ Achieved 100% pass rate!")
 
         final_validation_pass_rate = None
         if best == 1.0:
@@ -173,6 +188,14 @@ class RefinementPipeline:
                 valid_outputs=valid_outputs,
                 code=code,
                 analysis=analysis,
+                num_final_validation_tests=num_final_validation_tests,
+                batch_size=batch_size,
+                max_workers=max_workers,
+                best_of_n=best_of_n,
+                max_retries=max_retries,
+                backoff_base=backoff_base,
+                backoff_cap=backoff_cap,
+                log_responses=log_responses,
             )
             validation_emoji = "✓" if final_validation_pass_rate == 1.0 else "⚠️" if final_validation_pass_rate >= 0.9 else "❌"
             self.logger.info("Final validation complete", extra={"pass_rate": final_validation_pass_rate})
@@ -184,9 +207,9 @@ class RefinementPipeline:
 
         return PipelineResult(
             code=code,
-            generated_code_path=Path.cwd() / "generated_code.py",
+            generated_code_path=base_dir / "generated_code.py",
             pass_rate=(harness.score(code).pass_rate if code else 0.0),
-            iterations=iteration,
+            iterations=evaluation_result.total_iterations,
             best_pass_rate=best,
             final_validation_pass_rate=final_validation_pass_rate,
         )
@@ -210,7 +233,16 @@ class RefinementPipeline:
 
         self.logger.info("Starting workflow analysis...", extra={"workflow_image": str(workflow_image)})
         self._emit("analysis", "📸 Analyzing workflow structure...")
-        analysis = self.analyzer.analyze(workflow_image)
+        
+        # Stream workflow analysis to stdout if running in CLI mode
+        def stream_callback(chunk: str) -> None:
+            """Print analysis chunks as they arrive."""
+            import sys
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+        
+        analysis = self.analyzer.analyze(workflow_image, stream_callback=stream_callback)
+        print()  # New line after streaming
         self.logger.info("Workflow analysis complete")
         standardized_inputs: List[StandardizedInput] = self.analyzer.extract_standardized_inputs(
             analysis
@@ -237,7 +269,20 @@ class RefinementPipeline:
         return valid_outputs, analysis
 
     def _load_or_generate_tests(
-        self, *, base_dir: Path, workflow_image: Path, valid_outputs: List[str], analysis: WorkflowAnalysis
+        self,
+        *,
+        base_dir: Path,
+        workflow_image: Path,
+        valid_outputs: List[str],
+        analysis: WorkflowAnalysis,
+        num_test_cases: int = 1000,
+        batch_size: int = 20,
+        max_workers: int = 5,
+        best_of_n: int = 3,
+        max_retries: int = 3,
+        backoff_base: float = 1.0,
+        backoff_cap: float = 8.0,
+        log_responses: bool = False,
     ) -> List[Dict[str, Any]]:
         tests_file = base_dir / "tests.json"
         if tests_file.exists():
@@ -248,11 +293,16 @@ class RefinementPipeline:
             self.logger.info("Test cases loaded", extra={"total": len(cached), "labeled": labeled_count})
             return cached if isinstance(cached, list) else []
 
-        self.logger.info("Generating test cases...", extra={"count": 1000, "strategy": "comprehensive"})
-        self._emit("test_generation", "🎲 Generating 1000 initial test cases...")
+        self.logger.info("Generating test cases...", extra={"count": num_test_cases, "strategy": "comprehensive"})
+        self._emit("test_generation", f"🎲 Generating {num_test_cases} initial test cases...")
         generator = TestCaseGenerator(str(base_dir / "workflow_inputs.json"))
-        test_cases = generator.generate_test_cases(1000, "comprehensive")
+        test_cases = generator.generate_test_cases(num_test_cases, "comprehensive")
         self.logger.info("Test cases generated", extra={"count": len(test_cases)})
+        
+        # Save unlabeled test cases immediately after generation
+        unlabeled_tests_file = base_dir / "test_cases.json"
+        unlabeled_tests_file.write_text(json.dumps(test_cases, indent=2), encoding="utf-8")
+        self.logger.info("Unlabeled test cases saved", extra={"file": str(unlabeled_tests_file), "count": len(test_cases)})
         
         self.logger.info("Labeling test cases with workflow analysis context...")
         self._emit("test_generation", "🏷️ Labeling test cases (this may take a few minutes)...")
@@ -261,6 +311,13 @@ class RefinementPipeline:
             workflow_image_path=str(workflow_image),
             valid_outputs=valid_outputs,
             workflow_analysis=analysis.model_dump(),
+            batch_size=batch_size,
+            max_workers=max_workers,
+            best_of_n=best_of_n,
+            max_retries=max_retries,
+            backoff_base=backoff_base,
+            backoff_cap=backoff_cap,
+            log_responses=log_responses,
         )
         self.logger.info("Test cases labeled", extra={"count": len(labeled)})
         
@@ -270,29 +327,57 @@ class RefinementPipeline:
         return labeled
 
     def _final_validation(
-        self, *, base_dir: Path, workflow_image: Path, valid_outputs: List[str], code: str, analysis: WorkflowAnalysis
+        self,
+        *,
+        base_dir: Path,
+        workflow_image: Path,
+        valid_outputs: List[str],
+        code: str,
+        analysis: WorkflowAnalysis,
+        num_final_validation_tests: int = 200,
+        batch_size: int = 20,
+        max_workers: int = 5,
+        best_of_n: int = 3,
+        max_retries: int = 3,
+        backoff_base: float = 1.0,
+        backoff_cap: float = 8.0,
+        log_responses: bool = False,
     ) -> float:
         final_tests_file = base_dir / "final_tests.json"
         if final_tests_file.exists():
             self.logger.info("Loading cached final test cases")
             final_labeled = json.loads(final_tests_file.read_text(encoding="utf-8"))
         else:
-            self.logger.info("Generating 200 edge case tests...")
+            self.logger.info(f"Generating {num_final_validation_tests} edge case tests...")
             generator = TestCaseGenerator(str(base_dir / "workflow_inputs.json"))
-            final_tests = generator.generate_test_cases(200, "edge_cases")
+            final_tests = generator.generate_test_cases(num_final_validation_tests, "edge_cases")
             self.logger.info("Labeling edge case tests...")
             final_labeled = generator.label_test_cases(
                 test_cases=final_tests,
                 workflow_image_path=str(workflow_image),
                 valid_outputs=valid_outputs,
                 workflow_analysis=analysis.model_dump(),
+                batch_size=batch_size,
+                max_workers=max_workers,
+                best_of_n=best_of_n,
+                max_retries=max_retries,
+                backoff_base=backoff_base,
+                backoff_cap=backoff_cap,
+                log_responses=log_responses,
             )
             final_tests_file.write_text(json.dumps(final_labeled, indent=2), encoding="utf-8")
             self.logger.info("Final test cases saved", extra={"file": str(final_tests_file)})
 
-        self.logger.info("Running final validation tests...", extra={"count": len(final_labeled)})
+        print(f"\n🎯 Running final validation on {len(final_labeled)} edge case tests...")
         final_harness = TestHarness(test_cases=final_labeled, valid_outputs=valid_outputs)
         final_score = final_harness.score(code)
+        
+        # Print formatted final validation score
+        status = "✓" if final_score.pass_rate == 1.0 else "⚠️" if final_score.pass_rate >= 0.9 else "❌"
+        print(f"{status} Final validation: {final_score.pass_rate*100:.1f}% ({final_score.passed}/{final_score.total} tests passed)")
+        if final_score.failures:
+            print(f"   Failures: {len(final_score.failures)}")
+        
         self.logger.info("Final validation score", extra={
             "pass_rate": final_score.pass_rate,
             "passed": final_score.passed,

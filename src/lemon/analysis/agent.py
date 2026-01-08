@@ -41,11 +41,19 @@ class WorkflowAnalyzer:
         self.analysis_prompt = default_prompt
         self.max_tokens = max_tokens if max_tokens is not None else default_max
 
-    def analyze(self, image: Path) -> WorkflowAnalysis:
-        """Run workflow analysis and parse into typed model."""
+    def analyze(
+        self, image: Path, stream_callback: Optional[Any] = None
+    ) -> WorkflowAnalysis:
+        """Run workflow analysis and parse into typed model.
+        
+        Args:
+            image: Path to workflow image
+            stream_callback: Optional callable(str) to call with each text chunk as it streams
+        """
         from src.utils.request_utils import (  # late import (legacy module)
             image_to_base64,
             make_request,
+            make_request_stream,
         )
 
         img_base64, media_type = self._load_image(image)
@@ -62,10 +70,20 @@ class WorkflowAnalyzer:
             }
         ]
 
-        response = make_request(
-            messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
-        )
-        response_text = response.content[0].text if response.content else ""
+        if stream_callback:
+            # Stream mode: accumulate chunks and call callback
+            response_text = ""
+            for chunk in make_request_stream(
+                messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
+            ):
+                response_text += chunk
+                stream_callback(chunk)
+        else:
+            # Non-streaming mode (backward compatible)
+            response = make_request(
+                messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
+            )
+            response_text = response.content[0].text if response.content else ""
 
         data = self._parse_json_best_effort(response_text)
         try:

@@ -6,6 +6,7 @@ import json
 import os
 import random
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -86,6 +87,10 @@ class TestCaseGenerator:
         batch_size: int = 20,
         max_workers: int = 5,
         log_responses: bool = False,
+        max_retries: int = 3,
+        backoff_base: float = 1.0,
+        backoff_cap: float = 8.0,
+        best_of_n: int = 1,
     ) -> List[Dict[str, Any]]:
         """Label test cases with expected outputs using Azure OpenAI (image + prompt).
 
@@ -96,9 +101,108 @@ class TestCaseGenerator:
             workflow_analysis: Optional structured workflow analysis for context
             model: Model name (defaults to HAIKU_DEPLOYMENT_NAME or DEPLOYMENT_NAME)
             batch_size: Number of test cases per API call
-            max_workers: int = 5,
+            max_workers: Maximum parallel API calls (default: 5)
             log_responses: If True, logs a preview of raw model responses per batch
+            max_retries: Number of retry attempts on API failure (default: 3)
+            backoff_base: Initial backoff seconds for exponential backoff (default: 1.0)
+            backoff_cap: Maximum backoff seconds (default: 8.0)
+            best_of_n: Number of independent labeling passes to run, then take majority vote (default: 1)
         """
+        if best_of_n <= 1:
+            # Single pass (original behavior)
+            return self._label_test_cases_single_pass(
+                test_cases=test_cases,
+                workflow_image_path=workflow_image_path,
+                valid_outputs=valid_outputs,
+                workflow_analysis=workflow_analysis,
+                model=model,
+                batch_size=batch_size,
+                max_workers=max_workers,
+                log_responses=log_responses,
+                max_retries=max_retries,
+                backoff_base=backoff_base,
+                backoff_cap=backoff_cap,
+                shuffle_seed=None,
+            )
+
+        # Best-of-N: Run multiple passes with different shuffle seeds, then majority vote
+        logger.info(
+            f"🎯 Running 'best of {best_of_n}' labeling: {best_of_n} independent passes with majority voting"
+        )
+
+        all_results: List[List[Dict[str, Any]]] = []
+
+        for pass_num in range(1, best_of_n + 1):
+            logger.info(f"\n{'='*60}")
+            logger.info(f"🔄 Labeling Pass {pass_num}/{best_of_n}")
+            logger.info(f"{'='*60}")
+
+            # Use different shuffle seed for each pass to ensure different batches
+            shuffle_seed = pass_num * 42  # Deterministic but different per pass
+
+            pass_results = self._label_test_cases_single_pass(
+                test_cases=test_cases,
+                workflow_image_path=workflow_image_path,
+                valid_outputs=valid_outputs,
+                workflow_analysis=workflow_analysis,
+                model=model,
+                batch_size=batch_size,
+                max_workers=max_workers,
+                log_responses=log_responses and pass_num == 1,  # Only log responses on first pass
+                max_retries=max_retries,
+                backoff_base=backoff_base,
+                backoff_cap=backoff_cap,
+                shuffle_seed=shuffle_seed,
+            )
+            all_results.append(pass_results)
+
+        # Aggregate results using majority voting
+        logger.info(f"\n{'='*60}")
+        logger.info("📊 Aggregating results with majority voting...")
+        logger.info(f"{'='*60}")
+
+        aggregated, stats = self._aggregate_majority_vote(test_cases, all_results)
+
+        logger.info(f"\n{'='*60}")
+        logger.info("📈 Agreement Statistics:")
+        logger.info(
+            f"  Perfect agreement (3/3): {stats['perfect_3_3']} ({stats['perfect_3_3_pct']:.1f}%)"
+        )
+        logger.info(
+            f"  Majority agreement (2/3): {stats['majority_2_3']} ({stats['majority_2_3_pct']:.1f}%)"
+        )
+        logger.info(
+            f"  No consensus (1/3 or 0/3): {stats['no_consensus']} ({stats['no_consensus_pct']:.1f}%)"
+        )
+        logger.info(f"  Total: {stats['total']}")
+        logger.info(f"{'='*60}")
+        
+        # Summary for quick reference
+        labeled_count = len([tc for tc in aggregated if tc.get("expected_output") is not None])
+        pct_labeled = (labeled_count / stats['total'] * 100) if stats['total'] > 0 else 0.0
+        logger.info(
+            f"✓ Final result: {labeled_count}/{stats['total']} test cases labeled ({pct_labeled:.1f}%)"
+        )
+
+        return aggregated
+
+    def _label_test_cases_single_pass(
+        self,
+        *,
+        test_cases: List[Dict[str, Any]],
+        workflow_image_path: str,
+        valid_outputs: List[str],
+        workflow_analysis: Optional[Dict[str, Any]] = None,
+        model: str | None = None,
+        batch_size: int = 20,
+        max_workers: int = 5,
+        log_responses: bool = False,
+        max_retries: int = 3,
+        backoff_base: float = 1.0,
+        backoff_cap: float = 8.0,
+        shuffle_seed: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Single-pass labeling (internal method)."""
         from src.utils.request_utils import make_image_request  # legacy module
 
         if model is None:
@@ -115,38 +219,47 @@ class TestCaseGenerator:
                 "log_responses": log_responses,
             },
         )
-        
+
         if workflow_analysis:
             logger.info("✓ Using structured workflow analysis for context")
 
         # Allow loading truncated images (common with JPEG compression)
         from PIL import ImageFile
+
         ImageFile.LOAD_TRUNCATED_IMAGES = True
-        
+
         # Load and convert image to base64 once (thread-safe)
         img = Image.open(workflow_image_path)
         img_format = (img.format or "PNG").upper()
         format_map = {"JPEG": "PNG", "JPG": "PNG", "PNG": "PNG", "WEBP": "PNG", "GIF": "PNG"}
         format_str = format_map.get(img_format, "PNG")
-        
+
         # Convert to base64 for thread-safe sharing
         from ..utils.image_utils import image_to_base64
+
         img_base64 = image_to_base64(img, format=format_str)
         img.close()  # Close original image
 
+        # Shuffle test cases if seed provided (for best-of-N to ensure different batches)
+        test_cases_to_label = test_cases.copy()
+        if shuffle_seed is not None:
+            random.seed(shuffle_seed)
+            random.shuffle(test_cases_to_label)
+            logger.debug(f"Shuffled test cases with seed {shuffle_seed}")
+
         # Create batches
         batches = []
-        for batch_idx in range(0, len(test_cases), batch_size):
-            batch = test_cases[batch_idx : batch_idx + batch_size]
+        for batch_idx in range(0, len(test_cases_to_label), batch_size):
+            batch = test_cases_to_label[batch_idx : batch_idx + batch_size]
             batch_num = (batch_idx // batch_size) + 1
             batches.append((batch_num, batch))
 
         total_batches = len(batches)
         logger.info(f"📦 Created {total_batches} batches of up to {batch_size} test cases each")
-        
+
         # Pre-allocate with empty dicts (will be replaced)
         labeled: List[Dict[str, Any] | None] = [None] * len(test_cases)
-        
+
         # Track successes and failures
         successful_batches = 0
         failed_batches = 0
@@ -155,53 +268,117 @@ class TestCaseGenerator:
             batch_num: int, batch: List[Dict[str, Any]], *, log_responses_local: bool
         ) -> tuple[int, List[Dict[str, Any]]]:
             """Label a single batch and return (batch_num, labeled_batch)."""
-            logger.debug(f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch)} test cases)")
+            import random
+            import time
+
+            logger.debug(
+                f"🔄 Processing batch {batch_num}/{total_batches} ({len(batch)} test cases)"
+            )
             prompt = self._create_labeling_prompt(batch, valid_outputs, workflow_analysis)
-            try:
-                # Recreate image from base64 for this thread
-                from io import BytesIO
-                import base64
-                img_bytes = base64.b64decode(img_base64)
-                img_thread = Image.open(BytesIO(img_bytes))
-                
-                response = make_image_request(
-                    image=img_thread,
-                    prompt=prompt,
-                    max_tokens=8096,
-                    model=model,
-                    image_format=format_str,
-                )
-                img_thread.close()  # Clean up
-                
-                response_text = response.content[0].text if response.content else ""
-                
-                # Check for empty response
-                if not response_text or not response_text.strip():
-                    logger.error(
-                        f"⚠️ Batch {batch_num}/{total_batches} returned empty response.\n"
-                        f"Response type: {type(response)}\n"
-                        f"Response.content: {response.content}\n"
-                        f"Response object: {response}\n"
-                        f"Has usage? {hasattr(response, 'usage')}\n"
-                        f"Usage: {getattr(response, 'usage', None)}"
+
+            max_retries_local = max_retries
+            backoff_base_local = backoff_base
+            backoff_cap_local = backoff_cap
+
+            for attempt in range(max_retries_local + 1):
+                try:
+                    # Recreate image from base64 for this thread
+                    import base64
+                    from io import BytesIO
+
+                    img_bytes = base64.b64decode(img_base64)
+                    img_thread = Image.open(BytesIO(img_bytes))
+
+                    response = make_image_request(
+                        image=img_thread,
+                        prompt=prompt,
+                        max_tokens=16000,
+                        model=model,
+                        image_format=format_str,
                     )
-                
-                if log_responses_local:
-                    preview = (response_text or "")[:800]
-                    logger.info(f"\n{'='*80}\n📝 Batch {batch_num} Model Response:\n{preview}\n{'='*80}")
-                logger.debug(f"✓ Batch {batch_num}/{total_batches} labeled successfully")
-                return batch_num, self._parse_labeling_response(batch, response_text, valid_outputs)
-            except Exception as e:
-                logger.error(
-                    f"⚠️ Error labeling batch {batch_num}/{total_batches}: {str(e)}",
-                    extra={"batch_num": batch_num, "error": str(e)},
-                )
-                labeled_batch = []
-                for tc in batch:
-                    out = tc.copy()
-                    out["expected_output"] = None
-                    labeled_batch.append(out)
-                return batch_num, labeled_batch
+                    img_thread.close()  # Clean up
+
+                    response_text = response.content[0].text if response.content else ""
+
+                    # Check for empty response
+                    if not response_text or not response_text.strip():
+                        if attempt < max_retries_local:
+                            logger.warning(
+                                f"⚠️ Batch {batch_num}/{total_batches} returned empty response (attempt {attempt + 1}/{max_retries_local + 1}). Retrying...",
+                                extra={"batch_num": batch_num, "attempt": attempt + 1},
+                            )
+                            # Retry with backoff
+                            sleep_s = min(
+                                backoff_base_local * (2**attempt) + random.uniform(0, 1),
+                                backoff_cap_local,
+                            )
+                            time.sleep(sleep_s)
+                            continue
+                        else:
+                            logger.error(
+                                f"⚠️ Batch {batch_num}/{total_batches} returned empty response after {max_retries_local + 1} attempts.\n"
+                                f"Response type: {type(response)}\n"
+                                f"Response.content: {response.content}\n"
+                                f"Response object: {response}\n"
+                                f"Has usage? {hasattr(response, 'usage')}\n"
+                                f"Usage: {getattr(response, 'usage', None)}"
+                            )
+                            labeled_batch = []
+                            for tc in batch:
+                                out = tc.copy()
+                                out["expected_output"] = None
+                                labeled_batch.append(out)
+                            return batch_num, labeled_batch
+
+                    if log_responses_local:
+                        preview = (response_text or "")[:800]
+                        logger.info(
+                            f"\n{'='*80}\n📝 Batch {batch_num} Model Response:\n{preview}\n{'='*80}"
+                        )
+                    logger.debug(f"✓ Batch {batch_num}/{total_batches} labeled successfully")
+                    return batch_num, self._parse_labeling_response(
+                        batch, response_text, valid_outputs
+                    )
+
+                except Exception as e:
+                    if attempt >= max_retries_local:
+                        logger.error(
+                            f"⚠️ Error labeling batch {batch_num}/{total_batches} after {max_retries_local + 1} attempts: {str(e)}",
+                            extra={
+                                "batch_num": batch_num,
+                                "error": str(e),
+                                "attempts": max_retries_local + 1,
+                            },
+                        )
+                        labeled_batch = []
+                        for tc in batch:
+                            out = tc.copy()
+                            out["expected_output"] = None
+                            labeled_batch.append(out)
+                        return batch_num, labeled_batch
+                    else:
+                        # Exponential backoff with jitter
+                        sleep_s = min(
+                            backoff_base_local * (2**attempt) + random.uniform(0, 1),
+                            backoff_cap_local,
+                        )
+                        logger.info(
+                            f"⚠️ Error labeling batch {batch_num}/{total_batches} (attempt {attempt + 1}/{max_retries_local + 1}): {str(e)}. Retrying after {sleep_s:.2f}s...",
+                            extra={
+                                "batch_num": batch_num,
+                                "attempt": attempt + 1,
+                                "sleep_s": round(sleep_s, 2),
+                            },
+                        )
+                        time.sleep(sleep_s)
+
+            # Fallback: should never reach here, but satisfy type checker
+            labeled_batch = []
+            for tc in batch:
+                out = tc.copy()
+                out["expected_output"] = None
+                labeled_batch.append(out)
+            return batch_num, labeled_batch
 
         # Process batches in parallel
         logger.info(f"🚀 Starting parallel labeling with {max_workers} workers...")
@@ -213,7 +390,7 @@ class TestCaseGenerator:
                 )
                 futures[fut] = (batch_num, batch)
 
-            with tqdm(total=total_batches, desc="Labeling batches", unit="batch") as pbar:
+            with tqdm(total=total_batches, desc="Labeling batches", unit="batch", file=sys.stderr) as pbar:
                 for future in as_completed(futures):
                     batch_num, batch = futures[future]
                     try:
@@ -223,49 +400,160 @@ class TestCaseGenerator:
                         for i, labeled_tc in enumerate(labeled_batch):
                             if batch_idx + i < len(labeled):
                                 labeled[batch_idx + i] = labeled_tc
-                        
+
                         # Check if labeling was successful (has expected_output)
-                        if labeled_batch and labeled_batch[0].get('expected_output') is not None:
+                        if labeled_batch and labeled_batch[0].get("expected_output") is not None:
                             successful_batches += 1
                         else:
                             failed_batches += 1
-                            
+
                     except Exception as e:
                         failed_batches += 1
-                        logger.error(
+                        # Use tqdm.write() to avoid interfering with progress bar
+                        pbar.write(
                             f"❌ Unexpected error processing batch {batch_num}: {str(e)}",
-                            extra={"batch_num": batch_num, "error": str(e)},
                         )
                     pbar.update(1)
-        
+
         logger.info(
             f"✓ Labeling complete: {successful_batches} successful, {failed_batches} failed batches",
-            extra={"successful": successful_batches, "failed": failed_batches, "total": total_batches}
+            extra={
+                "successful": successful_batches,
+                "failed": failed_batches,
+                "total": total_batches,
+            },
         )
 
         # Filter out None entries (shouldn't happen, but safety check)
         result: List[Dict[str, Any]] = [tc for tc in labeled if tc is not None]
-        labeled_count = len([tc for tc in result if tc.get('expected_output') is not None])
+        labeled_count = len([tc for tc in result if tc.get("expected_output") is not None])
         unlabeled_count = len(result) - labeled_count
-        
+
+        # Map back to original order if we shuffled
+        if shuffle_seed is not None:
+            # Create mapping from normalized test case to result
+            result_map = {}
+            for tc in result:
+                key = tuple(sorted((k, v) for k, v in tc.items() if k != "expected_output"))
+                result_map[key] = tc
+
+            # Reconstruct in original order
+            ordered_result = []
+            for original_tc in test_cases:
+                key = tuple(
+                    sorted((k, v) for k, v in original_tc.items() if k != "expected_output")
+                )
+                ordered_result.append(result_map.get(key, original_tc.copy()))
+            result = ordered_result
+
         if len(result) != len(test_cases):
             logger.warning(
                 "⚠️ Some test cases were not labeled",
-                extra={"expected": len(test_cases), "actual": len(result), "missing": len(test_cases) - len(result)},
+                extra={
+                    "expected": len(test_cases),
+                    "actual": len(result),
+                    "missing": len(test_cases) - len(result),
+                },
             )
-        
+
         logger.info(
             f"📊 Labeling summary: {labeled_count} labeled, {unlabeled_count} unlabeled, {len(result)} total",
-            extra={"labeled": labeled_count, "unlabeled": unlabeled_count, "total": len(result)}
+            extra={"labeled": labeled_count, "unlabeled": unlabeled_count, "total": len(result)},
         )
-        
+
         return result
 
+    def _aggregate_majority_vote(
+        self, original_test_cases: List[Dict[str, Any]], all_results: List[List[Dict[str, Any]]]
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Aggregate multiple labeling passes using majority voting.
+
+        Args:
+            original_test_cases: Original test cases in order
+            all_results: List of labeling results from each pass
+
+        Returns:
+            Tuple of (aggregated_results, statistics_dict)
+        """
+        from collections import Counter
+
+        # Create mapping from test case to all labels
+        test_case_key_to_labels: Dict[tuple, List[str | None]] = {}
+
+        for result_list in all_results:
+            for labeled_tc in result_list:
+                key = tuple(sorted((k, v) for k, v in labeled_tc.items() if k != "expected_output"))
+                label = labeled_tc.get("expected_output")
+                if key not in test_case_key_to_labels:
+                    test_case_key_to_labels[key] = []
+                test_case_key_to_labels[key].append(label)
+
+        # Aggregate with majority voting
+        aggregated = []
+        stats: Dict[str, Any] = {
+            "perfect_3_3": 0,
+            "majority_2_3": 0,
+            "no_consensus": 0,
+            "total": 0,
+            "perfect_3_3_pct": 0.0,
+            "majority_2_3_pct": 0.0,
+            "no_consensus_pct": 0.0,
+        }
+
+        for original_tc in original_test_cases:
+            key = tuple(sorted((k, v) for k, v in original_tc.items() if k != "expected_output"))
+            labels = test_case_key_to_labels.get(key, [])
+
+            # Filter out None labels for counting
+            non_null_labels = [l for l in labels if l is not None]
+
+            if len(non_null_labels) == 0:
+                # No labels at all
+                final_label = None
+                stats["no_consensus"] += 1
+            elif len(non_null_labels) == len(labels) and len(set(non_null_labels)) == 1:
+                # Perfect agreement (all 3 agree)
+                final_label = non_null_labels[0]
+                stats["perfect_3_3"] += 1
+            else:
+                # Count votes
+                vote_counts = Counter(non_null_labels)
+                most_common = vote_counts.most_common(1)[0]
+                final_label, vote_count = most_common
+
+                if vote_count >= 2:
+                    # Majority (2/3 or 3/3)
+                    stats["majority_2_3"] += 1
+                else:
+                    # No consensus (1/3 or tie)
+                    stats["no_consensus"] += 1
+                    # Still use the most common, but it's a weak consensus
+
+            result_tc = original_tc.copy()
+            result_tc["expected_output"] = final_label
+            aggregated.append(result_tc)
+            stats["total"] += 1
+
+        # Calculate percentages
+        if stats["total"] > 0:
+            stats["perfect_3_3_pct"] = (stats["perfect_3_3"] / stats["total"]) * 100
+            stats["majority_2_3_pct"] = (stats["majority_2_3"] / stats["total"]) * 100
+            stats["no_consensus_pct"] = (stats["no_consensus"] / stats["total"]) * 100
+        else:
+            stats["perfect_3_3_pct"] = 0.0
+            stats["majority_2_3_pct"] = 0.0
+            stats["no_consensus_pct"] = 0.0
+
+        return aggregated, stats
+
     def _create_labeling_prompt(
-        self, test_cases: List[Dict[str, Any]], valid_outputs: List[str], workflow_analysis: Optional[Dict[str, Any]] = None
+        self,
+        test_cases: List[Dict[str, Any]],
+        valid_outputs: List[str],
+        workflow_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         test_cases_json = json.dumps(test_cases, indent=2)
-        
+
         # Build structured context if workflow_analysis is provided
         context_section = ""
         if workflow_analysis:
@@ -281,7 +569,7 @@ This structured analysis includes:
 
 Use this structured information ALONGSIDE the workflow image to accurately determine outputs.
 """
-        
+
         return f"""You are analyzing a workflow diagram to label test cases with their EXACT expected outputs.
 {context_section}
 VALID OUTPUTS (you MUST choose EXACTLY one of these, preserving the exact capitalization and punctuation):
@@ -381,11 +669,13 @@ Return ONLY the JSON array, no explanations or other text."""
 
     def _generate_values_for_input(self, inp: StandardizedInput, num_samples: int = 5) -> List[Any]:
         from ..core.workflow import StandardizedRange
-        
+
         input_type = inp.input_type
         range_info = inp.range
-        
-        logger.debug(f"Generating values for {inp.input_name}: type={input_type}, range={range_info}")
+
+        logger.debug(
+            f"Generating values for {inp.input_name}: type={input_type}, range={range_info}"
+        )
 
         if input_type == "bool":
             return [True, False]
