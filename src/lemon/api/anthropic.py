@@ -63,6 +63,46 @@ class AzureOpenAIClient:
         track_tokens(resp)
         return _wrap_openai_response(resp)
 
+    def messages_create_stream(
+        self, *, messages: List[Dict[str, Any]], max_tokens: int, system: Optional[str] = None
+    ) -> Any:
+        """Stream chat completion tokens. Yields text deltas."""
+        from typing import Iterator
+
+        # Convert the legacy/Anthropic-style message schema to OpenAI chat format.
+        oai_messages: List[Dict[str, Any]] = []
+        if system:
+            oai_messages.append({"role": "system", "content": system})
+        oai_messages.extend(_to_openai_messages(messages))
+
+        # Enable streaming in OpenAI API
+        try:
+            stream = self._client.chat.completions.create(
+                model=self.config.deployment_name,
+                messages=oai_messages,  # type: ignore[arg-type]
+                max_completion_tokens=max_tokens,
+                stream=True,
+            )
+        except TypeError:
+            # Fallback for older SDKs/models.
+            stream = self._client.chat.completions.create(
+                model=self.config.deployment_name,
+                messages=oai_messages,  # type: ignore[arg-type]
+                max_tokens=max_tokens,
+                stream=True,
+            )
+
+        for chunk in stream:
+            # Type guard: check if chunk has choices attribute (ChatCompletionChunk)
+            if hasattr(chunk, "choices"):
+                if chunk.choices and len(chunk.choices) > 0:  # type: ignore[union-attr]
+                    delta = chunk.choices[0].delta  # type: ignore[union-attr]
+                    if hasattr(delta, "content") and delta.content:
+                        yield delta.content
+            # Track tokens from final chunk if available
+            if hasattr(chunk, "usage") and getattr(chunk, "usage", None):
+                track_tokens(chunk)
+
 
 def _load_env() -> None:
     # Keep compatibility with legacy `.env` usage.
@@ -113,6 +153,23 @@ def make_request(
     cfg = _get_azure_config(deployment_override=model)
     client = AzureOpenAIClient(cfg)
     return client.messages_create(messages=messages, max_tokens=max_tokens, system=system)
+
+
+def make_request_stream(
+    messages: List[Dict[str, Any]],
+    max_tokens: int = 1024,
+    model: Optional[str] = None,
+    system: Optional[str] = None,
+) -> Any:
+    """Stream a chat request to Azure OpenAI. Yields text chunks.
+
+    `model` refers to the Azure deployment name.
+    """
+    from typing import Iterator
+
+    cfg = _get_azure_config(deployment_override=model)
+    client = AzureOpenAIClient(cfg)
+    yield from client.messages_create_stream(messages=messages, max_tokens=max_tokens, system=system)
 
 
 def make_simple_request(

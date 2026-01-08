@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import string
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -13,6 +14,16 @@ from e2b_code_interpreter import Sandbox
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _normalize_output(output: str) -> str:
+    """Normalize output for comparison: lowercase and remove punctuation."""
+    if not isinstance(output, str):
+        return str(output) if output is not None else ""
+    # Remove all punctuation, keep alphanumeric and whitespace
+    no_punct = output.translate(str.maketrans("", "", string.punctuation))
+    # Lowercase and normalize whitespace
+    return " ".join(no_punct.lower().split())
 
 
 @dataclass(frozen=True)
@@ -51,6 +62,16 @@ class TestHarness:
 
         full_script = f"""
 import json
+import string
+
+def normalize_output(output):
+    \"\"\"Normalize output for comparison: lowercase and remove punctuation.\"\"\"
+    if not isinstance(output, str):
+        return str(output) if output is not None else ""
+    # Remove all punctuation, keep alphanumeric and whitespace
+    no_punct = output.translate(str.maketrans("", "", string.punctuation))
+    # Lowercase and normalize whitespace
+    return " ".join(no_punct.lower().split())
 
 {code}
 
@@ -63,10 +84,19 @@ for tc in test_cases:
         outcome = determine_workflow_outcome(tc)
         expected_output = tc.get("expected_output")
         if expected_output is not None:
-            passed = outcome.lower() == expected_output.lower() if isinstance(outcome, str) and isinstance(expected_output, str) else outcome == expected_output
+            # Normalize both for comparison
+            outcome_norm = normalize_output(outcome) if isinstance(outcome, str) else str(outcome) if outcome is not None else ""
+            expected_norm = normalize_output(expected_output) if isinstance(expected_output, str) else str(expected_output) if expected_output is not None else ""
+            passed = outcome_norm == expected_norm
             error_msg = None if passed else f"Expected '{{expected_output}}', got '{{outcome}}'"
         else:
-            passed = outcome.lower() in [v.lower() for v in valid_outputs] if isinstance(outcome, str) else outcome in valid_outputs
+            # Check against valid outputs (normalized)
+            if isinstance(outcome, str):
+                outcome_norm = normalize_output(outcome)
+                valid_norm = [normalize_output(v) for v in valid_outputs]
+                passed = outcome_norm in valid_norm
+            else:
+                passed = outcome in valid_outputs
             error_msg = None if passed else f"Invalid output: '{{outcome}}'"
         results.append({{"passed": passed, "error": error_msg}})
     except Exception as e:

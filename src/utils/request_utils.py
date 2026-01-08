@@ -10,6 +10,7 @@ from src.lemon.api.anthropic import (
     get_anthropic_client,
     make_image_request,
     make_request,
+    make_request_stream,
     make_simple_request,
 )
 from src.lemon.utils.image_utils import generate_green_image, image_to_base64
@@ -27,6 +28,7 @@ TOKENS_FILE = Path(__file__).parent.parent.parent / "tokens.json"
 __all__ = [
     "get_anthropic_client",
     "make_request",
+    "make_request_stream",
     "make_simple_request",
     "generate_green_image",
     "image_to_base64",
