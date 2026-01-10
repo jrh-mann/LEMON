@@ -46,7 +46,7 @@ class RefinementPipeline:
         self.settings = settings
         self.logger = get_logger(__name__)
         self._progress_callback = progress_callback
-        self.analyzer = WorkflowAnalyzer(max_tokens=16000)
+        self.analyzer = WorkflowAnalyzer(max_tokens=64000)
         # Don't create test_generator here - it requires workflow_inputs.json which doesn't exist yet
         # It will be created when needed in _load_or_generate_tests
         self.code_generator = CodeGenerator()
