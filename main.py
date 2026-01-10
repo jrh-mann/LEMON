@@ -12,7 +12,7 @@ configure_logging(level="INFO", json_logs=False)
 logger = get_logger(__name__)
 
 # Initialize the workflow analyzer
-analyzer = WorkflowAnalyzer(max_tokens=16000)  # Increased for comprehensive JSON output
+analyzer = WorkflowAnalyzer(max_tokens=64000)  # Increased for comprehensive JSON output
 
 # Perform single-step comprehensive analysis
 logger.info("=" * 80)

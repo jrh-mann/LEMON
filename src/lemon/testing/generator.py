@@ -292,7 +292,7 @@ class TestCaseGenerator:
                     response = make_image_request(
                         image=img_thread,
                         prompt=prompt,
-                        max_tokens=16000,
+                        max_tokens=64000,
                         model=model,
                         image_format=format_str,
                     )

@@ -26,7 +26,7 @@ class GenerationContext:
 class CodeGenerator:
     """Generates deterministic Python code from workflow analysis."""
 
-    def __init__(self, *, max_tokens: int = 8192):
+    def __init__(self, *, max_tokens: int = 64000):
         self.max_tokens = max_tokens
         self.logger = get_logger(__name__)
 
