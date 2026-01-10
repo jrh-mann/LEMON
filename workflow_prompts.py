@@ -169,7 +169,7 @@ Output ONLY valid JSON. Do not include any explanatory text before or after the 
 # Maximum tokens for each response
 # Increase if you want longer, more detailed responses
 # Decrease if you want more concise outputs
-MAX_TOKENS = 4096
+MAX_TOKENS = 64000
 
 # Whether to use conversation history between steps
 # Set to False if you want each step to be independent (not recommended - loses context)
