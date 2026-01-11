@@ -1,373 +1,423 @@
-// LEMON Frontend - Real-time progress monitoring
+const thread = document.getElementById("thread");
+const analysisCard = document.getElementById("analysisCard");
+const inputsList = document.getElementById("inputsList");
+const outputsList = document.getElementById("outputsList");
+const analysisRevision = document.getElementById("analysisRevision");
+const approveButton = document.getElementById("approveButton");
+const feedbackToggle = document.getElementById("feedbackToggle");
+const feedbackPanel = document.getElementById("feedbackPanel");
+const feedbackInput = document.getElementById("feedbackInput");
+const sendFeedback = document.getElementById("sendFeedback");
+const cancelFeedback = document.getElementById("cancelFeedback");
+const feedbackChips = document.getElementById("feedbackChips");
+const thinkingCard = document.getElementById("thinkingCard");
+const testsCard = document.getElementById("testsCard");
+const testsBar = document.getElementById("testsBar");
+const testsPercent = document.getElementById("testsPercent");
+const testsDetail = document.getElementById("testsDetail");
+const iterationsCard = document.getElementById("iterationsCard");
+const iterationsList = document.getElementById("iterationsList");
+const downloadCard = document.getElementById("downloadCard");
+const downloadButton = document.getElementById("downloadButton");
+const edgeCard = document.getElementById("edgeCard");
+const edgeInput = document.getElementById("edgeInput");
+const sendEdgeCase = document.getElementById("sendEdgeCase");
+const fileInput = document.getElementById("fileInput");
+const uploadButton = document.getElementById("uploadButton");
+const uploadGrid = document.getElementById("uploadGrid");
+const uploadPanel = document.getElementById("uploadPanel");
+const uploadPreview = document.getElementById("uploadPreview");
+const uploadHint = document.getElementById("uploadHint");
+const workflowName = document.getElementById("workflowName");
 
-let eventSource = null;
-let isRunning = false;
+const state = {
+  conversation: [],
+  analysis: null,
+  inputs: [],
+  outputs: [],
+  revision: 0,
+  workflowName: "",
+};
 
-// DOM Elements
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-const statusIndicator = document.getElementById('statusIndicator');
-const statusText = document.getElementById('statusText');
-const statusDot = statusIndicator.querySelector('.status-dot');
-const logContainer = document.getElementById('logContainer');
-const codeDisplay = document.getElementById('codeDisplay');
-const refreshCodeBtn = document.getElementById('refreshCodeBtn');
-const testResults = document.getElementById('testResults');
+function ensureVisible(el) {
+  if (!el.classList.contains("is-visible")) {
+    el.classList.add("is-visible");
+  }
+}
 
-// Metrics
-const metricIteration = document.getElementById('metricIteration');
-const metricPassRate = document.getElementById('metricPassRate');
-const metricPassed = document.getElementById('metricPassed');
-const metricTotal = document.getElementById('metricTotal');
-const metricTokens = document.getElementById('metricTokens');
-const metricInputTokens = document.getElementById('metricInputTokens');
-const metricOutputTokens = document.getElementById('metricOutputTokens');
-const metricRequestCount = document.getElementById('metricRequestCount');
+function hideElement(el) {
+  if (!el.classList.contains("is-hidden")) {
+    el.classList.add("is-hidden");
+  }
+}
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    loadWorkflowImage();
-    loadGeneratedCode();
-    loadTokenStats();
-    setupEventListeners();
-    
-    // Refresh token stats every 5 seconds
-    setInterval(loadTokenStats, 5000);
+function showElement(el) {
+  el.classList.remove("is-hidden");
+}
+
+function hideVisible(el) {
+  if (el.classList.contains("is-visible")) {
+    el.classList.remove("is-visible");
+  }
+}
+
+function renderMessage(msg) {
+  const wrapper = document.createElement("div");
+  wrapper.className = `message ${msg.role}`;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = msg.role === "user" ? "You" : "Orchestrator";
+  const body = document.createElement("div");
+  body.textContent = msg.content;
+  wrapper.append(meta, body);
+  thread.append(wrapper);
+}
+
+function renderConversation(messages) {
+  thread.innerHTML = "";
+  messages.forEach(renderMessage);
+}
+
+function renderAnalysis(inputs, outputs, revision) {
+  inputsList.innerHTML = "";
+  outputsList.innerHTML = "";
+  analysisRevision.textContent = `Revision ${revision}`;
+
+  inputs.forEach((input) => {
+    const card = document.createElement("div");
+    card.className = "input-card";
+    const name = document.createElement("h5");
+    name.textContent = input.input_name || "Unnamed input";
+    const meta = document.createElement("div");
+    meta.className = "input-meta";
+    meta.textContent = buildRangeText(input);
+    card.append(name, meta);
+
+    if (Array.isArray(input.range)) {
+      const values = document.createElement("div");
+      values.className = "outputs";
+      input.range.slice(0, 8).forEach((value) => {
+        const chip = document.createElement("div");
+        chip.className = "output-chip";
+        chip.textContent = value;
+        values.append(chip);
+      });
+      card.append(values);
+    } else {
+      const desc = document.createElement("div");
+      desc.className = "input-meta";
+      desc.textContent = input.description || "No description";
+      card.append(desc);
+    }
+    inputsList.append(card);
+  });
+
+  outputs.forEach((output) => {
+    const chip = document.createElement("div");
+    chip.className = "output-chip";
+    chip.textContent = output;
+    outputsList.append(chip);
+  });
+
+  ensureVisible(analysisCard);
+}
+
+function buildRangeText(input) {
+  const type = input.input_type || "unknown";
+  if (!input.range) {
+    return `Type: ${type} | Range: unbounded`;
+  }
+  if (Array.isArray(input.range)) {
+    return `Type: ${type} | Values: ${input.range.length}`;
+  }
+  const min = input.range.min;
+  const max = input.range.max;
+  const value = input.range.value;
+  const unit = input.range.unit ? ` ${input.range.unit}` : "";
+  if (value !== undefined && value !== null) {
+    return `Type: ${type} | Value: ${value}${unit}`;
+  }
+  if (min !== undefined && max !== undefined && min !== null && max !== null) {
+    return `Type: ${type} | Range: ${min}${unit} to ${max}${unit}`;
+  }
+  if (min !== undefined && min !== null) {
+    return `Type: ${type} | Range: >= ${min}${unit}`;
+  }
+  if (max !== undefined && max !== null) {
+    return `Type: ${type} | Range: <= ${max}${unit}`;
+  }
+  return `Type: ${type} | Range: unbounded`;
+}
+
+function updateTestsProgress(progress) {
+  ensureVisible(testsCard);
+  const percent = Math.min(100, progress.percent || 0);
+  testsBar.style.width = `${percent}%`;
+  testsPercent.textContent = `${percent}%`;
+  testsDetail.textContent = `Labeling batches: ${progress.current || 0}/${progress.total || 0}`;
+}
+
+function addIteration(iteration) {
+  ensureVisible(iterationsCard);
+  const row = document.createElement("div");
+  row.className = "iteration";
+  row.innerHTML = `<span>Iteration ${iteration.iteration}</span><strong>${(iteration.score * 100).toFixed(1)}%</strong>`;
+  iterationsList.append(row);
+}
+
+function showDownload(url) {
+  downloadButton.href = url;
+  const name = state.workflowName;
+  downloadButton.textContent = name ? `Download ${name}.py` : "Download workflow.py";
+}
+
+function showThinking(show) {
+  if (show) {
+    ensureVisible(thinkingCard);
+  } else {
+    hideVisible(thinkingCard);
+  }
+}
+
+function resetUi() {
+  state.conversation = [];
+  renderConversation([]);
+  inputsList.innerHTML = "";
+  outputsList.innerHTML = "";
+  iterationsList.innerHTML = "";
+  testsBar.style.width = "0%";
+  testsPercent.textContent = "0%";
+  testsDetail.textContent = "Waiting to start.";
+  hideVisible(analysisCard);
+  hideVisible(testsCard);
+  hideVisible(iterationsCard);
+  hideVisible(downloadCard);
+  hideVisible(edgeCard);
+  showElement(uploadPanel);
+}
+
+function applyStage(stage) {
+  if (stage === "idle") {
+    showElement(uploadPanel);
+    hideVisible(thinkingCard);
+    hideVisible(analysisCard);
+    hideVisible(testsCard);
+    hideVisible(iterationsCard);
+    hideVisible(downloadCard);
+    hideVisible(edgeCard);
+    approveButton.classList.remove("is-hidden");
+    feedbackToggle.classList.remove("is-hidden");
+    return;
+  }
+
+  if (stage === "analyzing") {
+    showElement(uploadPanel);
+    showThinking(true);
+    hideVisible(testsCard);
+    hideVisible(iterationsCard);
+    hideVisible(downloadCard);
+    hideVisible(edgeCard);
+    return;
+  }
+
+  if (stage === "awaiting_approval") {
+    showThinking(false);
+    ensureVisible(analysisCard);
+    showElement(uploadPanel);
+    approveButton.classList.remove("is-hidden");
+    feedbackToggle.classList.remove("is-hidden");
+    hideVisible(testsCard);
+    hideVisible(iterationsCard);
+    hideVisible(downloadCard);
+    hideVisible(edgeCard);
+    return;
+  }
+
+  if (stage === "tests_running") {
+    hideElement(uploadPanel);
+    ensureVisible(analysisCard);
+    approveButton.classList.add("is-hidden");
+    feedbackToggle.classList.add("is-hidden");
+    feedbackPanel.classList.remove("is-visible");
+    ensureVisible(testsCard);
+    hideVisible(downloadCard);
+    hideVisible(edgeCard);
+  }
+
+  if (stage === "code_refining") {
+    ensureVisible(iterationsCard);
+    hideVisible(edgeCard);
+  }
+
+  if (stage === "done") {
+    ensureVisible(downloadCard);
+    ensureVisible(edgeCard);
+  }
+}
+
+function handleEvent(event) {
+  if (event.type === "message") {
+    state.conversation.push(event.data);
+    renderMessage(event.data);
+  }
+  if (event.type === "analysis_ready") {
+    state.inputs = event.data.inputs || [];
+    state.outputs = event.data.outputs || [];
+    state.revision = event.data.revision || 0;
+    renderAnalysis(state.inputs, state.outputs, state.revision);
+    showThinking(false);
+  }
+  if (event.type === "approval_requested") {
+    ensureVisible(analysisCard);
+  }
+  if (event.type === "stage_started") {
+    if (event.data.stage === "analyzing") {
+      showThinking(true);
+    }
+    applyStage(event.data.stage);
+  }
+  if (event.type === "tests_progress") {
+    updateTestsProgress(event.data);
+  }
+  if (event.type === "iteration_result") {
+    addIteration(event.data);
+  }
+  if (event.type === "artifact_ready") {
+    showDownload(event.data.download_url);
+  }
+  if (event.type === "state_reset") {
+    window.location.reload();
+  }
+}
+
+async function fetchState() {
+  const res = await fetch("/api/state");
+  if (!res.ok) return;
+  const payload = await res.json();
+  state.conversation = payload.conversation || [];
+  state.workflowName = payload.workflow_name || "";
+  renderConversation(state.conversation);
+  if (payload.inputs && payload.outputs && payload.inputs.length) {
+    renderAnalysis(payload.inputs, payload.outputs, payload.revision || 0);
+  }
+  if (payload.test_progress && payload.test_progress.total) {
+    updateTestsProgress(payload.test_progress);
+  }
+  if (payload.iterations && payload.iterations.length) {
+    payload.iterations.forEach(addIteration);
+  }
+  if (payload.generated_code_path) {
+    showDownload("/api/download");
+  }
+  if (payload.stage === "analyzing") {
+    showThinking(true);
+  }
+  applyStage(payload.stage || "idle");
+}
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const nameValue = workflowName ? workflowName.value.trim() : "";
+  if (nameValue) {
+    formData.append("workflow_name", nameValue);
+  }
+  uploadHint.textContent = "Uploading...";
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  if (!res.ok) {
+    uploadHint.textContent = "Upload failed.";
+    return;
+  }
+  const data = await res.json();
+  if (data.workflow_name) {
+    state.workflowName = data.workflow_name;
+  }
+  resetUi();
+  applyStage("analyzing");
+  const url = URL.createObjectURL(file);
+  uploadPreview.innerHTML = `<img src="${url}" alt="Workflow preview" />`;
+  uploadHint.textContent = "Upload complete. Running analysis...";
+}
+
+uploadButton.addEventListener("click", () => fileInput.click());
+uploadGrid.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  if (file) uploadFile(file);
 });
 
-function setupEventListeners() {
-    startBtn.addEventListener('click', startPipeline);
-    stopBtn.addEventListener('click', stopPipeline);
-    refreshCodeBtn.addEventListener('click', loadGeneratedCode);
-}
+uploadGrid.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  uploadGrid.classList.add("dragging");
+});
 
-function loadWorkflowImage() {
-    const img = document.getElementById('workflowImage');
-    img.src = '/api/workflow-image';
-    img.onerror = () => {
-        img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><text x="50%25" y="50%25" text-anchor="middle" fill="%23999">Workflow image not found</text></svg>';
-    };
-}
+uploadGrid.addEventListener("dragleave", () => {
+  uploadGrid.classList.remove("dragging");
+});
 
-function loadGeneratedCode() {
-    fetch('/api/generated-code')
-        .then(res => res.json())
-        .then(data => {
-            if (data.exists) {
-                codeDisplay.textContent = data.code;
-                Prism.highlightElement(codeDisplay);
-            } else {
-                codeDisplay.textContent = '# No code generated yet. Start the pipeline to generate code.';
-            }
-        })
-        .catch(err => console.error('Error loading code:', err));
-}
+uploadGrid.addEventListener("drop", (event) => {
+  event.preventDefault();
+  uploadGrid.classList.remove("dragging");
+  const file = event.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
 
-function loadTokenStats() {
-    fetch('/api/token-stats')
-        .then(res => res.json())
-        .then(stats => {
-            const total = stats.total_tokens || 0;
-            const input = stats.total_input_tokens || 0;
-            const output = stats.total_output_tokens || 0;
-            const requests = stats.request_count || 0;
-            
-            metricTokens.textContent = formatNumber(total);
-            metricInputTokens.textContent = formatNumber(input);
-            metricOutputTokens.textContent = formatNumber(output);
-            metricRequestCount.textContent = formatNumber(requests);
-        })
-        .catch(err => console.error('Error loading token stats:', err));
-}
+approveButton.addEventListener("click", async () => {
+  approveButton.disabled = true;
+  approveButton.classList.add("is-hidden");
+  feedbackToggle.classList.add("is-hidden");
+  hideElement(uploadPanel);
+  await fetch("/api/analysis/approve", { method: "POST" });
+  approveButton.disabled = false;
+});
 
-function formatNumber(num) {
-    if (num >= 1000000) {
-        return (num / 1000000).toFixed(2) + 'M';
-    } else if (num >= 1000) {
-        return (num / 1000).toFixed(1) + 'K';
-    }
-    return num.toLocaleString();
-}
+feedbackToggle.addEventListener("click", () => {
+  feedbackPanel.classList.toggle("is-visible");
+});
 
-function startPipeline() {
-    if (isRunning) return;
-    
-    const maxIterations = document.getElementById('maxIterations').value;
-    
-    fetch('/api/start', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            workflow_image: 'workflow.jpeg',
-            max_iterations: maxIterations ? parseInt(maxIterations) : null
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        isRunning = true;
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        statusDot.className = 'status-dot active';
-        statusText.textContent = 'Running...';
-        
-        // Clear previous logs
-        logContainer.innerHTML = '';
-        
-        // Start listening for progress
-        startProgressStream();
-    })
-    .catch(err => {
-        console.error('Error starting pipeline:', err);
-        addLog('error', `Failed to start pipeline: ${err.message}`);
-    });
-}
+cancelFeedback.addEventListener("click", () => {
+  feedbackPanel.classList.remove("is-visible");
+  feedbackInput.value = "";
+});
 
-function stopPipeline() {
-    if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-    }
-    
-    isRunning = false;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    statusDot.className = 'status-dot idle';
-    statusText.textContent = 'Stopped';
-    
-    addLog('info', 'Pipeline stopped by user');
-}
+sendFeedback.addEventListener("click", async () => {
+  const feedback = feedbackInput.value.trim();
+  if (!feedback) return;
+  sendFeedback.disabled = true;
+  await fetch("/api/analysis/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ feedback }),
+  });
+  sendFeedback.disabled = false;
+  feedbackInput.value = "";
+  feedbackPanel.classList.remove("is-visible");
+});
 
-function startProgressStream() {
-    eventSource = new EventSource('/api/progress');
-    
-    eventSource.onmessage = (event) => {
-        try {
-            const update = JSON.parse(event.data);
-            handleProgressUpdate(update);
-        } catch (err) {
-            console.error('Error parsing progress update:', err);
-        }
-    };
-    
-    eventSource.onerror = (err) => {
-        console.error('EventSource error:', err);
-        if (eventSource.readyState === EventSource.CLOSED) {
-            // Stream closed - pipeline finished or error
-            isRunning = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            if (statusDot.className.includes('error')) {
-                statusText.textContent = 'Error';
-            } else {
-                statusText.textContent = 'Complete';
-            }
-        }
-    };
-}
+feedbackChips.addEventListener("click", (event) => {
+  if (!event.target.classList.contains("chip")) return;
+  const text = event.target.dataset.chip;
+  feedbackInput.value = feedbackInput.value ? `${feedbackInput.value} ${text}` : text;
+});
 
-function handleProgressUpdate(update) {
-    if (update.stage === 'heartbeat') return;
-    
-    const stage = update.stage;
-    const message = update.message;
-    const data = update.data || {};
-    
-    // Update timeline
-    updateTimeline(stage, message, data);
-    
-    // Add log entry
-    addLog(stage, message, data);
-    
-    // Update metrics
-    if (data.iteration !== undefined) {
-        metricIteration.textContent = data.iteration;
-    }
-    if (data.score !== undefined) {
-        metricPassRate.textContent = `${(data.score * 100).toFixed(1)}%`;
-        metricPassed.textContent = data.passed || '-';
-        metricTotal.textContent = data.total || '-';
-    }
-    
-    // Update status indicator
-    if (stage === 'complete') {
-        statusDot.className = 'status-dot success';
-        statusText.textContent = 'Complete';
-        isRunning = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        loadGeneratedCode();
-    } else if (stage === 'error') {
-        statusDot.className = 'status-dot error';
-        statusText.textContent = 'Error';
-        isRunning = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-    }
-    
-    // Update code if available
-    if (data.code) {
-        codeDisplay.textContent = data.code;
-        Prism.highlightElement(codeDisplay);
-    }
-    
-    // Update test results
-    if (data.failures && data.failures.length > 0) {
-        updateTestResults(data.failures, data.passed, data.total);
-    }
-}
+sendEdgeCase.addEventListener("click", async () => {
+  const message = edgeInput.value.trim();
+  if (!message) return;
+  sendEdgeCase.disabled = true;
+  await fetch("/api/edge-case", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  sendEdgeCase.disabled = false;
+  edgeInput.value = "";
+});
 
-function updateTimeline(stage, message, data) {
-    const timelineItems = document.querySelectorAll('.timeline-item');
-    
-    // Reset all items
-    timelineItems.forEach(item => {
-        item.classList.remove('active', 'completed');
-    });
-    
-    // Map stage to timeline item
-    const stageMap = {
-        'setup': 0,
-        'analysis': 1,
-        'test_generation': 2,
-        'refinement': 3,
-        'code_generation': 3,
-        'validation': 3,
-        'testing': 3,
-        'final_validation': 4,
-        'complete': 4
-    };
-    
-    const itemIndex = stageMap[stage];
-    if (itemIndex !== undefined) {
-        const item = timelineItems[itemIndex];
-        if (stage === 'complete') {
-            item.classList.add('completed');
-        } else {
-            item.classList.add('active');
-        }
-        
-        // Update message
-        const messageEl = item.querySelector('.timeline-message');
-        if (messageEl) {
-            messageEl.textContent = message;
-        }
-    }
-}
+fetchState();
 
-function addLog(stage, message, data) {
-    const time = new Date().toLocaleTimeString();
-    const logEntry = document.createElement('div');
-    logEntry.className = 'log-entry';
-    
-    const icon = getStageIcon(stage);
-    const color = getStageColor(stage);
-    
-    logEntry.innerHTML = `
-        <span class="log-time">${time}</span>
-        <span class="log-message" style="color: ${color}">${icon} ${message}</span>
-    `;
-    
-    logContainer.insertBefore(logEntry, logContainer.firstChild);
-    
-    // Keep only last 100 entries
-    while (logContainer.children.length > 100) {
-        logContainer.removeChild(logContainer.lastChild);
-    }
-    
-    // Add data details if available
-    if (data && Object.keys(data).length > 0) {
-        const details = Object.entries(data)
-            .filter(([key]) => !['code'].includes(key))
-            .map(([key, value]) => {
-                if (typeof value === 'object') {
-                    return `${key}: ${JSON.stringify(value).substring(0, 100)}`;
-                }
-                return `${key}: ${value}`;
-            })
-            .join(', ');
-        
-        if (details) {
-            const detailEntry = document.createElement('div');
-            detailEntry.className = 'log-entry';
-            detailEntry.style.marginLeft = '95px';
-            detailEntry.style.fontSize = '0.8rem';
-            detailEntry.style.color = 'var(--text-muted)';
-            detailEntry.textContent = `  └─ ${details}`;
-            logContainer.insertBefore(detailEntry, logEntry.nextSibling);
-        }
-    }
-}
-
-function updateTestResults(failures, passed, total) {
-    if (!failures || failures.length === 0) {
-        testResults.innerHTML = '<p class="empty-state">All tests passed! ✅</p>';
-        return;
-    }
-    
-    const passedCount = passed || 0;
-    const totalCount = total || failures.length + passedCount;
-    const passRate = ((passedCount / totalCount) * 100).toFixed(1);
-    
-    let html = `
-        <div class="test-summary">
-            <h3>Test Summary</h3>
-            <p>Passed: ${passedCount} / ${totalCount} (${passRate}%)</p>
-        </div>
-        <div class="failure-list">
-            <h4>Failures (showing first ${Math.min(failures.length, 10)}):</h4>
-            <ul>
-    `;
-    
-    failures.slice(0, 10).forEach((failure, idx) => {
-        html += `
-            <li>
-                <strong>Error ${idx + 1}:</strong> ${failure.error || 'Unknown error'}
-                ${failure.test_case ? `<br><small>Input: ${JSON.stringify(failure.test_case).substring(0, 150)}...</small>` : ''}
-            </li>
-        `;
-    });
-    
-    html += '</ul></div>';
-    testResults.innerHTML = html;
-}
-
-function getStageIcon(stage) {
-    const icons = {
-        'setup': '🚀',
-        'analysis': '🔍',
-        'test_generation': '🧪',
-        'refinement': '🔄',
-        'code_generation': '💻',
-        'validation': '✓',
-        'testing': '🧪',
-        'final_validation': '🔒',
-        'complete': '✅',
-        'error': '❌',
-        'warning': '⚠️',
-        'progress': '📈',
-        'success': '🎉'
-    };
-    return icons[stage] || '📌';
-}
-
-function getStageColor(stage) {
-    const colors = {
-        'setup': '#3b82f6',
-        'analysis': '#8b5cf6',
-        'test_generation': '#ec4899',
-        'refinement': '#6366f1',
-        'code_generation': '#10b981',
-        'validation': '#22c55e',
-        'testing': '#f59e0b',
-        'final_validation': '#06b6d4',
-        'complete': '#22c55e',
-        'error': '#ef4444',
-        'warning': '#f59e0b',
-        'progress': '#3b82f6',
-        'success': '#22c55e'
-    };
-    return colors[stage] || 'var(--text)';
-}
-
+const source = new EventSource("/events");
+source.onmessage = (event) => {
+  const payload = JSON.parse(event.data);
+  if (payload.type === "ping") return;
+  handleEvent(payload);
+};

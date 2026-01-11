@@ -190,6 +190,10 @@ CODE_GENERATION_PROMPT = """You are a Python 3 code generation agent. You MUST w
 
 Your task is to write a Python function that implements the logic of a workflow diagram EXACTLY.
 
+ASSUMPTIONS:
+- Assume all inputs are valid and present (no defensive checks needed)
+- Do NOT wrap logic in try/except for normal control flow
+
 You will be provided with:
 1. The original Workflow Image
 2. A COMPLETE structured JSON analysis of the workflow including:

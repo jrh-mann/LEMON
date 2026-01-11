@@ -10,7 +10,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from PIL import Image
 from tqdm import tqdm
@@ -91,6 +91,7 @@ class TestCaseGenerator:
         backoff_base: float = 1.0,
         backoff_cap: float = 8.0,
         best_of_n: int = 1,
+        progress_callback: Optional[Callable[[int, int, int, int], None]] = None,
     ) -> List[Dict[str, Any]]:
         """Label test cases with expected outputs using Azure OpenAI (image + prompt).
 
@@ -107,6 +108,7 @@ class TestCaseGenerator:
             backoff_base: Initial backoff seconds for exponential backoff (default: 1.0)
             backoff_cap: Maximum backoff seconds (default: 8.0)
             best_of_n: Number of independent labeling passes to run, then take majority vote (default: 1)
+            progress_callback: Optional callback to report batch progress per pass
         """
         if best_of_n <= 1:
             # Single pass (original behavior)
@@ -123,6 +125,9 @@ class TestCaseGenerator:
                 backoff_base=backoff_base,
                 backoff_cap=backoff_cap,
                 shuffle_seed=None,
+                progress_callback=progress_callback,
+                pass_num=1,
+                pass_total=1,
             )
 
         # Best-of-N: Run multiple passes with different shuffle seeds, then majority vote
@@ -153,6 +158,9 @@ class TestCaseGenerator:
                 backoff_base=backoff_base,
                 backoff_cap=backoff_cap,
                 shuffle_seed=shuffle_seed,
+                progress_callback=progress_callback,
+                pass_num=pass_num,
+                pass_total=best_of_n,
             )
             all_results.append(pass_results)
 
@@ -201,6 +209,9 @@ class TestCaseGenerator:
         backoff_base: float = 1.0,
         backoff_cap: float = 8.0,
         shuffle_seed: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int, int, int], None]] = None,
+        pass_num: int = 1,
+        pass_total: int = 1,
     ) -> List[Dict[str, Any]]:
         """Single-pass labeling (internal method)."""
         from src.utils.request_utils import make_image_request  # legacy module
@@ -382,6 +393,7 @@ class TestCaseGenerator:
 
         # Process batches in parallel
         logger.info(f"🚀 Starting parallel labeling with {max_workers} workers...")
+        completed_batches = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
             for batch_num, batch in batches:
@@ -414,6 +426,9 @@ class TestCaseGenerator:
                             f"❌ Unexpected error processing batch {batch_num}: {str(e)}",
                         )
                     pbar.update(1)
+                    completed_batches += 1
+                    if progress_callback:
+                        progress_callback(completed_batches, total_batches, pass_num, pass_total)
 
         logger.info(
             f"✓ Labeling complete: {successful_batches} successful, {failed_batches} failed batches",
