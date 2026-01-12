@@ -1,0 +1,483 @@
+{
+  "stage": "awaiting_approval",
+  "revision": 1,
+  "conversation": [
+    {
+      "id": "b2cc228b-2e72-4d8a-85cd-cde8915c9c1f",
+      "role": "user",
+      "content": "Submitted flowchart for analysis.",
+      "ts": 1768102583.969836,
+      "tags": [
+        "flowchart"
+      ]
+    },
+    {
+      "id": "7e922113-86b0-43e8-b238-77552b315d0a",
+      "role": "orchestrator",
+      "content": "Analyzing the workflow diagram.",
+      "ts": 1768102583.974337,
+      "tags": [
+        "analysis"
+      ]
+    },
+    {
+      "id": "58bb531e-6ab5-4fc2-b15c-4a8997c8dd6e",
+      "role": "orchestrator",
+      "content": "Analysis ready. Review inputs and outputs, then approve or ask for refinement.",
+      "ts": 1768102623.5622156,
+      "tags": [
+        "analysis"
+      ]
+    }
+  ],
+  "analysis": {
+    "workflow_description": "Loan application triage for automated approval, rejection, or manual review based on credit score, debt-to-income (DTI) ratio, income, and age.",
+    "domain": "finance - consumer lending/underwriting",
+    "inputs": [
+      {
+        "name": "credit_score",
+        "type": "numeric",
+        "format": "integer",
+        "possible_values": {
+          "type": "range",
+          "min": 300.0,
+          "max": 850.0,
+          "unit": "score"
+        },
+        "required_at": "start",
+        "used_at": [
+          "Score >=700?"
+        ],
+        "description": "Applicant's credit score (e.g., FICO).",
+        "constraints": "Primary threshold is credit_score >= 700."
+      },
+      {
+        "name": "dti_ratio",
+        "type": "numeric",
+        "format": "float",
+        "possible_values": {
+          "type": "range",
+          "min": 0.0,
+          "max": 100.0,
+          "unit": "percent"
+        },
+        "required_at": "start",
+        "used_at": [
+          "DTI <=35%?"
+        ],
+        "description": "Applicant's debt-to-income ratio expressed as a percentage.",
+        "constraints": "Approval path requires dti_ratio <= 35%; otherwise leads to manual review when prior credit_score condition was met."
+      },
+      {
+        "name": "annual_income",
+        "type": "numeric",
+        "format": "float",
+        "possible_values": {
+          "type": "range",
+          "min": 0.0,
+          "max": 1000000.0,
+          "unit": "USD/year"
+        },
+        "required_at": "start",
+        "used_at": [
+          "Income >=75k?"
+        ],
+        "description": "Applicant's gross annual income in USD.",
+        "constraints": "If credit_score < 700, income must be >= 75,000 USD/year to proceed to age assessment; else immediate rejection."
+      },
+      {
+        "name": "age_years",
+        "type": "numeric",
+        "format": "integer",
+        "possible_values": {
+          "type": "range",
+          "min": 0.0,
+          "max": 120.0,
+          "unit": "years"
+        },
+        "required_at": "start",
+        "used_at": [
+          "Age >25?"
+        ],
+        "description": "Applicant's age in completed years.",
+        "constraints": "Only evaluated when credit_score < 700 and annual_income >= 75,000; age_years > 25 leads to manual review, otherwise rejection."
+      }
+    ],
+    "decision_points": [
+      {
+        "name": "Score >=700?",
+        "description": "Evaluates whether the applicant's credit score meets the minimum threshold.",
+        "condition": "credit_score >= 700",
+        "inputs_required": [
+          "credit_score"
+        ],
+        "branches": [
+          {
+            "condition": "true (>= 700)",
+            "outcome": "Proceed to DTI check",
+            "leads_to": "DTI <=35%?"
+          },
+          {
+            "condition": "false (< 700)",
+            "outcome": "Proceed to income check",
+            "leads_to": "Income >=75k?"
+          }
+        ]
+      },
+      {
+        "name": "DTI <=35%?",
+        "description": "Checks if the debt-to-income ratio is at or below 35%.",
+        "condition": "dti_ratio <= 35",
+        "inputs_required": [
+          "dti_ratio"
+        ],
+        "branches": [
+          {
+            "condition": "true (<= 35%)",
+            "outcome": "Automatically approve",
+            "leads_to": "Approve"
+          },
+          {
+            "condition": "false (> 35%)",
+            "outcome": "Send to manual review",
+            "leads_to": "Manual Review"
+          }
+        ]
+      },
+      {
+        "name": "Income >=75k?",
+        "description": "Checks if the applicant has sufficient annual income when the credit score is below 700.",
+        "condition": "annual_income >= 75000",
+        "inputs_required": [
+          "annual_income"
+        ],
+        "branches": [
+          {
+            "condition": "true (>= 75,000 USD/year)",
+            "outcome": "Proceed to age check",
+            "leads_to": "Age >25?"
+          },
+          {
+            "condition": "false (< 75,000 USD/year)",
+            "outcome": "Reject application",
+            "leads_to": "Reject"
+          }
+        ]
+      },
+      {
+        "name": "Age >25?",
+        "description": "Assesses whether the applicant's age exceeds 25 years after passing the income check but failing the credit score threshold.",
+        "condition": "age_years > 25",
+        "inputs_required": [
+          "age_years"
+        ],
+        "branches": [
+          {
+            "condition": "true (> 25 years)",
+            "outcome": "Send to manual review",
+            "leads_to": "Manual Review"
+          },
+          {
+            "condition": "false (<= 25 years)",
+            "outcome": "Reject application",
+            "leads_to": "Reject"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "Approve",
+        "type": "action",
+        "description": "Application is automatically approved.",
+        "produced_by": [
+          "Score >=700? -> true; DTI <=35%? -> true"
+        ]
+      },
+      {
+        "name": "Manual Review",
+        "type": "action",
+        "description": "Application requires human/manual underwriting review.",
+        "produced_by": [
+          "Score >=700? -> true; DTI <=35%? -> false",
+          "Score >=700? -> false; Income >=75k? -> true; Age >25? -> true"
+        ]
+      },
+      {
+        "name": "Reject",
+        "type": "action",
+        "description": "Application is rejected.",
+        "produced_by": [
+          "Score >=700? -> false; Income >=75k? -> false",
+          "Score >=700? -> false; Income >=75k? -> true; Age >25? -> false"
+        ]
+      },
+      {
+        "name": "End",
+        "type": "terminal",
+        "description": "Workflow ends after taking an action.",
+        "produced_by": [
+          "Approve",
+          "Manual Review",
+          "Reject"
+        ]
+      }
+    ],
+    "workflow_paths": [
+      {
+        "path_id": "path_1",
+        "description": "High credit score with acceptable DTI leads to auto-approval.",
+        "required_inputs": [
+          "credit_score",
+          "dti_ratio"
+        ],
+        "decision_sequence": [
+          "Score >=700? -> true",
+          "DTI <=35%? -> true"
+        ],
+        "output": "Approve"
+      },
+      {
+        "path_id": "path_2",
+        "description": "High credit score but DTI above threshold leads to manual review.",
+        "required_inputs": [
+          "credit_score",
+          "dti_ratio"
+        ],
+        "decision_sequence": [
+          "Score >=700? -> true",
+          "DTI <=35%? -> false"
+        ],
+        "output": "Manual Review"
+      },
+      {
+        "path_id": "path_3",
+        "description": "Low credit score, high income, and age over 25 leads to manual review.",
+        "required_inputs": [
+          "credit_score",
+          "annual_income",
+          "age_years"
+        ],
+        "decision_sequence": [
+          "Score >=700? -> false",
+          "Income >=75k? -> true",
+          "Age >25? -> true"
+        ],
+        "output": "Manual Review"
+      },
+      {
+        "path_id": "path_4",
+        "description": "Low credit score, high income, but age 25 or under leads to rejection.",
+        "required_inputs": [
+          "credit_score",
+          "annual_income",
+          "age_years"
+        ],
+        "decision_sequence": [
+          "Score >=700? -> false",
+          "Income >=75k? -> true",
+          "Age >25? -> false"
+        ],
+        "output": "Reject"
+      },
+      {
+        "path_id": "path_5",
+        "description": "Low credit score and insufficient income leads to rejection.",
+        "required_inputs": [
+          "credit_score",
+          "annual_income"
+        ],
+        "decision_sequence": [
+          "Score >=700? -> false",
+          "Income >=75k? -> false"
+        ],
+        "output": "Reject"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "input_name": "credit_score",
+      "input_type": "Int",
+      "range": {
+        "min": 300.0,
+        "max": 850.0
+      },
+      "description": "Applicant's credit score (e.g., FICO)."
+    },
+    {
+      "input_name": "dti_ratio",
+      "input_type": "Float",
+      "range": {
+        "min": 0.0,
+        "max": 100.0
+      },
+      "description": "Applicant's debt-to-income ratio expressed as a percentage."
+    },
+    {
+      "input_name": "annual_income",
+      "input_type": "Float",
+      "range": {
+        "min": 0.0,
+        "max": 1000000.0
+      },
+      "description": "Applicant's gross annual income in USD."
+    },
+    {
+      "input_name": "age_years",
+      "input_type": "Int",
+      "range": {
+        "min": 0.0,
+        "max": 120.0
+      },
+      "description": "Applicant's age in completed years."
+    }
+  ],
+  "outputs": [
+    "Approve",
+    "End",
+    "Manual Review",
+    "Reject"
+  ],
+  "iterations": [],
+  "test_progress": {
+    "current": 0,
+    "total": 0,
+    "percent": 0
+  },
+  "workflow_image": "C:\\Users\\jeetu\\OneDrive\\Documents\\VSCode\\LEMON\\frontend\\runs\\workflow_50d9f9d798\\workflow.png",
+  "workflow_name": "workflow",
+  "run_id": "50d9f9d798",
+  "run_dir": "C:\\Users\\jeetu\\OneDrive\\Documents\\VSCode\\LEMON\\frontend\\runs\\workflow_50d9f9d798",
+  "generated_code_path": null,
+  "last_feedback": null,
+  "flowchart": {
+    "nodes": [
+      {
+        "id": "start_1",
+        "type": "start",
+        "label": "Start",
+        "x": 600.0,
+        "y": 120,
+        "color": "teal"
+      },
+      {
+        "id": "score700_1",
+        "type": "decision",
+        "label": "Score >=700?",
+        "x": 720.0,
+        "y": 270,
+        "color": "amber"
+      },
+      {
+        "id": "dti35_1",
+        "type": "decision",
+        "label": "DTI <=35%?",
+        "x": 480.0,
+        "y": 420,
+        "color": "amber"
+      },
+      {
+        "id": "income75k_1",
+        "type": "decision",
+        "label": "Income >=75k?",
+        "x": 720.0,
+        "y": 420,
+        "color": "amber"
+      },
+      {
+        "id": "age25_1",
+        "type": "decision",
+        "label": "Age >25?",
+        "x": 720.0,
+        "y": 570,
+        "color": "amber"
+      },
+      {
+        "id": "approve_1",
+        "type": "end",
+        "label": "Approve",
+        "x": 480.0,
+        "y": 570,
+        "color": "green"
+      },
+      {
+        "id": "manualreview_1",
+        "type": "end",
+        "label": "Manual Review",
+        "x": 480.0,
+        "y": 720,
+        "color": "green"
+      },
+      {
+        "id": "reject_1",
+        "type": "end",
+        "label": "Reject",
+        "x": 720.0,
+        "y": 720,
+        "color": "green"
+      },
+      {
+        "id": "end_1",
+        "type": "end",
+        "label": "End",
+        "x": 480.0,
+        "y": 270,
+        "color": "green"
+      }
+    ],
+    "edges": [
+      {
+        "from": "score700_1",
+        "to": "dti35_1",
+        "label": "true (>= 700)"
+      },
+      {
+        "from": "score700_1",
+        "to": "income75k_1",
+        "label": "false (< 700)"
+      },
+      {
+        "from": "dti35_1",
+        "to": "approve_1",
+        "label": "true (<= 35%)"
+      },
+      {
+        "from": "dti35_1",
+        "to": "manualreview_1",
+        "label": "false (> 35%)"
+      },
+      {
+        "from": "income75k_1",
+        "to": "age25_1",
+        "label": "true (>= 75,000 USD/year)"
+      },
+      {
+        "from": "income75k_1",
+        "to": "reject_1",
+        "label": "false (< 75,000 USD/year)"
+      },
+      {
+        "from": "age25_1",
+        "to": "manualreview_1",
+        "label": "true (> 25 years)"
+      },
+      {
+        "from": "age25_1",
+        "to": "reject_1",
+        "label": "false (<= 25 years)"
+      },
+      {
+        "from": "start_1",
+        "to": "score700_1",
+        "label": ""
+      },
+      {
+        "from": "start_1",
+        "to": "end_1",
+        "label": ""
+      }
+    ]
+  },
+  "flowchart_messages": []
+}

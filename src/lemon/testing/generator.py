@@ -253,9 +253,13 @@ class TestCaseGenerator:
 
         # Shuffle test cases if seed provided (for best-of-N to ensure different batches)
         test_cases_to_label = test_cases.copy()
+        index_map = list(range(len(test_cases_to_label)))
         if shuffle_seed is not None:
             random.seed(shuffle_seed)
-            random.shuffle(test_cases_to_label)
+            paired = list(zip(index_map, test_cases_to_label))
+            random.shuffle(paired)
+            index_map = [idx for idx, _ in paired]
+            test_cases_to_label = [tc for _, tc in paired]
             logger.debug(f"Shuffled test cases with seed {shuffle_seed}")
 
         # Create batches
@@ -410,8 +414,9 @@ class TestCaseGenerator:
                         # Find the original indices for this batch
                         batch_idx = (batch_num - 1) * batch_size
                         for i, labeled_tc in enumerate(labeled_batch):
-                            if batch_idx + i < len(labeled):
-                                labeled[batch_idx + i] = labeled_tc
+                            if batch_idx + i < len(index_map):
+                                target_idx = index_map[batch_idx + i]
+                                labeled[target_idx] = labeled_tc
 
                         # Check if labeling was successful (has expected_output)
                         if labeled_batch and labeled_batch[0].get("expected_output") is not None:
@@ -443,23 +448,6 @@ class TestCaseGenerator:
         result: List[Dict[str, Any]] = [tc for tc in labeled if tc is not None]
         labeled_count = len([tc for tc in result if tc.get("expected_output") is not None])
         unlabeled_count = len(result) - labeled_count
-
-        # Map back to original order if we shuffled
-        if shuffle_seed is not None:
-            # Create mapping from normalized test case to result
-            result_map = {}
-            for tc in result:
-                key = tuple(sorted((k, v) for k, v in tc.items() if k != "expected_output"))
-                result_map[key] = tc
-
-            # Reconstruct in original order
-            ordered_result = []
-            for original_tc in test_cases:
-                key = tuple(
-                    sorted((k, v) for k, v in original_tc.items() if k != "expected_output")
-                )
-                ordered_result.append(result_map.get(key, original_tc.copy()))
-            result = ordered_result
 
         if len(result) != len(test_cases):
             logger.warning(
@@ -613,36 +601,15 @@ Return your response as a JSON array with the same length as the test cases arra
 Return ONLY the JSON array, no explanations or other text."""
 
     def _normalize_output(self, output: str | None, valid_outputs: List[str]) -> str | None:
-        """Fuzzy match output to valid_outputs with case-insensitive and normalization."""
+        """Match model output to valid_outputs with minimal normalization."""
         if output is None:
             return None
 
-        # Exact match first
-        if output in valid_outputs:
-            return output
-
-        # Case-insensitive match
-        output_lower = output.strip().lower()
+        output_str = output.strip() if isinstance(output, str) else str(output).strip()
         for valid in valid_outputs:
-            if valid.strip().lower() == output_lower:
-                logger.debug(
-                    "Case-insensitive match",
-                    extra={"model_output": output, "matched": valid},
-                )
+            if valid.strip() == output_str:
                 return valid
 
-        # Normalize punctuation and whitespace
-        output_normalized = re.sub(r"\s+", " ", output.strip())
-        for valid in valid_outputs:
-            valid_normalized = re.sub(r"\s+", " ", valid.strip())
-            if valid_normalized.lower() == output_normalized.lower():
-                logger.debug(
-                    "Normalized match",
-                    extra={"model_output": output, "matched": valid},
-                )
-                return valid
-
-        # Log what we couldn't match
         logger.warning(
             "Could not match model output to valid outputs",
             extra={"model_output": output, "valid_outputs": valid_outputs[:5]},

@@ -221,7 +221,7 @@ class RefinementPipeline:
         outputs_file = base_dir / "workflow_outputs.json"
         analysis_file = base_dir / "workflow_analysis.json"
 
-        if analysis_file.exists() and outputs_file.exists():
+        if analysis_file.exists() and outputs_file.exists() and inputs_file.exists():
             self.logger.info("Loading cached workflow analysis")
             self._emit("analysis", "✓ Found existing analysis; loading cached files")
             valid_outputs = json.loads(outputs_file.read_text(encoding="utf-8"))

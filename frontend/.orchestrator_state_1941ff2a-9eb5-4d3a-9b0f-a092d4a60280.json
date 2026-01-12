@@ -1,0 +1,1150 @@
+{
+  "stage": "awaiting_approval",
+  "revision": 1,
+  "conversation": [
+    {
+      "id": "08c9b77f-5f8e-4f3d-8f74-47ad4dde30eb",
+      "role": "user",
+      "content": "Uploaded workflow image: Untitled.jpg",
+      "ts": 1768256909.4609494,
+      "tags": [
+        "upload"
+      ]
+    },
+    {
+      "id": "103a2abe-6a4f-411a-855c-5420db7aeb08",
+      "role": "orchestrator",
+      "content": "Workflow image uploaded. Ask me to analyze it when you are ready.",
+      "ts": 1768256909.4609494,
+      "tags": [
+        "upload"
+      ]
+    },
+    {
+      "id": "4bd23016-f4ef-4d3d-a1a2-7706185a0543",
+      "role": "user",
+      "content": "punch it",
+      "ts": 1768256917.599092,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "f846c1bd-d1a7-4f0f-a6f1-880b4afe5164",
+      "role": "orchestrator",
+      "content": "\u201cPunch it\u201d is a bit ambiguous. Please tell me explicitly what to do next: - To analyze the uploaded workflow image, say: \u201cAnalyze the workflow image.\u201d - To update the flowchart, say: \u201cUpdate the flowchart: \u2026\u201d and describe the change. - To see progress, say: \u201cStatus.\u201d - To get a quick overview of what I can do, say: \u201cHelp.\u201d",
+      "ts": 1768256923.1106853,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "19e3190a-8c54-48cc-92ef-2593afb8b832",
+      "role": "user",
+      "content": "analyse the image",
+      "ts": 1768256937.9233458,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "b3ff0866-a1d5-4c01-9b34-fe4749e23ee9",
+      "role": "orchestrator",
+      "content": "Analyzing the uploaded workflow image to extract its inputs, outputs, and key components.",
+      "ts": 1768256942.120108,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "99cb6ba6-fc16-4a5c-a338-fd775b76e0e7",
+      "role": "orchestrator",
+      "content": "Analyzing the workflow diagram.",
+      "ts": 1768256942.120108,
+      "tags": [
+        "analysis"
+      ]
+    },
+    {
+      "id": "eddf3fc1-5965-424e-8e29-436984840b6e",
+      "role": "orchestrator",
+      "content": "Analysis ready. Review inputs and outputs, then approve or ask for refinement.",
+      "ts": 1768257050.4909315,
+      "tags": [
+        "analysis"
+      ]
+    },
+    {
+      "id": "706841d8-448f-42b2-8d40-a44995864d9b",
+      "role": "user",
+      "content": "i think it needs some refinement. its seriously misinterpreted the flowchart",
+      "ts": 1768257414.162446,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "54ce7b76-2749-485e-885f-99015e091d2b",
+      "role": "orchestrator",
+      "content": "I could not parse that. Try again with a direct request.",
+      "ts": 1768257435.408712,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "e0d806f5-94f2-4f1a-8f0a-33a4059ff03c",
+      "role": "user",
+      "content": "wdym u could not parse that",
+      "ts": 1768257510.5456715,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "be1b0e28-b9f0-475d-8610-36dc9d33d2a6",
+      "role": "orchestrator",
+      "content": "I could not parse that. Try again with a direct request.",
+      "ts": 1768257522.5163972,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "b5cfd2d2-0fbf-4a5c-a98e-6ad563c06af4",
+      "role": "user",
+      "content": "are u ok",
+      "ts": 1768257541.7054808,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "3c7c4edc-6b13-4535-8179-6a726b29d64e",
+      "role": "orchestrator",
+      "content": "I could not parse that. Try again with a direct request.",
+      "ts": 1768257551.619904,
+      "tags": [
+        "chat"
+      ]
+    }
+  ],
+  "analysis": {
+    "workflow_description": "Agentic workflow that consumes clinician input, checks consent/policy context and medical knowledge, interacts with the patient EHR, gates proposed changes for accept/reject, and if accepted performs scheduling and messaging. All actions are audited to an append-only Provenance MCP.",
+    "domain": "healthcare",
+    "inputs": [
+      {
+        "name": "clinician_id",
+        "type": "text",
+        "format": "string",
+        "possible_values": {
+          "type": "unbounded",
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Consent & Context Decision",
+          "Medical Appropriateness Decision",
+          "Accept/Reject Gate"
+        ],
+        "description": "Identifier of the clinician initiating the workflow.",
+        "constraints": "Must uniquely identify the clinician in the organization."
+      },
+      {
+        "name": "patient_id",
+        "type": "text",
+        "format": "string",
+        "possible_values": {
+          "type": "unbounded",
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Consent & Context Decision",
+          "Medical Appropriateness Decision",
+          "Patient Management Agent"
+        ],
+        "description": "Unique patient identifier used to read/update EHR/FHIR records.",
+        "constraints": "Must map to a valid patient record in the EHR/FHIR MCP."
+      },
+      {
+        "name": "requested_action_type",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "schedule_appointment",
+            "update_medication",
+            "order_lab",
+            "request_procedure",
+            "update_problem_list",
+            "send_message",
+            "update_care_plan"
+          ],
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Consent & Context Decision",
+          "Medical Appropriateness Decision",
+          "Patient Management Agent",
+          "Scheduling Agent"
+        ],
+        "description": "Primary action the clinician is attempting to perform.",
+        "constraints": "Must correspond to an allowed operational action in policy/consent scope."
+      },
+      {
+        "name": "requested_action_scope",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "data_read",
+            "data_write",
+            "scheduling",
+            "procedure",
+            "messaging"
+          ],
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Consent & Context Decision"
+        ],
+        "description": "Scope category of the requested action used to match patient consent.",
+        "constraints": "Must be covered by current patient consent or emergency override."
+      },
+      {
+        "name": "reason_for_action",
+        "type": "text",
+        "format": "string",
+        "possible_values": {
+          "type": "unbounded",
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Medical Appropriateness Decision",
+          "Patient Management Agent"
+        ],
+        "description": "Clinical rationale or indication for the requested action.",
+        "constraints": "Should include clinical indication codes or narrative sufficient for guideline checks."
+      },
+      {
+        "name": "clinical_indication_codes",
+        "type": "text",
+        "format": "string_list",
+        "possible_values": {
+          "type": "unbounded",
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Medical Appropriateness Decision"
+        ],
+        "description": "Codes (e.g., SNOMED/ICD) supporting the requested action.",
+        "constraints": "Codes must be valid within the Medical Knowledge MCP terminology set."
+      },
+      {
+        "name": "priority",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "routine",
+            "urgent",
+            "stat"
+          ],
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Scheduling Agent",
+          "Provenance MCP"
+        ],
+        "description": "Operational priority for scheduling or processing.",
+        "constraints": "Higher priorities may alter scheduling constraints and audit flags."
+      },
+      {
+        "name": "desired_datetime",
+        "type": "date",
+        "format": "ISO-8601 datetime",
+        "possible_values": {
+          "type": "range",
+          "min": "1970-01-01T00:00:00Z",
+          "max": "2100-12-31T23:59:59Z",
+          "unit": "datetime"
+        },
+        "required_at": "start",
+        "used_at": [
+          "Scheduling Agent"
+        ],
+        "description": "Requested date/time for the appointment or action.",
+        "constraints": "Must be within organizational scheduling windows and resource availability."
+      },
+      {
+        "name": "location",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "clinic",
+            "hospital",
+            "telehealth",
+            "home_visit",
+            "lab"
+          ],
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Scheduling Agent",
+          "Patient Management Agent"
+        ],
+        "description": "Intended location/context where the action will occur.",
+        "constraints": "Must match available resources and policy constraints."
+      },
+      {
+        "name": "scheduling_duration_minutes",
+        "type": "numeric",
+        "format": "integer",
+        "possible_values": {
+          "type": "range",
+          "min": 5.0,
+          "max": 480.0,
+          "unit": "minutes"
+        },
+        "required_at": "start",
+        "used_at": [
+          "Scheduling Agent"
+        ],
+        "description": "Length of the scheduled appointment or resource block.",
+        "constraints": "Min 5 minutes; Max 8 hours; must align with clinic slot templates."
+      },
+      {
+        "name": "communication_channel",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "sms",
+            "email",
+            "phone_call",
+            "patient_portal"
+          ],
+          "unit": null
+        },
+        "required_at": "start",
+        "used_at": [
+          "Scheduling Agent"
+        ],
+        "description": "Preferred channel for patient notifications.",
+        "constraints": "Channel must be supported by Scheduling/Messaging MCP and consent allows messaging."
+      },
+      {
+        "name": "patient_consent_status",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "consent_granted",
+            "consent_denied",
+            "consent_expired",
+            "unknown"
+          ],
+          "unit": null
+        },
+        "required_at": "Consent & Context Decision",
+        "used_at": [
+          "Consent & Context Decision"
+        ],
+        "description": "Current patient consent state retrieved via Consent/Policy MCP.",
+        "constraints": "Must be current at the time of action; 'unknown' treated as not granted."
+      },
+      {
+        "name": "consent_scope",
+        "type": "categorical",
+        "format": "string_list",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "data_read",
+            "data_write",
+            "scheduling",
+            "procedure",
+            "messaging"
+          ],
+          "unit": null
+        },
+        "required_at": "Consent & Context Decision",
+        "used_at": [
+          "Consent & Context Decision"
+        ],
+        "description": "Scopes granted in the patient's consent document.",
+        "constraints": "Requested action scope must be included; otherwise action is blocked unless emergency_override."
+      },
+      {
+        "name": "consent_expiry_date",
+        "type": "date",
+        "format": "ISO-8601 date",
+        "possible_values": {
+          "type": "range",
+          "min": "1970-01-01",
+          "max": "2100-12-31",
+          "unit": "date"
+        },
+        "required_at": "Consent & Context Decision",
+        "used_at": [
+          "Consent & Context Decision"
+        ],
+        "description": "Date when the current consent expires.",
+        "constraints": "Action requires consent to be active on the current date unless emergency_override."
+      },
+      {
+        "name": "jurisdiction_policy",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "allowed",
+            "restricted",
+            "prohibited"
+          ],
+          "unit": null
+        },
+        "required_at": "Consent & Context Decision",
+        "used_at": [
+          "Consent & Context Decision"
+        ],
+        "description": "Policy outcome for the requested action based on jurisdiction and organizational rules.",
+        "constraints": "If 'prohibited', action is blocked; 'restricted' may require additional checks."
+      },
+      {
+        "name": "emergency_override",
+        "type": "boolean",
+        "format": "boolean",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            true,
+            false
+          ],
+          "unit": null
+        },
+        "required_at": "Consent & Context Decision",
+        "used_at": [
+          "Consent & Context Decision",
+          "Medical Appropriateness Decision"
+        ],
+        "description": "Flag indicating emergency treatment overrides consent/policy/knowledge constraints.",
+        "constraints": "Use governed by policy; may allow proceeding despite missing consent or contraindications."
+      },
+      {
+        "name": "contraindication_present",
+        "type": "boolean",
+        "format": "boolean",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            true,
+            false
+          ],
+          "unit": null
+        },
+        "required_at": "Medical Appropriateness Decision",
+        "used_at": [
+          "Medical Appropriateness Decision"
+        ],
+        "description": "Whether medical knowledge indicates the action is contraindicated for this patient.",
+        "constraints": "If true and no emergency_override, action should not proceed."
+      },
+      {
+        "name": "medical_guideline_version",
+        "type": "text",
+        "format": "string",
+        "possible_values": {
+          "type": "unbounded",
+          "unit": null
+        },
+        "required_at": "Medical Appropriateness Decision",
+        "used_at": [
+          "Medical Appropriateness Decision"
+        ],
+        "description": "Version identifier of the guideline content used for checks.",
+        "constraints": "Must be a valid version available in the Medical Knowledge MCP."
+      },
+      {
+        "name": "proposed_ehr_changes",
+        "type": "text",
+        "format": "string_list",
+        "possible_values": {
+          "type": "unbounded",
+          "unit": null
+        },
+        "required_at": "Patient Management Agent",
+        "used_at": [
+          "Accept/Reject Gate",
+          "Patient Management Agent"
+        ],
+        "description": "Structured set of changes the Patient Management Agent proposes to the EHR (e.g., new appointments, orders, notes).",
+        "constraints": "Must conform to FHIR/EHR schema and be reversible if not accepted."
+      },
+      {
+        "name": "acceptance_decision",
+        "type": "categorical",
+        "format": "string",
+        "possible_values": {
+          "type": "enum",
+          "values": [
+            "accept",
+            "reject"
+          ],
+          "unit": null
+        },
+        "required_at": "Accept/Reject Gate",
+        "used_at": [
+          "Accept/Reject Gate"
+        ],
+        "description": "Gate decision determining whether proposed changes proceed to scheduling.",
+        "constraints": "Typically clinician-driven; logged to Provenance MCP."
+      }
+    ],
+    "decision_points": [
+      {
+        "name": "Consent & Context Decision",
+        "description": "Evaluates whether patient consent and policy allow the requested action.",
+        "condition": "Consent granted, in scope, unexpired, and policy allows; otherwise blocked unless emergency override.",
+        "inputs_required": [
+          "patient_consent_status",
+          "consent_scope",
+          "consent_expiry_date",
+          "requested_action_scope",
+          "jurisdiction_policy",
+          "emergency_override"
+        ],
+        "branches": [
+          {
+            "condition": "(patient_consent_status == 'consent_granted') AND (requested_action_scope in consent_scope) AND (consent_expiry_date >= today) AND (jurisdiction_policy != 'prohibited')",
+            "outcome": "Proceed to medical knowledge evaluation and patient management.",
+            "leads_to": "Medical Appropriateness Decision"
+          },
+          {
+            "condition": "emergency_override == true",
+            "outcome": "Proceed despite missing/expired consent or prohibited policy under emergency rules.",
+            "leads_to": "Medical Appropriateness Decision"
+          },
+          {
+            "condition": "NOT ((patient_consent_status == 'consent_granted') AND (requested_action_scope in consent_scope) AND (consent_expiry_date >= today) AND (jurisdiction_policy != 'prohibited')) AND (emergency_override == false)",
+            "outcome": "Block action; audit only.",
+            "leads_to": "Provenance MCP (Audit every action)"
+          }
+        ]
+      },
+      {
+        "name": "Medical Appropriateness Decision",
+        "description": "Checks guideline compliance and contraindications for the requested action.",
+        "condition": "Action allowed if no contraindication or emergency override is true.",
+        "inputs_required": [
+          "clinical_indication_codes",
+          "contraindication_present",
+          "medical_guideline_version",
+          "emergency_override"
+        ],
+        "branches": [
+          {
+            "condition": "(contraindication_present == false)",
+            "outcome": "Medically appropriate; proceed to patient management and EHR interaction.",
+            "leads_to": "Patient Management Agent"
+          },
+          {
+            "condition": "(contraindication_present == true) AND (emergency_override == true)",
+            "outcome": "Override contraindication due to emergency; proceed.",
+            "leads_to": "Patient Management Agent"
+          },
+          {
+            "condition": "(contraindication_present == true) AND (emergency_override == false)",
+            "outcome": "Block action; audit only.",
+            "leads_to": "Provenance MCP (Audit every action)"
+          }
+        ]
+      },
+      {
+        "name": "Accept/Reject Gate",
+        "description": "Human gate to accept or reject proposed changes from the Patient Management Agent.",
+        "condition": "Proceed to scheduling if accepted; if rejected, stop after audit.",
+        "inputs_required": [
+          "acceptance_decision",
+          "proposed_ehr_changes"
+        ],
+        "branches": [
+          {
+            "condition": "acceptance_decision == 'accept'",
+            "outcome": "Proceed to Scheduling Agent; patient records will be updated for scheduling.",
+            "leads_to": "Scheduling Agent"
+          },
+          {
+            "condition": "acceptance_decision == 'reject'",
+            "outcome": "Do not schedule; record decision in audit.",
+            "leads_to": "Provenance MCP (Audit every action)"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "Provenance MCP (Audit every action)",
+        "type": "action",
+        "description": "Append-only audit log entry for each step and outcome.",
+        "produced_by": [
+          "path_1",
+          "path_2",
+          "path_3",
+          "path_4",
+          "path_5"
+        ]
+      },
+      {
+        "name": "Consent/Policy MCP",
+        "type": "action",
+        "description": "Consent and policy read/check performed.",
+        "produced_by": [
+          "path_1",
+          "path_2",
+          "path_3",
+          "path_4",
+          "path_5"
+        ]
+      },
+      {
+        "name": "Medical Knowledge MCP",
+        "type": "action",
+        "description": "Medical knowledge read to evaluate appropriateness.",
+        "produced_by": [
+          "path_1",
+          "path_2",
+          "path_3",
+          "path_4",
+          "path_5"
+        ]
+      },
+      {
+        "name": "EHR/FHIR MCP (Patient Data System)",
+        "type": "action",
+        "description": "Patient data read and proposed changes submitted by Patient Management Agent.",
+        "produced_by": [
+          "path_1",
+          "path_2",
+          "path_4",
+          "path_5"
+        ]
+      },
+      {
+        "name": "Scheduling/Messaging MCP",
+        "type": "action",
+        "description": "Scheduling performed and notifications sent.",
+        "produced_by": [
+          "path_1",
+          "path_5"
+        ]
+      }
+    ],
+    "workflow_paths": [
+      {
+        "path_id": "path_1",
+        "description": "Consent valid (or emergency), medically appropriate, accepted; schedule and notify.",
+        "required_inputs": [
+          "clinician_id",
+          "patient_id",
+          "requested_action_type",
+          "requested_action_scope",
+          "reason_for_action",
+          "clinical_indication_codes",
+          "priority",
+          "desired_datetime",
+          "location",
+          "scheduling_duration_minutes",
+          "communication_channel",
+          "patient_consent_status",
+          "consent_scope",
+          "consent_expiry_date",
+          "jurisdiction_policy",
+          "emergency_override",
+          "contraindication_present",
+          "medical_guideline_version",
+          "proposed_ehr_changes",
+          "acceptance_decision"
+        ],
+        "decision_sequence": [
+          "Consent & Context Decision -> allowed",
+          "Medical Appropriateness Decision -> appropriate",
+          "Accept/Reject Gate -> accept"
+        ],
+        "output": "Scheduling/Messaging MCP"
+      },
+      {
+        "path_id": "path_2",
+        "description": "Consent valid (or emergency), medically appropriate, rejected; no scheduling; audit only.",
+        "required_inputs": [
+          "clinician_id",
+          "patient_id",
+          "requested_action_type",
+          "requested_action_scope",
+          "reason_for_action",
+          "clinical_indication_codes",
+          "priority",
+          "patient_consent_status",
+          "consent_scope",
+          "consent_expiry_date",
+          "jurisdiction_policy",
+          "emergency_override",
+          "contraindication_present",
+          "medical_guideline_version",
+          "proposed_ehr_changes",
+          "acceptance_decision"
+        ],
+        "decision_sequence": [
+          "Consent & Context Decision -> allowed",
+          "Medical Appropriateness Decision -> appropriate",
+          "Accept/Reject Gate -> reject"
+        ],
+        "output": "Provenance MCP (Audit every action)"
+      },
+      {
+        "path_id": "path_3",
+        "description": "Consent/policy not allowed and no emergency; action blocked early; audit only.",
+        "required_inputs": [
+          "clinician_id",
+          "patient_id",
+          "requested_action_type",
+          "requested_action_scope",
+          "patient_consent_status",
+          "consent_scope",
+          "consent_expiry_date",
+          "jurisdiction_policy",
+          "emergency_override"
+        ],
+        "decision_sequence": [
+          "Consent & Context Decision -> blocked"
+        ],
+        "output": "Provenance MCP (Audit every action)"
+      },
+      {
+        "path_id": "path_4",
+        "description": "Consent allowed but medically contraindicated without emergency; blocked; audit only.",
+        "required_inputs": [
+          "clinician_id",
+          "patient_id",
+          "requested_action_type",
+          "requested_action_scope",
+          "patient_consent_status",
+          "consent_scope",
+          "consent_expiry_date",
+          "jurisdiction_policy",
+          "emergency_override",
+          "contraindication_present",
+          "medical_guideline_version",
+          "clinical_indication_codes"
+        ],
+        "decision_sequence": [
+          "Consent & Context Decision -> allowed",
+          "Medical Appropriateness Decision -> blocked"
+        ],
+        "output": "Provenance MCP (Audit every action)"
+      },
+      {
+        "path_id": "path_5",
+        "description": "Emergency override allows proceeding despite consent or contraindication; accepted; schedule and notify.",
+        "required_inputs": [
+          "clinician_id",
+          "patient_id",
+          "requested_action_type",
+          "requested_action_scope",
+          "reason_for_action",
+          "priority",
+          "desired_datetime",
+          "location",
+          "scheduling_duration_minutes",
+          "communication_channel",
+          "emergency_override",
+          "proposed_ehr_changes",
+          "acceptance_decision"
+        ],
+        "decision_sequence": [
+          "Consent & Context Decision -> emergency_override",
+          "Medical Appropriateness Decision -> emergency_override",
+          "Accept/Reject Gate -> accept"
+        ],
+        "output": "Scheduling/Messaging MCP"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "input_name": "clinician_id",
+      "input_type": "str",
+      "description": "Identifier of the clinician initiating the workflow."
+    },
+    {
+      "input_name": "patient_id",
+      "input_type": "str",
+      "description": "Unique patient identifier used to read/update EHR/FHIR records."
+    },
+    {
+      "input_name": "requested_action_type",
+      "input_type": "str",
+      "range": [
+        "schedule_appointment",
+        "update_medication",
+        "order_lab",
+        "request_procedure",
+        "update_problem_list",
+        "send_message",
+        "update_care_plan"
+      ],
+      "description": "Primary action the clinician is attempting to perform."
+    },
+    {
+      "input_name": "requested_action_scope",
+      "input_type": "str",
+      "range": [
+        "data_read",
+        "data_write",
+        "scheduling",
+        "procedure",
+        "messaging"
+      ],
+      "description": "Scope category of the requested action used to match patient consent."
+    },
+    {
+      "input_name": "reason_for_action",
+      "input_type": "str",
+      "description": "Clinical rationale or indication for the requested action."
+    },
+    {
+      "input_name": "clinical_indication_codes",
+      "input_type": "str",
+      "description": "Codes (e.g., SNOMED/ICD) supporting the requested action."
+    },
+    {
+      "input_name": "priority",
+      "input_type": "str",
+      "range": [
+        "routine",
+        "urgent",
+        "stat"
+      ],
+      "description": "Operational priority for scheduling or processing."
+    },
+    {
+      "input_name": "desired_datetime",
+      "input_type": "date",
+      "range": {
+        "min": "1970-01-01T00:00:00Z",
+        "max": "2100-12-31T23:59:59Z"
+      },
+      "description": "Requested date/time for the appointment or action."
+    },
+    {
+      "input_name": "location",
+      "input_type": "str",
+      "range": [
+        "clinic",
+        "hospital",
+        "telehealth",
+        "home_visit",
+        "lab"
+      ],
+      "description": "Intended location/context where the action will occur."
+    },
+    {
+      "input_name": "scheduling_duration_minutes",
+      "input_type": "Int",
+      "range": {
+        "min": 5.0,
+        "max": 480.0
+      },
+      "description": "Length of the scheduled appointment or resource block."
+    },
+    {
+      "input_name": "communication_channel",
+      "input_type": "str",
+      "range": [
+        "sms",
+        "email",
+        "phone_call",
+        "patient_portal"
+      ],
+      "description": "Preferred channel for patient notifications."
+    },
+    {
+      "input_name": "patient_consent_status",
+      "input_type": "str",
+      "range": [
+        "consent_granted",
+        "consent_denied",
+        "consent_expired",
+        "unknown"
+      ],
+      "description": "Current patient consent state retrieved via Consent/Policy MCP."
+    },
+    {
+      "input_name": "consent_scope",
+      "input_type": "str",
+      "range": [
+        "data_read",
+        "data_write",
+        "scheduling",
+        "procedure",
+        "messaging"
+      ],
+      "description": "Scopes granted in the patient's consent document."
+    },
+    {
+      "input_name": "consent_expiry_date",
+      "input_type": "date",
+      "range": {
+        "min": "1970-01-01",
+        "max": "2100-12-31"
+      },
+      "description": "Date when the current consent expires."
+    },
+    {
+      "input_name": "jurisdiction_policy",
+      "input_type": "str",
+      "range": [
+        "allowed",
+        "restricted",
+        "prohibited"
+      ],
+      "description": "Policy outcome for the requested action based on jurisdiction and organizational rules."
+    },
+    {
+      "input_name": "emergency_override",
+      "input_type": "bool",
+      "range": [
+        true,
+        false
+      ],
+      "description": "Flag indicating emergency treatment overrides consent/policy/knowledge constraints."
+    },
+    {
+      "input_name": "contraindication_present",
+      "input_type": "bool",
+      "range": [
+        true,
+        false
+      ],
+      "description": "Whether medical knowledge indicates the action is contraindicated for this patient."
+    },
+    {
+      "input_name": "medical_guideline_version",
+      "input_type": "str",
+      "description": "Version identifier of the guideline content used for checks."
+    },
+    {
+      "input_name": "proposed_ehr_changes",
+      "input_type": "str",
+      "description": "Structured set of changes the Patient Management Agent proposes to the EHR (e.g., new appointments, orders, notes)."
+    },
+    {
+      "input_name": "acceptance_decision",
+      "input_type": "str",
+      "range": [
+        "accept",
+        "reject"
+      ],
+      "description": "Gate decision determining whether proposed changes proceed to scheduling."
+    }
+  ],
+  "outputs": [
+    "Consent/Policy MCP",
+    "EHR/FHIR MCP (Patient Data System)",
+    "Medical Knowledge MCP",
+    "Provenance MCP (Audit every action)",
+    "Scheduling/Messaging MCP"
+  ],
+  "iterations": [],
+  "test_progress": {
+    "current": 0,
+    "total": 0,
+    "percent": 0
+  },
+  "workflow_image": "C:\\Users\\jeetu\\OneDrive\\Documents\\VSCode\\LEMON\\frontend\\runs\\workflow_bd019a51b7\\workflow.jpg",
+  "workflow_name": "workflow",
+  "run_id": "bd019a51b7",
+  "run_dir": "C:\\Users\\jeetu\\OneDrive\\Documents\\VSCode\\LEMON\\frontend\\runs\\workflow_bd019a51b7",
+  "generated_code_path": null,
+  "last_feedback": null,
+  "flowchart": {
+    "nodes": [
+      {
+        "id": "start_1",
+        "type": "start",
+        "label": "Start",
+        "x": 600,
+        "y": 120,
+        "color": "teal"
+      },
+      {
+        "id": "consentcontextdecision_1",
+        "type": "decision",
+        "label": "Consent & Context Decision",
+        "x": 188.79998779296875,
+        "y": 265.1999816894531,
+        "color": "amber"
+      },
+      {
+        "id": "medicalappropriatenessdecision_1",
+        "type": "decision",
+        "label": "Medical Appropriateness Decision",
+        "x": 740.7999267578125,
+        "y": 442.3999938964844,
+        "color": "amber"
+      },
+      {
+        "id": "acceptrejectgate_1",
+        "type": "decision",
+        "label": "Accept/Reject Gate",
+        "x": 940,
+        "y": 577.1999816894531,
+        "color": "amber"
+      },
+      {
+        "id": "provenancemcpauditeveryaction_1",
+        "type": "end",
+        "label": "Provenance MCP (Audit every action)",
+        "x": 360,
+        "y": 720,
+        "color": "green"
+      },
+      {
+        "id": "consentpolicymcp_1",
+        "type": "end",
+        "label": "Consent/Policy MCP",
+        "x": 480,
+        "y": 270,
+        "color": "green"
+      },
+      {
+        "id": "medicalknowledgemcp_1",
+        "type": "end",
+        "label": "Medical Knowledge MCP",
+        "x": 960,
+        "y": 270,
+        "color": "green"
+      },
+      {
+        "id": "ehrfhirmcppatientdatasystem_1",
+        "type": "end",
+        "label": "EHR/FHIR MCP (Patient Data System)",
+        "x": 720,
+        "y": 270,
+        "color": "green"
+      },
+      {
+        "id": "schedulingmessagingmcp_1",
+        "type": "end",
+        "label": "Scheduling/Messaging MCP",
+        "x": 996,
+        "y": 740,
+        "color": "green"
+      },
+      {
+        "id": "patientmanagementagent_1",
+        "type": "process",
+        "label": "Patient Management Agent",
+        "x": 480,
+        "y": 570,
+        "color": "slate"
+      },
+      {
+        "id": "schedulingagent_1",
+        "type": "process",
+        "label": "Scheduling Agent",
+        "x": 787.9999389648438,
+        "y": 816.8000183105469,
+        "color": "slate"
+      }
+    ],
+    "edges": [
+      {
+        "from": "consentcontextdecision_1",
+        "to": "medicalappropriatenessdecision_1",
+        "label": "(patient_consent_status == 'consent_granted') AND (requested_action_scope in consent_scope) AND (consent_expiry_date >= today) AND (jurisdiction_policy != 'prohibited')"
+      },
+      {
+        "from": "consentcontextdecision_1",
+        "to": "medicalappropriatenessdecision_1",
+        "label": "emergency_override == true"
+      },
+      {
+        "from": "consentcontextdecision_1",
+        "to": "provenancemcpauditeveryaction_1",
+        "label": "NOT ((patient_consent_status == 'consent_granted') AND (requested_action_scope in consent_scope) AND (consent_expiry_date >= today) AND (jurisdiction_policy != 'prohibited')) AND (emergency_override == false)"
+      },
+      {
+        "from": "medicalappropriatenessdecision_1",
+        "to": "patientmanagementagent_1",
+        "label": "(contraindication_present == false)"
+      },
+      {
+        "from": "medicalappropriatenessdecision_1",
+        "to": "patientmanagementagent_1",
+        "label": "(contraindication_present == true) AND (emergency_override == true)"
+      },
+      {
+        "from": "medicalappropriatenessdecision_1",
+        "to": "provenancemcpauditeveryaction_1",
+        "label": "(contraindication_present == true) AND (emergency_override == false)"
+      },
+      {
+        "from": "acceptrejectgate_1",
+        "to": "schedulingagent_1",
+        "label": "acceptance_decision == 'accept'"
+      },
+      {
+        "from": "acceptrejectgate_1",
+        "to": "provenancemcpauditeveryaction_1",
+        "label": "acceptance_decision == 'reject'"
+      },
+      {
+        "from": "medicalappropriatenessdecision_1",
+        "to": "acceptrejectgate_1",
+        "label": ""
+      },
+      {
+        "from": "acceptrejectgate_1",
+        "to": "schedulingmessagingmcp_1",
+        "label": ""
+      },
+      {
+        "from": "start_1",
+        "to": "consentcontextdecision_1",
+        "label": ""
+      },
+      {
+        "from": "start_1",
+        "to": "consentpolicymcp_1",
+        "label": ""
+      },
+      {
+        "from": "start_1",
+        "to": "medicalknowledgemcp_1",
+        "label": ""
+      },
+      {
+        "from": "start_1",
+        "to": "ehrfhirmcppatientdatasystem_1",
+        "label": ""
+      }
+    ]
+  },
+  "flowchart_messages": []
+}

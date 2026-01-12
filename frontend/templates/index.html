@@ -25,32 +25,109 @@
         </div>
       </header>
 
-      <section class="upload-panel" id="uploadPanel">
-        <div class="upload-grid" id="uploadGrid">
-          <div class="upload-slot" data-slot="0"></div>
-          <div class="upload-slot" data-slot="1"></div>
-          <div class="upload-slot" data-slot="2"></div>
-          <div class="upload-slot" data-slot="3"></div>
-          <div class="upload-slot" data-slot="4"></div>
-          <div class="upload-slot" data-slot="5"></div>
-        </div>
-        <div class="upload-card">
-          <div class="upload-copy">
-            <h2>Drop a workflow image</h2>
-            <p>We accept PNG, JPG, or PDF diagrams. One file at a time.</p>
+      <section class="studio" id="studio">
+        <div class="studio-header">
+          <div>
+            <p class="eyebrow">FLOWCHART STUDIO</p>
+            <h2>Build the workflow in the canvas.</h2>
+            <p class="lead muted">
+              Drag shapes, connect decisions, or describe the flowchart in plain language.
+            </p>
           </div>
-          <div class="upload-action">
+          <div class="studio-actions">
             <label class="field">
               <span>Workflow name</span>
               <input id="workflowName" type="text" placeholder="e.g. lipid_risk_v2" />
             </label>
-            <input id="fileInput" type="file" accept="image/*" />
-            <button class="primary" id="uploadButton">Choose file</button>
-            <p class="hint" id="uploadHint">Drag and drop to begin.</p>
+            <div class="history-controls">
+              <button class="ghost" id="historyBack">Back</button>
+              <button class="ghost" id="historyForward">Forward</button>
+              <button class="ghost" id="snapshotFlowchart">Snapshot</button>
+            </div>
+            <div class="upload-row">
+              <input id="fileInput" type="file" accept="image/*" />
+              <button class="ghost" id="uploadButton">Upload image</button>
+              <span class="hint" id="uploadHint">PNG/JPG for analysis</span>
+            </div>
+            <button class="primary" id="runPipeline">Run pipeline</button>
+            <button class="ghost" id="clearState">Clear state</button>
           </div>
         </div>
-        <div class="upload-preview" id="uploadPreview">
-          <p class="muted">No image loaded yet.</p>
+        <div class="studio-grid">
+          <aside class="palette">
+            <p class="eyebrow">SHAPES</p>
+            <div class="palette-grid">
+              <button class="palette-item" data-type="start">Start</button>
+              <button class="palette-item" data-type="process">Process</button>
+              <button class="palette-item" data-type="decision">Decision</button>
+              <button class="palette-item" data-type="subprocess">Sub-process</button>
+              <button class="palette-item" data-type="end">End</button>
+            </div>
+            <p class="eyebrow">COLORS</p>
+            <div class="color-row" id="paletteColors">
+              <button class="color-chip is-active" data-color="teal"></button>
+              <button class="color-chip" data-color="amber"></button>
+              <button class="color-chip" data-color="green"></button>
+              <button class="color-chip" data-color="slate"></button>
+              <button class="color-chip" data-color="rose"></button>
+              <button class="color-chip" data-color="sky"></button>
+            </div>
+            <div class="palette-actions">
+              <button class="ghost" id="autoLayout">Auto layout</button>
+              <button class="ghost" id="connectToggle">Connect</button>
+              <button class="ghost" id="clearCanvas">Clear</button>
+              <button class="ghost" id="exportPreview">Preview image</button>
+            </div>
+            <div class="connect-status" id="connectStatus">Connect: off</div>
+            <div class="inspector" id="nodeInspector">
+              <div class="inspector-header">
+                <h4>Selected node</h4>
+                <span class="muted" id="selectedNodeHint">None</span>
+              </div>
+              <label class="field">
+                <span>Label</span>
+                <input id="nodeLabelInput" type="text" placeholder="Select a node" />
+              </label>
+              <label class="field">
+                <span>Type</span>
+                <select id="nodeTypeSelect">
+                  <option value="start">Start</option>
+                  <option value="process">Process</option>
+                  <option value="decision">Decision</option>
+                  <option value="subprocess">Sub-process</option>
+                  <option value="end">End</option>
+                </select>
+              </label>
+              <div class="field">
+                <span>Color</span>
+                <div class="color-row" id="nodeColorRow">
+                  <button class="color-chip" data-color="teal"></button>
+                  <button class="color-chip" data-color="amber"></button>
+                  <button class="color-chip" data-color="green"></button>
+                  <button class="color-chip" data-color="slate"></button>
+                  <button class="color-chip" data-color="rose"></button>
+                  <button class="color-chip" data-color="sky"></button>
+                </div>
+              </div>
+              <button class="ghost" id="deleteNode">Delete node</button>
+            </div>
+          </aside>
+          <div class="canvas-panel">
+            <div class="canvas-wrap">
+              <svg id="flowchartCanvas" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#2b2d2a"></polygon>
+                  </marker>
+                </defs>
+                <g id="edgeLayer"></g>
+                <g id="nodeLayer"></g>
+              </svg>
+            </div>
+            <div class="upload-preview" id="uploadPreview">
+              <p class="muted">No image uploaded yet.</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -67,43 +144,7 @@
           </div>
         </div>
 
-        <div class="stage analysis-card" id="analysisCard">
-          <div class="stage-header">
-            <div>
-              <p class="eyebrow">ANALYSIS REVIEW</p>
-              <h3>Inputs and outputs</h3>
-            </div>
-            <div class="badge" id="analysisRevision">Revision 0</div>
-          </div>
-          <div class="analysis-body">
-            <div>
-              <h4>Inputs</h4>
-              <div class="inputs" id="inputsList"></div>
-            </div>
-            <div>
-              <h4>Outputs</h4>
-              <div class="outputs" id="outputsList"></div>
-            </div>
-          </div>
-          <div class="analysis-actions">
-            <button class="primary" id="approveButton">Approve</button>
-            <button class="ghost" id="feedbackToggle">Needs refinement</button>
-          </div>
-          <div class="feedback" id="feedbackPanel">
-            <p class="muted">Tell the orchestrator what feels wrong. It will re-run the analysis.</p>
-            <div class="chips" id="feedbackChips">
-              <button class="chip" data-chip="Ranges are wrong">Ranges are wrong</button>
-              <button class="chip" data-chip="Missing input">Missing input</button>
-              <button class="chip" data-chip="Outputs are mislabeled">Outputs are mislabeled</button>
-              <button class="chip" data-chip="Decision logic seems off">Decision logic seems off</button>
-            </div>
-            <textarea id="feedbackInput" placeholder="Describe the issue..."></textarea>
-            <div class="actions-row">
-              <button class="primary" id="sendFeedback">Send feedback</button>
-              <button class="ghost" id="cancelFeedback">Cancel</button>
-            </div>
-          </div>
-        </div>
+        <div class="analysis-stack" id="analysisStack"></div>
 
         <div class="stage tests-card" id="testsCard">
           <div class="stage-header">
@@ -137,19 +178,15 @@
           <a class="primary" id="downloadButton" href="#">Download workflow.py</a>
         </div>
 
-        <div class="stage edge-card" id="edgeCard">
-          <div>
-            <p class="eyebrow">EDGE CASES</p>
-            <h3>Challenge the orchestrator</h3>
-            <p class="muted">Describe a tricky case in plain language. The orchestrator will validate it.</p>
-          </div>
-          <div class="edge-input">
-            <textarea id="edgeInput" placeholder="Example: 62 year old patient, LDL 190, no diabetes, non-smoker..."></textarea>
-            <button class="primary" id="sendEdgeCase">Send edge case</button>
-          </div>
-        </div>
       </section>
     </main>
+
+    <div class="chat-dock">
+      <div class="chat-dock-inner">
+        <textarea id="chatInput" placeholder="Message the orchestrator..."></textarea>
+        <button class="primary" id="sendChat">Send</button>
+      </div>
+    </div>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>

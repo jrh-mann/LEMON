@@ -37,7 +37,12 @@ class AzureOpenAIClient:
         )
 
     def messages_create(
-        self, *, messages: List[Dict[str, Any]], max_tokens: int, system: Optional[str] = None
+        self,
+        *,
+        messages: List[Dict[str, Any]],
+        max_tokens: int,
+        system: Optional[str] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Any:
         # Convert the legacy/Anthropic-style message schema to OpenAI chat format.
         oai_messages: List[Dict[str, Any]] = []
@@ -46,17 +51,22 @@ class AzureOpenAIClient:
         oai_messages.extend(_to_openai_messages(messages))
 
         # GPT-5 expects `max_completion_tokens` in Azure OpenAI.
+        create_kwargs: Dict[str, Any] = {
+            "model": self.config.deployment_name,
+            "messages": oai_messages,  # type: ignore[arg-type]
+        }
+        if response_format:
+            create_kwargs["response_format"] = response_format
+
         try:
             resp = self._client.chat.completions.create(
-                model=self.config.deployment_name,
-                messages=oai_messages,  # type: ignore[arg-type]
+                **create_kwargs,
                 max_completion_tokens=max_tokens,
             )
         except TypeError:
             # Fallback for older SDKs/models.
             resp = self._client.chat.completions.create(
-                model=self.config.deployment_name,
-                messages=oai_messages,  # type: ignore[arg-type]
+                **create_kwargs,
                 max_tokens=max_tokens,
             )
 
@@ -145,6 +155,7 @@ def make_request(
     max_tokens: int = 1024,
     model: Optional[str] = None,
     system: Optional[str] = None,
+    response_format: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Send a chat request to Azure OpenAI.
 
@@ -152,7 +163,12 @@ def make_request(
     """
     cfg = _get_azure_config(deployment_override=model)
     client = AzureOpenAIClient(cfg)
-    return client.messages_create(messages=messages, max_tokens=max_tokens, system=system)
+    return client.messages_create(
+        messages=messages,
+        max_tokens=max_tokens,
+        system=system,
+        response_format=response_format,
+    )
 
 
 def make_request_stream(

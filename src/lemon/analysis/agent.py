@@ -57,42 +57,68 @@ class WorkflowAnalyzer:
         )
 
         img_base64, media_type = self._load_image(image)
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": media_type, "data": img_base64},
-                    },
-                    {"type": "text", "text": self.analysis_prompt},
-                ],
-            }
-        ]
 
-        if stream_callback:
-            # Stream mode: accumulate chunks and call callback
-            response_text = ""
-            for chunk in make_request_stream(
-                messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
-            ):
-                response_text += chunk
-                stream_callback(chunk)
-        else:
-            # Non-streaming mode (backward compatible)
+        def build_messages(prompt_text: str) -> List[Dict[str, Any]]:
+            return [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": img_base64,
+                            },
+                        },
+                        {"type": "text", "text": prompt_text},
+                    ],
+                }
+            ]
+
+        def run_request(prompt_text: str, *, stream: bool) -> str:
+            messages = build_messages(prompt_text)
+            if stream and stream_callback:
+                response_text = ""
+                for chunk in make_request_stream(
+                    messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
+                ):
+                    response_text += chunk
+                    stream_callback(chunk)
+                return response_text
             response = make_request(
                 messages=messages, max_tokens=self.max_tokens, system=self.system_prompt
             )
-            response_text = response.content[0].text if response.content else ""
+            return response.content[0].text if response.content else ""
 
-        data = self._parse_json_best_effort(response_text)
-        try:
+        def parse_and_validate(response_text: str) -> WorkflowAnalysis:
+            data = self._parse_json_best_effort(response_text)
+            data = self._normalize_analysis_payload(data)
             return WorkflowAnalysis.model_validate(data)
-        except Exception as e:
-            raise WorkflowAnalysisError(
-                "Failed to validate workflow analysis JSON against schema",
-                context={"error": str(e)},
-            ) from e
+
+        response_text = run_request(self.analysis_prompt, stream=bool(stream_callback))
+        try:
+            return parse_and_validate(response_text)
+        except Exception as first_error:
+            error_summary = str(first_error)[:2000]
+            retry_prompt = (
+                "Your previous JSON failed schema validation. Fix the JSON to match the schema "
+                "exactly. Every workflow_paths item MUST have a non-empty output string. "
+                "If an output is unknown, remove that workflow_paths entry. Do NOT use null. "
+                "If a field is a date, keep min/max as ISO date strings and set type to 'date'. "
+                "Return JSON only.\n\nVALIDATION_ERRORS:\n"
+                + error_summary
+                + "\n\nPREVIOUS_RESPONSE:\n"
+                + response_text[:8000]
+            )
+            retry_text = run_request(retry_prompt, stream=False)
+            try:
+                return parse_and_validate(retry_text)
+            except Exception as second_error:
+                raise WorkflowAnalysisError(
+                    "Failed to validate workflow analysis JSON against schema",
+                    context={"error": str(second_error), "previous_error": str(first_error)},
+                ) from second_error
 
     def extract_standardized_inputs(self, analysis: WorkflowAnalysis) -> List[StandardizedInput]:
         """Convert raw analysis inputs into the normalized `workflow_inputs.json` schema."""
@@ -152,23 +178,94 @@ class WorkflowAnalyzer:
         except json.JSONDecodeError:
             pass
 
-        # Second attempt: extract JSON object from surrounding text.
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
+        def extract_json_objects(raw: str) -> List[str]:
+            objects: List[str] = []
+            depth = 0
+            start: Optional[int] = None
+            in_string = False
+            escape = False
+            for idx, ch in enumerate(raw):
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif ch == "\\":
+                        escape = True
+                    elif ch == "\"":
+                        in_string = False
+                    continue
+
+                if ch == "\"":
+                    in_string = True
+                    continue
+                if ch == "{":
+                    if depth == 0:
+                        start = idx
+                    depth += 1
+                elif ch == "}" and depth > 0:
+                    depth -= 1
+                    if depth == 0 and start is not None:
+                        objects.append(raw[start : idx + 1])
+                        start = None
+            return objects
+
+        # Second attempt: extract balanced JSON objects from surrounding text.
+        for candidate in extract_json_objects(text):
             try:
-                data2 = json.loads(match.group(0))
+                data2 = json.loads(candidate)
                 if isinstance(data2, dict):
                     return data2
                 raise WorkflowAnalysisError(
                     "Extracted JSON was not an object",
-                    context={"preview": match.group(0)[:200]},
+                    context={"preview": candidate[:200]},
                 )
             except json.JSONDecodeError:
-                pass
+                continue
 
         raise WorkflowAnalysisError(
             "Failed to parse JSON from analysis response", context={"preview": text[:500]}
         )
+
+    def _normalize_analysis_payload(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(data, dict):
+            return data
+
+        inputs = data.get("inputs")
+        if isinstance(inputs, list):
+            for inp in inputs:
+                if not isinstance(inp, dict):
+                    continue
+                possible_values = inp.get("possible_values")
+                if not isinstance(possible_values, dict):
+                    continue
+                if str(possible_values.get("type", "")).lower() != "range":
+                    continue
+
+                for key in ("min", "max"):
+                    raw = possible_values.get(key)
+                    if isinstance(raw, (int, float)) or raw is None:
+                        continue
+                    if isinstance(raw, str):
+                        try:
+                            possible_values[key] = float(raw)
+                        except ValueError:
+                            # Keep non-numeric strings (e.g., ISO dates).
+                            possible_values[key] = raw
+
+        workflow_paths = data.get("workflow_paths")
+        if isinstance(workflow_paths, list):
+            normalized_paths = []
+            for idx, path in enumerate(workflow_paths, 1):
+                if not isinstance(path, dict):
+                    continue
+                output = path.get("output")
+                if output is None or (isinstance(output, str) and not output.strip()):
+                    continue
+                if not path.get("path_id"):
+                    path["path_id"] = f"path_{idx}"
+                normalized_paths.append(path)
+            data["workflow_paths"] = normalized_paths
+
+        return data
 
     def _normalize_type(self, type_str: str, format_str: str) -> str:
         type_lower = (type_str or "").lower()

@@ -11,10 +11,13 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 
+RangeValue = Union[float, str]
+
+
 class PossibleValuesRange(BaseModel):
     type: Literal["range"] = "range"
-    min: Optional[float] = None
-    max: Optional[float] = None
+    min: Optional[RangeValue] = None
+    max: Optional[RangeValue] = None
     unit: Optional[str] = None
 
 
@@ -91,9 +94,9 @@ class WorkflowAnalysis(BaseModel):
 
 
 class StandardizedRange(BaseModel):
-    min: Optional[float] = None
-    max: Optional[float] = None
-    value: Optional[float] = None
+    min: Optional[RangeValue] = None
+    max: Optional[RangeValue] = None
+    value: Optional[RangeValue] = None
 
 
 StandardizedInputType = Literal["Int", "Float", "str", "bool", "date"]

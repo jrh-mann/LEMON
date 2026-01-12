@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import string
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -16,14 +15,13 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _normalize_output(output: str) -> str:
-    """Normalize output for comparison: lowercase and remove punctuation."""
-    if not isinstance(output, str):
-        return str(output) if output is not None else ""
-    # Remove all punctuation, keep alphanumeric and whitespace
-    no_punct = output.translate(str.maketrans("", "", string.punctuation))
-    # Lowercase and normalize whitespace
-    return " ".join(no_punct.lower().split())
+def _normalize_output(output: Any) -> str:
+    """Normalize output for comparison: trim surrounding whitespace."""
+    if output is None:
+        return ""
+    if isinstance(output, str):
+        return output.strip()
+    return str(output).strip()
 
 
 @dataclass(frozen=True)
@@ -62,16 +60,13 @@ class TestHarness:
 
         full_script = f"""
 import json
-import string
-
 def normalize_output(output):
-    \"\"\"Normalize output for comparison: lowercase and remove punctuation.\"\"\"
-    if not isinstance(output, str):
-        return str(output) if output is not None else ""
-    # Remove all punctuation, keep alphanumeric and whitespace
-    no_punct = output.translate(str.maketrans("", "", string.punctuation))
-    # Lowercase and normalize whitespace
-    return " ".join(no_punct.lower().split())
+    \"\"\"Normalize output for comparison: trim surrounding whitespace.\"\"\"
+    if output is None:
+        return ""
+    if isinstance(output, str):
+        return output.strip()
+    return str(output).strip()
 
 {code}
 
@@ -85,18 +80,15 @@ for tc in test_cases:
         expected_output = tc.get("expected_output")
         if expected_output is not None:
             # Normalize both for comparison
-            outcome_norm = normalize_output(outcome) if isinstance(outcome, str) else str(outcome) if outcome is not None else ""
-            expected_norm = normalize_output(expected_output) if isinstance(expected_output, str) else str(expected_output) if expected_output is not None else ""
+            outcome_norm = normalize_output(outcome)
+            expected_norm = normalize_output(expected_output)
             passed = outcome_norm == expected_norm
             error_msg = None if passed else f"Expected '{{expected_output}}', got '{{outcome}}'"
         else:
             # Check against valid outputs (normalized)
-            if isinstance(outcome, str):
-                outcome_norm = normalize_output(outcome)
-                valid_norm = [normalize_output(v) for v in valid_outputs]
-                passed = outcome_norm in valid_norm
-            else:
-                passed = outcome in valid_outputs
+            outcome_norm = normalize_output(outcome)
+            valid_norm = [normalize_output(v) for v in valid_outputs]
+            passed = outcome_norm in valid_norm
             error_msg = None if passed else f"Invalid output: '{{outcome}}'"
         results.append({{"passed": passed, "error": error_msg}})
     except Exception as e:
