@@ -461,7 +461,86 @@ h1 {
 }
 
 .message-body {
-  white-space: pre-wrap;
+  white-space: normal;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.message-body p {
+  margin: 0 0 10px;
+}
+
+.message-body ul,
+.message-body ol {
+  margin: 6px 0 10px;
+  padding-left: 22px;
+}
+
+.message-body li {
+  margin: 4px 0;
+}
+
+.message-body h1,
+.message-body h2,
+.message-body h3,
+.message-body h4,
+.message-body h5,
+.message-body h6 {
+  margin: 10px 0 6px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.message-body h1 {
+  font-size: 1.2rem;
+}
+
+.message-body h2 {
+  font-size: 1.15rem;
+}
+
+.message-body h3 {
+  font-size: 1.1rem;
+}
+
+.message-body blockquote {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 3px solid rgba(31, 110, 104, 0.4);
+  color: var(--muted);
+}
+
+.message-body code {
+  font-family: "IBM Plex Mono", "Consolas", monospace;
+  font-size: 0.9rem;
+  background: rgba(31, 110, 104, 0.08);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.message-body pre {
+  background: rgba(31, 110, 104, 0.06);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+.message-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.message-body hr {
+  border: none;
+  border-top: 1px solid var(--edge);
+  margin: 12px 0;
+}
+
+.message-body a {
+  color: var(--teal);
+  text-decoration: underline;
 }
 
 .message-stage {

@@ -95,6 +95,11 @@ Then, output your analysis in the following JSON format:
 {
   "workflow_description": "Brief description of what this workflow does",
   "domain": "The domain/field this workflow operates in (e.g., healthcare, finance)",
+  "analysis_meta": {
+    "ambiguities": ["List any ambiguous or unclear elements in the diagram"],
+    "questions": ["Specific questions you need answered to clarify the workflow"],
+    "warnings": ["Potential inconsistencies or missing labels noticed"]
+  },
   "inputs": [
     {
       "name": "input_name",
@@ -148,6 +153,8 @@ Then, output your analysis in the following JSON format:
 }
 
 CRITICAL REQUIREMENTS:
+- If anything is ambiguous or unclear, populate analysis_meta.questions and analysis_meta.ambiguities.
+- If nothing is ambiguous, use empty lists for analysis_meta fields.
 - Be EXTREMELY thorough in identifying ALL possible input values and ranges (this is critical for generating test cases)
 - For numeric inputs, identify exact thresholds, ranges, and units - EVERY numeric input must have min/max
 - For categorical inputs, list ALL possible values

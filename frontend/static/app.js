@@ -119,6 +119,153 @@ function hideVisible(el) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderMarkdown(text) {
+  if (!text) return "";
+  const lines = String(text).split(/\r?\n/);
+  const output = [];
+  let inCode = false;
+  let listType = null;
+  let paragraph = [];
+  let inBlockquote = false;
+  let blockquoteLines = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    output.push(`<p>${paragraph.join("<br>")}</p>`);
+    paragraph = [];
+  };
+
+  const flushBlockquote = () => {
+    if (!inBlockquote) return;
+    if (blockquoteLines.length) {
+      output.push(`<blockquote><p>${blockquoteLines.join("<br>")}</p></blockquote>`);
+    }
+    inBlockquote = false;
+    blockquoteLines = [];
+  };
+
+  const closeList = () => {
+    if (!listType) return;
+    output.push(`</${listType}>`);
+    listType = null;
+  };
+
+  const inlineFormat = (value) => {
+    const escaped = escapeHtml(value);
+    let formatted = escaped
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => {
+      const safeUrl = url.trim();
+      if (!/^https?:\/\//i.test(safeUrl)) {
+        return label;
+      }
+      return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    });
+    return formatted;
+  };
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trimEnd();
+    if (line.startsWith("```")) {
+      flushParagraph();
+      closeList();
+      flushBlockquote();
+      if (!inCode) {
+        output.push("<pre><code>");
+        inCode = true;
+      } else {
+        output.push("</code></pre>");
+        inCode = false;
+      }
+      return;
+    }
+
+    if (inCode) {
+      output.push(`${escapeHtml(rawLine)}\n`);
+      return;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      closeList();
+      flushBlockquote();
+      return;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      closeList();
+      flushBlockquote();
+      const level = Math.min(6, headingMatch[1].length);
+      output.push(`<h${level}>${inlineFormat(headingMatch[2])}</h${level}>`);
+      return;
+    }
+
+    if (/^([-*_])\1\1+\s*$/.test(line.trim())) {
+      flushParagraph();
+      closeList();
+      flushBlockquote();
+      output.push("<hr />");
+      return;
+    }
+
+    if (line.trim().startsWith(">")) {
+      flushParagraph();
+      closeList();
+      if (!inBlockquote) {
+        inBlockquote = true;
+        blockquoteLines = [];
+      }
+      blockquoteLines.push(inlineFormat(line.replace(/^>\s?/, "")));
+      return;
+    }
+
+    if (inBlockquote) {
+      flushBlockquote();
+    }
+
+    const unordered = line.match(/^\s*[-*]\s+(.*)$/);
+    const ordered = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const desired = unordered ? "ul" : "ol";
+      if (listType !== desired) {
+        closeList();
+        listType = desired;
+        output.push(`<${listType}>`);
+      }
+      const itemText = unordered ? unordered[1] : ordered[1];
+      output.push(`<li>${inlineFormat(itemText)}</li>`);
+      return;
+    }
+
+    if (listType) {
+      closeList();
+    }
+    paragraph.push(inlineFormat(line));
+  });
+
+  flushParagraph();
+  closeList();
+  flushBlockquote();
+  if (inCode) {
+    output.push("</code></pre>");
+  }
+  return output.join("");
+}
+
 function renderMessage(msg) {
   if (!shouldRenderMessage(msg)) {
     return;
@@ -130,7 +277,7 @@ function renderMessage(msg) {
   meta.textContent = msg.role === "user" ? "You" : "Orchestrator";
   const body = document.createElement("div");
   body.className = "message-body";
-  body.textContent = msg.content;
+  body.innerHTML = renderMarkdown(msg.content);
   wrapper.append(meta, body);
   thread.append(wrapper);
 }

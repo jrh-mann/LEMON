@@ -229,6 +229,22 @@ class WorkflowAnalyzer:
         if not isinstance(data, dict):
             return data
 
+        analysis_meta = data.get("analysis_meta")
+        if not isinstance(analysis_meta, dict):
+            analysis_meta = {}
+        for key in ("ambiguities", "questions", "warnings"):
+            value = analysis_meta.get(key)
+            if value is None:
+                analysis_meta[key] = []
+                continue
+            if isinstance(value, list):
+                cleaned = [str(item).strip() for item in value if str(item).strip()]
+                analysis_meta[key] = cleaned
+                continue
+            text = str(value).strip()
+            analysis_meta[key] = [text] if text else []
+        data["analysis_meta"] = analysis_meta
+
         inputs = data.get("inputs")
         if isinstance(inputs, list):
             for inp in inputs:

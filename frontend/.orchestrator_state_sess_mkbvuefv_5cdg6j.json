@@ -1,0 +1,89 @@
+{
+  "stage": "idle",
+  "revision": 0,
+  "conversation": [
+    {
+      "id": "3f38d48f-d22a-4598-b6b1-8a3b62141d95",
+      "role": "user",
+      "content": "Uploaded workflow image: workflow_test.jpeg",
+      "ts": 1768267313.2297652,
+      "tags": [
+        "upload"
+      ]
+    },
+    {
+      "id": "f6680272-5536-4c40-9238-d8dbfb63df95",
+      "role": "orchestrator",
+      "content": "Workflow image uploaded. Ask me to analyze it when you are ready.",
+      "ts": 1768267313.2317824,
+      "tags": [
+        "upload"
+      ]
+    },
+    {
+      "id": "88c49064-dcac-494e-98d4-df53e291ea2a",
+      "role": "user",
+      "content": "yes analyse",
+      "ts": 1768267319.4899282,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "71b213de-3ae0-43b1-b7e3-71fb98d4055a",
+      "role": "orchestrator",
+      "content": "Analyzing the uploaded workflow image to extract inputs and outputs.",
+      "ts": 1768267330.27168,
+      "tags": [
+        "chat"
+      ]
+    },
+    {
+      "id": "3da1db61-6534-4424-a48c-f8140913c9a9",
+      "role": "orchestrator",
+      "content": "Analyzing the workflow diagram.",
+      "ts": 1768267330.284304,
+      "tags": [
+        "analysis"
+      ]
+    },
+    {
+      "id": "6d6ba5b3-747f-41cc-a899-5e11c224b541",
+      "role": "orchestrator",
+      "content": "Analysis failed. APIConnectionError: Connection error.",
+      "ts": 1768267882.7380455,
+      "tags": [
+        "error"
+      ]
+    }
+  ],
+  "analysis": null,
+  "inputs": [],
+  "outputs": [],
+  "iterations": [],
+  "test_progress": {
+    "current": 0,
+    "total": 0,
+    "percent": 0
+  },
+  "workflow_image": "C:\\Users\\jeetu\\OneDrive\\Documents\\VSCode\\LEMON\\frontend\\runs\\workflow_662c5e68ea\\workflow.jpeg",
+  "workflow_name": "workflow",
+  "run_id": "662c5e68ea",
+  "run_dir": "C:\\Users\\jeetu\\OneDrive\\Documents\\VSCode\\LEMON\\frontend\\runs\\workflow_662c5e68ea",
+  "generated_code_path": null,
+  "last_feedback": null,
+  "flowchart": {
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "label": "Start",
+        "x": 160,
+        "y": 120,
+        "color": "teal"
+      }
+    ],
+    "edges": []
+  },
+  "flowchart_messages": []
+}

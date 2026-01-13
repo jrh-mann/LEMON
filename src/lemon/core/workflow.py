@@ -77,6 +77,12 @@ class WorkflowPath(BaseModel):
     output: str
 
 
+class AnalysisMeta(BaseModel):
+    ambiguities: List[str] = Field(default_factory=list)
+    questions: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 class WorkflowAnalysis(BaseModel):
     """Full structured analysis of a workflow diagram."""
 
@@ -86,6 +92,7 @@ class WorkflowAnalysis(BaseModel):
     decision_points: List[DecisionPoint] = Field(default_factory=list)
     outputs: List[WorkflowOutput] = Field(default_factory=list)
     workflow_paths: List[WorkflowPath] = Field(default_factory=list)
+    analysis_meta: AnalysisMeta = Field(default_factory=AnalysisMeta)
 
 
 # ---------------------------------------------------------------------------

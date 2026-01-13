@@ -554,6 +554,7 @@ def _run_analysis(session_id: str, *, feedback: Optional[str]) -> None:
                 "outputs": outputs,
                 "revision": revision,
                 "flowchart": flowchart_payload,
+                "analysis_meta": analysis_payload.get("analysis_meta", {}),
             },
         )
         _set_stage(ctx, "awaiting_approval")
@@ -563,6 +564,9 @@ def _run_analysis(session_id: str, *, feedback: Optional[str]) -> None:
             "Analysis ready. Review inputs and outputs, then approve or ask for refinement.",
             tags=["analysis"],
         )
+        meta_message = _format_analysis_meta(analysis.analysis_meta)
+        if meta_message:
+            _append_message(ctx, "orchestrator", meta_message, tags=["analysis", "clarify"])
         _emit(ctx, "approval_requested", {"revision": revision})
     except Exception as exc:
         logger.exception("Analysis failed")
@@ -676,6 +680,44 @@ def _summarize_analysis_failure(error_text: str) -> tuple[str, list[str]]:
         + " Reply with clarification and ask me to analyze again."
     )
     return message, issues
+
+
+def _format_analysis_meta(meta: Any) -> Optional[str]:
+    if not meta:
+        return None
+
+    def _clean_list(value: Any) -> List[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if value is None:
+            return []
+        text = str(value).strip()
+        return [text] if text else []
+
+    ambiguities = _clean_list(getattr(meta, "ambiguities", None) if not isinstance(meta, dict) else meta.get("ambiguities"))
+    questions = _clean_list(getattr(meta, "questions", None) if not isinstance(meta, dict) else meta.get("questions"))
+    warnings = _clean_list(getattr(meta, "warnings", None) if not isinstance(meta, dict) else meta.get("warnings"))
+
+    if not (ambiguities or questions or warnings):
+        return None
+
+    lines = ["I spotted a few ambiguities in the diagram.", ""]
+
+    def add_section(label: str, items: List[str]) -> None:
+        if not items:
+            return
+        lines.append(f"### {label}")
+        lines.extend([f"- {item}" for item in items])
+        lines.append("")
+
+    add_section("Ambiguities", ambiguities)
+    add_section("Questions", questions)
+    add_section("Warnings", warnings)
+
+    while lines and not lines[-1].strip():
+        lines.pop()
+    lines.append("Reply with clarification or ask me to refine the analysis.")
+    return "\n".join(lines)
 
 
 def _run_orchestrator(session_id: str) -> None:

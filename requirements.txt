@@ -1,26 +1,17 @@
-# Core runtime deps (pinned)
+# Core runtime deps (slimmed for app service)
 openai==1.58.1
 requests==2.32.3
 anthropic==0.50.0
 python-dotenv==1.0.1
 Pillow==10.4.0
-numpy==1.26.4
-pandas==2.2.2
-scikit-learn==1.5.1
-matplotlib==3.9.2
 e2b-code-interpreter
+tqdm==4.66.5
 
-# New core package deps
+# Core package deps
 pydantic==2.8.2
 pydantic-settings==2.4.0
 
 # Frontend/backend runtime deps
 Flask==3.0.3
 flask-cors==4.0.1
-
-# Dev deps
-pytest==8.3.2
-black==24.8.0
-isort==5.13.2
-mypy==1.11.2
-tqdm==4.66.5
+gunicorn==22.0.0
