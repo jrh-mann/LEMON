@@ -33,3 +33,52 @@ class CodeGenerationError(LEMONException):
 
 class TestExecutionError(LEMONException):
     """Raised when sandbox execution or scoring fails."""
+
+
+# -----------------------------------------------------------------------------
+# V2 Exceptions (Block-based workflows)
+# -----------------------------------------------------------------------------
+
+
+class WorkflowNotFoundError(LEMONException):
+    """Raised when a workflow is not found in the repository."""
+
+
+class WorkflowValidationError(LEMONException):
+    """Raised when a workflow fails validation (invalid structure)."""
+
+
+class ExecutionError(LEMONException):
+    """Raised when workflow execution fails."""
+
+
+class MissingInputError(ExecutionError):
+    """Raised when required inputs are missing during execution."""
+
+
+class InputTypeError(ExecutionError):
+    """Raised when input has wrong type during execution."""
+
+
+class InvalidConditionError(ExecutionError):
+    """Raised when a decision condition is invalid or unsafe."""
+
+
+class CircularReferenceError(ExecutionError):
+    """Raised when workflow references form a cycle."""
+
+
+class UnknownVariableError(ExecutionError):
+    """Raised when condition references an unknown variable."""
+
+
+class ValidationSessionError(LEMONException):
+    """Raised when validation session operations fail."""
+
+
+class SessionNotFoundError(ValidationSessionError):
+    """Raised when validation session is not found."""
+
+
+class SessionCompletedError(ValidationSessionError):
+    """Raised when trying to operate on a completed session."""

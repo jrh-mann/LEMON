@@ -1,1 +1,1 @@
-"""External service integrations (Anthropic, E2B, etc.)."""
+"""LEMON v2 API."""
