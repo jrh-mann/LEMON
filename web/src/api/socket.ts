@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client'
-import { getSessionId, API_BASE } from './client'
+import { getSessionId } from './client'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
@@ -12,6 +12,15 @@ import type {
 
 let socket: Socket | null = null
 
+// Get socket server URL - uses Vite proxy in dev, env var in production
+function getSocketUrl(): string {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
+  }
+  // In development with Vite proxy, connect to same origin
+  return window.location.origin
+}
+
 export function getSocket(): Socket | null {
   return socket
 }
@@ -22,8 +31,9 @@ export function connectSocket(): Socket {
   }
 
   const sessionId = getSessionId()
+  const socketUrl = getSocketUrl()
 
-  socket = io(API_BASE, {
+  socket = io(socketUrl, {
     query: { session_id: sessionId },
     transports: ['websocket', 'polling'],
     reconnection: true,

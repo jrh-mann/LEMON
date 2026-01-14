@@ -1,6 +1,8 @@
 // API client with session handling and error management
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+// In development, use Vite's proxy (empty string = same origin)
+// In production, use VITE_API_URL env var
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 // Session ID management
 const SESSION_KEY = 'lemon_session_id'
