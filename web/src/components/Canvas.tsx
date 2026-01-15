@@ -600,13 +600,27 @@ export default function Canvas() {
   }
 
   // Render edge
-  const renderEdge = (edge: { from: string; to: string; label: string }) => {
+  const renderEdge = (edge: { from: string; to: string; label: string }, edgeIndex: number) => {
     const fromNode = flowchart.nodes.find((n) => n.id === edge.from)
     const toNode = flowchart.nodes.find((n) => n.id === edge.to)
 
     if (!fromNode || !toNode) return null
 
-    const path = calculateEdgePath(fromNode, toNode)
+    // Calculate index of this edge among all edges from the same source
+    const edgesFromSameSource = flowchart.edges.filter(e => e.from === edge.from)
+    const indexFromSource = edgesFromSameSource.findIndex(e => e.from === edge.from && e.to === edge.to)
+
+    const path = calculateEdgePath(fromNode, toNode, edge.label, indexFromSource)
+
+    // Calculate label position along the path (closer to source for decision outputs)
+    let labelX = (fromNode.x + toNode.x) / 2
+    let labelY = (fromNode.y + toNode.y) / 2 - 8
+
+    // For decision node outputs, position label closer to the source
+    if (fromNode.type === 'decision' && edge.label) {
+      labelX = fromNode.x + (toNode.x - fromNode.x) * 0.3
+      labelY = fromNode.y + (toNode.y - fromNode.y) * 0.3 - 8
+    }
 
     return (
       <g key={`${edge.from}-${edge.to}`} className="flow-edge">
@@ -619,8 +633,8 @@ export default function Canvas() {
         />
         {edge.label && (
           <text
-            x={(fromNode.x + toNode.x) / 2}
-            y={(fromNode.y + toNode.y) / 2 - 8}
+            x={labelX}
+            y={labelY}
             textAnchor="middle"
             fontSize="11"
             fill="var(--muted)"
@@ -857,6 +871,17 @@ export default function Canvas() {
       })
     }
 
+    // Auto-assign Yes/No labels to decision node outputs that don't have labels
+    const decisionNodes = newNodes.filter(n => n.type === 'decision')
+    decisionNodes.forEach(decNode => {
+      const outEdges = newEdges.filter(e => e.from === decNode.id)
+      if (outEdges.length >= 2) {
+        // Assign Yes/No to first two edges if they don't have labels
+        if (!outEdges[0].label) outEdges[0].label = 'Yes'
+        if (!outEdges[1].label) outEdges[1].label = 'No'
+      }
+    })
+
     setFlowchart({ nodes: newNodes, edges: newEdges })
     pushHistory()
   }, [flowchart, setFlowchart, pushHistory])
@@ -973,7 +998,7 @@ export default function Canvas() {
 
           {/* Edges layer */}
           <g id="edgeLayer">
-            {flowchart.edges.map(renderEdge)}
+            {flowchart.edges.map((edge, idx) => renderEdge(edge, idx))}
           </g>
 
           {/* Nodes layer */}

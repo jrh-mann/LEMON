@@ -252,54 +252,104 @@ export function getConnectionPoint(
   }
 }
 
+// Get connection point on decision diamond
+// Diamond points: top, right, bottom, left (clockwise from top)
+export function getDecisionConnectionPoint(
+  node: FlowNode,
+  position: 'top' | 'bottom' | 'bottom-left' | 'bottom-right'
+): { x: number; y: number } {
+  const size = getNodeSize(node.type)
+  const cx = node.x
+  const cy = node.y
+  const halfW = size.w / 2
+  const halfH = size.h / 2
+
+  switch (position) {
+    case 'top':
+      // Top point of diamond
+      return { x: cx, y: cy - halfH }
+    case 'bottom':
+      // Bottom point of diamond
+      return { x: cx, y: cy + halfH }
+    case 'bottom-left':
+      // Halfway down the left diagonal edge (between left point and bottom point)
+      return { x: cx - halfW / 2, y: cy + halfH / 2 }
+    case 'bottom-right':
+      // Halfway down the right diagonal edge (between right point and bottom point)
+      return { x: cx + halfW / 2, y: cy + halfH / 2 }
+  }
+}
+
 // Calculate edge path between two nodes
+// edgeLabel: used for decision nodes to determine output position (Yes/No/other)
+// edgeIndex: the index of this edge among all edges from the same source (0-based)
 export function calculateEdgePath(
   fromNode: FlowNode,
-  toNode: FlowNode
+  toNode: FlowNode,
+  edgeLabel?: string,
+  edgeIndex?: number
 ): string {
-  // Determine best connection points based on relative positions
-  let fromDir: 'top' | 'bottom' | 'left' | 'right'
-  let toDir: 'top' | 'bottom' | 'left' | 'right'
+  let fromPoint: { x: number; y: number }
+  let toPoint: { x: number; y: number }
 
-  const dx = toNode.x - fromNode.x
-  const dy = toNode.y - fromNode.y
+  // Special handling for decision nodes
+  if (fromNode.type === 'decision') {
+    // Decision output: Yes = bottom-left, No = bottom-right, 3rd = bottom center
+    const label = (edgeLabel || '').toLowerCase().trim()
 
-  // Prefer vertical connections (top/bottom)
-  if (Math.abs(dy) > Math.abs(dx) * 0.5) {
-    if (dy > 0) {
-      fromDir = 'bottom'
-      toDir = 'top'
+    if (label === 'yes' || label === 'y' || edgeIndex === 0) {
+      fromPoint = getDecisionConnectionPoint(fromNode, 'bottom-left')
+    } else if (label === 'no' || label === 'n' || edgeIndex === 1) {
+      fromPoint = getDecisionConnectionPoint(fromNode, 'bottom-right')
     } else {
-      fromDir = 'top'
-      toDir = 'bottom'
+      // Third option or unlabeled - use bottom center
+      fromPoint = getDecisionConnectionPoint(fromNode, 'bottom')
     }
   } else {
-    // Horizontal connections
-    if (dx > 0) {
-      fromDir = 'right'
-      toDir = 'left'
+    // Normal node - determine exit point based on relative position
+    const dx = toNode.x - fromNode.x
+    const dy = toNode.y - fromNode.y
+
+    let fromDir: 'top' | 'bottom' | 'left' | 'right'
+    if (Math.abs(dy) > Math.abs(dx) * 0.5) {
+      fromDir = dy > 0 ? 'bottom' : 'top'
     } else {
-      fromDir = 'left'
-      toDir = 'right'
+      fromDir = dx > 0 ? 'right' : 'left'
     }
+    fromPoint = getConnectionPoint(fromNode, fromDir)
   }
 
-  const fromPoint = getConnectionPoint(fromNode, fromDir)
-  const toPoint = getConnectionPoint(toNode, toDir)
+  // Special handling for entering decision nodes - always enter from top
+  if (toNode.type === 'decision') {
+    toPoint = getDecisionConnectionPoint(toNode, 'top')
+  } else {
+    // Normal node - determine entry point based on relative position
+    const dx = toNode.x - fromNode.x
+    const dy = toNode.y - fromNode.y
+
+    let toDir: 'top' | 'bottom' | 'left' | 'right'
+    if (Math.abs(dy) > Math.abs(dx) * 0.5) {
+      toDir = dy > 0 ? 'top' : 'bottom'
+    } else {
+      toDir = dx > 0 ? 'left' : 'right'
+    }
+    toPoint = getConnectionPoint(toNode, toDir)
+  }
 
   // Create curved path
   const midY = (fromPoint.y + toPoint.y) / 2
+  const midX = (fromPoint.x + toPoint.x) / 2
 
-  if (fromDir === 'bottom' && toDir === 'top') {
-    // Vertical path with curves
-    return `M ${fromPoint.x} ${fromPoint.y}
-            C ${fromPoint.x} ${midY}, ${toPoint.x} ${midY}, ${toPoint.x} ${toPoint.y}`
-  } else if (fromDir === 'top' && toDir === 'bottom') {
+  // Determine if this is primarily vertical or horizontal
+  const dx = Math.abs(toPoint.x - fromPoint.x)
+  const dy = Math.abs(toPoint.y - fromPoint.y)
+
+  if (dy > dx * 0.3) {
+    // Primarily vertical - use vertical bezier
     return `M ${fromPoint.x} ${fromPoint.y}
             C ${fromPoint.x} ${midY}, ${toPoint.x} ${midY}, ${toPoint.x} ${toPoint.y}`
   } else {
-    // Horizontal or diagonal - use S-curve
-    const midX = (fromPoint.x + toPoint.x) / 2
+    // Primarily horizontal - use S-curve
     return `M ${fromPoint.x} ${fromPoint.y}
             C ${midX} ${fromPoint.y}, ${midX} ${toPoint.y}, ${toPoint.x} ${toPoint.y}`
   }
