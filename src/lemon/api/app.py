@@ -570,6 +570,237 @@ def get_conversation(conversation_id):
 
 
 # -----------------------------------------------------------------------------
+# Debug/Test Endpoints
+# -----------------------------------------------------------------------------
+
+@app.route("/api/test/parse-image", methods=["POST"])
+def test_parse_image():
+    """Test endpoint to directly parse a flowchart image without the agent.
+
+    POST with JSON: {"image": "data:image/png;base64,..."}
+
+    Returns the raw parsed flowchart structure that would be sent to frontend.
+    Use this to test if the backend vision model is parsing images correctly.
+    """
+    import json as json_lib
+
+    data = request.json or {}
+    image = data.get("image")
+
+    if not image:
+        return jsonify({"error": "No image provided. Send {\"image\": \"data:image/...;base64,...\"}"}), 400
+
+    # Simple prompt to extract flowchart as JSON
+    parse_prompt = """Analyze this flowchart image and extract its structure as JSON.
+
+IMPORTANT: Read the ACTUAL TEXT visible in each box/shape in the image. Do NOT make up labels or use IDs.
+
+Return a JSON object with this exact structure:
+{
+  "nodes": [
+    {"id": "n1", "type": "start|process|decision|end", "label": "THE ACTUAL TEXT FROM THE IMAGE"},
+    ...
+  ],
+  "edges": [
+    {"from": "n1", "to": "n2", "label": "optional edge label like Yes/No"},
+    ...
+  ]
+}
+
+Node types:
+- "start" = rounded rectangle at the beginning (inputs)
+- "decision" = diamond shape (conditions/questions)
+- "process" = rectangle (actions/steps)
+- "end" = rounded rectangle at the end (outputs/results)
+
+The "label" field MUST contain the human-readable text you see in the image, not IDs or JSON.
+
+Return ONLY the JSON, no other text."""
+
+    try:
+        messages = [
+            {"role": "user", "content": [
+                {"type": "text", "text": parse_prompt},
+                {"type": "image_url", "image_url": {"url": image}},
+            ]}
+        ]
+
+        response = orchestrator._call_azure_openai(messages, [])
+        content = response["choices"][0]["message"]["content"]
+
+        # Try to parse the JSON from the response
+        # Handle markdown code blocks if present
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        try:
+            parsed = json_lib.loads(content)
+            return jsonify({
+                "success": True,
+                "raw_response": response["choices"][0]["message"]["content"],
+                "parsed_flowchart": parsed,
+            })
+        except json_lib.JSONDecodeError as e:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to parse JSON: {str(e)}",
+                "raw_response": content,
+            })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
+
+
+@app.route("/test/image-parser")
+def test_image_parser_page():
+    """Simple HTML page to test image parsing."""
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LEMON - Image Parser Test</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; }
+        h1 { color: #1f6e68; }
+        .dropzone { border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 20px 0; border-radius: 8px; }
+        .dropzone.dragover { border-color: #1f6e68; background: #f0f9f8; }
+        button { background: #1f6e68; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        button:disabled { background: #ccc; }
+        pre { background: #f5f5f5; padding: 16px; overflow: auto; border-radius: 8px; max-height: 400px; }
+        .preview { max-width: 400px; margin: 20px 0; }
+        .preview img { max-width: 100%; border: 1px solid #ddd; border-radius: 8px; }
+        .status { padding: 12px; margin: 12px 0; border-radius: 6px; }
+        .status.loading { background: #fff3cd; }
+        .status.success { background: #d4edda; }
+        .status.error { background: #f8d7da; }
+        .flowchart-preview { margin-top: 20px; padding: 20px; background: white; border: 1px solid #ddd; border-radius: 8px; }
+        .node { display: inline-block; padding: 8px 16px; margin: 4px; border-radius: 4px; }
+        .node.start { background: rgba(31, 110, 104, 0.15); border: 2px solid #1f6e68; border-radius: 20px; }
+        .node.decision { background: rgba(201, 138, 44, 0.15); border: 2px solid #c98a2c; }
+        .node.process { background: #f5f5f5; border: 1px solid #ccc; }
+        .node.end { background: rgba(62, 124, 77, 0.15); border: 2px solid #3e7c4d; border-radius: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Image Parser Test</h1>
+    <p>Upload a flowchart image to test if the backend parses it correctly.</p>
+
+    <div class="dropzone" id="dropzone">
+        <p>Drag & drop an image here, or click to select</p>
+        <input type="file" id="fileInput" accept="image/*" style="display:none">
+    </div>
+
+    <div class="preview" id="preview" style="display:none">
+        <h3>Uploaded Image:</h3>
+        <img id="previewImg">
+    </div>
+
+    <button id="parseBtn" disabled>Parse Image</button>
+
+    <div id="status" class="status" style="display:none"></div>
+
+    <div id="result" style="display:none">
+        <h3>Raw LLM Response:</h3>
+        <pre id="rawResponse"></pre>
+
+        <h3>Parsed Flowchart JSON:</h3>
+        <pre id="parsedJson"></pre>
+
+        <div class="flowchart-preview" id="flowchartPreview">
+            <h3>Node Labels (what frontend would show):</h3>
+            <div id="nodeList"></div>
+        </div>
+    </div>
+
+    <script>
+        let imageData = null;
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const previewImg = document.getElementById('previewImg');
+        const parseBtn = document.getElementById('parseBtn');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+
+        dropzone.onclick = () => fileInput.click();
+        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('dragover'); };
+        dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+        dropzone.ondrop = (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        };
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+        function handleFile(file) {
+            if (!file || !file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imageData = e.target.result;
+                previewImg.src = imageData;
+                preview.style.display = 'block';
+                parseBtn.disabled = false;
+                result.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        parseBtn.onclick = async () => {
+            if (!imageData) return;
+
+            parseBtn.disabled = true;
+            status.style.display = 'block';
+            status.className = 'status loading';
+            status.textContent = 'Parsing image... (this may take 10-30 seconds)';
+            result.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/test/parse-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    status.className = 'status success';
+                    status.textContent = 'Parsed successfully!';
+                    document.getElementById('rawResponse').textContent = data.raw_response;
+                    document.getElementById('parsedJson').textContent = JSON.stringify(data.parsed_flowchart, null, 2);
+
+                    // Show node labels
+                    const nodeList = document.getElementById('nodeList');
+                    nodeList.innerHTML = data.parsed_flowchart.nodes.map(n =>
+                        `<div class="node ${n.type}"><strong>${n.id}:</strong> ${n.label}</div>`
+                    ).join('');
+
+                    result.style.display = 'block';
+                } else {
+                    status.className = 'status error';
+                    status.textContent = 'Error: ' + data.error;
+                    document.getElementById('rawResponse').textContent = data.raw_response || 'No response';
+                    document.getElementById('parsedJson').textContent = 'Failed to parse';
+                    result.style.display = 'block';
+                }
+            } catch (err) {
+                status.className = 'status error';
+                status.textContent = 'Request failed: ' + err.message;
+            }
+
+            parseBtn.disabled = false;
+        };
+    </script>
+</body>
+</html>
+"""
+
+
+# -----------------------------------------------------------------------------
 # WebSocket Events
 # -----------------------------------------------------------------------------
 

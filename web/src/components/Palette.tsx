@@ -54,7 +54,7 @@ const BLOCKS: BlockConfig[] = [
 ]
 
 export default function Palette() {
-  const { addNode, flowchart } = useWorkflowStore()
+  const { addNode, flowchart, setFlowchart } = useWorkflowStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
 
   // Handle drag start
@@ -129,6 +129,38 @@ export default function Palette() {
           <li>Press Delete to remove selected node</li>
           <li>Cmd+Z to undo, Cmd+Shift+Z to redo</li>
         </ul>
+      </div>
+
+      <div className="sidebar-section">
+        <p className="eyebrow">DEBUG</p>
+        <button
+          className="ghost full-width"
+          onClick={() => {
+            // Sample flowchart with proper English labels (simulating what backend should return)
+            const sampleFlowchart = {
+              nodes: [
+                { id: 'n1', type: 'start' as const, label: 'Patient Arrives', x: 400, y: 100, color: 'teal' as const },
+                { id: 'n2', type: 'process' as const, label: 'Check Vitals', x: 400, y: 220, color: 'teal' as const },
+                { id: 'n3', type: 'decision' as const, label: 'Temperature > 38C?', x: 400, y: 340, color: 'amber' as const },
+                { id: 'n4', type: 'process' as const, label: 'Administer Fever Medication', x: 200, y: 460, color: 'teal' as const },
+                { id: 'n5', type: 'process' as const, label: 'Continue Monitoring', x: 600, y: 460, color: 'teal' as const },
+                { id: 'n6', type: 'end' as const, label: 'Discharge Patient', x: 400, y: 580, color: 'green' as const },
+              ],
+              edges: [
+                { from: 'n1', to: 'n2', label: '' },
+                { from: 'n2', to: 'n3', label: '' },
+                { from: 'n3', to: 'n4', label: 'Yes' },
+                { from: 'n3', to: 'n5', label: 'No' },
+                { from: 'n4', to: 'n6', label: '' },
+                { from: 'n5', to: 'n6', label: '' },
+              ],
+            }
+            setFlowchart(sampleFlowchart)
+          }}
+          title="Load a sample flowchart to test frontend rendering"
+        >
+          Load Test Flowchart
+        </button>
       </div>
     </aside>
   )
