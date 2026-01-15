@@ -635,11 +635,17 @@ def sanitize_label(value: Any) -> str:
         return ""
 
     if isinstance(value, dict):
-        # Try common keys for labels
-        for key in ['name', 'value', 'label', 'description']:
-            if key in value:
-                return sanitize_label(value[key])
-        return str(value)
+        # Try common keys for labels (prioritized order)
+        for key in ['name', 'label', 'value', 'description', 'condition', 'title', 'text']:
+            if key in value and value[key]:
+                result = sanitize_label(value[key])
+                if result:
+                    return result
+        # Fallback to id if available
+        if 'id' in value and value['id']:
+            return sanitize_label(value['id'])
+        # Last resort: return generic label instead of stringified dict
+        return "Node"
 
     # Convert anything else to string
     return str(value)
@@ -694,9 +700,11 @@ class CreateWorkflowTool(Tool):
                 name="inputs",
                 type="array",
                 description=(
-                    "List of input specifications. Each input should have: "
-                    "name, type (int/float/bool/string/enum/date), "
-                    "and optionally range (for numeric) or enum_values (for enum)"
+                    "List of input specifications. Each input MUST have: "
+                    "name (HUMAN-READABLE label like 'Patient Age' or 'eGFR Value', NOT 'input0'), "
+                    "type (int/float/bool/string/enum/date), "
+                    "and optionally range (for numeric) or enum_values (for enum). "
+                    "Example: {\"name\": \"Patient Age\", \"type\": \"int\", \"range\": {\"min\": 0, \"max\": 120}}"
                 ),
                 required=True,
             ),
@@ -704,24 +712,32 @@ class CreateWorkflowTool(Tool):
                 name="decisions",
                 type="array",
                 description=(
-                    "List of decision nodes. Each decision should have: "
-                    "id, condition (Python expression), and optionally description"
+                    "List of decision nodes. Each decision MUST have: "
+                    "id (like 'd1'), condition (Python expression like 'age >= 65'), "
+                    "and description (HUMAN-READABLE question like 'Is patient elderly?'). "
+                    "The description is REQUIRED and shown as the node label. "
+                    "Example: {\"id\": \"d1\", \"condition\": \"age >= 65\", \"description\": \"Is patient elderly?\"}"
                 ),
                 required=True,
             ),
             ToolParameter(
                 name="outputs",
                 type="array",
-                description="List of output values (strings)",
+                description=(
+                    "List of output values as HUMAN-READABLE strings describing outcomes. "
+                    "Example: [\"High risk - refer to specialist\", \"Low risk - routine monitoring\"]"
+                ),
                 required=True,
             ),
             ToolParameter(
                 name="connections",
                 type="array",
                 description=(
-                    "List of connections between blocks. Each connection should have: "
-                    "from_block (block id), to_block (block id), "
-                    "and optionally from_port ('true' or 'false' for decisions)"
+                    "List of connections between blocks (REQUIRED - workflows need connections!). "
+                    "Each connection should have: from_block (block id like 'input0' or 'd1'), "
+                    "to_block (block id), and from_port ('true' or 'false' for decision branches). "
+                    "Example: [{\"from_block\": \"input0\", \"to_block\": \"d1\"}, "
+                    "{\"from_block\": \"d1\", \"to_block\": \"output0\", \"from_port\": \"true\"}]"
                 ),
                 required=True,
             ),
@@ -987,19 +1003,36 @@ class CreateWorkflowTool(Tool):
             # Build edges - Start connects to what inputs connected to
             edges = []
 
-            for target_id in input_targets:
-                edges.append({"from": "start", "to": target_id})
+            # If no connections provided, create a simple linear flow as fallback
+            if not connections:
+                # Start → first decision (or first output if no decisions)
+                if decision_blocks:
+                    edges.append({"from": "start", "to": decision_blocks[0].id})
+                    # Chain decisions together
+                    for i in range(len(decision_blocks) - 1):
+                        edges.append({"from": decision_blocks[i].id, "to": decision_blocks[i+1].id, "label": "Yes"})
+                    # Last decision → outputs
+                    if output_blocks:
+                        last_decision = decision_blocks[-1].id
+                        edges.append({"from": last_decision, "to": output_blocks[0].id, "label": "Yes"})
+                        if len(output_blocks) > 1:
+                            edges.append({"from": last_decision, "to": output_blocks[1].id, "label": "No"})
+                elif output_blocks:
+                    edges.append({"from": "start", "to": output_blocks[0].id})
+            else:
+                for target_id in input_targets:
+                    edges.append({"from": "start", "to": target_id})
 
-            for conn in connections:
-                if conn.from_block in input_block_ids:
-                    continue  # Skip input→X edges (replaced by start→X)
+                for conn in connections:
+                    if conn.from_block in input_block_ids:
+                        continue  # Skip input→X edges (replaced by start→X)
 
-                edge = {"from": conn.from_block, "to": conn.to_block}
-                if conn.from_port == PortType.TRUE:
-                    edge["label"] = "Yes"
-                elif conn.from_port == PortType.FALSE:
-                    edge["label"] = "No"
-                edges.append(edge)
+                    edge = {"from": conn.from_block, "to": conn.to_block}
+                    if conn.from_port == PortType.TRUE:
+                        edge["label"] = "Yes"
+                    elif conn.from_port == PortType.FALSE:
+                        edge["label"] = "No"
+                    edges.append(edge)
 
             # Return data for frontend (nodes/edges for canvas)
             # But keep LLM response simple - it doesn't need to see the full structure

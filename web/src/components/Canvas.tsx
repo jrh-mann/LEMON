@@ -33,6 +33,7 @@ export default function Canvas() {
     selectNode,
     moveNode,
     addNode,
+    addEdge,
     startConnect,
     completeConnect,
     cancelConnect,
@@ -57,6 +58,16 @@ export default function Canvas() {
   const [dragStart, setDragStart] = useState<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null)
   const [dragNodeId, setDragNodeId] = useState<string | null>(null)
 
+  // Drag-to-connect state
+  const [dragConnection, setDragConnection] = useState<{
+    fromNodeId: string
+    fromDir: string
+    startX: number
+    startY: number
+    currentX: number
+    currentY: number
+  } | null>(null)
+
   // Calculate viewBox
   const viewBox = calculateViewBox(flowchart.nodes)
   const viewBoxStr = `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`
@@ -78,6 +89,50 @@ export default function Canvas() {
       return { x: svgPt.x, y: svgPt.y }
     },
     []
+  )
+
+  // Get port position relative to node center
+  const getPortPosition = (dir: string, size: { w: number; h: number }) => {
+    const halfW = size.w / 2
+    const halfH = size.h / 2
+    switch (dir) {
+      case 'top': return { x: 0, y: -halfH }
+      case 'bottom': return { x: 0, y: halfH }
+      case 'left': return { x: -halfW, y: 0 }
+      case 'right': return { x: halfW, y: 0 }
+      default: return { x: 0, y: 0 }
+    }
+  }
+
+  // Always show all 4 ports (unlimited connections)
+  const getAvailablePorts = () => {
+    return ['top', 'bottom', 'left', 'right']
+  }
+
+  // Handle port pointer down - start drag connection
+  const handlePortPointerDown = useCallback(
+    (e: React.PointerEvent, node: FlowNode, dir: string) => {
+      e.stopPropagation()
+      e.preventDefault()
+
+      const svgCoords = screenToSVG(e.clientX, e.clientY)
+      const size = getNodeSize(node.type)
+      const portPos = getPortPosition(dir, size)
+      const startX = node.x + portPos.x
+      const startY = node.y + portPos.y
+
+      setDragConnection({
+        fromNodeId: node.id,
+        fromDir: dir,
+        startX,
+        startY,
+        currentX: svgCoords.x,
+        currentY: svgCoords.y,
+      })
+
+      svgRef.current?.setPointerCapture(e.pointerId)
+    },
+    [screenToSVG]
   )
 
   // Handle pointer down on node
@@ -115,20 +170,62 @@ export default function Canvas() {
   // Handle pointer move
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      const svgCoords = screenToSVG(e.clientX, e.clientY)
+
+      // Handle drag connection preview
+      if (dragConnection) {
+        setDragConnection({
+          ...dragConnection,
+          currentX: svgCoords.x,
+          currentY: svgCoords.y,
+        })
+        return
+      }
+
+      // Handle node dragging
       if (!isDragging || !dragNodeId || !dragStart) return
 
-      const svgCoords = screenToSVG(e.clientX, e.clientY)
       const dx = svgCoords.x - dragStart.x
       const dy = svgCoords.y - dragStart.y
 
       moveNode(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection]
   )
 
   // Handle pointer up
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
+      // Handle drag connection completion
+      if (dragConnection) {
+        const svgCoords = screenToSVG(e.clientX, e.clientY)
+
+        // Find if we're over a node
+        const targetNode = flowchart.nodes.find((node) => {
+          if (node.id === dragConnection.fromNodeId) return false
+          const size = getNodeSize(node.type)
+          const halfW = size.w / 2
+          const halfH = size.h / 2
+          return (
+            svgCoords.x >= node.x - halfW &&
+            svgCoords.x <= node.x + halfW &&
+            svgCoords.y >= node.y - halfH &&
+            svgCoords.y <= node.y + halfH
+          )
+        })
+
+        if (targetNode) {
+          // Create edge
+          addEdge(dragConnection.fromNodeId, targetNode.id, '')
+          pushHistory()
+        }
+
+        setDragConnection(null)
+        svgRef.current?.releasePointerCapture(e.pointerId)
+        return
+      }
+
+      // Handle node drag end
       if (isDragging && dragNodeId) {
         pushHistory()
       }
@@ -138,7 +235,7 @@ export default function Canvas() {
       // Release pointer capture from SVG
       svgRef.current?.releasePointerCapture(e.pointerId)
     },
-    [isDragging, dragNodeId, pushHistory]
+    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge]
   )
 
   // Handle drag over (allow drop)
@@ -324,6 +421,25 @@ export default function Canvas() {
             opacity={0.5}
           />
         )}
+
+        {/* Connection ports - appear on hover */}
+        {getAvailablePorts().map((dir) => {
+          const pos = getPortPosition(dir, size)
+          return (
+            <circle
+              key={dir}
+              className="connection-port"
+              cx={pos.x}
+              cy={pos.y}
+              r={6}
+              fill="var(--paper)"
+              stroke="var(--teal)"
+              strokeWidth={2}
+              onPointerDown={(e) => handlePortPointerDown(e, node, dir)}
+              style={{ cursor: 'crosshair' }}
+            />
+          )
+        })}
       </g>
     )
   }
@@ -443,6 +559,16 @@ export default function Canvas() {
             >
               <polygon points="0 0, 10 3.5, 0 7" fill="var(--ink)" />
             </marker>
+            <marker
+              id="arrowhead-preview"
+              markerWidth="10"
+              markerHeight="7"
+              refX="10"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--teal)" />
+            </marker>
             <pattern
               id="grid"
               width="40"
@@ -471,6 +597,19 @@ export default function Canvas() {
           <g id="nodeLayer">
             {flowchart.nodes.map(renderNode)}
           </g>
+
+          {/* Preview edge during drag connection */}
+          {dragConnection && (
+            <path
+              d={`M ${dragConnection.startX} ${dragConnection.startY} L ${dragConnection.currentX} ${dragConnection.currentY}`}
+              fill="none"
+              stroke="var(--teal)"
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              markerEnd="url(#arrowhead-preview)"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
         </svg>
 
         {/* Empty state overlay */}

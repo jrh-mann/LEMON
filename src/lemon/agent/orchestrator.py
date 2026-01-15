@@ -88,6 +88,11 @@ Always use `get_current_workflow` first if you're unsure of the current state.
 
 ## Analyzing Flowchart Images
 
+**IMPORTANT**: When you see a flowchart image, you MUST:
+1. Actually READ the text visible in the image (node labels, decision questions, output names)
+2. Extract the EXACT text from each box/shape - do NOT make up generic names like "input0" or "d1"
+3. Use the actual clinical/medical terms shown in the flowchart
+
 When analyzing an uploaded image, respond with EXACTLY this format:
 
 ### Inputs
@@ -156,6 +161,17 @@ When `create_workflow` succeeds, respond with a brief, friendly confirmation lik
   ]
 }
 ```
+
+**CRITICAL FORMAT RULES:**
+- inputs: MUST have `"name"` with a readable label extracted from the image (e.g., "Patient Age", "eGFR Value") - NEVER use generic names like "input0"
+- decisions: MUST have `"description"` with the actual question/condition text from the image (e.g., "Is eGFR >= 90?") - this becomes the node label
+- outputs: Strings with the actual outcome text from the image (e.g., "Refer to nephrologist", "Continue monitoring")
+- connections: ALWAYS include connections based on the arrows in the image!
+  - Follow the arrows in the flowchart to determine connections
+  - Every decision should have both true and false paths
+  - Every path should eventually lead to an output
+
+**DO NOT** use placeholder names like "input0", "d1", "output0" as labels. Read the actual text from the flowchart image!
 
 ### Limitations
 Supports: Linear/branching decision trees, numeric comparisons, boolean logic, multiple inputs/outputs
@@ -336,7 +352,7 @@ class Orchestrator:
 
         payload = {
             "messages": messages,
-            "max_completion_tokens": 16384,  # Increased for complex workflow JSON
+            "max_completion_tokens": 64000,  # High limit for complex image analysis and workflow JSON
         }
 
         # Only include tools if we have them

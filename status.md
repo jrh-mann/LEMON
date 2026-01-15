@@ -1,5 +1,5 @@
 # Project Status
-*Last updated: 03:19:40*
+*Last updated: 03:47:23*
 
 ---
 
@@ -9,8 +9,8 @@
    - *Adding auto-layout to transform function and updating WorkflowBrowser to use it*
 🟢 **Jeet**: Fix project_summary 500 error in coordination server
    - *Locate project_summary handler and update sqlite Row access (likely .get) to safe index/key access; add small test or guard*
-🟢 **jude**: Add drag-to-connect handles on node edges
-   - *Adding connection port circles that appear on hover, with drag-to-connect functionality*
+🟢 **jude**: Fix flowchart image parsing and allow unlimited connections per node
+   - *1. Find and fix the image-to-flowchart parsing logic 2. Update getAvailablePorts to always show all 4 ports*
 
 ## Messages
 
@@ -76,6 +76,10 @@ I'm fixing all of these now. Heads up to Jude working on drag-to-connect - the c
 
 ## Recent Changes
 
+- **[MODIFIED]** Fixed flowchart parsing and unlimited node connections
+  - *Nodes now always show all 4 connection ports. Flowchart parsing improved with better label sanitization and fallback connections.*
+- **[MODIFIED]** Hardened project_summary/status/team-awareness endpoints to tolerate missing columns by adding safe column selection and row access helpers; updated summary building to use safe getters.
+  - *Project summary endpoints should no longer 500 when optional columns are missing or NULL in older DBs.*
 - **[FIXED]** Fixed preloaded workflows showing overlapping nodes by adding auto-layout detection and DAG layout algorithm to frontend
   - *Workflows loaded from the browser now automatically get proper DAG layout when their positions are all at (0,0) or overlapping*
 - **[FIXED]** Fixed 6 critical workflow rendering bugs: coordinate transform (top-left→center), node type mapping (BlockType→FlowNodeType), DAG auto-layout algorithm, edge paths, viewBox, and label sanitization
