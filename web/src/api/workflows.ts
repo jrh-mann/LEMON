@@ -2,16 +2,15 @@ import { api } from './client'
 import type {
   Workflow,
   WorkflowSummary,
-  ListWorkflowsResponse,
   SearchWorkflowsResponse,
   DomainsResponse,
   CreateWorkflowRequest,
   CreateWorkflowResponse,
 } from '../types'
 
-// List all workflows
-export async function listWorkflows(): Promise<Workflow[]> {
-  const response = await api.get<ListWorkflowsResponse>('/api/workflows')
+// List all workflows (returns summaries, not full workflows)
+export async function listWorkflows(): Promise<WorkflowSummary[]> {
+  const response = await api.get<{ workflows: WorkflowSummary[]; count: number }>('/api/workflows')
   return response.workflows
 }
 

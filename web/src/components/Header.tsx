@@ -9,7 +9,7 @@ export default function Header() {
 
   const { openModal } = useUIStore()
   const { currentWorkflow, flowchart } = useWorkflowStore()
-  const { setPendingImage, pendingImage } = useChatStore()
+  const { setPendingImage } = useChatStore()
 
   // Handle image upload - just store the image, don't auto-analyse
   const handleImageUpload = useCallback(

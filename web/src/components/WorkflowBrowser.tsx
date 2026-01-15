@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow } from '../api/workflows'
-import type { Workflow, Block } from '../types'
+import type { WorkflowSummary, Block } from '../types'
 
 export default function WorkflowBrowser() {
-  const [workflows, setWorkflows] = useState<Workflow[]>([])
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

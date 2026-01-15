@@ -8,8 +8,18 @@ import {
   calculateEdgePath,
   calculateViewBox,
   getDecisionPath,
+  generateNodeId,
 } from '../utils/canvas'
-import type { FlowNode } from '../types'
+import type { FlowNode, FlowNodeType } from '../types'
+
+// Default labels for each node type
+const DEFAULT_LABELS: Record<FlowNodeType, string> = {
+  start: 'Input',
+  end: 'Result',
+  process: 'Process',
+  decision: 'Condition?',
+  subprocess: 'Workflow',
+}
 
 export default function Canvas() {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -22,6 +32,7 @@ export default function Canvas() {
     connectFromId,
     selectNode,
     moveNode,
+    addNode,
     startConnect,
     completeConnect,
     cancelConnect,
@@ -73,6 +84,7 @@ export default function Canvas() {
   const handleNodePointerDown = useCallback(
     (e: React.PointerEvent, node: FlowNode) => {
       e.stopPropagation()
+      e.preventDefault()
 
       if (connectMode) {
         // Complete connection
@@ -94,8 +106,8 @@ export default function Canvas() {
       setIsDragging(true)
       selectNode(node.id)
 
-      // Capture pointer
-      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+      // Capture pointer on SVG for reliable tracking
+      svgRef.current?.setPointerCapture(e.pointerId)
     },
     [connectMode, connectFromId, completeConnect, screenToSVG, selectNode]
   )
@@ -123,9 +135,38 @@ export default function Canvas() {
       setIsDragging(false)
       setDragNodeId(null)
       setDragStart(null)
-      ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
+      // Release pointer capture from SVG
+      svgRef.current?.releasePointerCapture(e.pointerId)
     },
     [isDragging, dragNodeId, pushHistory]
+  )
+
+  // Handle drag over (allow drop)
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  // Handle drop from palette
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      const nodeType = e.dataTransfer.getData('text/plain') as FlowNodeType
+      if (!nodeType) return
+
+      // Convert drop coordinates to SVG coordinates
+      const svgCoords = screenToSVG(e.clientX, e.clientY)
+
+      addNode({
+        id: generateNodeId(),
+        type: nodeType,
+        label: DEFAULT_LABELS[nodeType] || 'Node',
+        x: svgCoords.x,
+        y: svgCoords.y,
+        color: 'teal',
+      })
+    },
+    [screenToSVG, addNode]
   )
 
   // Handle canvas click (deselect)
@@ -207,6 +248,16 @@ export default function Canvas() {
         onContextMenu={(e) => handleNodeContextMenu(e, node)}
         style={{ cursor: isDragging && dragNodeId === node.id ? 'grabbing' : 'grab' }}
       >
+        {/* Invisible hit area for better click/drag detection */}
+        <rect
+          x={-halfW}
+          y={-halfH}
+          width={size.w}
+          height={size.h}
+          fill="transparent"
+          stroke="none"
+        />
+
         {/* Node shape */}
         {node.type === 'decision' ? (
           <path
@@ -214,6 +265,7 @@ export default function Canvas() {
             fill="var(--paper)"
             stroke={isSelected ? color : 'var(--edge)'}
             strokeWidth={isSelected ? 2 : 1}
+            style={{ pointerEvents: 'none' }}
           />
         ) : (
           <rect
@@ -368,6 +420,8 @@ export default function Canvas() {
         id="canvasContainer"
         ref={containerRef}
         style={{ display: canvasTab === 'workflow' ? 'block' : 'none' }}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
         <svg
           ref={svgRef}

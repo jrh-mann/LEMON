@@ -23,7 +23,6 @@ export default function Chat() {
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
-  const [interimText, setInterimText] = useState('')
 
   // Voice input hook
   const {
@@ -36,11 +35,9 @@ export default function Chat() {
       // Final transcript - commit to base text
       baseTextRef.current = baseTextRef.current ? `${baseTextRef.current} ${text}` : text
       setInputValue(baseTextRef.current)
-      setInterimText('')
     },
     onInterimTranscript: (text) => {
       // Show interim results in real-time
-      setInterimText(text)
       setInputValue(baseTextRef.current ? `${baseTextRef.current} ${text}` : text)
     },
   })
@@ -85,7 +82,6 @@ export default function Chat() {
     // Clear input and reset voice base text
     setInputValue('')
     baseTextRef.current = ''
-    setInterimText('')
   }
 
   // Handle key press
