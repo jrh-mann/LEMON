@@ -83,6 +83,11 @@ export default function Canvas() {
   const [dragStart, setDragStart] = useState<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null)
   const [dragNodeId, setDragNodeId] = useState<string | null>(null)
 
+  // Pan state (for scrolling/dragging the canvas)
+  const [isPanning, setIsPanning] = useState(false)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [panStart, setPanStart] = useState<{ x: number; y: number; panX: number; panY: number } | null>(null)
+
   // Drag-to-connect state
   const [dragConnection, setDragConnection] = useState<{
     fromNodeId: string
@@ -93,9 +98,9 @@ export default function Canvas() {
     currentY: number
   } | null>(null)
 
-  // Calculate viewBox
+  // Calculate viewBox with pan offset
   const viewBox = calculateViewBox(flowchart.nodes)
-  const viewBoxStr = `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`
+  const viewBoxStr = `${viewBox.x - panOffset.x} ${viewBox.y - panOffset.y} ${viewBox.width} ${viewBox.height}`
 
   // Convert screen coords to SVG coords
   const screenToSVG = useCallback(
@@ -277,6 +282,19 @@ export default function Canvas() {
   // Handle pointer move
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      // Handle panning
+      if (isPanning && panStart) {
+        const dx = e.clientX - panStart.x
+        const dy = e.clientY - panStart.y
+        // Scale the pan based on zoom level
+        const scale = viewBox.width / (containerRef.current?.clientWidth || 1)
+        setPanOffset({
+          x: panStart.panX + dx * scale,
+          y: panStart.panY + dy * scale
+        })
+        return
+      }
+
       const svgCoords = screenToSVG(e.clientX, e.clientY)
 
       // Handle drag connection preview
@@ -299,12 +317,20 @@ export default function Canvas() {
       const newPos = checkCollision(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
       moveNode(dragNodeId, newPos.x, newPos.y)
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, checkCollision]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, checkCollision, isPanning, panStart, viewBox.width]
   )
 
   // Handle pointer up
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
+      // Handle panning end
+      if (isPanning) {
+        setIsPanning(false)
+        setPanStart(null)
+        svgRef.current?.releasePointerCapture(e.pointerId)
+        return
+      }
+
       // Handle drag connection completion
       if (dragConnection) {
         const svgCoords = screenToSVG(e.clientX, e.clientY)
@@ -344,7 +370,7 @@ export default function Canvas() {
       // Release pointer capture from SVG
       svgRef.current?.releasePointerCapture(e.pointerId)
     },
-    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge]
+    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge, isPanning]
   )
 
   // Handle drag over (allow drop)
@@ -373,6 +399,26 @@ export default function Canvas() {
       })
     },
     [screenToSVG, addNode]
+  )
+
+  // Handle canvas pointer down (start panning)
+  const handleCanvasPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      // Only start panning if clicking on background (svg or grid rect)
+      const target = e.target as SVGElement
+      if (target === svgRef.current || target.tagName === 'rect' && target.getAttribute('fill')?.includes('grid')) {
+        e.preventDefault()
+        setIsPanning(true)
+        setPanStart({
+          x: e.clientX,
+          y: e.clientY,
+          panX: panOffset.x,
+          panY: panOffset.y
+        })
+        svgRef.current?.setPointerCapture(e.pointerId)
+      }
+    },
+    [panOffset]
   )
 
   // Handle canvas click (deselect)
@@ -866,9 +912,14 @@ export default function Canvas() {
           id="flowchartCanvas"
           viewBox={viewBoxStr}
           onClick={handleCanvasClick}
+          onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}
+          style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center',
+            cursor: isPanning ? 'grabbing' : 'grab'
+          }}
         >
           <defs>
             <marker
@@ -968,7 +1019,7 @@ export default function Canvas() {
           <button className="zoom-btn" onClick={zoomIn} title="Zoom in (+)">
             +
           </button>
-          <button className="zoom-btn" onClick={resetZoom} title="Reset zoom (0)">
+          <button className="zoom-btn" onClick={() => { resetZoom(); setPanOffset({ x: 0, y: 0 }); }} title="Reset view (0)">
             <svg
               width="14"
               height="14"
