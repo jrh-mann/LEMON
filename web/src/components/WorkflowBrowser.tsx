@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow } from '../api/workflows'
-import type { WorkflowSummary, Block } from '../types'
+import { autoLayoutFlowchart } from '../utils/canvas'
+import type { WorkflowSummary, Block, FlowNode, Flowchart } from '../types'
 
 export default function WorkflowBrowser() {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
@@ -48,13 +49,13 @@ export default function WorkflowBrowser() {
       setCurrentWorkflow(workflow)
 
       // Convert workflow blocks to flowchart nodes/edges for canvas
-      const nodes = workflow.blocks.map((block) => ({
+      const nodes: FlowNode[] = workflow.blocks.map((block) => ({
         id: block.id,
         type: blockTypeToFlowType(block.type),
         label: getBlockLabel(block),
         x: block.position.x,
         y: block.position.y,
-        color: 'teal' as const,
+        color: getBlockColor(block.type),
       }))
 
       const edges = workflow.connections.map((conn) => ({
@@ -63,10 +64,31 @@ export default function WorkflowBrowser() {
         label: conn.from_port === 'default' ? '' : conn.from_port,
       }))
 
-      setFlowchart({ nodes, edges })
+      let flowchart: Flowchart = { nodes, edges }
+
+      // Check if positions are all at (0,0) or overlapping - apply auto-layout
+      const needsLayout = nodes.length > 1 && nodes.every((n) => n.x === 0 && n.y === 0)
+        || new Set(nodes.map((n) => `${n.x},${n.y}`)).size < nodes.length / 2
+
+      if (needsLayout) {
+        flowchart = autoLayoutFlowchart(flowchart)
+      }
+
+      setFlowchart(flowchart)
       closeModal()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflow')
+    }
+  }
+
+  // Get color for block type
+  function getBlockColor(blockType: string): 'teal' | 'amber' | 'green' | 'slate' | 'rose' | 'sky' {
+    switch (blockType) {
+      case 'input': return 'teal'
+      case 'decision': return 'amber'
+      case 'output': return 'green'
+      case 'workflow_ref': return 'sky'
+      default: return 'teal'
     }
   }
 

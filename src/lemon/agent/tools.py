@@ -868,54 +868,121 @@ class CreateWorkflowTool(Tool):
                 if conn.from_block in input_block_ids:
                     input_targets.add(conn.to_block)
 
-            # Auto-layout: vertical spacing
-            y_pos = 0
-            y_spacing = 120
-            x_center = 400
+            # Build initial nodes list (positions will be computed below)
+            all_nodes = []
 
-            # 1. Start node (visual entry point)
-            nodes.append({
+            # Start node (visual entry point)
+            all_nodes.append({
                 "id": "start",
                 "type": "start",
                 "label": "Start",
-                "x": x_center, "y": y_pos,
                 "color": "teal",
             })
-            y_pos += y_spacing
 
-            # 2. Input nodes as process blocks (teal)
-            for i, block in enumerate(input_blocks):
-                nodes.append({
+            # Input nodes as process blocks (teal)
+            for block in input_blocks:
+                all_nodes.append({
                     "id": block.id,
                     "type": "process",
-                    "label": sanitize_label(block.name),  # Extra safety
-                    "x": x_center, "y": y_pos,
+                    "label": sanitize_label(block.name),
                     "color": "teal",
                 })
-                y_pos += y_spacing
 
-            # 3. Decision nodes (amber) - positioned in sequence
-            for i, block in enumerate(decision_blocks):
+            # Decision nodes (amber)
+            for block in decision_blocks:
                 label = block.description if block.description else block.condition
-                nodes.append({
+                all_nodes.append({
                     "id": block.id,
                     "type": "decision",
-                    "label": sanitize_label(label),  # Extra safety
-                    "x": x_center, "y": y_pos,
+                    "label": sanitize_label(label),
                     "color": "amber",
                 })
-                y_pos += y_spacing
 
-            # 4. Output nodes as 'end' type (green) - spread horizontally
-            for i, block in enumerate(output_blocks):
-                x_offset = (i - len(output_blocks) / 2) * 200
-                nodes.append({
+            # Output nodes as 'end' type (green)
+            for block in output_blocks:
+                all_nodes.append({
                     "id": block.id,
                     "type": "end",
-                    "label": sanitize_label(block.value),  # Extra safety
-                    "x": x_center + x_offset, "y": y_pos,
+                    "label": sanitize_label(block.value),
                     "color": "green",
                 })
+
+            # Build edges list first (needed for DAG layout)
+            temp_edges = []
+            for target_id in input_targets:
+                temp_edges.append({"from": "start", "to": target_id})
+            for conn in connections:
+                if conn.from_block in input_block_ids:
+                    continue
+                temp_edges.append({"from": conn.from_block, "to": conn.to_block})
+
+            # DAG Layout Algorithm (BFS-based level assignment)
+            node_ids = {n["id"] for n in all_nodes}
+            levels = {nid: 0 for nid in node_ids}
+
+            # Propagate levels: for each edge from→to, to must be at least from+1
+            for _ in range(len(all_nodes)):
+                changed = False
+                for edge in temp_edges:
+                    from_id, to_id = edge["from"], edge["to"]
+                    if from_id in levels and to_id in levels:
+                        next_level = levels[from_id] + 1
+                        if levels[to_id] < next_level:
+                            levels[to_id] = next_level
+                            changed = True
+                if not changed:
+                    break
+
+            # Group nodes by level
+            max_level = max(levels.values()) if levels else 0
+            level_groups = [[] for _ in range(max_level + 1)]
+            node_by_id = {n["id"]: n for n in all_nodes}
+            for nid, lvl in levels.items():
+                if nid in node_by_id:
+                    level_groups[lvl].append(node_by_id[nid])
+
+            # Build incoming edges map for sorting
+            incoming = {nid: [] for nid in node_ids}
+            for edge in temp_edges:
+                if edge["to"] in incoming:
+                    incoming[edge["to"]].append(edge["from"])
+
+            # Sort nodes within each level to minimize edge crossings
+            order_index = {}
+            for level_idx, group in enumerate(level_groups):
+                if level_idx == 0:
+                    group.sort(key=lambda n: n.get("label", ""))
+                else:
+                    def sort_key(n):
+                        parents = incoming.get(n["id"], [])
+                        if not parents:
+                            return 0
+                        return sum(order_index.get(p, 0) for p in parents) / len(parents)
+                    group.sort(key=sort_key)
+                for idx, node in enumerate(group):
+                    order_index[node["id"]] = idx
+
+            # Position nodes using DAG layout
+            spacing_x = 240
+            spacing_y = 150
+            padding_x = 120
+            padding_y = 80
+
+            max_group_size = max(len(g) for g in level_groups) if level_groups else 1
+            canvas_width = max(1200, padding_x * 2 + (max_group_size - 1) * spacing_x)
+
+            nodes = []
+            for level_idx, group in enumerate(level_groups):
+                group_width = (len(group) - 1) * spacing_x
+                start_x = max(padding_x, (canvas_width - group_width) / 2)
+                y = padding_y + level_idx * spacing_y
+                for idx, node in enumerate(group):
+                    x = start_x + idx * spacing_x
+                    nodes.append({
+                        **node,
+                        "x": x,
+                        "y": y,
+                    })
 
             # Build edges - Start connects to what inputs connected to
             edges = []

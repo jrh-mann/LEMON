@@ -3,6 +3,7 @@ import { getSessionId } from './client'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
+import { transformFlowchartFromBackend, transformNodeFromBackend } from '../utils/canvas'
 import type {
   SocketChatResponse,
   SocketAgentQuestion,
@@ -96,10 +97,9 @@ export function connectSocket(): Socket {
 
     // If we got a workflow result, update canvas
     if (data.result?.nodes && data.result?.edges) {
-      workflowStore.setFlowchart({
-        nodes: data.result.nodes,
-        edges: data.result.edges,
-      })
+      // Transform backend data (top-left coords, BlockType) to frontend format (center coords, FlowNodeType)
+      const flowchart = transformFlowchartFromBackend(data.result)
+      workflowStore.setFlowchart(flowchart)
     }
 
     uiStore.setStage('idle')
@@ -128,27 +128,26 @@ export function connectSocket(): Socket {
       case 'create_workflow':
         // Full workflow created - load it
         if (data.data.nodes && data.data.edges) {
-          workflowStore.setFlowchart({
-            nodes: data.data.nodes as typeof workflowStore.flowchart.nodes,
-            edges: data.data.edges as typeof workflowStore.flowchart.edges,
-          })
+          // Transform backend data (top-left coords, BlockType) to frontend format
+          const flowchart = transformFlowchartFromBackend(data.data as { nodes: unknown[]; edges: unknown[] })
+          workflowStore.setFlowchart(flowchart)
           // Switch canvas to workflow tab to show the new workflow
           uiStore.setCanvasTab('workflow')
         }
         break
 
       case 'add_block':
-        // Single block added
+        // Single block added - transform from backend format
         if (data.data.node) {
-          const node = data.data.node as typeof workflowStore.flowchart.nodes[0]
+          const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
           workflowStore.addNode(node)
         }
         break
 
       case 'update_block':
-        // Block updated
+        // Block updated - transform from backend format
         if (data.data.node) {
-          const node = data.data.node as { id: string; [key: string]: unknown }
+          const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
           workflowStore.updateNode(node.id, node)
         }
         break
