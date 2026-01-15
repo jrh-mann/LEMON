@@ -119,6 +119,7 @@ export interface FlowNode {
 }
 
 export interface FlowEdge {
+  id?: string
   from: string
   to: string
   label: string

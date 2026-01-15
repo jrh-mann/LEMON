@@ -588,6 +588,7 @@ def handle_chat(data):
     message = data.get('message', '')
     conversation_id = data.get('conversation_id')
     image = data.get('image')
+    current_workflow_id = data.get('current_workflow_id')  # For editing context
 
     # Check if this is an answer to a pending question
     for task_id, task in background_tasks.items():
@@ -601,36 +602,7 @@ def handle_chat(data):
             })
             return
 
-    # Check if there's an image - start background analysis
-    if image:
-        task_id = str(uuid.uuid4())[:8]
-        task = BackgroundTask(id=task_id, session_id=session_id)
-        background_tasks[task_id] = task
-
-        # Get or create conversation context
-        if conversation_id:
-            context = conversation_store.get(conversation_id)
-            if context is None:
-                context = conversation_store.create()
-        else:
-            context = conversation_store.create()
-
-        # Start background analysis
-        thread = threading.Thread(
-            target=run_background_analysis,
-            args=(task, context, message, image)
-        )
-        thread.daemon = True
-        thread.start()
-
-        emit('chat_response', {
-            'response': "Starting analysis in the background. I'll ask for confirmation when I've extracted the inputs and outputs.",
-            'conversation_id': context.id,
-            'task_id': task_id,
-        })
-        return
-
-    # Normal chat - process synchronously
+    # Normal chat - process synchronously (image is passed to orchestrator for analysis)
     if conversation_id:
         context = conversation_store.get(conversation_id)
         if context is None:
@@ -638,7 +610,22 @@ def handle_chat(data):
     else:
         context = conversation_store.create()
 
-    response = orchestrator.process_message(context, message)
+    response = orchestrator.process_message(context, message, image=image, current_workflow_id=current_workflow_id)
+
+    # Check for workflow modification tools and emit events
+    workflow_edit_tools = {
+        'add_block', 'update_block', 'delete_block',
+        'connect_blocks', 'disconnect_blocks', 'create_workflow'
+    }
+
+    for tc in response.tool_calls:
+        # Only emit for successful tool calls (no 'error' key in result)
+        if tc.tool_name in workflow_edit_tools and 'error' not in tc.result:
+            # Emit workflow modification event for real-time canvas updates
+            emit('workflow_modified', {
+                'action': tc.tool_name,
+                'data': tc.result,
+            }, room=session_id)
 
     emit('chat_response', {
         'conversation_id': context.id,

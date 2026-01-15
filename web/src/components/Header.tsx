@@ -2,16 +2,16 @@ import { useRef, useCallback } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useChatStore } from '../stores/chatStore'
-import { sendChatMessage } from '../api/socket'
+import { addAssistantMessage } from '../stores/chatStore'
 
 export default function Header() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { openModal } = useUIStore()
   const { currentWorkflow, flowchart } = useWorkflowStore()
-  const { conversationId, sendUserMessage } = useChatStore()
+  const { setPendingImage, pendingImage } = useChatStore()
 
-  // Handle image upload
+  // Handle image upload - just store the image, don't auto-analyse
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
@@ -22,14 +22,15 @@ export default function Header() {
       reader.onload = () => {
         const base64 = reader.result as string
 
-        // Add user message
-        sendUserMessage(`Analyze this workflow image: ${file.name}`)
+        // Store image in state for later use
+        setPendingImage(base64, file.name)
 
-        // Send to backend via socket with image
-        sendChatMessage(
-          `Please analyze this workflow image and extract the inputs, outputs, and decision logic.`,
-          conversationId,
-          base64
+        // Add assistant message prompting user to ask for analysis
+        addAssistantMessage(
+          `Image "${file.name}" uploaded. You can now ask me to analyse it, for example:\n\n` +
+          `- "Analyse this workflow image"\n` +
+          `- "Analyse this image, focus on the decision logic for diabetic patients"\n` +
+          `- "Extract the inputs and outputs from this flowchart"`
         )
       }
       reader.readAsDataURL(file)
@@ -39,7 +40,7 @@ export default function Header() {
         fileInputRef.current.value = ''
       }
     },
-    [conversationId, sendUserMessage]
+    [setPendingImage]
   )
 
   // Handle export

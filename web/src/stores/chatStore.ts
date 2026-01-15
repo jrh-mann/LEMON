@@ -14,6 +14,10 @@ interface ChatState {
   pendingQuestion: string | null
   taskId: string | null
 
+  // Pending image for analysis (user uploads, then asks orchestrator to analyse)
+  pendingImage: string | null
+  pendingImageName: string | null
+
   // Actions
   addMessage: (message: Message) => void
   updateLastMessage: (content: string) => void
@@ -28,6 +32,10 @@ interface ChatState {
   // Agent
   setPendingQuestion: (question: string | null, taskId?: string | null) => void
   clearPendingQuestion: () => void
+
+  // Image
+  setPendingImage: (image: string | null, name?: string | null) => void
+  clearPendingImage: () => void
 
   // User message helper
   sendUserMessage: (content: string) => Message
@@ -46,6 +54,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingContent: '',
   pendingQuestion: null,
   taskId: null,
+  pendingImage: null,
+  pendingImageName: null,
 
   // Actions
   addMessage: (message) =>
@@ -85,6 +95,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearPendingQuestion: () => set({ pendingQuestion: null, taskId: null }),
 
+  // Image
+  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name }),
+  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null }),
+
   // User message helper
   sendUserMessage: (content) => {
     const message: Message = {
@@ -107,6 +121,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       pendingQuestion: null,
       taskId: null,
+      pendingImage: null,
+      pendingImageName: null,
     }),
 }))
 

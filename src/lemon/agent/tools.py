@@ -602,6 +602,49 @@ class ListDomainsTool(Tool):
 # -----------------------------------------------------------------------------
 
 
+def sanitize_label(value: Any) -> str:
+    """Ensure a value is a clean string label.
+
+    Handles cases where the LLM passes:
+    - Lists/arrays instead of strings
+    - Nested structures
+    - JSON-like strings
+    - None values
+    """
+    if value is None:
+        return ""
+
+    if isinstance(value, str):
+        # Clean up any JSON-like syntax that might be in the string
+        cleaned = value.strip()
+        # Remove surrounding brackets if they look like stringified arrays
+        if cleaned.startswith('[') and cleaned.endswith(']'):
+            try:
+                import json
+                parsed = json.loads(cleaned)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    return sanitize_label(parsed[0])
+            except (json.JSONDecodeError, TypeError):
+                pass  # Not valid JSON, use as-is
+        return cleaned
+
+    if isinstance(value, list):
+        # Take first element if it's a list
+        if len(value) > 0:
+            return sanitize_label(value[0])
+        return ""
+
+    if isinstance(value, dict):
+        # Try common keys for labels
+        for key in ['name', 'value', 'label', 'description']:
+            if key in value:
+                return sanitize_label(value[key])
+        return str(value)
+
+    # Convert anything else to string
+    return str(value)
+
+
 class CreateWorkflowTool(Tool):
     """Create a new workflow from a specification."""
 
@@ -689,8 +732,13 @@ class CreateWorkflowTool(Tool):
             Workflow, WorkflowMetadata, InputBlock, DecisionBlock, OutputBlock,
             Connection, InputType, Range, PortType, generate_id
         )
+        import logging
+        logger = logging.getLogger(__name__)
 
         try:
+            # Log incoming arguments for debugging
+            logger.info(f"create_workflow called with args: {args}")
+
             # Parse inputs - handle both dict and string formats
             input_blocks = []
             for i, inp in enumerate(args.get("inputs", [])):
@@ -698,14 +746,18 @@ class CreateWorkflowTool(Tool):
                 if isinstance(inp, str):
                     input_blocks.append(InputBlock(
                         id=f"input{i}",
-                        name=inp,
+                        name=sanitize_label(inp),
                         input_type=InputType.STRING,
                         description="",
                     ))
                     continue
 
                 # Normal dict format
-                input_type = InputType(inp.get("type", "string"))
+                input_type_str = inp.get("type", "string")
+                if isinstance(input_type_str, list):
+                    input_type_str = input_type_str[0] if input_type_str else "string"
+                input_type = InputType(input_type_str)
+
                 range_obj = None
                 if "range" in inp and inp["range"] and isinstance(inp["range"], dict):
                     range_obj = Range(
@@ -714,12 +766,12 @@ class CreateWorkflowTool(Tool):
                     )
 
                 input_blocks.append(InputBlock(
-                    id=inp.get("id", f"input{i}"),
-                    name=inp.get("name", f"input{i}"),
+                    id=sanitize_label(inp.get("id", f"input{i}")),
+                    name=sanitize_label(inp.get("name", f"input{i}")),
                     input_type=input_type,
                     range=range_obj,
                     enum_values=inp.get("enum_values"),
-                    description=inp.get("description", ""),
+                    description=sanitize_label(inp.get("description", "")),
                 ))
 
             # Parse decisions - handle both dict and string formats
@@ -729,15 +781,15 @@ class CreateWorkflowTool(Tool):
                     # Model passed just a condition string
                     decision_blocks.append(DecisionBlock(
                         id=f"d{i+1}",
-                        condition=dec,
+                        condition=sanitize_label(dec),
                         description="",
                     ))
                     continue
 
                 decision_blocks.append(DecisionBlock(
-                    id=dec.get("id", f"d{i+1}"),
-                    condition=dec.get("condition", "True"),
-                    description=dec.get("description", ""),
+                    id=sanitize_label(dec.get("id", f"d{i+1}")),
+                    condition=sanitize_label(dec.get("condition", "True")),
+                    description=sanitize_label(dec.get("description", "")),
                 ))
 
             # Parse outputs
@@ -746,13 +798,13 @@ class CreateWorkflowTool(Tool):
                 if isinstance(out, str):
                     output_blocks.append(OutputBlock(
                         id=f"output{i}",
-                        value=out,
+                        value=sanitize_label(out),
                     ))
                 else:
                     output_blocks.append(OutputBlock(
-                        id=out.get("id", f"output{i}"),
-                        value=out["value"],
-                        description=out.get("description", ""),
+                        id=sanitize_label(out.get("id", f"output{i}")),
+                        value=sanitize_label(out.get("value", out)),
+                        description=sanitize_label(out.get("description", "")),
                     ))
 
             # Parse connections - handle various formats
@@ -781,14 +833,21 @@ class CreateWorkflowTool(Tool):
                 ))
 
             # Create workflow
-            workflow_name = args.get("name") or "Untitled Workflow"
+            workflow_name = sanitize_label(args.get("name")) or "Untitled Workflow"
+            workflow_description = sanitize_label(args.get("description", ""))
+            workflow_domain = sanitize_label(args.get("domain")) if args.get("domain") else None
+            workflow_tags = args.get("tags") or []
+            if isinstance(workflow_tags, str):
+                workflow_tags = [workflow_tags]
+            workflow_tags = [sanitize_label(t) for t in workflow_tags]
+
             workflow = Workflow(
                 id=generate_id(),
                 metadata=WorkflowMetadata(
                     name=workflow_name,
-                    description=args.get("description", ""),
-                    domain=args.get("domain"),
-                    tags=args.get("tags") or [],
+                    description=workflow_description,
+                    domain=workflow_domain,
+                    tags=workflow_tags,
                 ),
                 blocks=input_blocks + decision_blocks + output_blocks,
                 connections=connections,
@@ -797,7 +856,9 @@ class CreateWorkflowTool(Tool):
             # Save to repository
             self.repository.save(workflow)
 
-            # Build node list for frontend (positions set by frontend autoLayout)
+            # Build node list for frontend
+            # Frontend FlowNodeType: 'start' | 'process' | 'decision' | 'subprocess' | 'end'
+            # Frontend FlowNodeColor: 'teal' | 'amber' | 'green' | 'slate' | 'rose' | 'sky'
             nodes = []
             input_block_ids = set(b.id for b in input_blocks)
 
@@ -807,44 +868,53 @@ class CreateWorkflowTool(Tool):
                 if conn.from_block in input_block_ids:
                     input_targets.add(conn.to_block)
 
+            # Auto-layout: vertical spacing
+            y_pos = 0
+            y_spacing = 120
+            x_center = 400
+
             # 1. Start node (visual entry point)
             nodes.append({
                 "id": "start",
                 "type": "start",
                 "label": "Start",
-                "x": 0, "y": 0,
+                "x": x_center, "y": y_pos,
+                "color": "teal",
             })
+            y_pos += y_spacing
 
-            # 2. Input nodes (hidden from canvas, shown in sidebar)
-            for block in input_blocks:
+            # 2. Input nodes as process blocks (teal)
+            for i, block in enumerate(input_blocks):
                 nodes.append({
                     "id": block.id,
-                    "type": "input",
-                    "label": block.name,
-                    "x": 0, "y": 0,
-                    "description": block.description,
-                    "dataType": block.input_type.value,
-                    "range": {"min": block.range.min, "max": block.range.max} if block.range else None,
-                    "enumValues": block.enum_values,
+                    "type": "process",
+                    "label": sanitize_label(block.name),  # Extra safety
+                    "x": x_center, "y": y_pos,
+                    "color": "teal",
                 })
+                y_pos += y_spacing
 
-            # 3. Decision nodes
-            for block in decision_blocks:
+            # 3. Decision nodes (amber) - positioned in sequence
+            for i, block in enumerate(decision_blocks):
+                label = block.description if block.description else block.condition
                 nodes.append({
                     "id": block.id,
                     "type": "decision",
-                    "label": block.description or block.condition,
-                    "x": 0, "y": 0,
-                    "condition": block.condition,
+                    "label": sanitize_label(label),  # Extra safety
+                    "x": x_center, "y": y_pos,
+                    "color": "amber",
                 })
+                y_pos += y_spacing
 
-            # 4. Output nodes
-            for block in output_blocks:
+            # 4. Output nodes as 'end' type (green) - spread horizontally
+            for i, block in enumerate(output_blocks):
+                x_offset = (i - len(output_blocks) / 2) * 200
                 nodes.append({
                     "id": block.id,
-                    "type": "output",
-                    "label": block.value,
-                    "x": 0, "y": 0,
+                    "type": "end",
+                    "label": sanitize_label(block.value),  # Extra safety
+                    "x": x_center + x_offset, "y": y_pos,
+                    "color": "green",
                 })
 
             # Build edges - Start connects to what inputs connected to
@@ -864,6 +934,8 @@ class CreateWorkflowTool(Tool):
                     edge["label"] = "No"
                 edges.append(edge)
 
+            # Return data for frontend (nodes/edges for canvas)
+            # But keep LLM response simple - it doesn't need to see the full structure
             return ToolResult(
                 success=True,
                 data={
@@ -872,13 +944,895 @@ class CreateWorkflowTool(Tool):
                     "description": workflow.metadata.description,
                     "domain": workflow.metadata.domain,
                     "tags": workflow.metadata.tags,
+                    "input_count": len(input_blocks),
+                    "decision_count": len(decision_blocks),
+                    "output_count": len(output_blocks),
+                    # Frontend-only data (not echoed to LLM in message)
                     "nodes": nodes,
                     "edges": edges,
-                    "message": f"Workflow '{workflow.metadata.name}' created successfully.",
                 },
             )
         except Exception as e:
             return ToolResult(success=False, error=str(e))
+
+
+# -----------------------------------------------------------------------------
+# Get Current Workflow Tool (for editing)
+# -----------------------------------------------------------------------------
+
+
+class GetCurrentWorkflowTool(Tool):
+    """Get the current state of a workflow for editing."""
+
+    def __init__(self, repository: "Repository"):
+        self.repository = repository
+
+    @property
+    def name(self) -> str:
+        return "get_current_workflow"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Get the current state of a workflow including all blocks and connections. "
+            "Use this before making edits to understand the current structure. "
+            "Returns the full workflow with nodes and edges for visualization."
+        )
+
+    @property
+    def parameters(self) -> List[ToolParameter]:
+        return [
+            ToolParameter(
+                name="workflow_id",
+                type="string",
+                description="The ID of the workflow to retrieve",
+                required=True,
+            ),
+        ]
+
+    def execute(self, args: Dict[str, Any]) -> ToolResult:
+        from lemon.core.blocks import PortType
+
+        workflow_id = args.get("workflow_id")
+        if not workflow_id:
+            return ToolResult(success=False, error="workflow_id is required")
+
+        workflow = self.repository.get(workflow_id)
+        if workflow is None:
+            return ToolResult(success=False, error=f"Workflow not found: {workflow_id}")
+
+        # Build nodes list for frontend
+        nodes = []
+
+        # Start node
+        nodes.append({
+            "id": "start",
+            "type": "start",
+            "label": "Start",
+            "x": 0, "y": 0,
+        })
+
+        # Input blocks
+        for block in workflow.input_blocks:
+            nodes.append({
+                "id": block.id,
+                "type": "input",
+                "label": block.name,
+                "x": block.position.x,
+                "y": block.position.y,
+                "description": block.description,
+                "dataType": block.input_type.value,
+                "range": {"min": block.range.min, "max": block.range.max} if block.range else None,
+                "enumValues": block.enum_values,
+            })
+
+        # Decision blocks
+        for block in workflow.decision_blocks:
+            nodes.append({
+                "id": block.id,
+                "type": "decision",
+                "label": block.description or block.condition,
+                "x": block.position.x,
+                "y": block.position.y,
+                "condition": block.condition,
+            })
+
+        # Output blocks
+        for block in workflow.output_blocks:
+            nodes.append({
+                "id": block.id,
+                "type": "output",
+                "label": block.value,
+                "x": block.position.x,
+                "y": block.position.y,
+            })
+
+        # Workflow ref blocks
+        for block in workflow.workflow_ref_blocks:
+            nodes.append({
+                "id": block.id,
+                "type": "workflow_ref",
+                "label": block.ref_name or block.ref_id,
+                "x": block.position.x,
+                "y": block.position.y,
+                "refId": block.ref_id,
+                "inputMapping": block.input_mapping,
+                "outputName": block.output_name,
+            })
+
+        # Build edges
+        edges = []
+        input_block_ids = {b.id for b in workflow.input_blocks}
+
+        # Find what inputs connect to (Start will connect to these)
+        input_targets = set()
+        for conn in workflow.connections:
+            if conn.from_block in input_block_ids:
+                input_targets.add(conn.to_block)
+
+        # Start connects to first decisions
+        for target_id in input_targets:
+            edges.append({"from": "start", "to": target_id})
+
+        # Other connections
+        for conn in workflow.connections:
+            if conn.from_block in input_block_ids:
+                continue  # Skip input connections (replaced by start)
+
+            edge = {"from": conn.from_block, "to": conn.to_block, "id": conn.id}
+            if conn.from_port == PortType.TRUE:
+                edge["label"] = "Yes"
+            elif conn.from_port == PortType.FALSE:
+                edge["label"] = "No"
+            edges.append(edge)
+
+        return ToolResult(
+            success=True,
+            data={
+                "workflow_id": workflow.id,
+                "name": workflow.metadata.name,
+                "description": workflow.metadata.description,
+                "domain": workflow.metadata.domain,
+                "tags": workflow.metadata.tags,
+                "nodes": nodes,
+                "edges": edges,
+            },
+        )
+
+
+# -----------------------------------------------------------------------------
+# Add Block Tool
+# -----------------------------------------------------------------------------
+
+
+class AddBlockTool(Tool):
+    """Add a new block to an existing workflow."""
+
+    def __init__(self, repository: "Repository"):
+        self.repository = repository
+
+    @property
+    def name(self) -> str:
+        return "add_block"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Add a new block to an existing workflow. "
+            "Supports input, decision, output, and workflow_ref block types. "
+            "Returns the created block and updated workflow state."
+        )
+
+    @property
+    def parameters(self) -> List[ToolParameter]:
+        return [
+            ToolParameter(
+                name="workflow_id",
+                type="string",
+                description="The ID of the workflow to modify",
+                required=True,
+            ),
+            ToolParameter(
+                name="block_type",
+                type="string",
+                description="Type of block to add",
+                required=True,
+                enum=["input", "decision", "output", "workflow_ref"],
+            ),
+            ToolParameter(
+                name="label",
+                type="string",
+                description="Display label for the block (name for input, value for output, description for decision)",
+                required=True,
+            ),
+            ToolParameter(
+                name="condition",
+                type="string",
+                description="Python condition expression (required for decision blocks)",
+                required=False,
+            ),
+            ToolParameter(
+                name="data_type",
+                type="string",
+                description="Data type for input blocks",
+                required=False,
+                enum=["int", "float", "bool", "string", "enum", "date"],
+            ),
+            ToolParameter(
+                name="enum_values",
+                type="array",
+                description="Possible values for enum input type",
+                required=False,
+            ),
+            ToolParameter(
+                name="range_min",
+                type="number",
+                description="Minimum value for numeric inputs",
+                required=False,
+            ),
+            ToolParameter(
+                name="range_max",
+                type="number",
+                description="Maximum value for numeric inputs",
+                required=False,
+            ),
+            ToolParameter(
+                name="ref_workflow_id",
+                type="string",
+                description="Referenced workflow ID (required for workflow_ref blocks)",
+                required=False,
+            ),
+        ]
+
+    def execute(self, args: Dict[str, Any]) -> ToolResult:
+        from lemon.core.blocks import (
+            InputBlock, DecisionBlock, OutputBlock, WorkflowRefBlock,
+            InputType, Range, generate_id
+        )
+        from datetime import datetime, timezone
+
+        workflow_id = args.get("workflow_id")
+        block_type = args.get("block_type")
+        label = args.get("label")
+
+        if not workflow_id:
+            return ToolResult(success=False, error="workflow_id is required")
+        if not block_type:
+            return ToolResult(success=False, error="block_type is required")
+        if not label:
+            return ToolResult(success=False, error="label is required")
+
+        workflow = self.repository.get(workflow_id)
+        if workflow is None:
+            return ToolResult(success=False, error=f"Workflow not found: {workflow_id}")
+
+        # Create the block based on type
+        block_id = generate_id()
+        new_block = None
+        node_data = {"id": block_id, "x": 0, "y": 0}
+
+        try:
+            if block_type == "input":
+                data_type = args.get("data_type", "string")
+                range_obj = None
+                if args.get("range_min") is not None or args.get("range_max") is not None:
+                    range_obj = Range(min=args.get("range_min"), max=args.get("range_max"))
+
+                new_block = InputBlock(
+                    id=block_id,
+                    name=label,
+                    input_type=InputType(data_type),
+                    range=range_obj,
+                    enum_values=args.get("enum_values"),
+                    description="",
+                )
+                node_data.update({
+                    "type": "input",
+                    "label": label,
+                    "dataType": data_type,
+                    "range": {"min": range_obj.min, "max": range_obj.max} if range_obj else None,
+                    "enumValues": args.get("enum_values"),
+                })
+
+            elif block_type == "decision":
+                condition = args.get("condition")
+                if not condition:
+                    return ToolResult(success=False, error="condition is required for decision blocks")
+
+                new_block = DecisionBlock(
+                    id=block_id,
+                    condition=condition,
+                    description=label,
+                )
+                node_data.update({
+                    "type": "decision",
+                    "label": label,
+                    "condition": condition,
+                })
+
+            elif block_type == "output":
+                new_block = OutputBlock(
+                    id=block_id,
+                    value=label,
+                    description="",
+                )
+                node_data.update({
+                    "type": "output",
+                    "label": label,
+                })
+
+            elif block_type == "workflow_ref":
+                ref_id = args.get("ref_workflow_id")
+                if not ref_id:
+                    return ToolResult(success=False, error="ref_workflow_id is required for workflow_ref blocks")
+
+                # Get referenced workflow name
+                ref_workflow = self.repository.get(ref_id)
+                ref_name = ref_workflow.metadata.name if ref_workflow else ref_id
+
+                new_block = WorkflowRefBlock(
+                    id=block_id,
+                    ref_id=ref_id,
+                    ref_name=ref_name,
+                    output_name="result",
+                )
+                node_data.update({
+                    "type": "workflow_ref",
+                    "label": ref_name,
+                    "refId": ref_id,
+                })
+
+            else:
+                return ToolResult(success=False, error=f"Unknown block type: {block_type}")
+
+            # Add block to workflow
+            workflow.blocks.append(new_block)
+            workflow.metadata.updated_at = datetime.now(timezone.utc)
+
+            # Save updated workflow
+            self.repository.save(workflow)
+
+            return ToolResult(
+                success=True,
+                data={
+                    "block_id": block_id,
+                    "block_type": block_type,
+                    "node": node_data,
+                    "message": f"Added {block_type} block '{label}' to workflow",
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
+# -----------------------------------------------------------------------------
+# Update Block Tool
+# -----------------------------------------------------------------------------
+
+
+class UpdateBlockTool(Tool):
+    """Update an existing block in a workflow."""
+
+    def __init__(self, repository: "Repository"):
+        self.repository = repository
+
+    @property
+    def name(self) -> str:
+        return "update_block"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Update properties of an existing block in a workflow. "
+            "Can modify labels, conditions, data types, and other block-specific properties."
+        )
+
+    @property
+    def parameters(self) -> List[ToolParameter]:
+        return [
+            ToolParameter(
+                name="workflow_id",
+                type="string",
+                description="The ID of the workflow containing the block",
+                required=True,
+            ),
+            ToolParameter(
+                name="block_id",
+                type="string",
+                description="The ID of the block to update",
+                required=True,
+            ),
+            ToolParameter(
+                name="label",
+                type="string",
+                description="New label (name for input, value for output, description for decision)",
+                required=False,
+            ),
+            ToolParameter(
+                name="condition",
+                type="string",
+                description="New condition expression (for decision blocks)",
+                required=False,
+            ),
+            ToolParameter(
+                name="data_type",
+                type="string",
+                description="New data type (for input blocks)",
+                required=False,
+                enum=["int", "float", "bool", "string", "enum", "date"],
+            ),
+            ToolParameter(
+                name="enum_values",
+                type="array",
+                description="New enum values (for enum input blocks)",
+                required=False,
+            ),
+            ToolParameter(
+                name="range_min",
+                type="number",
+                description="New minimum value (for numeric input blocks)",
+                required=False,
+            ),
+            ToolParameter(
+                name="range_max",
+                type="number",
+                description="New maximum value (for numeric input blocks)",
+                required=False,
+            ),
+        ]
+
+    def execute(self, args: Dict[str, Any]) -> ToolResult:
+        from lemon.core.blocks import InputBlock, DecisionBlock, OutputBlock, InputType, Range
+        from datetime import datetime, timezone
+
+        workflow_id = args.get("workflow_id")
+        block_id = args.get("block_id")
+
+        if not workflow_id:
+            return ToolResult(success=False, error="workflow_id is required")
+        if not block_id:
+            return ToolResult(success=False, error="block_id is required")
+
+        workflow = self.repository.get(workflow_id)
+        if workflow is None:
+            return ToolResult(success=False, error=f"Workflow not found: {workflow_id}")
+
+        # Find the block
+        block = workflow.get_block(block_id)
+        if block is None:
+            return ToolResult(success=False, error=f"Block not found: {block_id}")
+
+        # Find block index for replacement
+        block_index = None
+        for i, b in enumerate(workflow.blocks):
+            if b.id == block_id:
+                block_index = i
+                break
+
+        node_data = {"id": block_id, "x": block.position.x, "y": block.position.y}
+
+        try:
+            if isinstance(block, InputBlock):
+                # Update input block
+                name = args.get("label", block.name)
+                data_type = args.get("data_type", block.input_type.value)
+                enum_values = args.get("enum_values", block.enum_values)
+
+                range_obj = block.range
+                if args.get("range_min") is not None or args.get("range_max") is not None:
+                    range_obj = Range(
+                        min=args.get("range_min", block.range.min if block.range else None),
+                        max=args.get("range_max", block.range.max if block.range else None),
+                    )
+
+                updated_block = InputBlock(
+                    id=block_id,
+                    name=name,
+                    input_type=InputType(data_type),
+                    range=range_obj,
+                    enum_values=enum_values,
+                    description=block.description,
+                    position=block.position,
+                )
+                workflow.blocks[block_index] = updated_block
+
+                node_data.update({
+                    "type": "input",
+                    "label": name,
+                    "dataType": data_type,
+                    "range": {"min": range_obj.min, "max": range_obj.max} if range_obj else None,
+                    "enumValues": enum_values,
+                })
+
+            elif isinstance(block, DecisionBlock):
+                # Update decision block
+                condition = args.get("condition", block.condition)
+                description = args.get("label", block.description)
+
+                updated_block = DecisionBlock(
+                    id=block_id,
+                    condition=condition,
+                    description=description,
+                    position=block.position,
+                )
+                workflow.blocks[block_index] = updated_block
+
+                node_data.update({
+                    "type": "decision",
+                    "label": description or condition,
+                    "condition": condition,
+                })
+
+            elif isinstance(block, OutputBlock):
+                # Update output block
+                value = args.get("label", block.value)
+
+                updated_block = OutputBlock(
+                    id=block_id,
+                    value=value,
+                    description=block.description,
+                    position=block.position,
+                )
+                workflow.blocks[block_index] = updated_block
+
+                node_data.update({
+                    "type": "output",
+                    "label": value,
+                })
+
+            else:
+                return ToolResult(success=False, error=f"Cannot update block type: {block.type}")
+
+            workflow.metadata.updated_at = datetime.now(timezone.utc)
+            self.repository.save(workflow)
+
+            return ToolResult(
+                success=True,
+                data={
+                    "block_id": block_id,
+                    "node": node_data,
+                    "message": f"Updated block '{block_id}'",
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
+# -----------------------------------------------------------------------------
+# Delete Block Tool
+# -----------------------------------------------------------------------------
+
+
+class DeleteBlockTool(Tool):
+    """Delete a block from a workflow."""
+
+    def __init__(self, repository: "Repository"):
+        self.repository = repository
+
+    @property
+    def name(self) -> str:
+        return "delete_block"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Delete a block from a workflow. "
+            "Also removes all connections to and from the deleted block."
+        )
+
+    @property
+    def parameters(self) -> List[ToolParameter]:
+        return [
+            ToolParameter(
+                name="workflow_id",
+                type="string",
+                description="The ID of the workflow containing the block",
+                required=True,
+            ),
+            ToolParameter(
+                name="block_id",
+                type="string",
+                description="The ID of the block to delete",
+                required=True,
+            ),
+        ]
+
+    def execute(self, args: Dict[str, Any]) -> ToolResult:
+        from datetime import datetime, timezone
+
+        workflow_id = args.get("workflow_id")
+        block_id = args.get("block_id")
+
+        if not workflow_id:
+            return ToolResult(success=False, error="workflow_id is required")
+        if not block_id:
+            return ToolResult(success=False, error="block_id is required")
+
+        workflow = self.repository.get(workflow_id)
+        if workflow is None:
+            return ToolResult(success=False, error=f"Workflow not found: {workflow_id}")
+
+        # Find and remove the block
+        block = workflow.get_block(block_id)
+        if block is None:
+            return ToolResult(success=False, error=f"Block not found: {block_id}")
+
+        # Remove block
+        workflow.blocks = [b for b in workflow.blocks if b.id != block_id]
+
+        # Remove connections to/from this block
+        removed_connections = []
+        new_connections = []
+        for conn in workflow.connections:
+            if conn.from_block == block_id or conn.to_block == block_id:
+                removed_connections.append(conn.id)
+            else:
+                new_connections.append(conn)
+        workflow.connections = new_connections
+
+        workflow.metadata.updated_at = datetime.now(timezone.utc)
+        self.repository.save(workflow)
+
+        return ToolResult(
+            success=True,
+            data={
+                "deleted_block_id": block_id,
+                "removed_connection_ids": removed_connections,
+                "message": f"Deleted block '{block_id}' and {len(removed_connections)} connections",
+            },
+        )
+
+
+# -----------------------------------------------------------------------------
+# Connect Blocks Tool
+# -----------------------------------------------------------------------------
+
+
+class ConnectBlocksTool(Tool):
+    """Create a connection between two blocks."""
+
+    def __init__(self, repository: "Repository"):
+        self.repository = repository
+
+    @property
+    def name(self) -> str:
+        return "connect_blocks"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Create a connection between two blocks in a workflow. "
+            "For decision blocks, specify the port ('true' or 'false') to indicate which branch."
+        )
+
+    @property
+    def parameters(self) -> List[ToolParameter]:
+        return [
+            ToolParameter(
+                name="workflow_id",
+                type="string",
+                description="The ID of the workflow",
+                required=True,
+            ),
+            ToolParameter(
+                name="from_block_id",
+                type="string",
+                description="The ID of the source block",
+                required=True,
+            ),
+            ToolParameter(
+                name="to_block_id",
+                type="string",
+                description="The ID of the target block",
+                required=True,
+            ),
+            ToolParameter(
+                name="from_port",
+                type="string",
+                description="Port on source block: 'true', 'false', or 'default'",
+                required=False,
+                enum=["true", "false", "default"],
+            ),
+        ]
+
+    def execute(self, args: Dict[str, Any]) -> ToolResult:
+        from lemon.core.blocks import Connection, PortType
+        from datetime import datetime, timezone
+
+        workflow_id = args.get("workflow_id")
+        from_block_id = args.get("from_block_id")
+        to_block_id = args.get("to_block_id")
+        from_port = args.get("from_port", "default")
+
+        if not workflow_id:
+            return ToolResult(success=False, error="workflow_id is required")
+        if not from_block_id:
+            return ToolResult(success=False, error="from_block_id is required")
+        if not to_block_id:
+            return ToolResult(success=False, error="to_block_id is required")
+
+        workflow = self.repository.get(workflow_id)
+        if workflow is None:
+            return ToolResult(success=False, error=f"Workflow not found: {workflow_id}")
+
+        # Validate blocks exist
+        from_block = workflow.get_block(from_block_id)
+        to_block = workflow.get_block(to_block_id)
+
+        if from_block is None:
+            return ToolResult(success=False, error=f"Source block not found: {from_block_id}")
+        if to_block is None:
+            return ToolResult(success=False, error=f"Target block not found: {to_block_id}")
+
+        # Check for self-loop
+        if from_block_id == to_block_id:
+            return ToolResult(success=False, error="Cannot connect a block to itself")
+
+        # Check for duplicate connection
+        port_type = PortType(from_port.lower()) if from_port else PortType.DEFAULT
+        for conn in workflow.connections:
+            if (conn.from_block == from_block_id and
+                conn.to_block == to_block_id and
+                conn.from_port == port_type):
+                return ToolResult(success=False, error="Connection already exists")
+
+        # Create connection
+        connection = Connection(
+            from_block=from_block_id,
+            to_block=to_block_id,
+            from_port=port_type,
+        )
+        workflow.connections.append(connection)
+
+        workflow.metadata.updated_at = datetime.now(timezone.utc)
+        self.repository.save(workflow)
+
+        # Build edge data for frontend
+        edge_data = {
+            "id": connection.id,
+            "from": from_block_id,
+            "to": to_block_id,
+        }
+        if port_type == PortType.TRUE:
+            edge_data["label"] = "Yes"
+        elif port_type == PortType.FALSE:
+            edge_data["label"] = "No"
+
+        return ToolResult(
+            success=True,
+            data={
+                "connection_id": connection.id,
+                "edge": edge_data,
+                "message": f"Connected '{from_block_id}' to '{to_block_id}'",
+            },
+        )
+
+
+# -----------------------------------------------------------------------------
+# Disconnect Blocks Tool
+# -----------------------------------------------------------------------------
+
+
+class DisconnectBlocksTool(Tool):
+    """Remove a connection between two blocks."""
+
+    def __init__(self, repository: "Repository"):
+        self.repository = repository
+
+    @property
+    def name(self) -> str:
+        return "disconnect_blocks"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Remove a connection between two blocks in a workflow. "
+            "Can specify blocks and port, or connection ID directly."
+        )
+
+    @property
+    def parameters(self) -> List[ToolParameter]:
+        return [
+            ToolParameter(
+                name="workflow_id",
+                type="string",
+                description="The ID of the workflow",
+                required=True,
+            ),
+            ToolParameter(
+                name="connection_id",
+                type="string",
+                description="The ID of the connection to remove (alternative to specifying blocks)",
+                required=False,
+            ),
+            ToolParameter(
+                name="from_block_id",
+                type="string",
+                description="The ID of the source block (used with to_block_id)",
+                required=False,
+            ),
+            ToolParameter(
+                name="to_block_id",
+                type="string",
+                description="The ID of the target block (used with from_block_id)",
+                required=False,
+            ),
+            ToolParameter(
+                name="from_port",
+                type="string",
+                description="Port on source block: 'true', 'false', or 'default'",
+                required=False,
+                enum=["true", "false", "default"],
+            ),
+        ]
+
+    def execute(self, args: Dict[str, Any]) -> ToolResult:
+        from lemon.core.blocks import PortType
+        from datetime import datetime, timezone
+
+        workflow_id = args.get("workflow_id")
+        connection_id = args.get("connection_id")
+        from_block_id = args.get("from_block_id")
+        to_block_id = args.get("to_block_id")
+        from_port = args.get("from_port", "default")
+
+        if not workflow_id:
+            return ToolResult(success=False, error="workflow_id is required")
+
+        workflow = self.repository.get(workflow_id)
+        if workflow is None:
+            return ToolResult(success=False, error=f"Workflow not found: {workflow_id}")
+
+        removed_id = None
+
+        if connection_id:
+            # Remove by connection ID
+            original_count = len(workflow.connections)
+            workflow.connections = [c for c in workflow.connections if c.id != connection_id]
+            if len(workflow.connections) == original_count:
+                return ToolResult(success=False, error=f"Connection not found: {connection_id}")
+            removed_id = connection_id
+
+        elif from_block_id and to_block_id:
+            # Remove by block IDs and port
+            port_type = PortType(from_port.lower()) if from_port else PortType.DEFAULT
+            original_count = len(workflow.connections)
+
+            for conn in workflow.connections:
+                if (conn.from_block == from_block_id and
+                    conn.to_block == to_block_id and
+                    conn.from_port == port_type):
+                    removed_id = conn.id
+                    break
+
+            workflow.connections = [
+                c for c in workflow.connections
+                if not (c.from_block == from_block_id and
+                       c.to_block == to_block_id and
+                       c.from_port == port_type)
+            ]
+
+            if len(workflow.connections) == original_count:
+                return ToolResult(success=False, error="Connection not found")
+
+        else:
+            return ToolResult(
+                success=False,
+                error="Either connection_id or both from_block_id and to_block_id are required"
+            )
+
+        workflow.metadata.updated_at = datetime.now(timezone.utc)
+        self.repository.save(workflow)
+
+        return ToolResult(
+            success=True,
+            data={
+                "removed_connection_id": removed_id,
+                "message": "Connection removed",
+            },
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -895,12 +1849,25 @@ def create_tool_registry(
     """Create a tool registry with all standard tools."""
     registry = ToolRegistry()
 
+    # Search and discovery tools
     registry.register(SearchLibraryTool(search_service))
     registry.register(GetWorkflowDetailsTool(repository))
+    registry.register(ListDomainsTool(search_service))
+
+    # Execution tools
     registry.register(ExecuteWorkflowTool(repository, executor))
+
+    # Validation tools
     registry.register(StartValidationTool(session_manager))
     registry.register(SubmitValidationTool(session_manager))
-    registry.register(ListDomainsTool(search_service))
+
+    # Workflow creation and editing tools
     registry.register(CreateWorkflowTool(repository))
+    registry.register(GetCurrentWorkflowTool(repository))
+    registry.register(AddBlockTool(repository))
+    registry.register(UpdateBlockTool(repository))
+    registry.register(DeleteBlockTool(repository))
+    registry.register(ConnectBlocksTool(repository))
+    registry.register(DisconnectBlocksTool(repository))
 
     return registry

@@ -65,17 +65,30 @@ You have access to tools to:
 5. **Submit validation** - Record the user's expected output for each validation case
 6. **Create workflows** - Build new workflows from specifications (which then need validation)
 7. **List domains** - See what medical specialties have workflows available
+8. **Edit workflows** - Modify existing workflows:
+   - `get_current_workflow` - See the current state of a workflow
+   - `add_block` - Add input, decision, output, or workflow_ref blocks
+   - `update_block` - Modify a block's properties (label, condition, type)
+   - `delete_block` - Remove a block and its connections
+   - `connect_blocks` - Create edges between blocks
+   - `disconnect_blocks` - Remove edges
 
-## Analyzing Flowchart Images (Two-Phase Process)
+## Editing Workflows
 
-When given a flowchart image to analyze, use a TWO-PHASE approach:
+When the user has a workflow open and asks you to edit it, use the editing tools.
+The current workflow ID will be provided in the context. Use this ID for all editing operations.
 
-### PHASE 1: Extract & Confirm (DO THIS FIRST)
-Analyze the image and report ONLY the inputs and outputs you identified. DO NOT create the workflow yet.
+Examples of edit requests:
+- "Add an input for patient age" → use `add_block` with the current workflow ID
+- "Change the first decision to check if age > 70" → use `update_block`
+- "Connect the age check to the high-risk output" → use `connect_blocks`
+- "Delete the second decision" → use `delete_block`
 
-Format your response like this:
+Always use `get_current_workflow` first if you're unsure of the current state.
 
----
+## Analyzing Flowchart Images
+
+When analyzing an uploaded image, respond with EXACTLY this format:
 
 ### Inputs
 | Name | Type | Description |
@@ -84,18 +97,35 @@ Format your response like this:
 | Age | int | Patient age in years |
 
 ### Outputs
-- **Stage 1** - Normal kidney function
-- **Stage 2** - Mildly reduced
-- etc.
+- **Stage 1** — Normal kidney function
+- **Stage 2** — Mildly reduced
 
 ---
 
-*Please confirm these are correct, or let me know if I missed anything.*
+**Clarifications:**
 
-Wait for the user to confirm or provide corrections before proceeding.
+1. First question or ambiguity you need resolved
+2. Second question (if any)
 
-### PHASE 2: Build Workflow (ONLY AFTER CONFIRMATION)
-Once the user confirms the inputs/outputs (or says "yes", "correct", "continue", "looks good", etc.), THEN call `create_workflow` with the full structure including decisions and connections.
+Or if none: "None — ready to proceed when you confirm."
+
+IMPORTANT RULES:
+- Do NOT show decision points or internal logic — save that for workflow creation
+- Do NOT show "Key Considerations" — that's your internal reasoning
+- ALWAYS include the clarifications section after a horizontal rule
+- Use em-dashes (—) not hyphens for output descriptions
+- Keep it clean and scannable
+- If the user provided specific focus areas, silently incorporate them (don't echo them back)
+
+### After User Confirms
+Once the user confirms (says "yes", "correct", "continue", "looks good", etc.), call `create_workflow` with the full structure including decisions and connections.
+
+### After Creating a Workflow
+When `create_workflow` succeeds, respond with a brief, friendly confirmation like:
+
+"Workflow created! I've built **[Name]** with [X] inputs, [Y] decision points, and [Z] possible outputs. It's now displayed on the canvas — you can click the nodes to inspect or edit them."
+
+**IMPORTANT**: Do NOT include JSON, code blocks, or raw data in your response. The workflow is rendered visually on the canvas — the user doesn't need to see the technical structure.
 
 ### Block Types
 - **Input blocks**: Data that enters the workflow. Infer the type:
@@ -207,9 +237,18 @@ class Orchestrator:
         # Check if we have valid Azure config
         self.has_llm = bool(self.api_key and self.endpoint)
 
-    def get_system_prompt(self) -> str:
-        """Get the system prompt for the orchestrator."""
-        return SYSTEM_PROMPT
+    def get_system_prompt(self, current_workflow_id: Optional[str] = None) -> str:
+        """Get the system prompt for the orchestrator.
+
+        Args:
+            current_workflow_id: ID of the workflow currently open in the editor.
+        """
+        prompt = SYSTEM_PROMPT
+
+        if current_workflow_id:
+            prompt += f"\n\n## Current Context\n\nThe user currently has workflow `{current_workflow_id}` open in the editor. When they ask you to edit the workflow, use this ID for all editing operations (add_block, update_block, delete_block, connect_blocks, disconnect_blocks)."
+
+        return prompt
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         """Get schemas for all available tools."""
@@ -252,14 +291,20 @@ class Orchestrator:
 
         return openai_tools
 
-    def _build_messages(self, context: ConversationContext, image: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _build_messages(
+        self,
+        context: ConversationContext,
+        image: Optional[str] = None,
+        current_workflow_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """Build message history for OpenAI API.
 
         Args:
             context: Conversation context with message history.
             image: Optional base64 data URL for the current message (vision).
+            current_workflow_id: ID of workflow currently open in editor.
         """
-        messages = [{"role": "system", "content": self.get_system_prompt()}]
+        messages = [{"role": "system", "content": self.get_system_prompt(current_workflow_id)}]
 
         for i, msg in enumerate(context.messages):
             if msg.role == MessageRole.USER:
@@ -313,6 +358,7 @@ class Orchestrator:
         context: ConversationContext,
         user_message: str,
         image: Optional[str] = None,
+        current_workflow_id: Optional[str] = None,
     ) -> OrchestratorResponse:
         """Process a user message using Azure OpenAI with tools.
 
@@ -320,6 +366,7 @@ class Orchestrator:
             context: The conversation context.
             user_message: The user's message.
             image: Optional base64 data URL for vision analysis.
+            current_workflow_id: ID of workflow currently open in editor (for editing context).
 
         Returns:
             OrchestratorResponse with message, tool calls, and context updates.
@@ -335,8 +382,8 @@ class Orchestrator:
             return self._process_message_simple(context, user_message, tool_calls_list, context_updates)
 
         try:
-            # Build messages and tools for OpenAI (pass image for vision)
-            messages = self._build_messages(context, image=image)
+            # Build messages and tools for OpenAI (pass image for vision and workflow context)
+            messages = self._build_messages(context, image=image, current_workflow_id=current_workflow_id)
             tools = self._build_openai_tools()
 
             # Call Azure OpenAI
@@ -367,11 +414,16 @@ class Orchestrator:
                         result=result.data if result.success else {"error": result.error},
                     ))
 
-                    # Add tool result message
+                    # Add tool result message (filter out large data like nodes/edges)
+                    llm_result = result.data if result.success else {"error": result.error}
+                    if isinstance(llm_result, dict):
+                        # Remove frontend-only fields that the LLM doesn't need
+                        llm_result = {k: v for k, v in llm_result.items() if k not in ("nodes", "edges")}
+
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc["id"],
-                        "content": json_serialize(result.data if result.success else {"error": result.error}),
+                        "content": json_serialize(llm_result),
                     })
 
                 # Continue conversation

@@ -118,6 +118,68 @@ export function connectSocket(): Socket {
     uiStore.setError(data.error)
   })
 
+  // Workflow modification events (from orchestrator editing tools)
+  socket.on('workflow_modified', (data: { action: string; data: Record<string, unknown> }) => {
+    console.log('[Socket] workflow_modified:', data)
+    const workflowStore = useWorkflowStore.getState()
+    const uiStore = useUIStore.getState()
+
+    switch (data.action) {
+      case 'create_workflow':
+        // Full workflow created - load it
+        if (data.data.nodes && data.data.edges) {
+          workflowStore.setFlowchart({
+            nodes: data.data.nodes as typeof workflowStore.flowchart.nodes,
+            edges: data.data.edges as typeof workflowStore.flowchart.edges,
+          })
+          // Switch canvas to workflow tab to show the new workflow
+          uiStore.setCanvasTab('workflow')
+        }
+        break
+
+      case 'add_block':
+        // Single block added
+        if (data.data.node) {
+          const node = data.data.node as typeof workflowStore.flowchart.nodes[0]
+          workflowStore.addNode(node)
+        }
+        break
+
+      case 'update_block':
+        // Block updated
+        if (data.data.node) {
+          const node = data.data.node as { id: string; [key: string]: unknown }
+          workflowStore.updateNode(node.id, node)
+        }
+        break
+
+      case 'delete_block':
+        // Block deleted
+        if (data.data.deleted_block_id) {
+          workflowStore.deleteNode(data.data.deleted_block_id as string)
+        }
+        break
+
+      case 'connect_blocks':
+        // Edge added
+        if (data.data.edge) {
+          const edge = data.data.edge as typeof workflowStore.flowchart.edges[0]
+          workflowStore.addEdge(edge)
+        }
+        break
+
+      case 'disconnect_blocks':
+        // Edge removed
+        if (data.data.removed_connection_id) {
+          workflowStore.deleteEdgeById(data.data.removed_connection_id as string)
+        }
+        break
+
+      default:
+        console.warn('[Socket] Unknown workflow action:', data.action)
+    }
+  })
+
   return socket
 }
 
@@ -142,13 +204,18 @@ export function sendChatMessage(
   }
 
   const chatStore = useChatStore.getState()
+  const workflowStore = useWorkflowStore.getState()
   chatStore.setStreaming(true)
+
+  // Include current workflow ID so orchestrator knows what to edit
+  const currentWorkflowId = workflowStore.currentWorkflow?.id
 
   sock.emit('chat', {
     session_id: getSessionId(),
     message,
     conversation_id: conversationId || undefined,
     image,
+    current_workflow_id: currentWorkflowId,
   })
 }
 

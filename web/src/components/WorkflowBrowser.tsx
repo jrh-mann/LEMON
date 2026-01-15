@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { listWorkflows, getWorkflow, getDomains } from '../api/workflows'
+import { listWorkflows, getWorkflow } from '../api/workflows'
 import type { Workflow, Block } from '../types'
 
 export default function WorkflowBrowser() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
-  const [domains, setDomains] = useState<string[]>([])
-  const [selectedDomain, setSelectedDomain] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -15,18 +13,14 @@ export default function WorkflowBrowser() {
   const { setCurrentWorkflow, setFlowchart } = useWorkflowStore()
   const { closeModal } = useUIStore()
 
-  // Load workflows and domains on mount
+  // Load workflows on mount
   useEffect(() => {
     async function loadData() {
       setIsLoading(true)
       setError(null)
       try {
-        const [workflowsData, domainsData] = await Promise.all([
-          listWorkflows(),
-          getDomains(),
-        ])
+        const workflowsData = await listWorkflows()
         setWorkflows(workflowsData)
-        setDomains(domainsData)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load workflows')
       } finally {
@@ -36,17 +30,15 @@ export default function WorkflowBrowser() {
     loadData()
   }, [])
 
-  // Filter workflows
+  // Filter workflows by search query
   const filteredWorkflows = workflows.filter((workflow) => {
-    const matchesDomain =
-      !selectedDomain || workflow.metadata.domain === selectedDomain
-    const matchesSearch =
-      !searchQuery ||
-      workflow.metadata.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      workflow.metadata.description
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase())
-    return matchesDomain && matchesSearch
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      workflow.name.toLowerCase().includes(query) ||
+      workflow.description.toLowerCase().includes(query) ||
+      workflow.domain?.toLowerCase().includes(query)
+    )
   })
 
   // Handle workflow selection
@@ -127,7 +119,7 @@ export default function WorkflowBrowser() {
 
   return (
     <div className="workflow-browser">
-      {/* Search and filter */}
+      {/* Search */}
       <div className="browser-filters">
         <input
           type="text"
@@ -136,18 +128,6 @@ export default function WorkflowBrowser() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="search-input"
         />
-        <select
-          value={selectedDomain}
-          onChange={(e) => setSelectedDomain(e.target.value)}
-          className="domain-select"
-        >
-          <option value="">All domains</option>
-          {domains.map((domain) => (
-            <option key={domain} value={domain}>
-              {domain}
-            </option>
-          ))}
-        </select>
       </div>
 
       {/* Workflow list */}
@@ -162,8 +142,8 @@ export default function WorkflowBrowser() {
               onClick={() => handleSelectWorkflow(workflow.id)}
             >
               <div className="workflow-card-header">
-                <h4>{workflow.metadata.name}</h4>
-                {workflow.metadata.is_validated && (
+                <h4>{workflow.name}</h4>
+                {workflow.is_validated && (
                   <span className="validated-badge" title="Validated">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
@@ -172,12 +152,12 @@ export default function WorkflowBrowser() {
                   </span>
                 )}
               </div>
-              <p className="workflow-description">{workflow.metadata.description}</p>
+              <p className="workflow-description">{workflow.description}</p>
               <div className="workflow-meta">
-                {workflow.metadata.domain && (
-                  <span className="domain-tag">{workflow.metadata.domain}</span>
+                {workflow.domain && (
+                  <span className="domain-tag">{workflow.domain}</span>
                 )}
-                {workflow.metadata.tags.slice(0, 3).map((tag) => (
+                {workflow.tags.slice(0, 3).map((tag) => (
                   <span key={tag} className="tag">
                     {tag}
                   </span>

@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
 import { sendChatMessage } from '../api/socket'
+import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
 export default function Chat() {
@@ -14,8 +15,44 @@ export default function Chat() {
     conversationId,
     isStreaming,
     pendingQuestion,
+    pendingImage,
+    pendingImageName,
     sendUserMessage,
+    clearPendingImage,
   } = useChatStore()
+
+  // Track the base text (before current speech session)
+  const baseTextRef = useRef('')
+  const [interimText, setInterimText] = useState('')
+
+  // Voice input hook
+  const {
+    isListening,
+    isSupported: isVoiceSupported,
+    volume,
+    toggleListening: rawToggleListening,
+  } = useVoiceInput({
+    onTranscript: (text) => {
+      // Final transcript - commit to base text
+      baseTextRef.current = baseTextRef.current ? `${baseTextRef.current} ${text}` : text
+      setInputValue(baseTextRef.current)
+      setInterimText('')
+    },
+    onInterimTranscript: (text) => {
+      // Show interim results in real-time
+      setInterimText(text)
+      setInputValue(baseTextRef.current ? `${baseTextRef.current} ${text}` : text)
+    },
+  })
+
+  // Wrap toggle to capture base text when starting
+  const toggleListening = useCallback(() => {
+    if (!isListening) {
+      // Starting - capture current input as base
+      baseTextRef.current = inputValue
+    }
+    rawToggleListening()
+  }, [isListening, inputValue, rawToggleListening])
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -39,11 +76,16 @@ export default function Chat() {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket
-    sendChatMessage(trimmed, conversationId)
+    // Send via socket - include pending image if available
+    sendChatMessage(trimmed, conversationId, pendingImage || undefined)
 
-    // Clear input
+    // Keep pending image around so user can reference it in Source Image tab
+    // Image is only cleared when user explicitly clicks × or uploads a new one
+
+    // Clear input and reset voice base text
     setInputValue('')
+    baseTextRef.current = ''
+    setInterimText('')
   }
 
   // Handle key press
@@ -63,9 +105,36 @@ export default function Chat() {
     }
   }
 
+  const [chatHeight, setChatHeight] = useState(280)
+  const isDragging = useRef(false)
+  const startY = useRef(0)
+  const startHeight = useRef(0)
+
+  // Handle resize drag
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isDragging.current = true
+    startY.current = e.clientY
+    startHeight.current = chatHeight
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging.current) return
+    const delta = startY.current - e.clientY
+    const newHeight = Math.min(Math.max(startHeight.current + delta, 150), window.innerHeight * 0.7)
+    setChatHeight(newHeight)
+  }
+
+  const handleMouseUp = () => {
+    isDragging.current = false
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+
   return (
-    <div className="chat-dock">
-      <div className="chat-resize-handle">
+    <div className="chat-dock" style={{ height: chatHeight }}>
+      <div className="chat-resize-handle" onMouseDown={handleMouseDown}>
         <div className="resize-grip"></div>
       </div>
 
@@ -117,6 +186,18 @@ export default function Chat() {
       </div>
 
       <div className="chat-input-container">
+        {pendingImage && (
+          <div className="pending-image-indicator">
+            <span>Image ready: {pendingImageName || 'uploaded image'}</span>
+            <button
+              className="clear-image-btn"
+              onClick={clearPendingImage}
+              title="Remove image"
+            >
+              ×
+            </button>
+          </div>
+        )}
         {pendingQuestion && (
           <div className="pending-question-hint">
             <span>Awaiting your response...</span>
@@ -133,7 +214,17 @@ export default function Chat() {
             onKeyDown={handleKeyDown}
             disabled={isStreaming}
           />
-          <button className="voice-btn" id="voiceBtn" title="Voice input" disabled>
+          <button
+            className={`voice-btn ${isListening ? 'listening' : ''}`}
+            id="voiceBtn"
+            title={isVoiceSupported ? (isListening ? 'Stop recording' : 'Voice input') : 'Voice not supported'}
+            onClick={toggleListening}
+            disabled={!isVoiceSupported || isStreaming}
+            style={isListening ? {
+              '--volume': volume,
+              transform: `scale(${1 + volume * 0.3})`,
+            } as React.CSSProperties : undefined}
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />

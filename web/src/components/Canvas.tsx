@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
+import { useChatStore } from '../stores/chatStore'
 import {
   getNodeSize,
   getNodeColor,
@@ -30,7 +31,15 @@ export default function Canvas() {
     pushHistory,
   } = useWorkflowStore()
 
-  const { zoom, zoomIn, zoomOut, resetZoom } = useUIStore()
+  const { zoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab } = useUIStore()
+  const { pendingImage, pendingImageName, clearPendingImage } = useChatStore()
+
+  // Auto-switch to image tab when image is uploaded
+  useEffect(() => {
+    if (pendingImage) {
+      setCanvasTab('image')
+    }
+  }, [pendingImage, setCanvasTab])
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false)
@@ -312,10 +321,54 @@ export default function Canvas() {
     <div className="canvas-area">
       {/* Workspace tabs */}
       <div className="workspace-tabs" id="workspaceTabs">
-        <button className="workspace-tab active">Workflow</button>
+        <button
+          className={`workspace-tab ${canvasTab === 'workflow' ? 'active' : ''}`}
+          onClick={() => setCanvasTab('workflow')}
+        >
+          Workflow
+        </button>
+        {pendingImage && (
+          <button
+            className={`workspace-tab ${canvasTab === 'image' ? 'active' : ''}`}
+            onClick={() => setCanvasTab('image')}
+          >
+            Source Image
+          </button>
+        )}
       </div>
 
-      <div className="canvas-container" id="canvasContainer" ref={containerRef}>
+      {/* Image preview tab */}
+      {canvasTab === 'image' && pendingImage && (
+        <div className="image-preview-container">
+          <div className="image-preview-header">
+            <span className="image-name">{pendingImageName || 'Uploaded image'}</span>
+            <button
+              className="clear-image-btn"
+              onClick={() => {
+                clearPendingImage()
+                setCanvasTab('workflow')
+              }}
+              title="Remove image"
+            >
+              ×
+            </button>
+          </div>
+          <div className="image-preview-content">
+            <img src={pendingImage} alt="Uploaded workflow" />
+          </div>
+          <div className="image-preview-hint">
+            Ask the orchestrator to analyse this image in the chat below
+          </div>
+        </div>
+      )}
+
+      {/* Workflow canvas tab */}
+      <div
+        className="canvas-container"
+        id="canvasContainer"
+        ref={containerRef}
+        style={{ display: canvasTab === 'workflow' ? 'block' : 'none' }}
+      >
         <svg
           ref={svgRef}
           id="flowchartCanvas"

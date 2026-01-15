@@ -35,6 +35,7 @@ interface WorkflowState {
   // Edge operations
   addEdge: (edge: FlowEdge) => void
   deleteEdge: (from: string, to: string) => void
+  deleteEdgeById: (edgeId: string) => void
 
   // Connect mode
   startConnect: (nodeId: string) => void
@@ -154,6 +155,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         edges: state.flowchart.edges.filter(
           (e) => !(e.from === from && e.to === to)
         ),
+      },
+    })
+  },
+
+  deleteEdgeById: (edgeId) => {
+    const state = get()
+    state.pushHistory()
+    set({
+      flowchart: {
+        ...state.flowchart,
+        edges: state.flowchart.edges.filter((e) => e.id !== edgeId),
       },
     })
   },

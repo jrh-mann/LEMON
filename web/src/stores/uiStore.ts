@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { Stage, ModalType, SidebarTab } from '../types'
 
+export type CanvasTab = 'workflow' | 'image'
+
 interface UIState {
   // App stage
   stage: Stage
@@ -10,6 +12,9 @@ interface UIState {
 
   // Sidebar
   activeTab: SidebarTab
+
+  // Canvas tab (workflow vs source image)
+  canvasTab: CanvasTab
 
   // Loading/error
   isLoading: boolean
@@ -26,6 +31,7 @@ interface UIState {
   openModal: (modal: ModalType) => void
   closeModal: () => void
   setActiveTab: (tab: SidebarTab) => void
+  setCanvasTab: (tab: CanvasTab) => void
   setLoading: (loading: boolean, message?: string | null) => void
   setError: (error: string | null) => void
   clearError: () => void
@@ -50,6 +56,7 @@ export const useUIStore = create<UIState>((set) => ({
   stage: 'idle',
   modalOpen: 'none',
   activeTab: 'library',
+  canvasTab: 'workflow',
   isLoading: false,
   loadingMessage: null,
   error: null,
@@ -65,6 +72,8 @@ export const useUIStore = create<UIState>((set) => ({
   closeModal: () => set({ modalOpen: 'none' }),
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  setCanvasTab: (tab) => set({ canvasTab: tab }),
 
   setLoading: (loading, message = null) =>
     set({ isLoading: loading, loadingMessage: message }),
@@ -97,6 +106,7 @@ export const useUIStore = create<UIState>((set) => ({
       stage: 'idle',
       modalOpen: 'none',
       activeTab: 'library',
+      canvasTab: 'workflow',
       isLoading: false,
       loadingMessage: null,
       error: null,
