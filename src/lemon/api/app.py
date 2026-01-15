@@ -665,30 +665,37 @@ def test_image_parser_page():
 <head>
     <title>LEMON - Image Parser Test</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; }
+        body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 40px auto; padding: 20px; }
         h1 { color: #1f6e68; }
+        h3 { margin-top: 24px; margin-bottom: 12px; }
         .dropzone { border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 20px 0; border-radius: 8px; }
         .dropzone.dragover { border-color: #1f6e68; background: #f0f9f8; }
         button { background: #1f6e68; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; }
         button:disabled { background: #ccc; }
-        pre { background: #f5f5f5; padding: 16px; overflow: auto; border-radius: 8px; max-height: 400px; }
+        pre { background: #f5f5f5; padding: 16px; overflow: auto; border-radius: 8px; max-height: 300px; font-size: 12px; }
         .preview { max-width: 400px; margin: 20px 0; }
         .preview img { max-width: 100%; border: 1px solid #ddd; border-radius: 8px; }
         .status { padding: 12px; margin: 12px 0; border-radius: 6px; }
         .status.loading { background: #fff3cd; }
         .status.success { background: #d4edda; }
         .status.error { background: #f8d7da; }
-        .flowchart-preview { margin-top: 20px; padding: 20px; background: white; border: 1px solid #ddd; border-radius: 8px; }
-        .node { display: inline-block; padding: 8px 16px; margin: 4px; border-radius: 4px; }
-        .node.start { background: rgba(31, 110, 104, 0.15); border: 2px solid #1f6e68; border-radius: 20px; }
-        .node.decision { background: rgba(201, 138, 44, 0.15); border: 2px solid #c98a2c; }
-        .node.process { background: #f5f5f5; border: 1px solid #ccc; }
-        .node.end { background: rgba(62, 124, 77, 0.15); border: 2px solid #3e7c4d; border-radius: 20px; }
+        .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+        .comparison > div { border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: white; }
+        .svg-container { background: #fafafa; border-radius: 8px; overflow: hidden; }
+        .svg-container svg { width: 100%; height: 400px; }
+        .node-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .node-chip { padding: 6px 12px; border-radius: 4px; font-size: 13px; }
+        .node-chip.start { background: rgba(31, 110, 104, 0.15); border: 1px solid #1f6e68; }
+        .node-chip.decision { background: rgba(201, 138, 44, 0.15); border: 1px solid #c98a2c; }
+        .node-chip.process { background: #f0f0f0; border: 1px solid #999; }
+        .node-chip.end { background: rgba(62, 124, 77, 0.15); border: 1px solid #3e7c4d; }
+        details { margin-top: 16px; }
+        summary { cursor: pointer; font-weight: 500; padding: 8px; background: #f5f5f5; border-radius: 4px; }
     </style>
 </head>
 <body>
     <h1>Image Parser Test</h1>
-    <p>Upload a flowchart image to test if the backend parses it correctly.</p>
+    <p>Upload a flowchart image to test if the backend parses it correctly. The rendered graph shows exactly what the frontend would display.</p>
 
     <div class="dropzone" id="dropzone">
         <p>Drag & drop an image here, or click to select</p>
@@ -705,16 +712,29 @@ def test_image_parser_page():
     <div id="status" class="status" style="display:none"></div>
 
     <div id="result" style="display:none">
-        <h3>Raw LLM Response:</h3>
-        <pre id="rawResponse"></pre>
-
-        <h3>Parsed Flowchart JSON:</h3>
-        <pre id="parsedJson"></pre>
-
-        <div class="flowchart-preview" id="flowchartPreview">
-            <h3>Node Labels (what frontend would show):</h3>
-            <div id="nodeList"></div>
+        <div class="comparison">
+            <div>
+                <h3 style="margin-top:0">Original Image</h3>
+                <img id="originalImg" style="max-width:100%; border-radius:8px;">
+            </div>
+            <div>
+                <h3 style="margin-top:0">Rendered from Parsed JSON</h3>
+                <div class="svg-container" id="svgContainer"></div>
+            </div>
         </div>
+
+        <h3>Extracted Nodes</h3>
+        <div class="node-list" id="nodeList"></div>
+
+        <details>
+            <summary>Raw LLM Response</summary>
+            <pre id="rawResponse"></pre>
+        </details>
+
+        <details>
+            <summary>Parsed JSON</summary>
+            <pre id="parsedJson"></pre>
+        </details>
     </div>
 
     <script>
@@ -750,6 +770,117 @@ def test_image_parser_page():
             reader.readAsDataURL(file);
         }
 
+        // Render flowchart as SVG
+        function renderFlowchart(flowchart) {
+            const nodes = flowchart.nodes || [];
+            const edges = flowchart.edges || [];
+
+            // Auto-layout if no positions
+            const hasPositions = nodes.some(n => n.x && n.y);
+            if (!hasPositions) {
+                // Simple vertical layout
+                nodes.forEach((n, i) => {
+                    n.x = 300;
+                    n.y = 80 + i * 120;
+                });
+            }
+
+            // Calculate bounds
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            nodes.forEach(n => {
+                minX = Math.min(minX, n.x - 80);
+                minY = Math.min(minY, n.y - 40);
+                maxX = Math.max(maxX, n.x + 80);
+                maxY = Math.max(maxY, n.y + 40);
+            });
+            const padding = 40;
+            const viewBox = `${minX - padding} ${minY - padding} ${maxX - minX + padding * 2} ${maxY - minY + padding * 2}`;
+
+            // Node sizes
+            const getSize = (type) => {
+                if (type === 'decision') return { w: 120, h: 80 };
+                return { w: 140, h: 50 };
+            };
+
+            // Colors
+            const getColors = (type) => {
+                switch(type) {
+                    case 'start': return { fill: 'rgba(31, 110, 104, 0.15)', stroke: '#1f6e68' };
+                    case 'decision': return { fill: 'rgba(201, 138, 44, 0.15)', stroke: '#c98a2c' };
+                    case 'end': return { fill: 'rgba(62, 124, 77, 0.15)', stroke: '#3e7c4d' };
+                    default: return { fill: '#f5f5f5', stroke: '#666' };
+                }
+            };
+
+            // Build node lookup
+            const nodeMap = {};
+            nodes.forEach(n => nodeMap[n.id] = n);
+
+            // Render edges
+            let edgeSvg = '';
+            edges.forEach(e => {
+                const from = nodeMap[e.from];
+                const to = nodeMap[e.to];
+                if (!from || !to) return;
+
+                const fromSize = getSize(from.type);
+                const toSize = getSize(to.type);
+
+                // Simple straight line from bottom of source to top of target
+                const x1 = from.x;
+                const y1 = from.y + fromSize.h / 2;
+                const x2 = to.x;
+                const y2 = to.y - toSize.h / 2;
+
+                edgeSvg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>`;
+
+                // Edge label
+                if (e.label) {
+                    const midX = (x1 + x2) / 2;
+                    const midY = (y1 + y2) / 2;
+                    edgeSvg += `<text x="${midX + 10}" y="${midY}" font-size="11" fill="#666">${e.label}</text>`;
+                }
+            });
+
+            // Render nodes
+            let nodeSvg = '';
+            nodes.forEach(n => {
+                const size = getSize(n.type);
+                const colors = getColors(n.type);
+                const x = n.x;
+                const y = n.y;
+
+                if (n.type === 'decision') {
+                    // Diamond shape
+                    const hw = size.w / 2;
+                    const hh = size.h / 2;
+                    nodeSvg += `<polygon points="${x},${y - hh} ${x + hw},${y} ${x},${y + hh} ${x - hw},${y}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`;
+                } else {
+                    // Rounded rectangle
+                    const rx = (n.type === 'start' || n.type === 'end') ? 25 : 6;
+                    nodeSvg += `<rect x="${x - size.w / 2}" y="${y - size.h / 2}" width="${size.w}" height="${size.h}" rx="${rx}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`;
+                }
+
+                // Label (truncate if too long)
+                let label = n.label || n.id;
+                if (label.length > 20) label = label.slice(0, 18) + '...';
+                nodeSvg += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" fill="#333">${label}</text>`;
+            });
+
+            return `
+                <svg viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                            <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+                        </marker>
+                    </defs>
+                    <rect width="100%" height="100%" fill="#fafafa"/>
+                    ${edgeSvg}
+                    ${nodeSvg}
+                </svg>
+            `;
+        }
+
         parseBtn.onclick = async () => {
             if (!imageData) return;
 
@@ -770,14 +901,22 @@ def test_image_parser_page():
                 if (data.success) {
                     status.className = 'status success';
                     status.textContent = 'Parsed successfully!';
-                    document.getElementById('rawResponse').textContent = data.raw_response;
-                    document.getElementById('parsedJson').textContent = JSON.stringify(data.parsed_flowchart, null, 2);
+
+                    // Show original image
+                    document.getElementById('originalImg').src = imageData;
+
+                    // Render flowchart
+                    document.getElementById('svgContainer').innerHTML = renderFlowchart(data.parsed_flowchart);
 
                     // Show node labels
                     const nodeList = document.getElementById('nodeList');
-                    nodeList.innerHTML = data.parsed_flowchart.nodes.map(n =>
-                        `<div class="node ${n.type}"><strong>${n.id}:</strong> ${n.label}</div>`
+                    nodeList.innerHTML = (data.parsed_flowchart.nodes || []).map(n =>
+                        `<div class="node-chip ${n.type}"><strong>${n.id}:</strong> ${n.label}</div>`
                     ).join('');
+
+                    // Show raw data
+                    document.getElementById('rawResponse').textContent = data.raw_response;
+                    document.getElementById('parsedJson').textContent = JSON.stringify(data.parsed_flowchart, null, 2);
 
                     result.style.display = 'block';
                 } else {
