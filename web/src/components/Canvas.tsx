@@ -216,7 +216,7 @@ export default function Canvas() {
 
         if (targetNode) {
           // Create edge
-          addEdge(dragConnection.fromNodeId, targetNode.id, '')
+          addEdge({ from: dragConnection.fromNodeId, to: targetNode.id, label: '' })
           pushHistory()
         }
 
