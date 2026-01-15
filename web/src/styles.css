@@ -2655,6 +2655,54 @@ body {
   border-bottom: none;
 }
 
+/* JSON Import Modal */
+.json-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.json-modal {
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 24px;
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.json-modal h3 {
+  margin: 0 0 4px 0;
+}
+
+.json-modal textarea {
+  width: 100%;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  padding: 12px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  resize: vertical;
+  margin: 12px 0;
+}
+
+.json-modal textarea:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.json-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 /* Connect Mode Indicator */
 .connect-mode-indicator {
   position: absolute;

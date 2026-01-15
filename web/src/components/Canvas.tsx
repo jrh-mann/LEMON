@@ -51,6 +51,7 @@ export default function Canvas() {
 
   const {
     flowchart,
+    setFlowchart,
     selectedNodeId,
     connectMode,
     connectFromId,
@@ -213,7 +214,7 @@ export default function Canvas() {
     [flowchart.nodes]
   )
 
-  // Find valid position that doesn't collide - tries to get as close as possible to target
+  // Find valid position that doesn't collide - allows sliding along edges
   const checkCollision = useCallback(
     (nodeId: string, newX: number, newY: number): { x: number; y: number } => {
       const draggingNode = flowchart.nodes.find(n => n.id === nodeId)
@@ -224,29 +225,51 @@ export default function Canvas() {
         return { x: newX, y: newY }
       }
 
-      // There's a collision - find the closest valid position
-      // Try moving along the line from current to target, stopping before collision
+      // There's a collision - try sliding along each axis independently
       const startX = draggingNode.x
       const startY = draggingNode.y
-      const dx = newX - startX
-      const dy = newY - startY
 
-      // Binary search for the furthest valid position along the path
-      let lo = 0, hi = 1
-      for (let i = 0; i < 10; i++) {
-        const mid = (lo + hi) / 2
-        const testX = startX + dx * mid
-        const testY = startY + dy * mid
-
-        if (hasCollision(nodeId, testX, testY, draggingNode.type)) {
-          hi = mid
-        } else {
-          lo = mid
+      // Try X movement only (horizontal slide)
+      let finalX = startX
+      if (!hasCollision(nodeId, newX, startY, draggingNode.type)) {
+        finalX = newX
+      } else {
+        // Binary search for X
+        let lo = 0, hi = 1
+        const dx = newX - startX
+        for (let i = 0; i < 10; i++) {
+          const mid = (lo + hi) / 2
+          const testX = startX + dx * mid
+          if (hasCollision(nodeId, testX, startY, draggingNode.type)) {
+            hi = mid
+          } else {
+            lo = mid
+          }
         }
+        finalX = startX + dx * lo
       }
 
-      // Use the last valid position (lo)
-      return { x: startX + dx * lo, y: startY + dy * lo }
+      // Try Y movement only (vertical slide)
+      let finalY = startY
+      if (!hasCollision(nodeId, finalX, newY, draggingNode.type)) {
+        finalY = newY
+      } else {
+        // Binary search for Y
+        let lo = 0, hi = 1
+        const dy = newY - startY
+        for (let i = 0; i < 10; i++) {
+          const mid = (lo + hi) / 2
+          const testY = startY + dy * mid
+          if (hasCollision(nodeId, finalX, testY, draggingNode.type)) {
+            hi = mid
+          } else {
+            lo = mid
+          }
+        }
+        finalY = startY + dy * lo
+      }
+
+      return { x: finalX, y: finalY }
     },
     [flowchart.nodes, hasCollision]
   )
@@ -569,6 +592,93 @@ export default function Canvas() {
     return label.slice(0, maxLen - 1) + '…'
   }
 
+  // Beautify/auto-layout the flowchart
+  const beautifyFlowchart = useCallback(() => {
+    if (flowchart.nodes.length === 0) return
+
+    // Build adjacency lists
+    const outgoing = new Map<string, string[]>()
+    const incoming = new Map<string, string[]>()
+    flowchart.nodes.forEach(n => {
+      outgoing.set(n.id, [])
+      incoming.set(n.id, [])
+    })
+    flowchart.edges.forEach(e => {
+      outgoing.get(e.from)?.push(e.to)
+      incoming.get(e.from) // ensure exists
+      incoming.get(e.to)?.push(e.from)
+    })
+
+    // Find start nodes (no incoming edges)
+    const startNodes = flowchart.nodes.filter(n =>
+      (incoming.get(n.id)?.length ?? 0) === 0 || n.type === 'start'
+    )
+    if (startNodes.length === 0) {
+      // Fall back to first node if graph is cyclic
+      startNodes.push(flowchart.nodes[0])
+    }
+
+    // BFS to assign layers
+    const nodeLayer = new Map<string, number>()
+    const visited = new Set<string>()
+    const queue: { id: string; layer: number }[] = []
+
+    startNodes.forEach(n => {
+      queue.push({ id: n.id, layer: 0 })
+      visited.add(n.id)
+      nodeLayer.set(n.id, 0)
+    })
+
+    while (queue.length > 0) {
+      const { id, layer } = queue.shift()!
+      const children = outgoing.get(id) || []
+      children.forEach(childId => {
+        if (!visited.has(childId)) {
+          visited.add(childId)
+          nodeLayer.set(childId, layer + 1)
+          queue.push({ id: childId, layer: layer + 1 })
+        }
+      })
+    }
+
+    // Handle any unvisited nodes (disconnected components)
+    flowchart.nodes.forEach(n => {
+      if (!visited.has(n.id)) {
+        nodeLayer.set(n.id, 0)
+      }
+    })
+
+    // Group nodes by layer
+    const layers = new Map<number, string[]>()
+    nodeLayer.forEach((layer, nodeId) => {
+      if (!layers.has(layer)) layers.set(layer, [])
+      layers.get(layer)!.push(nodeId)
+    })
+
+    // Position nodes
+    const startX = 400
+    const startY = 100
+    const layerSpacing = 150
+    const nodeSpacing = 200
+
+    const newNodes = flowchart.nodes.map(node => {
+      const layer = nodeLayer.get(node.id) ?? 0
+      const nodesInLayer = layers.get(layer) || [node.id]
+      const indexInLayer = nodesInLayer.indexOf(node.id)
+      const layerWidth = (nodesInLayer.length - 1) * nodeSpacing
+      const offsetX = -layerWidth / 2 + indexInLayer * nodeSpacing
+
+      return {
+        ...node,
+        x: startX + offsetX,
+        y: startY + layer * layerSpacing,
+      }
+    })
+
+    setFlowchart({ nodes: newNodes, edges: flowchart.edges })
+    pushHistory()
+  }, [flowchart, setFlowchart, pushHistory])
+
   const isEmpty = flowchart.nodes.length === 0
 
   return (
@@ -775,6 +885,21 @@ export default function Canvas() {
             >
               <path d="M21 7v6h-6" />
               <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+            </svg>
+          </button>
+          <button className="meta-btn" title="Auto-layout (Beautify)" onClick={beautifyFlowchart}>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="8.5" y="14" width="7" height="7" rx="1" />
+              <path d="M6.5 10v2M17.5 10v2M12 14v-2M10 12h4" />
             </svg>
           </button>
         </div>

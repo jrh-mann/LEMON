@@ -1,7 +1,7 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { generateNodeId } from '../utils/canvas'
-import type { FlowNodeType } from '../types'
+import type { FlowNodeType, Flowchart } from '../types'
 
 interface BlockConfig {
   type: FlowNodeType
@@ -56,6 +56,41 @@ const BLOCKS: BlockConfig[] = [
 export default function Palette() {
   const { addNode, flowchart, setFlowchart } = useWorkflowStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
+  const [showJsonInput, setShowJsonInput] = useState(false)
+  const [jsonText, setJsonText] = useState('')
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  // Handle JSON import
+  const handleJsonImport = useCallback(() => {
+    try {
+      const parsed = JSON.parse(jsonText) as Flowchart
+
+      // Validate basic structure
+      if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
+        throw new Error('JSON must have a "nodes" array')
+      }
+      if (!parsed.edges || !Array.isArray(parsed.edges)) {
+        parsed.edges = [] // Allow missing edges
+      }
+
+      // Ensure nodes have required fields
+      const validatedNodes = parsed.nodes.map((n: any, i: number) => ({
+        id: n.id || `node_${i}`,
+        type: n.type || 'process',
+        label: n.label || `Node ${i + 1}`,
+        x: typeof n.x === 'number' ? n.x : 400,
+        y: typeof n.y === 'number' ? n.y : 100 + i * 120,
+        color: n.color || 'teal',
+      }))
+
+      setFlowchart({ nodes: validatedNodes, edges: parsed.edges })
+      setShowJsonInput(false)
+      setJsonText('')
+      setJsonError(null)
+    } catch (e) {
+      setJsonError(e instanceof Error ? e.message : 'Invalid JSON')
+    }
+  }, [jsonText, setFlowchart])
 
   // Handle drag start
   const handleDragStart = useCallback(
@@ -132,11 +167,18 @@ export default function Palette() {
       </div>
 
       <div className="sidebar-section">
-        <p className="eyebrow">DEBUG</p>
+        <p className="eyebrow">IMPORT</p>
+        <button
+          className="ghost full-width"
+          onClick={() => setShowJsonInput(true)}
+          title="Import flowchart from JSON"
+        >
+          Import JSON
+        </button>
         <button
           className="ghost full-width"
           onClick={() => {
-            // Sample flowchart with proper English labels (simulating what backend should return)
+            // Sample flowchart with proper English labels
             const sampleFlowchart = {
               nodes: [
                 { id: 'n1', type: 'start' as const, label: 'Patient Arrives', x: 400, y: 100, color: 'teal' as const },
@@ -159,9 +201,41 @@ export default function Palette() {
           }}
           title="Load a sample flowchart to test frontend rendering"
         >
-          Load Test Flowchart
+          Load Example
         </button>
       </div>
+
+      {/* JSON Input Modal */}
+      {showJsonInput && (
+        <div className="json-modal-overlay" onClick={() => setShowJsonInput(false)}>
+          <div className="json-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Import Flowchart JSON</h3>
+            <p className="muted small">Paste JSON with nodes and edges arrays</p>
+            <textarea
+              value={jsonText}
+              onChange={(e) => {
+                setJsonText(e.target.value)
+                setJsonError(null)
+              }}
+              placeholder={`{
+  "nodes": [
+    {"id": "n1", "type": "start", "label": "Start", "x": 400, "y": 100},
+    {"id": "n2", "type": "decision", "label": "Check?", "x": 400, "y": 220}
+  ],
+  "edges": [
+    {"from": "n1", "to": "n2", "label": ""}
+  ]
+}`}
+              rows={12}
+            />
+            {jsonError && <p className="error-text">{jsonError}</p>}
+            <div className="json-modal-actions">
+              <button className="ghost" onClick={() => setShowJsonInput(false)}>Cancel</button>
+              <button className="primary" onClick={handleJsonImport}>Import</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
