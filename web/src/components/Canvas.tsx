@@ -989,20 +989,38 @@ export default function Canvas() {
         <div className="beautify-control">
           <button className="beautify-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
             <svg
-              width="18"
-              height="18"
+              width="22"
+              height="22"
               viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
+              className="flower-icon"
             >
-              {/* Flower petals */}
-              <ellipse cx="12" cy="7" rx="3" ry="4" />
-              <ellipse cx="17" cy="12" rx="4" ry="3" />
-              <ellipse cx="12" cy="17" rx="3" ry="4" />
-              <ellipse cx="7" cy="12" rx="4" ry="3" />
+              {/* Aura glow filter */}
+              <defs>
+                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+                <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9"/>
+                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6"/>
+                </radialGradient>
+                <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
+                  <stop offset="0%" stopColor="var(--amber)"/>
+                  <stop offset="100%" stopColor="var(--rose)"/>
+                </radialGradient>
+              </defs>
+              {/* Outer petals */}
+              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)"/>
+              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)"/>
+              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)"/>
+              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)"/>
+              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)"/>
+              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)"/>
               {/* Center */}
-              <circle cx="12" cy="12" r="3" fill="currentColor" />
+              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)"/>
             </svg>
           </button>
         </div>
