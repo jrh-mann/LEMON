@@ -336,23 +336,64 @@ export function calculateEdgePath(
     toPoint = getConnectionPoint(toNode, toDir)
   }
 
-  // Create curved path
-  const midY = (fromPoint.y + toPoint.y) / 2
-  const midX = (fromPoint.x + toPoint.x) / 2
-
-  // Determine if this is primarily vertical or horizontal
-  const dx = Math.abs(toPoint.x - fromPoint.x)
-  const dy = Math.abs(toPoint.y - fromPoint.y)
-
-  if (dy > dx * 0.3) {
-    // Primarily vertical - use vertical bezier
-    return `M ${fromPoint.x} ${fromPoint.y}
-            C ${fromPoint.x} ${midY}, ${toPoint.x} ${midY}, ${toPoint.x} ${toPoint.y}`
+  // Determine entry direction for target node
+  let toDir: 'top' | 'bottom' | 'left' | 'right'
+  if (toNode.type === 'decision') {
+    toDir = 'top' // Always enter decision from top
   } else {
-    // Primarily horizontal - use S-curve
-    return `M ${fromPoint.x} ${fromPoint.y}
-            C ${midX} ${fromPoint.y}, ${midX} ${toPoint.y}, ${toPoint.x} ${toPoint.y}`
+    const tdx = toNode.x - fromNode.x
+    const tdy = toNode.y - fromNode.y
+    if (Math.abs(tdy) > Math.abs(tdx) * 0.5) {
+      toDir = tdy > 0 ? 'top' : 'bottom'
+    } else {
+      toDir = tdx > 0 ? 'left' : 'right'
+    }
   }
+
+  // Calculate control points to ensure arrow points straight into target
+  // The second control point should be aligned with the entry direction
+  const controlDist = Math.max(40, Math.min(80, Math.abs(toPoint.y - fromPoint.y) * 0.4))
+
+  let cp1x: number, cp1y: number, cp2x: number, cp2y: number
+
+  // First control point - extends from source in appropriate direction
+  if (fromNode.type === 'decision') {
+    // For decision outputs, curve down first then toward target
+    cp1x = fromPoint.x
+    cp1y = fromPoint.y + controlDist
+  } else if (fromPoint.y < toPoint.y) {
+    cp1x = fromPoint.x
+    cp1y = fromPoint.y + controlDist
+  } else if (fromPoint.y > toPoint.y) {
+    cp1x = fromPoint.x
+    cp1y = fromPoint.y - controlDist
+  } else {
+    // Horizontal - extend in x direction
+    cp1x = fromPoint.x + (toPoint.x > fromPoint.x ? controlDist : -controlDist)
+    cp1y = fromPoint.y
+  }
+
+  // Second control point - must be aligned so arrow points straight into target
+  switch (toDir) {
+    case 'top':
+      cp2x = toPoint.x
+      cp2y = toPoint.y - controlDist
+      break
+    case 'bottom':
+      cp2x = toPoint.x
+      cp2y = toPoint.y + controlDist
+      break
+    case 'left':
+      cp2x = toPoint.x - controlDist
+      cp2y = toPoint.y
+      break
+    case 'right':
+      cp2x = toPoint.x + controlDist
+      cp2y = toPoint.y
+      break
+  }
+
+  return `M ${fromPoint.x} ${fromPoint.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${toPoint.x} ${toPoint.y}`
 }
 
 // Generate unique node ID
