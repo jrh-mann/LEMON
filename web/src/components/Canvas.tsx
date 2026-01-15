@@ -592,90 +592,188 @@ export default function Canvas() {
     return label.slice(0, maxLen - 1) + '…'
   }
 
-  // Beautify/auto-layout the flowchart
+  // Beautify/auto-layout the flowchart - hierarchical tree with node duplication
   const beautifyFlowchart = useCallback(() => {
     if (flowchart.nodes.length === 0) return
 
-    // Build adjacency lists
-    const outgoing = new Map<string, string[]>()
+    // Build adjacency list for outgoing edges with labels
+    const outgoing = new Map<string, { to: string; label: string }[]>()
     const incoming = new Map<string, string[]>()
     flowchart.nodes.forEach(n => {
       outgoing.set(n.id, [])
       incoming.set(n.id, [])
     })
     flowchart.edges.forEach(e => {
-      outgoing.get(e.from)?.push(e.to)
-      incoming.get(e.from) // ensure exists
+      outgoing.get(e.from)?.push({ to: e.to, label: e.label })
       incoming.get(e.to)?.push(e.from)
     })
 
-    // Find start nodes (no incoming edges)
-    const startNodes = flowchart.nodes.filter(n =>
+    // Find start nodes (no incoming edges or type 'start')
+    let startNodes = flowchart.nodes.filter(n =>
       (incoming.get(n.id)?.length ?? 0) === 0 || n.type === 'start'
     )
     if (startNodes.length === 0) {
-      // Fall back to first node if graph is cyclic
-      startNodes.push(flowchart.nodes[0])
+      startNodes = [flowchart.nodes[0]]
     }
 
-    // BFS to assign layers
-    const nodeLayer = new Map<string, number>()
-    const visited = new Set<string>()
-    const queue: { id: string; layer: number }[] = []
+    // Tree traversal with duplication for shared nodes
+    interface TreeNode {
+      id: string           // new unique id (may have _dup suffix)
+      originalId: string   // original node id
+      layer: number
+      children: TreeNode[]
+      parentId: string | null
+      edgeLabel: string
+    }
 
-    startNodes.forEach(n => {
-      queue.push({ id: n.id, layer: 0 })
-      visited.add(n.id)
-      nodeLayer.set(n.id, 0)
+    const newNodes: FlowNode[] = []
+    const newEdges: { from: string; to: string; label: string }[] = []
+    const visited = new Set<string>()
+    let dupCounter = 0
+
+    // Build tree structure via BFS
+    const roots: TreeNode[] = []
+    const queue: TreeNode[] = []
+
+    startNodes.forEach(node => {
+      const treeNode: TreeNode = {
+        id: node.id,
+        originalId: node.id,
+        layer: 0,
+        children: [],
+        parentId: null,
+        edgeLabel: ''
+      }
+      roots.push(treeNode)
+      queue.push(treeNode)
+      visited.add(node.id)
     })
 
     while (queue.length > 0) {
-      const { id, layer } = queue.shift()!
-      const children = outgoing.get(id) || []
-      children.forEach(childId => {
-        if (!visited.has(childId)) {
-          visited.add(childId)
-          nodeLayer.set(childId, layer + 1)
-          queue.push({ id: childId, layer: layer + 1 })
+      const current = queue.shift()!
+      const children = outgoing.get(current.originalId) || []
+
+      children.forEach(({ to, label }) => {
+        let childId: string
+        if (visited.has(to)) {
+          // Already visited - duplicate this node
+          dupCounter++
+          childId = `${to}_dup${dupCounter}`
+        } else {
+          childId = to
+          visited.add(to)
         }
+
+        const childTreeNode: TreeNode = {
+          id: childId,
+          originalId: to,
+          layer: current.layer + 1,
+          children: [],
+          parentId: current.id,
+          edgeLabel: label
+        }
+        current.children.push(childTreeNode)
+        queue.push(childTreeNode)
       })
     }
 
-    // Handle any unvisited nodes (disconnected components)
+    // Handle disconnected nodes - add them as additional roots
     flowchart.nodes.forEach(n => {
       if (!visited.has(n.id)) {
-        nodeLayer.set(n.id, 0)
+        const treeNode: TreeNode = {
+          id: n.id,
+          originalId: n.id,
+          layer: 0,
+          children: [],
+          parentId: null,
+          edgeLabel: ''
+        }
+        roots.push(treeNode)
       }
     })
 
-    // Group nodes by layer
-    const layers = new Map<number, string[]>()
-    nodeLayer.forEach((layer, nodeId) => {
-      if (!layers.has(layer)) layers.set(layer, [])
-      layers.get(layer)!.push(nodeId)
-    })
-
-    // Position nodes
-    const startX = 400
-    const startY = 100
+    // Calculate positions - each node's x is centered over its children
     const layerSpacing = 150
-    const nodeSpacing = 200
+    const nodeSpacing = 180
+    const startY = 100
 
-    const newNodes = flowchart.nodes.map(node => {
-      const layer = nodeLayer.get(node.id) ?? 0
-      const nodesInLayer = layers.get(layer) || [node.id]
-      const indexInLayer = nodesInLayer.indexOf(node.id)
-      const layerWidth = (nodesInLayer.length - 1) * nodeSpacing
-      const offsetX = -layerWidth / 2 + indexInLayer * nodeSpacing
+    // First pass: calculate subtree widths
+    const getSubtreeWidth = (node: TreeNode): number => {
+      if (node.children.length === 0) return 1
+      return node.children.reduce((sum, child) => sum + getSubtreeWidth(child), 0)
+    }
 
-      return {
-        ...node,
-        x: startX + offsetX,
-        y: startY + layer * layerSpacing,
+    // Second pass: assign x positions recursively
+    const assignPositions = (node: TreeNode, leftX: number): number => {
+      const subtreeWidth = getSubtreeWidth(node)
+      const myWidth = subtreeWidth * nodeSpacing
+
+      if (node.children.length === 0) {
+        // Leaf node - place in center of allocated space
+        node.layer // y is based on layer
+        const nodeX = leftX + myWidth / 2
+
+        const originalNode = flowchart.nodes.find(n => n.id === node.originalId)!
+        newNodes.push({
+          ...originalNode,
+          id: node.id,
+          x: nodeX,
+          y: startY + node.layer * layerSpacing
+        })
+
+        if (node.parentId) {
+          newEdges.push({ from: node.parentId, to: node.id, label: node.edgeLabel })
+        }
+
+        return myWidth
       }
+
+      // Position children first
+      let childX = leftX
+      node.children.forEach(child => {
+        const childWidth = assignPositions(child, childX)
+        childX += childWidth
+      })
+
+      // Position this node centered over its children
+      const firstChild = newNodes.find(n => n.id === node.children[0].id)!
+      const lastChild = newNodes.find(n => n.id === node.children[node.children.length - 1].id)!
+      const nodeX = (firstChild.x + lastChild.x) / 2
+
+      const originalNode = flowchart.nodes.find(n => n.id === node.originalId)!
+      newNodes.push({
+        ...originalNode,
+        id: node.id,
+        x: nodeX,
+        y: startY + node.layer * layerSpacing
+      })
+
+      if (node.parentId) {
+        newEdges.push({ from: node.parentId, to: node.id, label: node.edgeLabel })
+      }
+
+      return myWidth
+    }
+
+    // Assign positions for all roots
+    let currentX = 0
+    roots.forEach(root => {
+      const width = assignPositions(root, currentX)
+      currentX += width + nodeSpacing // gap between trees
     })
 
-    setFlowchart({ nodes: newNodes, edges: flowchart.edges })
+    // Center the entire layout around x=400
+    if (newNodes.length > 0) {
+      const minX = Math.min(...newNodes.map(n => n.x))
+      const maxX = Math.max(...newNodes.map(n => n.x))
+      const centerOffset = 400 - (minX + maxX) / 2
+
+      newNodes.forEach(n => {
+        n.x += centerOffset
+      })
+    }
+
+    setFlowchart({ nodes: newNodes, edges: newEdges })
     pushHistory()
   }, [flowchart, setFlowchart, pushHistory])
 
@@ -857,17 +955,26 @@ export default function Canvas() {
           <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
             -
           </button>
-          <button className="zoom-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
+        </div>
+
+        {/* Beautify control */}
+        <div className="beautify-control">
+          <button className="beautify-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
             <svg
-              width="14"
-              height="14"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="1.5"
             >
-              <path d="M4 4h6v6H4zM14 4h6v6h-6zM9 14h6v6H9z" />
-              <path d="M7 10v4M17 10v4M12 10v4" />
+              {/* Flower petals */}
+              <ellipse cx="12" cy="7" rx="3" ry="4" />
+              <ellipse cx="17" cy="12" rx="4" ry="3" />
+              <ellipse cx="12" cy="17" rx="3" ry="4" />
+              <ellipse cx="7" cy="12" rx="4" ry="3" />
+              {/* Center */}
+              <circle cx="12" cy="12" r="3" fill="currentColor" />
             </svg>
           </button>
         </div>

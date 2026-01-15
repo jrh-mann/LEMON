@@ -1071,6 +1071,43 @@ body {
   transform: scale(0.95);
 }
 
+/* Beautify control */
+.beautify-control {
+  position: absolute;
+  bottom: 16px;
+  right: 70px;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+
+.beautify-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--rose);
+  transition: all 0.15s ease;
+}
+
+.beautify-btn:hover {
+  background: var(--rose-light);
+  color: var(--rose);
+  transform: rotate(30deg);
+}
+
+.beautify-btn:active {
+  transform: scale(0.95) rotate(30deg);
+}
+
 /* Meta button (tidy, etc) */
 .meta-btn {
   display: inline-flex;
