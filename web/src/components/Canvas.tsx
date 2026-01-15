@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { useChatStore } from '../stores/chatStore'
 import {
   getNodeSize,
   getNodeColor,
@@ -52,11 +51,15 @@ export default function Canvas() {
   const {
     flowchart,
     setFlowchart,
-    selectedNodeId,
+    selectedNodeId: _selectedNodeId,
+    selectedNodeIds,
     connectMode,
     connectFromId,
     selectNode,
+    selectNodes,
+    clearSelection,
     moveNode,
+    moveNodes,
     addNode,
     addEdge,
     startConnect,
@@ -66,10 +69,12 @@ export default function Canvas() {
     undo,
     redo,
     pushHistory,
+    pendingImage,
+    pendingImageName,
+    clearPendingImage,
   } = useWorkflowStore()
 
   const { zoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab } = useUIStore()
-  const { pendingImage, pendingImageName, clearPendingImage } = useChatStore()
 
   // Auto-switch to image tab when image is uploaded
   useEffect(() => {
@@ -97,6 +102,20 @@ export default function Canvas() {
     currentX: number
     currentY: number
   } | null>(null)
+
+  // Box selection state
+  const [selectionBox, setSelectionBox] = useState<{
+    startX: number
+    startY: number
+    currentX: number
+    currentY: number
+  } | null>(null)
+
+  // Track initial positions of selected nodes for group dragging
+  const [dragStartPositions, setDragStartPositions] = useState<Map<string, { x: number; y: number }> | null>(null)
+
+  // Track last click for double-click detection on canvas
+  const lastCanvasClickRef = useRef<{ time: number; x: number; y: number } | null>(null)
 
   // Calculate viewBox with pan offset
   const viewBox = calculateViewBox(flowchart.nodes)
@@ -179,8 +198,32 @@ export default function Canvas() {
         return
       }
 
-      // Start drag
       const svgCoords = screenToSVG(e.clientX, e.clientY)
+      const isAlreadySelected = selectedNodeIds.includes(node.id)
+
+      // Handle selection
+      if (e.shiftKey) {
+        // Shift-click: toggle in selection
+        if (isAlreadySelected) {
+          selectNodes(selectedNodeIds.filter(id => id !== node.id))
+        } else {
+          selectNodes([...selectedNodeIds, node.id])
+        }
+      } else if (!isAlreadySelected) {
+        // Click on unselected node: select only this node
+        selectNode(node.id)
+      }
+      // If clicking on already selected node without shift, keep current selection for group drag
+
+      // Start drag - use all selected nodes if this node is selected
+      const nodesToDrag = isAlreadySelected || e.shiftKey ? selectedNodeIds : [node.id]
+      const positions = new Map<string, { x: number; y: number }>()
+      flowchart.nodes.forEach(n => {
+        if (nodesToDrag.includes(n.id) || n.id === node.id) {
+          positions.set(n.id, { x: n.x, y: n.y })
+        }
+      })
+
       setDragNodeId(node.id)
       setDragStart({
         x: svgCoords.x,
@@ -188,13 +231,13 @@ export default function Canvas() {
         nodeX: node.x,
         nodeY: node.y,
       })
+      setDragStartPositions(positions)
       setIsDragging(true)
-      selectNode(node.id)
 
       // Capture pointer on SVG for reliable tracking
       svgRef.current?.setPointerCapture(e.pointerId)
     },
-    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode]
+    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes]
   )
 
   // Check if position collides with any node
@@ -297,6 +340,16 @@ export default function Canvas() {
 
       const svgCoords = screenToSVG(e.clientX, e.clientY)
 
+      // Handle box selection
+      if (selectionBox) {
+        setSelectionBox({
+          ...selectionBox,
+          currentX: svgCoords.x,
+          currentY: svgCoords.y,
+        })
+        return
+      }
+
       // Handle drag connection preview
       if (dragConnection) {
         setDragConnection({
@@ -307,17 +360,28 @@ export default function Canvas() {
         return
       }
 
-      // Handle node dragging
+      // Handle node dragging (single or group)
       if (!isDragging || !dragNodeId || !dragStart) return
 
       const dx = svgCoords.x - dragStart.x
       const dy = svgCoords.y - dragStart.y
 
-      // Calculate new position with collision detection
-      const newPos = checkCollision(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
-      moveNode(dragNodeId, newPos.x, newPos.y)
+      // If we have multiple selected nodes and drag positions, move them all
+      if (dragStartPositions && dragStartPositions.size > 1 && selectedNodeIds.length > 1) {
+        // Move all selected nodes by delta from their start positions
+        selectedNodeIds.forEach(nodeId => {
+          const startPos = dragStartPositions.get(nodeId)
+          if (startPos) {
+            moveNode(nodeId, startPos.x + dx, startPos.y + dy)
+          }
+        })
+      } else {
+        // Single node drag with collision detection
+        const newPos = checkCollision(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
+        moveNode(dragNodeId, newPos.x, newPos.y)
+      }
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, checkCollision, isPanning, panStart, viewBox.width]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, moveNodes, dragConnection, checkCollision, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
   )
 
   // Handle pointer up
@@ -327,6 +391,57 @@ export default function Canvas() {
       if (isPanning) {
         setIsPanning(false)
         setPanStart(null)
+        svgRef.current?.releasePointerCapture(e.pointerId)
+        return
+      }
+
+      // Handle box selection completion
+      if (selectionBox) {
+        const boxWidth = Math.abs(selectionBox.currentX - selectionBox.startX)
+        const boxHeight = Math.abs(selectionBox.currentY - selectionBox.startY)
+        const isJustClick = boxWidth < 5 && boxHeight < 5
+
+        if (isJustClick) {
+          // Just a click on empty space - clear selection (unless shift held)
+          if (!e.shiftKey) {
+            clearSelection()
+          }
+        } else {
+          // Actual drag - find nodes in box
+          const minX = Math.min(selectionBox.startX, selectionBox.currentX)
+          const maxX = Math.max(selectionBox.startX, selectionBox.currentX)
+          const minY = Math.min(selectionBox.startY, selectionBox.currentY)
+          const maxY = Math.max(selectionBox.startY, selectionBox.currentY)
+
+          // Find all nodes within the selection box
+          const nodesInBox = flowchart.nodes.filter(node => {
+            const size = getNodeSize(node.type)
+            const halfW = size.w / 2
+            const halfH = size.h / 2
+            // Check if node intersects with selection box
+            return (
+              node.x + halfW >= minX &&
+              node.x - halfW <= maxX &&
+              node.y + halfH >= minY &&
+              node.y - halfH <= maxY
+            )
+          })
+
+          if (nodesInBox.length > 0) {
+            // If shift was held, add to existing selection
+            if (e.shiftKey) {
+              const newIds = [...new Set([...selectedNodeIds, ...nodesInBox.map(n => n.id)])]
+              selectNodes(newIds)
+            } else {
+              selectNodes(nodesInBox.map(n => n.id))
+            }
+          } else if (!e.shiftKey) {
+            // Dragged box but no nodes - clear selection
+            clearSelection()
+          }
+        }
+
+        setSelectionBox(null)
         svgRef.current?.releasePointerCapture(e.pointerId)
         return
       }
@@ -367,10 +482,11 @@ export default function Canvas() {
       setIsDragging(false)
       setDragNodeId(null)
       setDragStart(null)
+      setDragStartPositions(null)
       // Release pointer capture from SVG
       svgRef.current?.releasePointerCapture(e.pointerId)
     },
-    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge, isPanning]
+    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge, isPanning, selectionBox, selectedNodeIds, selectNodes, clearSelection]
   )
 
   // Handle drag over (allow drop)
@@ -401,37 +517,70 @@ export default function Canvas() {
     [screenToSVG, addNode]
   )
 
-  // Handle canvas pointer down (start panning)
+  // Handle canvas pointer down (start box selection or panning)
   const handleCanvasPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      // Only start panning if clicking on background (svg or grid rect)
+      // Only handle if clicking on background (svg, grid rect, or pattern elements)
       const target = e.target as SVGElement
-      if (target === svgRef.current || target.tagName === 'rect' && target.getAttribute('fill')?.includes('grid')) {
+      const isBackgroundClick =
+        target === svgRef.current ||
+        (target.tagName === 'rect' && !target.closest('.flow-node')) ||
+        target.tagName === 'path' && target.closest('pattern')
+
+      if (isBackgroundClick) {
         e.preventDefault()
-        setIsPanning(true)
-        setPanStart({
-          x: e.clientX,
-          y: e.clientY,
-          panX: panOffset.x,
-          panY: panOffset.y
-        })
+
+        const now = Date.now()
+        const lastClick = lastCanvasClickRef.current
+
+        // Check for double-click: within 400ms and 20px of last click
+        const isDoubleClick = lastClick &&
+          (now - lastClick.time < 400) &&
+          Math.abs(e.clientX - lastClick.x) < 20 &&
+          Math.abs(e.clientY - lastClick.y) < 20
+
+        // Update last click tracking
+        lastCanvasClickRef.current = { time: now, x: e.clientX, y: e.clientY }
+
+        // Double-click or middle mouse = panning
+        if (isDoubleClick || e.button === 1) {
+          setIsPanning(true)
+          setPanStart({
+            x: e.clientX,
+            y: e.clientY,
+            panX: panOffset.x,
+            panY: panOffset.y
+          })
+          // Clear any selection box that may have started
+          setSelectionBox(null)
+        } else {
+          // Single click = box selection
+          const svgCoords = screenToSVG(e.clientX, e.clientY)
+          setSelectionBox({
+            startX: svgCoords.x,
+            startY: svgCoords.y,
+            currentX: svgCoords.x,
+            currentY: svgCoords.y
+          })
+          // Clear existing selection unless shift is held
+          if (!e.shiftKey) {
+            clearSelection()
+          }
+        }
         svgRef.current?.setPointerCapture(e.pointerId)
       }
     },
-    [panOffset]
+    [panOffset, screenToSVG, clearSelection]
   )
 
-  // Handle canvas click (deselect)
+  // Handle canvas click (just cancel connect mode, selection handled by pointer events)
   const handleCanvasClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === svgRef.current || (e.target as SVGElement).tagName === 'rect') {
-        selectNode(null)
-        if (connectMode) {
-          cancelConnect()
-        }
+    (_e: React.MouseEvent) => {
+      if (connectMode) {
+        cancelConnect()
       }
     },
-    [selectNode, connectMode, cancelConnect]
+    [connectMode, cancelConnect]
   )
 
   // Handle double-click to start connection
@@ -456,9 +605,10 @@ export default function Canvas() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete selected node
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
-        deleteNode(selectedNodeId)
+      // Delete selected nodes
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeIds.length > 0) {
+        // Delete all selected nodes
+        selectedNodeIds.forEach(nodeId => deleteNode(nodeId))
       }
 
       // Undo/Redo
@@ -470,21 +620,25 @@ export default function Canvas() {
         }
       }
 
-      // Cancel connect mode
-      if (e.key === 'Escape' && connectMode) {
-        cancelConnect()
+      // Cancel connect mode or clear selection
+      if (e.key === 'Escape') {
+        if (connectMode) {
+          cancelConnect()
+        } else if (selectedNodeIds.length > 0) {
+          clearSelection()
+        }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeId, deleteNode, undo, redo, connectMode, cancelConnect])
+  }, [selectedNodeIds, deleteNode, undo, redo, connectMode, cancelConnect, clearSelection])
 
   // Render node
   const renderNode = (node: FlowNode) => {
     const size = getNodeSize(node.type)
     const color = getNodeColor(node.color)
-    const isSelected = node.id === selectedNodeId
+    const isSelected = selectedNodeIds.includes(node.id)
     const isConnectSource = node.id === connectFromId
 
     const halfW = size.w / 2
@@ -607,7 +761,7 @@ export default function Canvas() {
   }
 
   // Render edge
-  const renderEdge = (edge: { from: string; to: string; label: string }, edgeIndex: number) => {
+  const renderEdge = (edge: { from: string; to: string; label: string }, _edgeIndex: number) => {
     const fromNode = flowchart.nodes.find((n) => n.id === edge.from)
     const toNode = flowchart.nodes.find((n) => n.id === edge.to)
 
@@ -651,12 +805,6 @@ export default function Canvas() {
         )}
       </g>
     )
-  }
-
-  // Truncate label helper
-  function truncateLabel(label: string, maxLen: number): string {
-    if (label.length <= maxLen) return label
-    return label.slice(0, maxLen - 1) + '…'
   }
 
   // Wrap text into multiple lines, breaking on spaces
@@ -761,20 +909,45 @@ export default function Canvas() {
     const roots: TreeNode[] = []
     const queue: TreeNode[] = []
 
+    // Create entry point "Start" node that connects to all root nodes
+    const entryPointId = generateNodeId()
+    const entryPointNode: FlowNode = {
+      id: entryPointId,
+      type: 'start',
+      label: 'Start',
+      x: 0, // will be positioned later
+      y: 0,
+      color: 'teal',
+    }
+
+    // Create the entry point tree node as the single root
+    const entryTreeNode: TreeNode = {
+      id: entryPointId,
+      originalId: entryPointId,
+      layer: 0,
+      children: [],
+      parentId: null,
+      edgeLabel: ''
+    }
+    roots.push(entryTreeNode)
+
+    // Add original start nodes as children of the entry point
     startNodes.forEach(node => {
-      if (visited.has(node.id)) return // skip if already placed as orphan
+      if (visited.has(node.id)) return
       const treeNode: TreeNode = {
         id: node.id,
         originalId: node.id,
-        layer: 0,
+        layer: 1, // layer 1 since entry point is layer 0
         children: [],
-        parentId: null,
+        parentId: entryPointId,
         edgeLabel: ''
       }
-      roots.push(treeNode)
+      entryTreeNode.children.push(treeNode)
       queue.push(treeNode)
       visited.add(node.id)
     })
+
+    // Entry point node will be added during position assignment
 
     while (queue.length > 0) {
       const current = queue.shift()!
@@ -829,68 +1002,51 @@ export default function Canvas() {
       return Math.max(childrenWidth, node.children.length)
     }
 
-    // Sort children so larger subtrees are centered (reduces edge crossings)
-    const centerLargerSubtrees = (node: TreeNode) => {
-      if (node.children.length <= 1) {
-        node.children.forEach(centerLargerSubtrees)
-        return
-      }
+    // Count total descendants in a subtree
+    const getDescendantCount = (node: TreeNode): number => {
+      if (node.children.length === 0) return 0
+      return node.children.reduce((sum, child) => sum + 1 + getDescendantCount(child), 0)
+    }
 
-      // Sort children by subtree width
-      const childrenWithWidths = node.children.map(child => ({
-        child,
-        width: getSubtreeWidth(child)
-      }))
+    // Order node children: most descendants in center (straight down)
+    // Uses consistent descendant-based ordering for all multi-child nodes
+    const orderNodeChildren = (node: TreeNode) => {
+      if (node.children.length >= 2) {
+        // Calculate descendant count for all children
+        const childrenWithCounts = node.children.map(child => ({
+          child,
+          descendants: getDescendantCount(child)
+        }))
 
-      // Sort ascending by width
-      childrenWithWidths.sort((a, b) => a.width - b.width)
+        // Sort by descendant count descending (most descendants first)
+        childrenWithCounts.sort((a, b) => b.descendants - a.descendants)
 
-      // Reorder so largest are in middle: interleave from both ends
-      // [1, 2, 3, 4, 5] -> [1, 3, 5, 4, 2] (smallest at edges, largest in center)
-      const reordered: TreeNode[] = []
-      const sorted = childrenWithWidths.map(c => c.child)
-      let left = true
-      for (let i = 0; i < sorted.length; i++) {
-        if (left) {
-          reordered.push(sorted[i])
+        if (node.children.length === 2) {
+          // Two children: keep larger on right (tends to look better with downward flow)
+          // Smaller on left, larger on right
+          const [larger, smaller] = childrenWithCounts.map(c => c.child)
+          node.children = [smaller, larger]
+        } else if (node.children.length === 3) {
+          // Three children: most descendants in middle
+          const [largest, second, third] = childrenWithCounts.map(c => c.child)
+          node.children = [second, largest, third]
         } else {
-          reordered.splice(Math.floor(reordered.length / 2) + 1, 0, sorted[i])
-        }
-        left = !left
-      }
-
-      node.children = reordered
-
-      // Recursively apply to all children
-      node.children.forEach(centerLargerSubtrees)
-    }
-
-    // Apply centering to all root trees
-    roots.forEach(centerLargerSubtrees)
-
-    // Order decision node children consistently: Yes on left, No on right
-    const orderDecisionChildren = (node: TreeNode) => {
-      const originalNode = flowchart.nodes.find(n => n.id === node.originalId)
-      if (originalNode?.type === 'decision' && node.children.length >= 2) {
-        // Find Yes and No children by their edge labels
-        const yesIdx = node.children.findIndex(c => c.edgeLabel?.toLowerCase() === 'yes')
-        const noIdx = node.children.findIndex(c => c.edgeLabel?.toLowerCase() === 'no')
-
-        if (yesIdx !== -1 && noIdx !== -1) {
-          // Reorder: Yes first (left), No second (right), then any others
-          const yesChild = node.children[yesIdx]
-          const noChild = node.children[noIdx]
-          const others = node.children.filter((_, i) => i !== yesIdx && i !== noIdx)
-          node.children = [yesChild, ...others, noChild]
+          // More than 3: most descendants in middle, distribute others around
+          const sorted = childrenWithCounts.map(c => c.child)
+          const middle = sorted[0] // most descendants
+          const others = sorted.slice(1)
+          const left = others.filter((_, i) => i % 2 === 0)
+          const right = others.filter((_, i) => i % 2 === 1)
+          node.children = [...left, middle, ...right]
         }
       }
 
       // Recursively apply to all children
-      node.children.forEach(orderDecisionChildren)
+      node.children.forEach(orderNodeChildren)
     }
 
-    // Apply decision ordering
-    roots.forEach(orderDecisionChildren)
+    // Apply node ordering
+    roots.forEach(orderNodeChildren)
 
     // Assign positions recursively - children evenly spaced under parent
     const siblingGap = 40 // extra gap between siblings
@@ -935,13 +1091,23 @@ export default function Canvas() {
       const lastChild = newNodes.find(n => n.id === node.children[node.children.length - 1].id)!
       const nodeX = (firstChild.x + lastChild.x) / 2
 
-      const originalNode = flowchart.nodes.find(n => n.id === node.originalId)!
-      newNodes.push({
-        ...originalNode,
-        id: node.id,
-        x: nodeX,
-        y: treeStartY + node.layer * layerSpacing
-      })
+      // Check if this is the entry point (not in original flowchart)
+      const originalNode = flowchart.nodes.find(n => n.id === node.originalId)
+      if (originalNode) {
+        newNodes.push({
+          ...originalNode,
+          id: node.id,
+          x: nodeX,
+          y: treeStartY + node.layer * layerSpacing
+        })
+      } else if (node.originalId === entryPointId) {
+        // Entry point node
+        newNodes.push({
+          ...entryPointNode,
+          x: nodeX,
+          y: treeStartY + node.layer * layerSpacing
+        })
+      }
 
       if (node.parentId) {
         newEdges.push({ from: node.parentId, to: node.id, label: node.edgeLabel })
@@ -1091,7 +1257,7 @@ export default function Canvas() {
           </defs>
 
           {/* Grid background */}
-          <rect width="100%" height="100%" fill="url(#grid)" />
+          <rect width="100%" height="100%" fill="url(#grid)" style={{ pointerEvents: 'all' }} />
 
           {/* Edges layer */}
           <g id="edgeLayer">
@@ -1112,6 +1278,21 @@ export default function Canvas() {
               strokeWidth={2}
               strokeDasharray="5,5"
               markerEnd="url(#arrowhead-preview)"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
+
+          {/* Selection box */}
+          {selectionBox && (
+            <rect
+              x={Math.min(selectionBox.startX, selectionBox.currentX)}
+              y={Math.min(selectionBox.startY, selectionBox.currentY)}
+              width={Math.abs(selectionBox.currentX - selectionBox.startX)}
+              height={Math.abs(selectionBox.currentY - selectionBox.startY)}
+              fill="rgba(31, 110, 104, 0.1)"
+              stroke="var(--teal)"
+              strokeWidth={1}
+              strokeDasharray="4,4"
               style={{ pointerEvents: 'none' }}
             />
           )}

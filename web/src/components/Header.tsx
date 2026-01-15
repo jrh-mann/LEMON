@@ -1,15 +1,13 @@
 import { useRef, useCallback } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
-import { useChatStore } from '../stores/chatStore'
 import { addAssistantMessage } from '../stores/chatStore'
 
 export default function Header() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { openModal } = useUIStore()
-  const { currentWorkflow, flowchart } = useWorkflowStore()
-  const { setPendingImage } = useChatStore()
+  const { currentWorkflow, flowchart, setPendingImage } = useWorkflowStore()
 
   // Handle image upload - just store the image, don't auto-analyse
   const handleImageUpload = useCallback(

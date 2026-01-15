@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
+import { useWorkflowStore } from '../stores/workflowStore'
 import { sendChatMessage } from '../api/socket'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
@@ -14,12 +15,16 @@ export default function Chat() {
     messages,
     conversationId,
     isStreaming,
+    processingStatus,
     pendingQuestion,
+    sendUserMessage,
+  } = useChatStore()
+
+  const {
     pendingImage,
     pendingImageName,
-    sendUserMessage,
     clearPendingImage,
-  } = useChatStore()
+  } = useWorkflowStore()
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -169,11 +174,18 @@ export default function Chat() {
         {isStreaming && (
           <div className="message assistant streaming">
             <div className="message-content">
-              <span className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
+              {processingStatus ? (
+                <span className="processing-status">
+                  <span className="status-dot"></span>
+                  {processingStatus}
+                </span>
+              ) : (
+                <span className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+              )}
             </div>
           </div>
         )}

@@ -56,6 +56,22 @@ export function connectSocket(): Socket {
     useUIStore.getState().setError('Failed to connect to server')
   })
 
+  // Chat progress (incremental status updates)
+  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string }) => {
+    console.log('[Socket] chat_progress:', data)
+    const chatStore = useChatStore.getState()
+
+    if (data.status) {
+      console.log('[Socket] Setting processing status:', data.status)
+      chatStore.setProcessingStatus(data.status)
+    }
+  })
+
+  // Debug: log all incoming events
+  socket.onAny((event, ...args) => {
+    console.log('[Socket] Event:', event, args)
+  })
+
   // Chat response
   socket.on('chat_response', (data: SocketChatResponse) => {
     console.log('[Socket] chat_response:', data)
@@ -63,6 +79,7 @@ export function connectSocket(): Socket {
 
     chatStore.setStreaming(false)
     chatStore.clearStreamContent()
+    chatStore.setProcessingStatus(null)
 
     if (data.conversation_id) {
       chatStore.setConversationId(data.conversation_id)
@@ -113,6 +130,7 @@ export function connectSocket(): Socket {
 
     chatStore.setStreaming(false)
     chatStore.clearPendingQuestion()
+    chatStore.setProcessingStatus(null)
 
     addAssistantMessage(`Error: ${data.error}`)
     uiStore.setError(data.error)

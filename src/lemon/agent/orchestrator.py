@@ -32,6 +32,10 @@ def json_serialize(obj: Any) -> str:
 
 from lemon.agent.context import ConversationContext, MessageRole, ToolCall
 from lemon.agent.tools import ToolRegistry, ToolResult
+from typing import Callable
+
+# Type for progress callback: (event_type, data) -> None
+ProgressCallback = Callable[[str, dict], None]
 
 # Load .env file
 def load_env():
@@ -375,6 +379,7 @@ class Orchestrator:
         user_message: str,
         image: Optional[str] = None,
         current_workflow_id: Optional[str] = None,
+        on_progress: Optional[ProgressCallback] = None,
     ) -> OrchestratorResponse:
         """Process a user message using Azure OpenAI with tools.
 
@@ -383,6 +388,8 @@ class Orchestrator:
             user_message: The user's message.
             image: Optional base64 data URL for vision analysis.
             current_workflow_id: ID of workflow currently open in editor (for editing context).
+            on_progress: Optional callback for progress updates (event_type, data).
+                         Events: 'thinking', 'tool_started', 'tool_completed'
 
         Returns:
             OrchestratorResponse with message, tool calls, and context updates.
@@ -393,14 +400,26 @@ class Orchestrator:
         tool_calls_list = []
         context_updates = {}
 
+        def emit_progress(event: str, data: dict):
+            """Emit progress if callback provided."""
+            if on_progress:
+                on_progress(event, data)
+
         # If no LLM config, fall back to simple mode
         if not self.has_llm:
             return self._process_message_simple(context, user_message, tool_calls_list, context_updates)
 
         try:
+            # Emit thinking status
+            emit_progress('thinking', {'status': 'Analyzing your request...'})
+
             # Build messages and tools for OpenAI (pass image for vision and workflow context)
             messages = self._build_messages(context, image=image, current_workflow_id=current_workflow_id)
             tools = self._build_openai_tools()
+
+            # If there's an image, indicate we're analyzing it
+            if image:
+                emit_progress('thinking', {'status': 'Analyzing image...'})
 
             # Call Azure OpenAI
             response = self._call_azure_openai(messages, tools)
@@ -421,8 +440,20 @@ class Orchestrator:
                     except json.JSONDecodeError:
                         arguments = {}
 
+                    # Emit tool started event
+                    emit_progress('tool_started', {
+                        'tool': tool_name,
+                        'status': self._get_tool_status_message(tool_name),
+                    })
+
                     # Execute the tool
                     result = self.execute_tool(tool_name, arguments)
+
+                    # Emit tool completed event
+                    emit_progress('tool_completed', {
+                        'tool': tool_name,
+                        'success': result.success,
+                    })
 
                     tool_calls_list.append(ToolCall(
                         tool_name=tool_name,
@@ -441,6 +472,9 @@ class Orchestrator:
                         "tool_call_id": tc["id"],
                         "content": json_serialize(llm_result),
                     })
+
+                # Emit thinking again before next LLM call
+                emit_progress('thinking', {'status': 'Processing results...'})
 
                 # Continue conversation
                 response = self._call_azure_openai(messages, tools)
@@ -467,6 +501,25 @@ class Orchestrator:
                 tool_calls=[],
                 context_updates={},
             )
+
+    def _get_tool_status_message(self, tool_name: str) -> str:
+        """Get a human-readable status message for a tool."""
+        tool_messages = {
+            'search_library': 'Searching workflow library...',
+            'get_workflow': 'Loading workflow details...',
+            'create_workflow': 'Creating workflow...',
+            'execute_workflow': 'Running workflow...',
+            'start_validation': 'Starting validation session...',
+            'submit_validation': 'Recording validation...',
+            'list_domains': 'Listing available domains...',
+            'add_block': 'Adding block to workflow...',
+            'update_block': 'Updating block...',
+            'delete_block': 'Removing block...',
+            'connect_blocks': 'Connecting blocks...',
+            'disconnect_blocks': 'Disconnecting blocks...',
+            'get_current_workflow': 'Getting current workflow state...',
+        }
+        return tool_messages.get(tool_name, f'Running {tool_name}...')
 
     def _process_message_simple(
         self,

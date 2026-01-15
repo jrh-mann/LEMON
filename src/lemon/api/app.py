@@ -19,8 +19,20 @@ if src_path not in sys.path:
 import threading
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional, Dict, Any
 from enum import Enum
+
+
+def serialize_for_json(obj: Any) -> Any:
+    """Recursively convert datetime objects to ISO strings for JSON serialization."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: serialize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_for_json(item) for item in obj]
+    return obj
 
 from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
@@ -980,7 +992,20 @@ def handle_chat(data):
     else:
         context = conversation_store.create()
 
-    response = orchestrator.process_message(context, message, image=image, current_workflow_id=current_workflow_id)
+    # Progress callback to emit status updates
+    def on_progress(event_type: str, data: dict):
+        print(f"[DEBUG] on_progress: {event_type} - {data}")
+        emit('chat_progress', {
+            'event': event_type,
+            **data,
+        }, room=session_id)
+        print(f"[DEBUG] Emitted chat_progress to room {session_id}")
+
+    response = orchestrator.process_message(
+        context, message, image=image,
+        current_workflow_id=current_workflow_id,
+        on_progress=on_progress
+    )
 
     # Check for workflow modification tools and emit events
     workflow_edit_tools = {
@@ -994,14 +1019,14 @@ def handle_chat(data):
             # Emit workflow modification event for real-time canvas updates
             emit('workflow_modified', {
                 'action': tc.tool_name,
-                'data': tc.result,
+                'data': serialize_for_json(tc.result),
             }, room=session_id)
 
     emit('chat_response', {
         'conversation_id': context.id,
         'response': response.message,
         'tool_calls': [
-            {'tool': tc.tool_name, 'result': tc.result}
+            {'tool': tc.tool_name, 'result': serialize_for_json(tc.result)}
             for tc in response.tool_calls
         ],
     })

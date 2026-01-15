@@ -1772,6 +1772,35 @@ body {
   }
 }
 
+/* Processing status indicator */
+.processing-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--teal);
+  border-radius: 50%;
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Chat commands (shown when image present) */
 .chat-commands {
   display: flex;
@@ -2018,7 +2047,7 @@ body {
 /* Flowchart nodes */
 .flow-node {
   cursor: pointer;
-  transition: filter 0.2s ease, transform 0.2s ease;
+  transition: filter 0.2s ease;
   pointer-events: all;
 }
 

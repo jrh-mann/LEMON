@@ -9,6 +9,8 @@ export interface WorkflowTab {
   flowchart: Flowchart
   history: Flowchart[]
   historyIndex: number
+  pendingImage: string | null
+  pendingImageName: string | null
 }
 
 interface WorkflowState {
@@ -26,12 +28,17 @@ interface WorkflowState {
 
   // Canvas state
   selectedNodeId: string | null
+  selectedNodeIds: string[]
   connectMode: boolean
   connectFromId: string | null
 
   // History for undo/redo (derived from active tab)
   history: Flowchart[]
   historyIndex: number
+
+  // Pending image (per-tab)
+  pendingImage: string | null
+  pendingImageName: string | null
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
@@ -47,10 +54,14 @@ interface WorkflowState {
 
   // Node operations
   selectNode: (nodeId: string | null) => void
+  selectNodes: (nodeIds: string[]) => void
+  addToSelection: (nodeId: string) => void
+  clearSelection: () => void
   addNode: (node: FlowNode) => void
   updateNode: (nodeId: string, updates: Partial<FlowNode>) => void
   deleteNode: (nodeId: string) => void
   moveNode: (nodeId: string, x: number, y: number) => void
+  moveNodes: (nodeIds: string[], dx: number, dy: number) => void
 
   // Edge operations
   addEdge: (edge: FlowEdge) => void
@@ -67,6 +78,10 @@ interface WorkflowState {
   undo: () => void
   redo: () => void
   clearHistory: () => void
+
+  // Pending image (per-tab)
+  setPendingImage: (image: string | null, name?: string | null) => void
+  clearPendingImage: () => void
 
   // Reset
   reset: () => void
@@ -85,6 +100,8 @@ const createInitialTab = (): WorkflowTab => ({
   flowchart: emptyFlowchart,
   history: [],
   historyIndex: -1,
+  pendingImage: null,
+  pendingImageName: null,
 })
 
 const initialTab = createInitialTab()
@@ -102,10 +119,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   currentWorkflow: null,
   flowchart: emptyFlowchart,
   selectedNodeId: null,
+  selectedNodeIds: [],
   connectMode: false,
   connectFromId: null,
   history: [],
   historyIndex: -1,
+  pendingImage: null,
+  pendingImageName: null,
 
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
@@ -139,18 +159,30 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       flowchart,
       history: [],
       historyIndex: -1,
+      pendingImage: null,
+      pendingImageName: null,
     }
-    set(state => ({
-      tabs: [...state.tabs, newTab],
+    // Save current tab's pending image before switching
+    const state = get()
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, pendingImage: state.pendingImage, pendingImageName: state.pendingImageName }
+        : tab
+    )
+    set({
+      tabs: [...tabs, newTab],
       activeTabId: newTab.id,
       currentWorkflow: workflow,
       flowchart,
       selectedNodeId: null,
+      selectedNodeIds: [],
       connectMode: false,
       connectFromId: null,
       history: [],
       historyIndex: -1,
-    }))
+      pendingImage: null,
+      pendingImageName: null,
+    })
     return newTab.id
   },
 
@@ -165,8 +197,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         currentWorkflow: null,
         flowchart: emptyFlowchart,
         selectedNodeId: null,
+        selectedNodeIds: [],
         history: [],
         historyIndex: -1,
+        pendingImage: null,
+        pendingImageName: null,
       })
       return
     }
@@ -190,6 +225,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       history: activeTab.history,
       historyIndex: activeTab.historyIndex,
       selectedNodeId: null,
+      selectedNodeIds: [],
+      pendingImage: activeTab.pendingImage,
+      pendingImageName: activeTab.pendingImageName,
     })
   },
 
@@ -197,10 +235,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const state = get()
     if (tabId === state.activeTabId) return
 
-    // Save current tab state
+    // Save current tab state including pending image
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
-        ? { ...tab, flowchart: state.flowchart, history: state.history, historyIndex: state.historyIndex }
+        ? {
+            ...tab,
+            flowchart: state.flowchart,
+            history: state.history,
+            historyIndex: state.historyIndex,
+            pendingImage: state.pendingImage,
+            pendingImageName: state.pendingImageName,
+          }
         : tab
     )
 
@@ -215,8 +260,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       history: newTab.history,
       historyIndex: newTab.historyIndex,
       selectedNodeId: null,
+      selectedNodeIds: [],
       connectMode: false,
       connectFromId: null,
+      pendingImage: newTab.pendingImage,
+      pendingImageName: newTab.pendingImageName,
     })
   },
 
@@ -229,7 +277,29 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   // Node operations
-  selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
+  selectNode: (nodeId) => set({
+    selectedNodeId: nodeId,
+    selectedNodeIds: nodeId ? [nodeId] : []
+  }),
+
+  selectNodes: (nodeIds) => set({
+    selectedNodeId: nodeIds.length > 0 ? nodeIds[0] : null,
+    selectedNodeIds: nodeIds
+  }),
+
+  addToSelection: (nodeId) => {
+    const state = get()
+    if (state.selectedNodeIds.includes(nodeId)) return
+    set({
+      selectedNodeId: nodeId,
+      selectedNodeIds: [...state.selectedNodeIds, nodeId]
+    })
+  },
+
+  clearSelection: () => set({
+    selectedNodeId: null,
+    selectedNodeIds: []
+  }),
 
   addNode: (node) => {
     const state = get()
@@ -266,6 +336,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ),
       },
       selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+      selectedNodeIds: state.selectedNodeIds.filter(id => id !== nodeId),
     })
   },
 
@@ -275,6 +346,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ...state.flowchart,
         nodes: state.flowchart.nodes.map((node) =>
           node.id === nodeId ? { ...node, x, y } : node
+        ),
+      },
+    }))
+  },
+
+  moveNodes: (nodeIds: string[], dx: number, dy: number) => {
+    const nodeIdSet = new Set(nodeIds)
+    set((state) => ({
+      flowchart: {
+        ...state.flowchart,
+        nodes: state.flowchart.nodes.map((node) =>
+          nodeIdSet.has(node.id) ? { ...node, x: node.x + dx, y: node.y + dy } : node
         ),
       },
     }))
@@ -373,15 +456,22 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
+  // Pending image (per-tab)
+  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name }),
+  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null }),
+
   // Reset
   reset: () =>
     set({
       currentWorkflow: null,
       flowchart: emptyFlowchart,
       selectedNodeId: null,
+      selectedNodeIds: [],
       connectMode: false,
       connectFromId: null,
       history: [],
       historyIndex: -1,
+      pendingImage: null,
+      pendingImageName: null,
     }),
 }))

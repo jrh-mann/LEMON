@@ -10,6 +10,9 @@ interface ChatState {
   isStreaming: boolean
   streamingContent: string
 
+  // Processing status (what the orchestrator is currently doing)
+  processingStatus: string | null
+
   // Agent interaction
   pendingQuestion: string | null
   taskId: string | null
@@ -28,6 +31,9 @@ interface ChatState {
   setStreaming: (streaming: boolean) => void
   appendStreamContent: (content: string) => void
   clearStreamContent: () => void
+
+  // Processing status
+  setProcessingStatus: (status: string | null) => void
 
   // Agent
   setPendingQuestion: (question: string | null, taskId?: string | null) => void
@@ -52,6 +58,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversationId: null,
   isStreaming: false,
   streamingContent: '',
+  processingStatus: null,
   pendingQuestion: null,
   taskId: null,
   pendingImage: null,
@@ -89,6 +96,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearStreamContent: () => set({ streamingContent: '' }),
 
+  // Processing status
+  setProcessingStatus: (status) => set({ processingStatus: status }),
+
   // Agent
   setPendingQuestion: (question, taskId = null) =>
     set({ pendingQuestion: question, taskId }),
@@ -119,6 +129,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversationId: null,
       isStreaming: false,
       streamingContent: '',
+      processingStatus: null,
       pendingQuestion: null,
       taskId: null,
       pendingImage: null,
