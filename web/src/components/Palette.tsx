@@ -7,13 +7,50 @@ interface BlockConfig {
   type: FlowNodeType
   label: string
   defaultLabel: string
+  icon: React.ReactNode
 }
 
 const BLOCKS: BlockConfig[] = [
-  { type: 'start', label: 'Start', defaultLabel: 'Input' },
-  { type: 'decision', label: 'Decision', defaultLabel: 'Condition?' },
-  { type: 'end', label: 'Output', defaultLabel: 'Result' },
-  { type: 'subprocess', label: 'Subflow', defaultLabel: 'Workflow' },
+  {
+    type: 'start',
+    label: 'Start',
+    defaultLabel: 'Input',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="4" />
+      </svg>
+    )
+  },
+  {
+    type: 'decision',
+    label: 'Decision',
+    defaultLabel: 'Condition?',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M9.5 9.5L12 12m0 0l2.5 2.5M12 12l2.5-2.5M12 12l-2.5 2.5" />
+      </svg>
+    )
+  },
+  {
+    type: 'end',
+    label: 'Output',
+    defaultLabel: 'Result',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M5 12h14M12 5l7 7-7 7" />
+      </svg>
+    )
+  },
+  {
+    type: 'subprocess',
+    label: 'Subflow',
+    defaultLabel: 'Workflow',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+      </svg>
+    )
+  },
 ]
 
 export default function Palette() {
@@ -77,7 +114,7 @@ export default function Palette() {
               onClick={() => handleClick(block)}
               title={`Click to add ${block.label} block`}
             >
-              <div className={`block-icon ${block.type}-icon`}></div>
+              <div className={`block-icon ${block.type}-icon`}>{block.icon}</div>
               <span>{block.label}</span>
             </button>
           ))}

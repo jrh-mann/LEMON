@@ -244,25 +244,51 @@ body {
   margin: 4px;
 }
 
-.output-icon {
+.output-icon,
+.end-icon {
   background: var(--green-light);
   border: 2px solid var(--green);
   border-radius: 50%;
 }
 
-.subflow-icon {
+.subflow-icon,
+.subprocess-icon {
   background: var(--rose-light);
   border: 2px solid var(--rose);
   border-radius: 6px;
   position: relative;
 }
 
-.subflow-icon::after {
+.subflow-icon::after,
+.subprocess-icon::after {
   content: '';
   position: absolute;
   inset: 4px;
   border: 1px solid var(--rose);
   border-radius: 3px;
+}
+
+.block-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.start-icon svg {
+  color: var(--teal);
+}
+
+.decision-icon svg {
+  color: var(--amber);
+  transform: rotate(-45deg);
+}
+
+.end-icon svg {
+  color: var(--green);
+}
+
+.subprocess-icon svg {
+  color: var(--rose);
 }
 
 /* Sidebar Tabs */

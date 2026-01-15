@@ -21,6 +21,30 @@ const DEFAULT_LABELS: Record<FlowNodeType, string> = {
   subprocess: 'Workflow',
 }
 
+// Get fill color based on node type
+const getNodeFillColor = (type: FlowNodeType): string => {
+  switch (type) {
+    case 'start': return 'var(--teal-light)'
+    case 'decision': return 'var(--amber-light)'
+    case 'end': return 'var(--green-light)'
+    case 'subprocess': return 'var(--rose-light)'
+    case 'process': return 'var(--paper)'
+    default: return 'var(--paper)'
+  }
+}
+
+// Get stroke color based on node type
+const getNodeStrokeColor = (type: FlowNodeType): string => {
+  switch (type) {
+    case 'start': return 'var(--teal)'
+    case 'decision': return 'var(--amber)'
+    case 'end': return 'var(--green)'
+    case 'subprocess': return 'var(--rose)'
+    case 'process': return 'var(--edge)'
+    default: return 'var(--edge)'
+  }
+}
+
 export default function Canvas() {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -359,9 +383,9 @@ export default function Canvas() {
         {node.type === 'decision' ? (
           <path
             d={getDecisionPath(0, 0, size.w, size.h)}
-            fill="var(--paper)"
-            stroke={isSelected ? color : 'var(--edge)'}
-            strokeWidth={isSelected ? 2 : 1}
+            fill={getNodeFillColor(node.type)}
+            stroke={isSelected ? color : getNodeStrokeColor(node.type)}
+            strokeWidth={isSelected ? 2 : 1.5}
             style={{ pointerEvents: 'none' }}
           />
         ) : (
@@ -371,9 +395,9 @@ export default function Canvas() {
             width={size.w}
             height={size.h}
             rx={node.type === 'start' || node.type === 'end' ? 32 : 8}
-            fill="var(--paper)"
-            stroke={isSelected ? color : 'var(--edge)'}
-            strokeWidth={isSelected ? 2 : 1}
+            fill={getNodeFillColor(node.type)}
+            stroke={isSelected ? color : getNodeStrokeColor(node.type)}
+            strokeWidth={isSelected ? 2 : 1.5}
           />
         )}
 
@@ -386,7 +410,7 @@ export default function Canvas() {
             height={size.h - 16}
             rx={4}
             fill="none"
-            stroke="var(--edge)"
+            stroke="var(--rose)"
             strokeWidth={1}
           />
         )}
