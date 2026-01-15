@@ -857,6 +857,19 @@ export default function Canvas() {
           <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
             -
           </button>
+          <button className="zoom-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M4 4h6v6H4zM14 4h6v6h-6zM9 14h6v6H9z" />
+              <path d="M7 10v4M17 10v4M12 10v4" />
+            </svg>
+          </button>
         </div>
 
         {/* Meta controls */}
@@ -885,21 +898,6 @@ export default function Canvas() {
             >
               <path d="M21 7v6h-6" />
               <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
-            </svg>
-          </button>
-          <button className="meta-btn" title="Auto-layout (Beautify)" onClick={beautifyFlowchart}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="8.5" y="14" width="7" height="7" rx="1" />
-              <path d="M6.5 10v2M17.5 10v2M12 14v-2M10 12h4" />
             </svg>
           </button>
         </div>
