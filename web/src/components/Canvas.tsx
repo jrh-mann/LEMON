@@ -772,16 +772,22 @@ export default function Canvas() {
       }
     })
 
-    // Calculate subtree width (number of leaf nodes)
+    // Calculate subtree width - ensures minimum spacing for each node
     const getSubtreeWidth = (node: TreeNode): number => {
       if (node.children.length === 0) return 1
-      return node.children.reduce((sum, child) => sum + getSubtreeWidth(child), 0)
+      // Sum of children's widths, but ensure at least 1 per child for spacing
+      const childrenWidth = node.children.reduce((sum, child) => sum + getSubtreeWidth(child), 0)
+      // Ensure minimum width accounts for number of direct children
+      return Math.max(childrenWidth, node.children.length)
     }
 
     // Assign positions recursively - children evenly spaced under parent
+    const siblingGap = 40 // extra gap between siblings
     const assignPositions = (node: TreeNode, leftX: number): number => {
       const subtreeWidth = getSubtreeWidth(node)
-      const myWidth = subtreeWidth * nodeSpacing
+      // Width includes sibling gaps for nodes with children
+      const numGaps = node.children.length > 1 ? node.children.length - 1 : 0
+      const myWidth = subtreeWidth * nodeSpacing + numGaps * siblingGap
 
       if (node.children.length === 0) {
         // Leaf node - place in center of allocated space
@@ -802,11 +808,15 @@ export default function Canvas() {
         return myWidth
       }
 
-      // Position children first, evenly distributed
+      // Position children first, evenly distributed with sibling gap
       let childX = leftX
-      node.children.forEach(child => {
+      node.children.forEach((child, idx) => {
         const childWidth = assignPositions(child, childX)
         childX += childWidth
+        // Add sibling gap between children (not after last)
+        if (idx < node.children.length - 1) {
+          childX += siblingGap
+        }
       })
 
       // Position this node centered over its children
