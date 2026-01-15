@@ -283,11 +283,13 @@ export function getDecisionConnectionPoint(
 // Calculate edge path between two nodes
 // edgeLabel: used for decision nodes to determine output position (Yes/No/other)
 // edgeIndex: the index of this edge among all edges from the same source (0-based)
+// pathOffset: offset to avoid collision with parallel paths
 export function calculateEdgePath(
   fromNode: FlowNode,
   toNode: FlowNode,
   edgeLabel?: string,
-  edgeIndex?: number
+  edgeIndex?: number,
+  pathOffset: number = 0
 ): string {
   let fromPoint: { x: number; y: number }
   let toPoint: { x: number; y: number }
@@ -336,64 +338,105 @@ export function calculateEdgePath(
     toPoint = getConnectionPoint(toNode, toDir)
   }
 
-  // Determine entry direction for target node
+  // Determine exit and entry directions
+  let fromDir: 'top' | 'bottom' | 'left' | 'right'
   let toDir: 'top' | 'bottom' | 'left' | 'right'
-  if (toNode.type === 'decision') {
-    toDir = 'top' // Always enter decision from top
-  } else {
-    const tdx = toNode.x - fromNode.x
-    const tdy = toNode.y - fromNode.y
-    if (Math.abs(tdy) > Math.abs(tdx) * 0.5) {
-      toDir = tdy > 0 ? 'top' : 'bottom'
+
+  // Determine from direction
+  if (fromNode.type === 'decision') {
+    const label = (edgeLabel || '').toLowerCase().trim()
+    if (label === 'yes' || label === 'y' || edgeIndex === 0) {
+      fromDir = 'left' // bottom-left diagonal exits leftward
+    } else if (label === 'no' || label === 'n' || edgeIndex === 1) {
+      fromDir = 'right' // bottom-right diagonal exits rightward
     } else {
-      toDir = tdx > 0 ? 'left' : 'right'
+      fromDir = 'bottom'
+    }
+  } else {
+    const dx = toNode.x - fromNode.x
+    const dy = toNode.y - fromNode.y
+    if (Math.abs(dy) > Math.abs(dx) * 0.5) {
+      fromDir = dy > 0 ? 'bottom' : 'top'
+    } else {
+      fromDir = dx > 0 ? 'right' : 'left'
     }
   }
 
-  // Calculate control points to ensure arrow points straight into target
-  // The second control point should be aligned with the entry direction
-  const controlDist = Math.max(40, Math.min(80, Math.abs(toPoint.y - fromPoint.y) * 0.4))
-
-  let cp1x: number, cp1y: number, cp2x: number, cp2y: number
-
-  // First control point - extends from source in appropriate direction
-  if (fromNode.type === 'decision') {
-    // For decision outputs, curve down first then toward target
-    cp1x = fromPoint.x
-    cp1y = fromPoint.y + controlDist
-  } else if (fromPoint.y < toPoint.y) {
-    cp1x = fromPoint.x
-    cp1y = fromPoint.y + controlDist
-  } else if (fromPoint.y > toPoint.y) {
-    cp1x = fromPoint.x
-    cp1y = fromPoint.y - controlDist
+  // Determine to direction
+  if (toNode.type === 'decision') {
+    toDir = 'top'
   } else {
-    // Horizontal - extend in x direction
-    cp1x = fromPoint.x + (toPoint.x > fromPoint.x ? controlDist : -controlDist)
-    cp1y = fromPoint.y
+    const dx = toNode.x - fromNode.x
+    const dy = toNode.y - fromNode.y
+    if (Math.abs(dy) > Math.abs(dx) * 0.5) {
+      toDir = dy > 0 ? 'top' : 'bottom'
+    } else {
+      toDir = dx > 0 ? 'left' : 'right'
+    }
   }
 
-  // Second control point - must be aligned so arrow points straight into target
-  switch (toDir) {
-    case 'top':
-      cp2x = toPoint.x
-      cp2y = toPoint.y - controlDist
-      break
-    case 'bottom':
-      cp2x = toPoint.x
-      cp2y = toPoint.y + controlDist
-      break
-    case 'left':
-      cp2x = toPoint.x - controlDist
-      cp2y = toPoint.y
-      break
-    case 'right':
-      cp2x = toPoint.x + controlDist
-      cp2y = toPoint.y
-      break
+  // Build orthogonal path with right angles only
+  const points: { x: number; y: number }[] = [fromPoint]
+  const minSegment = 25 // Minimum segment length before turning
+
+  // Determine routing based on exit/entry directions
+  if (fromDir === 'bottom' && toDir === 'top') {
+    // Straight down then to target
+    const midY = (fromPoint.y + toPoint.y) / 2
+    if (Math.abs(fromPoint.x - toPoint.x) < 5) {
+      // Straight line
+      points.push(toPoint)
+    } else {
+      points.push({ x: fromPoint.x, y: midY })
+      points.push({ x: toPoint.x, y: midY })
+      points.push(toPoint)
+    }
+  } else if (fromDir === 'top' && toDir === 'bottom') {
+    const midY = (fromPoint.y + toPoint.y) / 2
+    if (Math.abs(fromPoint.x - toPoint.x) < 5) {
+      points.push(toPoint)
+    } else {
+      points.push({ x: fromPoint.x, y: midY })
+      points.push({ x: toPoint.x, y: midY })
+      points.push(toPoint)
+    }
+  } else if ((fromDir === 'left' || fromDir === 'right') && toDir === 'top') {
+    // Exit horizontally, then down to target
+    const extendX = fromDir === 'left' ? fromPoint.x - minSegment : fromPoint.x + minSegment
+    points.push({ x: extendX, y: fromPoint.y })
+    points.push({ x: extendX, y: toPoint.y - minSegment })
+    points.push({ x: toPoint.x, y: toPoint.y - minSegment })
+    points.push(toPoint)
+  } else if (fromDir === 'bottom' && (toDir === 'left' || toDir === 'right')) {
+    // Exit down, then horizontally to target
+    const extendY = fromPoint.y + minSegment
+    points.push({ x: fromPoint.x, y: extendY })
+    points.push({ x: toDir === 'left' ? toPoint.x - minSegment : toPoint.x + minSegment, y: extendY })
+    points.push({ x: toDir === 'left' ? toPoint.x - minSegment : toPoint.x + minSegment, y: toPoint.y })
+    points.push(toPoint)
+  } else if ((fromDir === 'left' || fromDir === 'right') && (toDir === 'left' || toDir === 'right')) {
+    // Horizontal to horizontal
+    const midX = (fromPoint.x + toPoint.x) / 2
+    points.push({ x: midX, y: fromPoint.y })
+    points.push({ x: midX, y: toPoint.y })
+    points.push(toPoint)
+  } else {
+    // Fallback: simple L-shape
+    if (Math.abs(fromPoint.y - toPoint.y) > Math.abs(fromPoint.x - toPoint.x)) {
+      points.push({ x: fromPoint.x, y: toPoint.y })
+    } else {
+      points.push({ x: toPoint.x, y: fromPoint.y })
+    }
+    points.push(toPoint)
   }
 
-  return `M ${fromPoint.x} ${fromPoint.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${toPoint.x} ${toPoint.y}`
+  // Build SVG path from points
+  let path = `M ${points[0].x} ${points[0].y}`
+  for (let i = 1; i < points.length; i++) {
+    path += ` L ${points[i].x} ${points[i].y}`
+  }
+
+  return path
 }
 
 // Generate unique node ID

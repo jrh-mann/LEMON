@@ -510,6 +510,22 @@ export default function Canvas() {
           stroke="none"
         />
 
+        {/* Start node glow effect */}
+        {node.type === 'start' && (
+          <rect
+            x={-halfW - 4}
+            y={-halfH - 4}
+            width={size.w + 8}
+            height={size.h + 8}
+            rx={36}
+            fill="none"
+            stroke="var(--teal)"
+            strokeWidth={3}
+            opacity={0.3}
+            className="start-glow"
+          />
+        )}
+
         {/* Node shape */}
         {node.type === 'decision' ? (
           <path
@@ -528,8 +544,34 @@ export default function Canvas() {
             rx={node.type === 'start' || node.type === 'end' ? 32 : 8}
             fill={getNodeFillColor(node.type)}
             stroke={isSelected ? color : getNodeStrokeColor(node.type)}
-            strokeWidth={isSelected ? 2 : 1.5}
+            strokeWidth={node.type === 'start' ? 3 : isSelected ? 2 : 1.5}
           />
+        )}
+
+        {/* Start node play icon */}
+        {node.type === 'start' && (
+          <g transform={`translate(${-halfW + 12}, 0)`}>
+            <polygon
+              points="-4,-6 -4,6 5,0"
+              fill="var(--teal)"
+              opacity={0.6}
+            />
+          </g>
+        )}
+
+        {/* End node checkmark */}
+        {node.type === 'end' && (
+          <g transform={`translate(${-halfW + 14}, 0)`}>
+            <path
+              d="M-4,0 L-1,3 L4,-3"
+              fill="none"
+              stroke="var(--green)"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.6}
+            />
+          </g>
         )}
 
         {/* Subprocess double border */}
@@ -546,16 +588,23 @@ export default function Canvas() {
           />
         )}
 
-        {/* Node label */}
+        {/* Node label with word wrapping */}
         <text
-          x={0}
-          y={4}
+          x={node.type === 'start' || node.type === 'end' ? 8 : 0}
           textAnchor="middle"
           fontSize="13"
           fill="var(--ink)"
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
-          {truncateLabel(node.label, node.type === 'decision' ? 20 : 25)}
+          {wrapText(node.label, node.type === 'decision' ? 14 : 18).map((line, i, arr) => (
+            <tspan
+              key={i}
+              x={node.type === 'start' || node.type === 'end' ? 8 : 0}
+              dy={i === 0 ? `${-((arr.length - 1) * 7)}px` : '14px'}
+            >
+              {line}
+            </tspan>
+          ))}
         </text>
 
         {/* Color indicator */}
@@ -652,6 +701,35 @@ export default function Canvas() {
     return label.slice(0, maxLen - 1) + '…'
   }
 
+  // Wrap text into multiple lines, breaking on spaces
+  function wrapText(text: string, maxCharsPerLine: number): string[] {
+    if (text.length <= maxCharsPerLine) return [text]
+
+    const words = text.split(' ')
+    const lines: string[] = []
+    let currentLine = ''
+
+    for (const word of words) {
+      if (currentLine.length === 0) {
+        currentLine = word
+      } else if (currentLine.length + 1 + word.length <= maxCharsPerLine) {
+        currentLine += ' ' + word
+      } else {
+        lines.push(currentLine)
+        currentLine = word
+      }
+    }
+    if (currentLine) lines.push(currentLine)
+
+    // Limit to 3 lines max, truncate last line if needed
+    if (lines.length > 3) {
+      lines.length = 3
+      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + '…'
+    }
+
+    return lines
+  }
+
   // Beautify/auto-layout the flowchart - hierarchical tree with node duplication
   const beautifyFlowchart = useCallback(() => {
     if (flowchart.nodes.length === 0) return
@@ -668,22 +746,28 @@ export default function Canvas() {
       incoming.get(e.to)?.push(e.from)
     })
 
-    // Separate orphan nodes (no connections at all) from start nodes (have outgoing)
-    const orphanNodes = flowchart.nodes.filter(n =>
-      (incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) === 0
+    // Remove orphan nodes (no connections at all) - they don't belong in the flowchart
+    const orphanNodeIds = new Set(
+      flowchart.nodes
+        .filter(n => (incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) === 0)
+        .map(n => n.id)
     )
 
     // Start nodes: no incoming edges but have outgoing, or type 'start'
     let startNodes = flowchart.nodes.filter(n =>
-      ((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
-      n.type === 'start'
+      !orphanNodeIds.has(n.id) &&
+      (((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
+      n.type === 'start')
     )
 
-    // If no start nodes found, use first non-orphan node
+    // If no start nodes found, use first connected node
     if (startNodes.length === 0) {
-      const nonOrphans = flowchart.nodes.filter(n => !orphanNodes.includes(n))
-      if (nonOrphans.length > 0) {
-        startNodes = [nonOrphans[0]]
+      const connectedNodes = flowchart.nodes.filter(n => !orphanNodeIds.has(n.id))
+      if (connectedNodes.length > 0) {
+        startNodes = [connectedNodes[0]]
+      } else {
+        // All nodes are orphans - nothing to beautify
+        return
       }
     }
 
@@ -705,23 +789,15 @@ export default function Canvas() {
     // Layout constants - increased spacing
     const layerSpacing = 160
     const nodeSpacing = 220
-    const orphanSpacing = 200
     const startY = 100
 
-    // First, place orphan nodes in a row at the top
-    const orphanY = startY
-    const orphanStartX = 400 - ((orphanNodes.length - 1) * orphanSpacing) / 2
-    orphanNodes.forEach((node, idx) => {
-      newNodes.push({
-        ...node,
-        x: orphanStartX + idx * orphanSpacing,
-        y: orphanY
-      })
-      visited.add(node.id)
+    // Skip orphan placement - they're removed
+    orphanNodeIds.forEach(id => {
+      visited.add(id) // Mark as visited so they won't be added later
     })
 
-    // Offset for connected trees (below orphans if any)
-    const treeStartY = orphanNodes.length > 0 ? startY + layerSpacing : startY
+    // Start tree at top (no orphan row)
+    const treeStartY = startY
 
     // Build tree structure via BFS
     const roots: TreeNode[] = []

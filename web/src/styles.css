@@ -2018,8 +2018,42 @@ body {
 /* Flowchart nodes */
 .flow-node {
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: filter 0.2s ease, transform 0.2s ease;
   pointer-events: all;
+}
+
+/* Start node pulsing glow animation */
+.start-glow {
+  animation: start-pulse 2s ease-in-out infinite;
+}
+
+@keyframes start-pulse {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.02); }
+}
+
+/* Start node is THE beginning - make it feel important */
+.flow-node.start {
+  filter: drop-shadow(0 2px 8px rgba(31, 110, 104, 0.3));
+}
+
+.flow-node.start:hover {
+  transform: scale(1.02);
+  filter: drop-shadow(0 4px 12px rgba(31, 110, 104, 0.4));
+}
+
+/* End node completion feel */
+.flow-node.end {
+  filter: drop-shadow(0 2px 6px rgba(62, 124, 77, 0.25));
+}
+
+/* Decision nodes should feel like a crossroads */
+.flow-node.decision {
+  filter: drop-shadow(0 2px 6px rgba(201, 138, 44, 0.2));
+}
+
+.flow-node.decision:hover {
+  filter: drop-shadow(0 3px 10px rgba(201, 138, 44, 0.35));
 }
 
 .flow-node * {
@@ -2098,18 +2132,32 @@ body {
   cursor: pointer;
 }
 
+.flow-edge path {
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
 .flow-edge .edge-hit-area {
   pointer-events: stroke;
 }
 
-.flow-edge:hover line:not(.edge-hit-area) {
+.flow-edge:hover path {
   stroke: var(--teal);
   stroke-width: 2.5;
 }
 
-.flow-edge.selected line:not(.edge-hit-area) {
+.flow-edge.selected path {
   stroke: var(--teal);
   stroke-width: 3;
+}
+
+/* Edge labels */
+.flow-edge text {
+  transition: fill 0.2s ease;
+  font-weight: 500;
+}
+
+.flow-edge:hover text {
+  fill: var(--teal);
 }
 
 /* Canvas image */
