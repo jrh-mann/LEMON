@@ -191,6 +191,64 @@ export default function Canvas() {
     [connectMode, connectFromId, completeConnect, screenToSVG, selectNode]
   )
 
+  // Check if two nodes would collide (with padding)
+  const checkCollision = useCallback(
+    (nodeId: string, newX: number, newY: number): { x: number; y: number } => {
+      const draggingNode = flowchart.nodes.find(n => n.id === nodeId)
+      if (!draggingNode) return { x: newX, y: newY }
+
+      const draggingSize = getNodeSize(draggingNode.type)
+      const padding = 20 // Minimum gap between nodes
+
+      let adjustedX = newX
+      let adjustedY = newY
+
+      for (const other of flowchart.nodes) {
+        if (other.id === nodeId) continue
+
+        const otherSize = getNodeSize(other.type)
+
+        // Calculate bounding boxes with padding
+        const dragLeft = adjustedX - draggingSize.w / 2 - padding
+        const dragRight = adjustedX + draggingSize.w / 2 + padding
+        const dragTop = adjustedY - draggingSize.h / 2 - padding
+        const dragBottom = adjustedY + draggingSize.h / 2 + padding
+
+        const otherLeft = other.x - otherSize.w / 2
+        const otherRight = other.x + otherSize.w / 2
+        const otherTop = other.y - otherSize.h / 2
+        const otherBottom = other.y + otherSize.h / 2
+
+        // Check for overlap
+        const overlapX = dragRight > otherLeft && dragLeft < otherRight
+        const overlapY = dragBottom > otherTop && dragTop < otherBottom
+
+        if (overlapX && overlapY) {
+          // Calculate push-out direction (smallest overlap)
+          const pushLeft = otherLeft - (adjustedX + draggingSize.w / 2 + padding)
+          const pushRight = otherRight - (adjustedX - draggingSize.w / 2 - padding)
+          const pushUp = otherTop - (adjustedY + draggingSize.h / 2 + padding)
+          const pushDown = otherBottom - (adjustedY - draggingSize.h / 2 - padding)
+
+          // Find smallest push distance
+          const pushes = [
+            { dx: pushLeft, dy: 0, dist: Math.abs(pushLeft) },
+            { dx: pushRight, dy: 0, dist: Math.abs(pushRight) },
+            { dx: 0, dy: pushUp, dist: Math.abs(pushUp) },
+            { dx: 0, dy: pushDown, dist: Math.abs(pushDown) },
+          ]
+          const smallest = pushes.reduce((a, b) => a.dist < b.dist ? a : b)
+
+          adjustedX += smallest.dx
+          adjustedY += smallest.dy
+        }
+      }
+
+      return { x: adjustedX, y: adjustedY }
+    },
+    [flowchart.nodes]
+  )
+
   // Handle pointer move
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -212,9 +270,11 @@ export default function Canvas() {
       const dx = svgCoords.x - dragStart.x
       const dy = svgCoords.y - dragStart.y
 
-      moveNode(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
+      // Calculate new position with collision detection
+      const newPos = checkCollision(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
+      moveNode(dragNodeId, newPos.x, newPos.y)
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, checkCollision]
   )
 
   // Handle pointer up
