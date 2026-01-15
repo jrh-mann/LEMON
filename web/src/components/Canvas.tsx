@@ -191,7 +191,7 @@ export default function Canvas() {
     [connectMode, connectFromId, completeConnect, screenToSVG, selectNode]
   )
 
-  // Check if two nodes would collide (with padding)
+  // Check if two nodes would collide (with padding) - iterates until no collisions
   const checkCollision = useCallback(
     (nodeId: string, newX: number, newY: number): { x: number; y: number } => {
       const draggingNode = flowchart.nodes.find(n => n.id === nodeId)
@@ -203,45 +203,48 @@ export default function Canvas() {
       let adjustedX = newX
       let adjustedY = newY
 
-      for (const other of flowchart.nodes) {
-        if (other.id === nodeId) continue
+      // Iterate multiple times to handle chain collisions
+      const maxIterations = 10
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        let hadCollision = false
 
-        const otherSize = getNodeSize(other.type)
+        for (const other of flowchart.nodes) {
+          if (other.id === nodeId) continue
 
-        // Calculate bounding boxes with padding
-        const dragLeft = adjustedX - draggingSize.w / 2 - padding
-        const dragRight = adjustedX + draggingSize.w / 2 + padding
-        const dragTop = adjustedY - draggingSize.h / 2 - padding
-        const dragBottom = adjustedY + draggingSize.h / 2 + padding
+          const otherSize = getNodeSize(other.type)
 
-        const otherLeft = other.x - otherSize.w / 2
-        const otherRight = other.x + otherSize.w / 2
-        const otherTop = other.y - otherSize.h / 2
-        const otherBottom = other.y + otherSize.h / 2
+          // Calculate bounding boxes with padding
+          const dragHalfW = draggingSize.w / 2 + padding
+          const dragHalfH = draggingSize.h / 2 + padding
+          const otherHalfW = otherSize.w / 2
+          const otherHalfH = otherSize.h / 2
 
-        // Check for overlap
-        const overlapX = dragRight > otherLeft && dragLeft < otherRight
-        const overlapY = dragBottom > otherTop && dragTop < otherBottom
+          // Check for overlap using center distance
+          const dx = adjustedX - other.x
+          const dy = adjustedY - other.y
+          const overlapX = Math.abs(dx) < (dragHalfW + otherHalfW)
+          const overlapY = Math.abs(dy) < (dragHalfH + otherHalfH)
 
-        if (overlapX && overlapY) {
-          // Calculate push-out direction (smallest overlap)
-          const pushLeft = otherLeft - (adjustedX + draggingSize.w / 2 + padding)
-          const pushRight = otherRight - (adjustedX - draggingSize.w / 2 - padding)
-          const pushUp = otherTop - (adjustedY + draggingSize.h / 2 + padding)
-          const pushDown = otherBottom - (adjustedY - draggingSize.h / 2 - padding)
+          if (overlapX && overlapY) {
+            hadCollision = true
 
-          // Find smallest push distance
-          const pushes = [
-            { dx: pushLeft, dy: 0, dist: Math.abs(pushLeft) },
-            { dx: pushRight, dy: 0, dist: Math.abs(pushRight) },
-            { dx: 0, dy: pushUp, dist: Math.abs(pushUp) },
-            { dx: 0, dy: pushDown, dist: Math.abs(pushDown) },
-          ]
-          const smallest = pushes.reduce((a, b) => a.dist < b.dist ? a : b)
+            // Calculate overlap amounts
+            const overlapAmountX = (dragHalfW + otherHalfW) - Math.abs(dx)
+            const overlapAmountY = (dragHalfH + otherHalfH) - Math.abs(dy)
 
-          adjustedX += smallest.dx
-          adjustedY += smallest.dy
+            // Push out in the direction of smallest overlap
+            if (overlapAmountX < overlapAmountY) {
+              // Push horizontally
+              adjustedX += dx > 0 ? overlapAmountX : -overlapAmountX
+            } else {
+              // Push vertically
+              adjustedY += dy > 0 ? overlapAmountY : -overlapAmountY
+            }
+          }
         }
+
+        // If no collisions this iteration, we're done
+        if (!hadCollision) break
       }
 
       return { x: adjustedX, y: adjustedY }
