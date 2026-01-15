@@ -11,7 +11,7 @@ export default function WorkflowBrowser() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const { setCurrentWorkflow, setFlowchart } = useWorkflowStore()
+  const { addTab } = useWorkflowStore()
   const { closeModal } = useUIStore()
 
   // Load workflows on mount
@@ -42,11 +42,10 @@ export default function WorkflowBrowser() {
     )
   })
 
-  // Handle workflow selection
+  // Handle workflow selection - opens in new tab
   const handleSelectWorkflow = async (workflowId: string) => {
     try {
       const workflow = await getWorkflow(workflowId)
-      setCurrentWorkflow(workflow)
 
       // Convert workflow blocks to flowchart nodes/edges for canvas
       const nodes: FlowNode[] = workflow.blocks.map((block) => ({
@@ -74,7 +73,8 @@ export default function WorkflowBrowser() {
         flowchart = autoLayoutFlowchart(flowchart)
       }
 
-      setFlowchart(flowchart)
+      // Open workflow in a new tab
+      addTab(workflow.metadata.name, workflow, flowchart)
       closeModal()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflow')

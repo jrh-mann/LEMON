@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import './styles.css'
 import Header from './components/Header'
+import TabBar from './components/TabBar'
 import Palette from './components/Palette'
 import Canvas from './components/Canvas'
 import RightSidebar from './components/RightSidebar'
@@ -29,6 +30,7 @@ function App() {
 
       <div className="app-layout">
         <Header />
+        <TabBar />
 
         <main className="workspace">
           <Palette />

@@ -1,12 +1,26 @@
 import { create } from 'zustand'
 import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge } from '../types'
 
+// Tab interface
+export interface WorkflowTab {
+  id: string
+  title: string
+  workflow: Workflow | null
+  flowchart: Flowchart
+  history: Flowchart[]
+  historyIndex: number
+}
+
 interface WorkflowState {
   // Workflow library
   workflows: WorkflowSummary[]
   isLoadingWorkflows: boolean
 
-  // Current workflow
+  // Tabs
+  tabs: WorkflowTab[]
+  activeTabId: string
+
+  // Current workflow (derived from active tab)
   currentWorkflow: Workflow | null
   flowchart: Flowchart
 
@@ -15,7 +29,7 @@ interface WorkflowState {
   connectMode: boolean
   connectFromId: string | null
 
-  // History for undo/redo
+  // History for undo/redo (derived from active tab)
   history: Flowchart[]
   historyIndex: number
 
@@ -24,6 +38,12 @@ interface WorkflowState {
   setLoadingWorkflows: (loading: boolean) => void
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setFlowchart: (flowchart: Flowchart) => void
+
+  // Tab operations
+  addTab: (title?: string, workflow?: Workflow | null, flowchart?: Flowchart) => string
+  closeTab: (tabId: string) => void
+  switchTab: (tabId: string) => void
+  updateTabTitle: (tabId: string, title: string) => void
 
   // Node operations
   selectNode: (nodeId: string | null) => void
@@ -54,10 +74,31 @@ interface WorkflowState {
 
 const emptyFlowchart: Flowchart = { nodes: [], edges: [] }
 
+// Generate unique tab ID
+const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+
+// Create initial tab
+const createInitialTab = (): WorkflowTab => ({
+  id: generateTabId(),
+  title: 'New Workflow',
+  workflow: null,
+  flowchart: emptyFlowchart,
+  history: [],
+  historyIndex: -1,
+})
+
+const initialTab = createInitialTab()
+
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Initial state
   workflows: [],
   isLoadingWorkflows: false,
+
+  // Tabs
+  tabs: [initialTab],
+  activeTabId: initialTab.id,
+
+  // Current state (from active tab)
   currentWorkflow: null,
   flowchart: emptyFlowchart,
   selectedNodeId: null,
@@ -69,11 +110,122 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
   setLoadingWorkflows: (loading) => set({ isLoadingWorkflows: loading }),
-  setCurrentWorkflow: (workflow) => set({ currentWorkflow: workflow }),
+  setCurrentWorkflow: (workflow) => {
+    const state = get()
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, workflow, title: workflow?.metadata?.name || tab.title }
+        : tab
+    )
+    set({ currentWorkflow: workflow, tabs })
+  },
   setFlowchart: (flowchart) => {
     const state = get()
     state.pushHistory()
-    set({ flowchart })
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, flowchart }
+        : tab
+    )
+    set({ flowchart, tabs })
+  },
+
+  // Tab operations
+  addTab: (title = 'New Workflow', workflow = null, flowchart = emptyFlowchart) => {
+    const newTab: WorkflowTab = {
+      id: generateTabId(),
+      title,
+      workflow,
+      flowchart,
+      history: [],
+      historyIndex: -1,
+    }
+    set(state => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: newTab.id,
+      currentWorkflow: workflow,
+      flowchart,
+      selectedNodeId: null,
+      connectMode: false,
+      connectFromId: null,
+      history: [],
+      historyIndex: -1,
+    }))
+    return newTab.id
+  },
+
+  closeTab: (tabId) => {
+    const state = get()
+    if (state.tabs.length <= 1) {
+      // Don't close last tab, just reset it
+      const newTab = createInitialTab()
+      set({
+        tabs: [newTab],
+        activeTabId: newTab.id,
+        currentWorkflow: null,
+        flowchart: emptyFlowchart,
+        selectedNodeId: null,
+        history: [],
+        historyIndex: -1,
+      })
+      return
+    }
+
+    const tabIndex = state.tabs.findIndex(t => t.id === tabId)
+    const newTabs = state.tabs.filter(t => t.id !== tabId)
+
+    // If closing active tab, switch to adjacent tab
+    let newActiveId = state.activeTabId
+    if (tabId === state.activeTabId) {
+      const newIndex = Math.min(tabIndex, newTabs.length - 1)
+      newActiveId = newTabs[newIndex].id
+    }
+
+    const activeTab = newTabs.find(t => t.id === newActiveId)!
+    set({
+      tabs: newTabs,
+      activeTabId: newActiveId,
+      currentWorkflow: activeTab.workflow,
+      flowchart: activeTab.flowchart,
+      history: activeTab.history,
+      historyIndex: activeTab.historyIndex,
+      selectedNodeId: null,
+    })
+  },
+
+  switchTab: (tabId) => {
+    const state = get()
+    if (tabId === state.activeTabId) return
+
+    // Save current tab state
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, flowchart: state.flowchart, history: state.history, historyIndex: state.historyIndex }
+        : tab
+    )
+
+    const newTab = tabs.find(t => t.id === tabId)
+    if (!newTab) return
+
+    set({
+      tabs,
+      activeTabId: tabId,
+      currentWorkflow: newTab.workflow,
+      flowchart: newTab.flowchart,
+      history: newTab.history,
+      historyIndex: newTab.historyIndex,
+      selectedNodeId: null,
+      connectMode: false,
+      connectFromId: null,
+    })
+  },
+
+  updateTabTitle: (tabId, title) => {
+    set(state => ({
+      tabs: state.tabs.map(tab =>
+        tab.id === tabId ? { ...tab, title } : tab
+      ),
+    }))
   },
 
   // Node operations

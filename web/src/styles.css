@@ -91,6 +91,114 @@ body {
   gap: 10px;
 }
 
+/* Tab Bar */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  background: var(--cream);
+  border-bottom: 1px solid var(--edge);
+  padding: 0 12px;
+  gap: 4px;
+  min-height: 40px;
+}
+
+.tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  transition: all 0.15s ease;
+  max-width: 180px;
+  position: relative;
+}
+
+.tab:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.tab.active {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--teal);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.tab:hover .tab-close {
+  opacity: 0.6;
+}
+
+.tab-close:hover {
+  opacity: 1 !important;
+  background: var(--edge);
+  color: var(--ink);
+}
+
+.new-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.new-tab-btn:hover {
+  background: var(--paper);
+  color: var(--teal);
+}
+
 /* Buttons */
 .primary, .ghost {
   border: none;
