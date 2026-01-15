@@ -191,65 +191,64 @@ export default function Canvas() {
     [connectMode, connectFromId, completeConnect, screenToSVG, selectNode]
   )
 
-  // Check if two nodes would collide (with padding) - iterates until no collisions
+  // Check if position collides with any node
+  const hasCollision = useCallback(
+    (nodeId: string, x: number, y: number, nodeType: string): boolean => {
+      const draggingSize = getNodeSize(nodeType as any)
+      const padding = 20
+
+      for (const other of flowchart.nodes) {
+        if (other.id === nodeId) continue
+
+        const otherSize = getNodeSize(other.type)
+        const minDistX = draggingSize.w / 2 + otherSize.w / 2 + padding
+        const minDistY = draggingSize.h / 2 + otherSize.h / 2 + padding
+
+        if (Math.abs(x - other.x) < minDistX && Math.abs(y - other.y) < minDistY) {
+          return true
+        }
+      }
+      return false
+    },
+    [flowchart.nodes]
+  )
+
+  // Find valid position that doesn't collide - tries to get as close as possible to target
   const checkCollision = useCallback(
     (nodeId: string, newX: number, newY: number): { x: number; y: number } => {
       const draggingNode = flowchart.nodes.find(n => n.id === nodeId)
       if (!draggingNode) return { x: newX, y: newY }
 
-      const draggingSize = getNodeSize(draggingNode.type)
-      const padding = 20 // Minimum gap between nodes
-
-      let adjustedX = newX
-      let adjustedY = newY
-
-      // Iterate multiple times to handle chain collisions
-      const maxIterations = 10
-      for (let iteration = 0; iteration < maxIterations; iteration++) {
-        let hadCollision = false
-
-        for (const other of flowchart.nodes) {
-          if (other.id === nodeId) continue
-
-          const otherSize = getNodeSize(other.type)
-
-          // Calculate bounding boxes with padding
-          const dragHalfW = draggingSize.w / 2 + padding
-          const dragHalfH = draggingSize.h / 2 + padding
-          const otherHalfW = otherSize.w / 2
-          const otherHalfH = otherSize.h / 2
-
-          // Check for overlap using center distance
-          const dx = adjustedX - other.x
-          const dy = adjustedY - other.y
-          const overlapX = Math.abs(dx) < (dragHalfW + otherHalfW)
-          const overlapY = Math.abs(dy) < (dragHalfH + otherHalfH)
-
-          if (overlapX && overlapY) {
-            hadCollision = true
-
-            // Calculate overlap amounts
-            const overlapAmountX = (dragHalfW + otherHalfW) - Math.abs(dx)
-            const overlapAmountY = (dragHalfH + otherHalfH) - Math.abs(dy)
-
-            // Push out in the direction of smallest overlap
-            if (overlapAmountX < overlapAmountY) {
-              // Push horizontally
-              adjustedX += dx > 0 ? overlapAmountX : -overlapAmountX
-            } else {
-              // Push vertically
-              adjustedY += dy > 0 ? overlapAmountY : -overlapAmountY
-            }
-          }
-        }
-
-        // If no collisions this iteration, we're done
-        if (!hadCollision) break
+      // If no collision at target, allow it
+      if (!hasCollision(nodeId, newX, newY, draggingNode.type)) {
+        return { x: newX, y: newY }
       }
 
-      return { x: adjustedX, y: adjustedY }
+      // There's a collision - find the closest valid position
+      // Try moving along the line from current to target, stopping before collision
+      const startX = draggingNode.x
+      const startY = draggingNode.y
+      const dx = newX - startX
+      const dy = newY - startY
+
+      // Binary search for the furthest valid position along the path
+      let lo = 0, hi = 1
+      for (let i = 0; i < 10; i++) {
+        const mid = (lo + hi) / 2
+        const testX = startX + dx * mid
+        const testY = startY + dy * mid
+
+        if (hasCollision(nodeId, testX, testY, draggingNode.type)) {
+          hi = mid
+        } else {
+          lo = mid
+        }
+      }
+
+      // Use the last valid position (lo)
+      return { x: startX + dx * lo, y: startY + dy * lo }
     },
-    [flowchart.nodes]
+    [flowchart.nodes, hasCollision]
   )
 
   // Handle pointer move
