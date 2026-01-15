@@ -608,12 +608,23 @@ export default function Canvas() {
       incoming.get(e.to)?.push(e.from)
     })
 
-    // Find start nodes (no incoming edges or type 'start')
-    let startNodes = flowchart.nodes.filter(n =>
-      (incoming.get(n.id)?.length ?? 0) === 0 || n.type === 'start'
+    // Separate orphan nodes (no connections at all) from start nodes (have outgoing)
+    const orphanNodes = flowchart.nodes.filter(n =>
+      (incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) === 0
     )
+
+    // Start nodes: no incoming edges but have outgoing, or type 'start'
+    let startNodes = flowchart.nodes.filter(n =>
+      ((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
+      n.type === 'start'
+    )
+
+    // If no start nodes found, use first non-orphan node
     if (startNodes.length === 0) {
-      startNodes = [flowchart.nodes[0]]
+      const nonOrphans = flowchart.nodes.filter(n => !orphanNodes.includes(n))
+      if (nonOrphans.length > 0) {
+        startNodes = [nonOrphans[0]]
+      }
     }
 
     // Tree traversal with duplication for shared nodes
@@ -631,11 +642,33 @@ export default function Canvas() {
     const visited = new Set<string>()
     let dupCounter = 0
 
+    // Layout constants - increased spacing
+    const layerSpacing = 160
+    const nodeSpacing = 220
+    const orphanSpacing = 200
+    const startY = 100
+
+    // First, place orphan nodes in a row at the top
+    const orphanY = startY
+    const orphanStartX = 400 - ((orphanNodes.length - 1) * orphanSpacing) / 2
+    orphanNodes.forEach((node, idx) => {
+      newNodes.push({
+        ...node,
+        x: orphanStartX + idx * orphanSpacing,
+        y: orphanY
+      })
+      visited.add(node.id)
+    })
+
+    // Offset for connected trees (below orphans if any)
+    const treeStartY = orphanNodes.length > 0 ? startY + layerSpacing : startY
+
     // Build tree structure via BFS
     const roots: TreeNode[] = []
     const queue: TreeNode[] = []
 
     startNodes.forEach(node => {
+      if (visited.has(node.id)) return // skip if already placed as orphan
       const treeNode: TreeNode = {
         id: node.id,
         originalId: node.id,
@@ -677,7 +710,7 @@ export default function Canvas() {
       })
     }
 
-    // Handle disconnected nodes - add them as additional roots
+    // Handle any remaining disconnected nodes (connected to each other but not to start)
     flowchart.nodes.forEach(n => {
       if (!visited.has(n.id)) {
         const treeNode: TreeNode = {
@@ -689,28 +722,23 @@ export default function Canvas() {
           edgeLabel: ''
         }
         roots.push(treeNode)
+        visited.add(n.id)
       }
     })
 
-    // Calculate positions - each node's x is centered over its children
-    const layerSpacing = 150
-    const nodeSpacing = 180
-    const startY = 100
-
-    // First pass: calculate subtree widths
+    // Calculate subtree width (number of leaf nodes)
     const getSubtreeWidth = (node: TreeNode): number => {
       if (node.children.length === 0) return 1
       return node.children.reduce((sum, child) => sum + getSubtreeWidth(child), 0)
     }
 
-    // Second pass: assign x positions recursively
+    // Assign positions recursively - children evenly spaced under parent
     const assignPositions = (node: TreeNode, leftX: number): number => {
       const subtreeWidth = getSubtreeWidth(node)
       const myWidth = subtreeWidth * nodeSpacing
 
       if (node.children.length === 0) {
         // Leaf node - place in center of allocated space
-        node.layer // y is based on layer
         const nodeX = leftX + myWidth / 2
 
         const originalNode = flowchart.nodes.find(n => n.id === node.originalId)!
@@ -718,7 +746,7 @@ export default function Canvas() {
           ...originalNode,
           id: node.id,
           x: nodeX,
-          y: startY + node.layer * layerSpacing
+          y: treeStartY + node.layer * layerSpacing
         })
 
         if (node.parentId) {
@@ -728,7 +756,7 @@ export default function Canvas() {
         return myWidth
       }
 
-      // Position children first
+      // Position children first, evenly distributed
       let childX = leftX
       node.children.forEach(child => {
         const childWidth = assignPositions(child, childX)
@@ -745,7 +773,7 @@ export default function Canvas() {
         ...originalNode,
         id: node.id,
         x: nodeX,
-        y: startY + node.layer * layerSpacing
+        y: treeStartY + node.layer * layerSpacing
       })
 
       if (node.parentId) {
@@ -755,7 +783,7 @@ export default function Canvas() {
       return myWidth
     }
 
-    // Assign positions for all roots
+    // Assign positions for all tree roots
     let currentX = 0
     roots.forEach(root => {
       const width = assignPositions(root, currentX)
