@@ -2022,40 +2022,6 @@ body {
   pointer-events: all;
 }
 
-/* Start node pulsing glow animation */
-.start-glow {
-  animation: start-pulse 2s ease-in-out infinite;
-}
-
-@keyframes start-pulse {
-  0%, 100% { opacity: 0.2; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.02); }
-}
-
-/* Start node is THE beginning - make it feel important */
-.flow-node.start {
-  filter: drop-shadow(0 2px 8px rgba(31, 110, 104, 0.3));
-}
-
-.flow-node.start:hover {
-  transform: scale(1.02);
-  filter: drop-shadow(0 4px 12px rgba(31, 110, 104, 0.4));
-}
-
-/* End node completion feel */
-.flow-node.end {
-  filter: drop-shadow(0 2px 6px rgba(62, 124, 77, 0.25));
-}
-
-/* Decision nodes should feel like a crossroads */
-.flow-node.decision {
-  filter: drop-shadow(0 2px 6px rgba(201, 138, 44, 0.2));
-}
-
-.flow-node.decision:hover {
-  filter: drop-shadow(0 3px 10px rgba(201, 138, 44, 0.35));
-}
-
 .flow-node * {
   pointer-events: none;
 }

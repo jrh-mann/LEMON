@@ -510,22 +510,6 @@ export default function Canvas() {
           stroke="none"
         />
 
-        {/* Start node glow effect */}
-        {node.type === 'start' && (
-          <rect
-            x={-halfW - 4}
-            y={-halfH - 4}
-            width={size.w + 8}
-            height={size.h + 8}
-            rx={36}
-            fill="none"
-            stroke="var(--teal)"
-            strokeWidth={3}
-            opacity={0.3}
-            className="start-glow"
-          />
-        )}
-
         {/* Node shape */}
         {node.type === 'decision' ? (
           <path
@@ -546,32 +530,6 @@ export default function Canvas() {
             stroke={isSelected ? color : getNodeStrokeColor(node.type)}
             strokeWidth={node.type === 'start' ? 3 : isSelected ? 2 : 1.5}
           />
-        )}
-
-        {/* Start node play icon */}
-        {node.type === 'start' && (
-          <g transform={`translate(${-halfW + 12}, 0)`}>
-            <polygon
-              points="-4,-6 -4,6 5,0"
-              fill="var(--teal)"
-              opacity={0.6}
-            />
-          </g>
-        )}
-
-        {/* End node checkmark */}
-        {node.type === 'end' && (
-          <g transform={`translate(${-halfW + 14}, 0)`}>
-            <path
-              d="M-4,0 L-1,3 L4,-3"
-              fill="none"
-              stroke="var(--green)"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={0.6}
-            />
-          </g>
         )}
 
         {/* Subprocess double border */}
@@ -870,6 +828,69 @@ export default function Canvas() {
       // Ensure minimum width accounts for number of direct children
       return Math.max(childrenWidth, node.children.length)
     }
+
+    // Sort children so larger subtrees are centered (reduces edge crossings)
+    const centerLargerSubtrees = (node: TreeNode) => {
+      if (node.children.length <= 1) {
+        node.children.forEach(centerLargerSubtrees)
+        return
+      }
+
+      // Sort children by subtree width
+      const childrenWithWidths = node.children.map(child => ({
+        child,
+        width: getSubtreeWidth(child)
+      }))
+
+      // Sort ascending by width
+      childrenWithWidths.sort((a, b) => a.width - b.width)
+
+      // Reorder so largest are in middle: interleave from both ends
+      // [1, 2, 3, 4, 5] -> [1, 3, 5, 4, 2] (smallest at edges, largest in center)
+      const reordered: TreeNode[] = []
+      const sorted = childrenWithWidths.map(c => c.child)
+      let left = true
+      for (let i = 0; i < sorted.length; i++) {
+        if (left) {
+          reordered.push(sorted[i])
+        } else {
+          reordered.splice(Math.floor(reordered.length / 2) + 1, 0, sorted[i])
+        }
+        left = !left
+      }
+
+      node.children = reordered
+
+      // Recursively apply to all children
+      node.children.forEach(centerLargerSubtrees)
+    }
+
+    // Apply centering to all root trees
+    roots.forEach(centerLargerSubtrees)
+
+    // Order decision node children consistently: Yes on left, No on right
+    const orderDecisionChildren = (node: TreeNode) => {
+      const originalNode = flowchart.nodes.find(n => n.id === node.originalId)
+      if (originalNode?.type === 'decision' && node.children.length >= 2) {
+        // Find Yes and No children by their edge labels
+        const yesIdx = node.children.findIndex(c => c.edgeLabel?.toLowerCase() === 'yes')
+        const noIdx = node.children.findIndex(c => c.edgeLabel?.toLowerCase() === 'no')
+
+        if (yesIdx !== -1 && noIdx !== -1) {
+          // Reorder: Yes first (left), No second (right), then any others
+          const yesChild = node.children[yesIdx]
+          const noChild = node.children[noIdx]
+          const others = node.children.filter((_, i) => i !== yesIdx && i !== noIdx)
+          node.children = [yesChild, ...others, noChild]
+        }
+      }
+
+      // Recursively apply to all children
+      node.children.forEach(orderDecisionChildren)
+    }
+
+    // Apply decision ordering
+    roots.forEach(orderDecisionChildren)
 
     // Assign positions recursively - children evenly spaced under parent
     const siblingGap = 40 // extra gap between siblings
