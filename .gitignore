@@ -2,6 +2,7 @@
 .env
 .venv/
 vision.md
+.azure/
 
 # Token tracking
 tokens.json
