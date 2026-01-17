@@ -63,6 +63,7 @@ class ToolParameter:
     description: str
     required: bool = True
     enum: Optional[List[str]] = None
+    items: Optional[Dict[str, Any]] = None
 
 
 class Tool(ABC):
@@ -102,7 +103,7 @@ class Tool(ABC):
                 prop["enum"] = param.enum
             # Arrays need an items schema
             if param.type == "array":
-                prop["items"] = {"type": "string"}
+                prop["items"] = param.items or {"type": "string"}
             properties[param.name] = prop
             if param.required:
                 required.append(param.name)
@@ -404,11 +405,21 @@ class ExecuteWorkflowTool(Tool):
                 success=True,
                 data={
                     "output": result.output,
-                    "execution_path": result.path,
+                    "path": result.path,
+                    "context": result.context,
+                    "success": True,
                 },
             )
         else:
-            return ToolResult(success=False, error=result.error)
+            return ToolResult(
+                success=True,
+                data={
+                    "error": result.error,
+                    "path": result.path,
+                    "context": result.context,
+                    "success": False,
+                },
+            )
 
 
 # -----------------------------------------------------------------------------
@@ -706,6 +717,7 @@ class CreateWorkflowTool(Tool):
                     "and optionally range (for numeric) or enum_values (for enum). "
                     "Example: {\"name\": \"Patient Age\", \"type\": \"int\", \"range\": {\"min\": 0, \"max\": 120}}"
                 ),
+                items={"type": "object"},
                 required=True,
             ),
             ToolParameter(
@@ -718,6 +730,7 @@ class CreateWorkflowTool(Tool):
                     "The description is REQUIRED and shown as the node label. "
                     "Example: {\"id\": \"d1\", \"condition\": \"age >= 65\", \"description\": \"Is patient elderly?\"}"
                 ),
+                items={"type": "object"},
                 required=True,
             ),
             ToolParameter(
@@ -727,6 +740,7 @@ class CreateWorkflowTool(Tool):
                     "List of output values as HUMAN-READABLE strings describing outcomes. "
                     "Example: [\"High risk - refer to specialist\", \"Low risk - routine monitoring\"]"
                 ),
+                items={"type": "string"},
                 required=True,
             ),
             ToolParameter(
@@ -739,6 +753,7 @@ class CreateWorkflowTool(Tool):
                     "Example: [{\"from_block\": \"input0\", \"to_block\": \"d1\"}, "
                     "{\"from_block\": \"d1\", \"to_block\": \"output0\", \"from_port\": \"true\"}]"
                 ),
+                items={"type": "object"},
                 required=True,
             ),
         ]
@@ -999,6 +1014,15 @@ class CreateWorkflowTool(Tool):
                         "x": x,
                         "y": y,
                     })
+
+            # Persist layout positions so reloading keeps the same layout.
+            node_positions = {n["id"]: (n["x"], n["y"]) for n in nodes}
+            for block in workflow.blocks:
+                if block.id in node_positions:
+                    x, y = node_positions[block.id]
+                    block.position.x = x
+                    block.position.y = y
+            self.repository.save(workflow)
 
             # Build edges - Start connects to what inputs connected to
             edges = []
@@ -1287,7 +1311,7 @@ class AddBlockTool(Tool):
     def execute(self, args: Dict[str, Any]) -> ToolResult:
         from lemon.core.blocks import (
             InputBlock, DecisionBlock, OutputBlock, WorkflowRefBlock,
-            InputType, Range, generate_id
+            InputType, Range, Position, generate_id
         )
         from datetime import datetime, timezone
 
@@ -1309,7 +1333,19 @@ class AddBlockTool(Tool):
         # Create the block based on type
         block_id = generate_id()
         new_block = None
-        node_data = {"id": block_id, "x": 0, "y": 0}
+
+        # Place new blocks to the right of existing ones to avoid overlap.
+        existing_positions = [(b.position.x, b.position.y) for b in workflow.blocks]
+        if existing_positions:
+            max_x = max(x for x, _ in existing_positions)
+            max_y = max(y for _, y in existing_positions)
+            new_x = max_x + 200
+            new_y = max_y
+        else:
+            new_x = 120
+            new_y = 120
+
+        node_data = {"id": block_id, "x": new_x, "y": new_y}
 
         try:
             if block_type == "input":
@@ -1325,6 +1361,7 @@ class AddBlockTool(Tool):
                     range=range_obj,
                     enum_values=args.get("enum_values"),
                     description="",
+                    position=Position(x=new_x, y=new_y),
                 )
                 node_data.update({
                     "type": "input",
@@ -1343,6 +1380,7 @@ class AddBlockTool(Tool):
                     id=block_id,
                     condition=condition,
                     description=label,
+                    position=Position(x=new_x, y=new_y),
                 )
                 node_data.update({
                     "type": "decision",
@@ -1355,6 +1393,7 @@ class AddBlockTool(Tool):
                     id=block_id,
                     value=label,
                     description="",
+                    position=Position(x=new_x, y=new_y),
                 )
                 node_data.update({
                     "type": "output",
@@ -1375,6 +1414,7 @@ class AddBlockTool(Tool):
                     ref_id=ref_id,
                     ref_name=ref_name,
                     output_name="result",
+                    position=Position(x=new_x, y=new_y),
                 )
                 node_data.update({
                     "type": "workflow_ref",

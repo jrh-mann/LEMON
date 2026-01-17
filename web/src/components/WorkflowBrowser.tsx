@@ -96,7 +96,7 @@ export default function WorkflowBrowser() {
   function blockTypeToFlowType(blockType: string): 'start' | 'process' | 'decision' | 'subprocess' | 'end' {
     switch (blockType) {
       case 'input':
-        return 'start'
+        return 'process'
       case 'decision':
         return 'decision'
       case 'output':

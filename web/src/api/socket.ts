@@ -36,7 +36,8 @@ export function connectSocket(): Socket {
 
   socket = io(socketUrl, {
     query: { session_id: sessionId },
-    transports: ['websocket', 'polling'],
+    // Polling avoids Werkzeug websocket errors in dev.
+    transports: ['polling'],
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,

@@ -23,4 +23,10 @@ if "lemon" in sys.modules:
 spec.loader.exec_module(app_module)
 
 if __name__ == "__main__":
-    app_module.app.run(debug=True, port=5001, threaded=True)
+    # Use Socket.IO server so websocket events work in the web UI.
+    app_module.socketio.run(
+        app_module.app,
+        debug=True,
+        port=5001,
+        allow_unsafe_werkzeug=True,
+    )

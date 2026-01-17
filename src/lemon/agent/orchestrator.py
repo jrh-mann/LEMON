@@ -250,12 +250,43 @@ class Orchestrator:
         self.tools = tool_registry
 
         # Azure OpenAI configuration from environment
-        self.api_key = os.environ.get("API_KEY")
-        self.endpoint = os.environ.get("ENDPOINT")
-        self.deployment = os.environ.get("DEPLOYMENT_NAME", "gpt-5")
+        self.api_key = os.environ.get("API_KEY") or os.environ.get("AZURE_OPENAI_API_KEY")
+        self.endpoint = os.environ.get("ENDPOINT") or os.environ.get("AZURE_OPENAI_ENDPOINT")
+        self.deployment = (
+            os.environ.get("DEPLOYMENT_NAME")
+            or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+            or os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
+        )
+        self.api_version = (
+            os.environ.get("AZURE_OPENAI_API_VERSION")
+            or os.environ.get("API_VERSION")
+            or "2024-12-01-preview"
+        )
+        self.endpoint_url = self._build_azure_endpoint()
 
         # Check if we have valid Azure config
-        self.has_llm = bool(self.api_key and self.endpoint)
+        self.has_llm = bool(self.api_key and self.endpoint_url)
+
+    def _build_azure_endpoint(self) -> Optional[str]:
+        """Build Azure OpenAI chat completions endpoint if given a base URL."""
+        if not self.endpoint:
+            return None
+
+        endpoint = self.endpoint.rstrip("/")
+        # If the endpoint already targets /openai/, keep it and just ensure api-version.
+        if "/openai/" in endpoint:
+            if "api-version=" in endpoint:
+                return endpoint
+            joiner = "&" if "?" in endpoint else "?"
+            return f"{endpoint}{joiner}api-version={self.api_version}"
+
+        if not self.deployment:
+            return None
+
+        return (
+            f"{endpoint}/openai/deployments/{self.deployment}/chat/completions"
+            f"?api-version={self.api_version}"
+        )
 
     def get_system_prompt(self, current_workflow_id: Optional[str] = None) -> str:
         """Get the system prompt for the orchestrator.
@@ -364,9 +395,12 @@ class Orchestrator:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
+        if not self.endpoint_url:
+            raise ValueError("Azure OpenAI endpoint is not configured")
+
         with httpx.Client(timeout=600.0) as client:  # 10 minutes for image analysis
             response = client.post(
-                self.endpoint,
+                self.endpoint_url,
                 headers=headers,
                 json=payload,
             )

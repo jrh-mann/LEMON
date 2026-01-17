@@ -840,14 +840,25 @@ export default function Canvas() {
   const beautifyFlowchart = useCallback(() => {
     if (flowchart.nodes.length === 0) return
 
+    // De-dupe nodes/edges to keep layout stable across repeated runs.
+    const nodeById = new Map(flowchart.nodes.map((node) => [node.id, node]))
+    const nodes = Array.from(nodeById.values())
+    const edgeKeys = new Set<string>()
+    const edges = flowchart.edges.filter((edge) => {
+      const key = `${edge.from}->${edge.to}:${edge.label || ''}`
+      if (edgeKeys.has(key)) return false
+      edgeKeys.add(key)
+      return nodeById.has(edge.from) && nodeById.has(edge.to)
+    })
+
     // Build adjacency list for outgoing edges with labels
     const outgoing = new Map<string, { to: string; label: string }[]>()
     const incoming = new Map<string, string[]>()
-    flowchart.nodes.forEach(n => {
+    nodes.forEach(n => {
       outgoing.set(n.id, [])
       incoming.set(n.id, [])
     })
-    flowchart.edges.forEach(e => {
+    edges.forEach(e => {
       outgoing.get(e.from)?.push({ to: e.to, label: e.label })
       incoming.get(e.to)?.push(e.from)
     })
@@ -860,7 +871,7 @@ export default function Canvas() {
     )
 
     // Start nodes: no incoming edges but have outgoing, or type 'start'
-    let startNodes = flowchart.nodes.filter(n =>
+    let startNodes = nodes.filter(n =>
       !orphanNodeIds.has(n.id) &&
       (((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
       n.type === 'start')
@@ -868,7 +879,7 @@ export default function Canvas() {
 
     // If no start nodes found, use first connected node
     if (startNodes.length === 0) {
-      const connectedNodes = flowchart.nodes.filter(n => !orphanNodeIds.has(n.id))
+      const connectedNodes = nodes.filter(n => !orphanNodeIds.has(n.id))
       if (connectedNodes.length > 0) {
         startNodes = [connectedNodes[0]]
       } else {
@@ -909,45 +920,21 @@ export default function Canvas() {
     const roots: TreeNode[] = []
     const queue: TreeNode[] = []
 
-    // Create entry point "Start" node that connects to all root nodes
-    const entryPointId = generateNodeId()
-    const entryPointNode: FlowNode = {
-      id: entryPointId,
-      type: 'start',
-      label: 'Start',
-      x: 0, // will be positioned later
-      y: 0,
-      color: 'teal',
-    }
-
-    // Create the entry point tree node as the single root
-    const entryTreeNode: TreeNode = {
-      id: entryPointId,
-      originalId: entryPointId,
-      layer: 0,
-      children: [],
-      parentId: null,
-      edgeLabel: ''
-    }
-    roots.push(entryTreeNode)
-
-    // Add original start nodes as children of the entry point
+    // Use actual start nodes as roots (no synthetic entry point).
     startNodes.forEach(node => {
       if (visited.has(node.id)) return
       const treeNode: TreeNode = {
         id: node.id,
         originalId: node.id,
-        layer: 1, // layer 1 since entry point is layer 0
+        layer: 0,
         children: [],
-        parentId: entryPointId,
+        parentId: null,
         edgeLabel: ''
       }
-      entryTreeNode.children.push(treeNode)
+      roots.push(treeNode)
       queue.push(treeNode)
       visited.add(node.id)
     })
-
-    // Entry point node will be added during position assignment
 
     while (queue.length > 0) {
       const current = queue.shift()!
@@ -978,7 +965,7 @@ export default function Canvas() {
     }
 
     // Handle any remaining disconnected nodes (connected to each other but not to start)
-    flowchart.nodes.forEach(n => {
+    nodes.forEach(n => {
       if (!visited.has(n.id)) {
         const treeNode: TreeNode = {
           id: n.id,
@@ -1060,7 +1047,7 @@ export default function Canvas() {
         // Leaf node - place in center of allocated space
         const nodeX = leftX + myWidth / 2
 
-        const originalNode = flowchart.nodes.find(n => n.id === node.originalId)!
+        const originalNode = nodes.find(n => n.id === node.originalId)!
         newNodes.push({
           ...originalNode,
           id: node.id,
@@ -1091,19 +1078,11 @@ export default function Canvas() {
       const lastChild = newNodes.find(n => n.id === node.children[node.children.length - 1].id)!
       const nodeX = (firstChild.x + lastChild.x) / 2
 
-      // Check if this is the entry point (not in original flowchart)
-      const originalNode = flowchart.nodes.find(n => n.id === node.originalId)
+      const originalNode = nodes.find(n => n.id === node.originalId)
       if (originalNode) {
         newNodes.push({
           ...originalNode,
           id: node.id,
-          x: nodeX,
-          y: treeStartY + node.layer * layerSpacing
-        })
-      } else if (node.originalId === entryPointId) {
-        // Entry point node
-        newNodes.push({
-          ...entryPointNode,
           x: nodeX,
           y: treeStartY + node.layer * layerSpacing
         })

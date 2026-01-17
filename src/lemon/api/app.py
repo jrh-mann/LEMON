@@ -57,7 +57,8 @@ template_dir = Path(__file__).parent / "templates"
 static_dir = Path(__file__).parent / "static"
 app = Flask(__name__, template_folder=str(template_dir), static_folder=str(static_dir))
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Use threading mode for dev to avoid websocket issues with Werkzeug.
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 
 # -----------------------------------------------------------------------------
@@ -101,7 +102,7 @@ def add_no_cache_headers(response):
 # Initialize components
 repository = InMemoryWorkflowRepository()
 search_service = SearchService(repository)
-executor = WorkflowExecutor()
+executor = WorkflowExecutor(repository)
 case_generator = CaseGenerator(seed=42)
 session_manager = ValidationSessionManager(repository, executor, case_generator)
 tool_registry = create_tool_registry(repository, search_service, executor, session_manager)
