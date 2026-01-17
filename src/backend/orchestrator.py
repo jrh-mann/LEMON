@@ -42,7 +42,7 @@ class Orchestrator:
         )
         return ToolResult(tool=tool_name, data=data)
 
-    def respond(self, user_message: str) -> str:
+    def respond(self, user_message: str, *, image_name: Optional[str] = None) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d", len(user_message.encode("utf-8")))
         tool_desc = [
@@ -78,6 +78,8 @@ class Orchestrator:
             "If no tool is needed, respond with plain text. "
             "Tool outputs are responses from a subagent; do not paraphrase them."
         )
+        if image_name:
+            system += f" If calling analyze_workflow, use image_name: {image_name}."
         if self.last_session_id:
             system += f" Current analyze_workflow session_id: {self.last_session_id}."
 

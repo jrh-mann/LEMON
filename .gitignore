@@ -55,3 +55,4 @@ frontend/runs/
 # Backend logs and local state
 .lemon/logs/
 .lemon/history.sqlite
+.lemon/uploads/
