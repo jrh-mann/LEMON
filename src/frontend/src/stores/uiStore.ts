@@ -48,8 +48,8 @@ interface UIState {
 }
 
 const MIN_ZOOM = 0.25
-const MAX_ZOOM = 2
-const ZOOM_STEP = 0.1
+const MAX_ZOOM = 8
+const ZOOM_STEP = 0.7
 
 export const useUIStore = create<UIState>((set) => ({
   // Initial state
