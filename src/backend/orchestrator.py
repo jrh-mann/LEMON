@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import json
 import logging
+import re
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .tools import ToolRegistry
-from .llm import call_azure_openai, call_azure_openai_stream
+from .mcp_client import call_mcp_tool
+from .llm import call_llm_stream, call_llm_with_tools
 
 
 @dataclass
@@ -26,6 +30,7 @@ class Orchestrator:
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
+        self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() not in {"0", "false", "no"}
 
     def run_tool(
         self,
@@ -40,7 +45,10 @@ class Orchestrator:
             tool_name,
             json.dumps(args, ensure_ascii=True),
         )
-        data = self.tools.execute(tool_name, args, stream=stream)
+        if self._use_mcp:
+            data = call_mcp_tool(tool_name, args)
+        else:
+            data = self.tools.execute(tool_name, args, stream=stream)
         self._tool_logger.info(
             "tool_response name=%s data=%s",
             tool_name,
@@ -54,21 +62,43 @@ class Orchestrator:
         *,
         image_name: Optional[str] = None,
         stream: Optional[Callable[[str], None]] = None,
+        allow_tools: bool = True,
+        on_tool_event: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d", len(user_message.encode("utf-8")))
+        inferred_image = self._infer_image_name(user_message) if not image_name else None
+        if inferred_image:
+            image_name = inferred_image
+            self._logger.info("Inferred image_name=%s from user message", image_name)
         tool_desc = [
             {
-                "name": "analyze_workflow",
-                "description": (
-                    "Analyze a workflow image in repo root. "
-                    "Returns JSON with inputs, outputs, tree, doubts, plus session_id. "
-                    "Use session_id + feedback to refine a prior analysis."
-                ),
-                "args": {
-                    "image_name": "string (filename in repo root; required on first call)",
-                    "session_id": "string (optional, to continue a prior analysis)",
-                    "feedback": "string (optional, user feedback to refine analysis)",
+                "type": "function",
+                "function": {
+                    "name": "analyze_workflow",
+                    "description": (
+                        "Analyze a workflow image in repo root. "
+                        "Returns JSON with inputs, outputs, tree, doubts, plus session_id. "
+                        "Use session_id + feedback to refine a prior analysis."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "image_name": {
+                                "type": "string",
+                                "description": "Filename of the image in the repo root.",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Optional session id to continue a prior analysis.",
+                            },
+                            "feedback": {
+                                "type": "string",
+                                "description": "Optional feedback to refine the analysis.",
+                            },
+                        },
+                        "required": [],
+                    },
                 },
             }
         ]
@@ -81,15 +111,14 @@ class Orchestrator:
             "modifications through tools when explicitly requested or confirmed. "
             "Core rules: do not edit JSON directly; all changes go through tool "
             "calls. Prefer clarifying questions before any modification to the "
-            "JSON/tree. If the user explicitly requests analysis of an image, call "
-            "the tool without extra clarification. Clarifying questions are allowed "
-            "without tool use. Knowledge cutoff: 2024-10. "
+            "JSON/tree. If the user explicitly requests analysis of an image, tell the user what ur doing and then call "
+            "the tool. Clarifying questions are allowed "
+            "without tool use. "
             "Tool use policy: tools are required for analyzing a new image or "
-            "applying JSON/tree changes. When a tool is needed, respond ONLY with "
-            "a JSON object: {\"tool\": \"name\", \"args\": {...}}. If no tool is "
-            "needed, respond in plain text. After tool results are provided, respond "
-            "in plain text only; do not emit additional tool JSON unless another "
-            "tool call is required. Do not show raw tool JSON to the user; summarize "
+            "applying JSON/tree changes. Tool calls are executed via MCP. Use tools "
+            "when needed, but you may respond in plain text for discussion and guidance. "
+            "After tool results are provided, respond in plain text only; do not request "
+            "additional tool calls unless required. Do not show raw tool JSON to the user; summarize "
             "ONLY inputs, outputs, and doubts from the tool result. Tool output may "
             "omit the tree; state what is missing and ask how to proceed. "
             "Decision flow: if the user explicitly says analyze [image_name], apply "
@@ -113,66 +142,159 @@ class Orchestrator:
             system += f" If calling analyze_workflow, use image_name: {image_name}."
         if self.last_session_id:
             system += f" Current analyze_workflow session_id: {self.last_session_id}."
+        if not allow_tools:
+            system += (
+                " Tools are disabled for this response. Do NOT call tools; respond in "
+                "plain text only."
+            )
 
         messages = [
-            {"role": "system", "content": system + "\n\nTools:\n" + json.dumps(tool_desc)},
+            {"role": "system", "content": system},
             *self.history,
             {"role": "user", "content": user_message},
         ]
+        force_tool = allow_tools and self._should_force_analysis(user_message, image_name)
 
+        did_stream = False
         try:
-            # Do not stream tool-selection output.
-            raw = call_azure_openai(messages)
+            def on_delta(delta: str) -> None:
+                nonlocal did_stream
+                did_stream = True
+                if stream:
+                    stream(delta)
+
+            if allow_tools:
+                raw, tool_calls = call_llm_with_tools(
+                    messages,
+                    tools=tool_desc,
+                    tool_choice="analyze_workflow" if force_tool else None,
+                    on_delta=on_delta if stream else None,
+                )
+            else:
+                if stream:
+                    raw = call_llm_stream(
+                        messages,
+                        on_delta=on_delta,
+                    )
+                    raw = raw.strip()
+                    tool_calls = []
+                else:
+                    raw, tool_calls = call_llm_with_tools(
+                        messages,
+                        tools=None,
+                        tool_choice="none",
+                    )
         except Exception as exc:
             self._logger.exception("LLM error while responding")
             return f"LLM error: {exc}"
 
-        # Try tool-call JSON first.
         tool_iterations = 0
         tool_results: List[ToolResult] = []
-        while True:
-            payload = _extract_tool_payload(raw)
-            if payload is None:
-                break
-
-            tool_name = payload.get("tool")
-            args = payload.get("args") or {}
+        while allow_tools and tool_calls:
             tool_iterations += 1
             if tool_iterations > 5:
                 return "Tool error (max tool calls reached)."
-            try:
-                # Do not stream tool output; only stream the final summary.
-                result = self.run_tool(tool_name, args, stream=None)
-                session_id = result.data.get("session_id")
-                if session_id:
-                    self.last_session_id = session_id
-                tool_results.append(result)
-                tool_payload = {
-                    "source": "subagent",
-                    "tool": tool_name,
-                    "data": result.data,
-                }
-                tool_text = json.dumps(tool_payload, indent=2)
-                messages.append({"role": "assistant", "content": tool_text})
-                raw = call_azure_openai(messages)
-                continue
-            except Exception as exc:
-                self._tool_logger.error(
-                    "tool_error name=%s error=%s",
-                    tool_name,
-                    str(exc),
-                )
-                return f"Tool error ({tool_name}): {exc}"
 
-        if tool_results:
-            final_text = _summarize_tool_results(tool_results)
-        else:
-            final_text = raw
-        if stream:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": raw or "",
+                    "tool_calls": tool_calls,
+                }
+            )
+
+            for call in tool_calls:
+                fn = call.get("function") or {}
+                tool_name = fn.get("name")
+                args_text = fn.get("arguments") or "{}"
+                if isinstance(args_text, str):
+                    try:
+                        args = json.loads(args_text)
+                    except json.JSONDecodeError:
+                        args = {}
+                elif isinstance(args_text, dict):
+                    args = args_text
+                else:
+                    args = {}
+                if tool_name == "analyze_workflow" and image_name and not args.get("image_name"):
+                    args["image_name"] = image_name
+
+                try:
+                    if on_tool_event:
+                        on_tool_event("tool_start", tool_name, args)
+                    result = self.run_tool(tool_name, args, stream=None)
+                    session_id = result.data.get("session_id")
+                    if session_id:
+                        self.last_session_id = session_id
+                    tool_results.append(result)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id"),
+                            "content": json.dumps(result.data),
+                        }
+                    )
+                    if on_tool_event:
+                        on_tool_event("tool_complete", tool_name, args)
+                except Exception as exc:
+                    self._tool_logger.error(
+                        "tool_error name=%s error=%s",
+                        tool_name,
+                        str(exc),
+                    )
+                    return f"Tool error ({tool_name}): {exc}"
+
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Tool execution succeeded. The tool results are provided above. "
+                        "Respond in plain text only, summarizing inputs, outputs, and doubts."
+                    ),
+                }
+            )
+            raw, tool_calls = call_llm_with_tools(
+                messages,
+                tools=tool_desc,
+                tool_choice="none",
+            )
+
+        final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
+        if stream and not did_stream:
             _emit_stream(stream, final_text)
         self.history.append({"role": "user", "content": user_message})
         self.history.append({"role": "assistant", "content": final_text})
         return final_text
+
+    def _infer_image_name(self, user_message: str) -> Optional[str]:
+        pattern = re.compile(r"([A-Za-z]:[\\\\/][^\\s]+\\.(?:png|jpe?g|gif|webp|bmp)|[^\\s]+\\.(?:png|jpe?g|gif|webp|bmp))", re.IGNORECASE)
+        matches = pattern.findall(user_message)
+        if not matches:
+            return None
+        repo_root = Path(__file__).parent.parent.parent
+        for match in matches:
+            candidate = match.strip().strip("\"'").rstrip(".,)")
+            candidate_path = Path(candidate)
+            if not candidate_path.is_absolute():
+                candidate_path = repo_root / candidate_path
+            try:
+                resolved = candidate_path.resolve()
+            except OSError:
+                continue
+            if not resolved.exists():
+                continue
+            try:
+                rel = resolved.relative_to(repo_root)
+            except ValueError:
+                continue
+            return str(rel).replace("\\", "/")
+        return None
+
+    def _should_force_analysis(self, user_message: str, image_name: Optional[str]) -> bool:
+        if not image_name:
+            return False
+        lowered = user_message.lower()
+        return "analy" in lowered or "analyse" in lowered or "analyze" in lowered
 
 
 def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 800) -> None:
@@ -180,32 +302,6 @@ def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 
         return
     for idx in range(0, len(text), chunk_size):
         stream(text[idx : idx + chunk_size])
-
-
-def _extract_tool_payload(raw: str) -> Optional[Dict[str, Any]]:
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        payload = None
-    if isinstance(payload, dict) and "tool" in payload:
-        return payload
-    # Try to salvage a JSON object if the model returned extra text.
-    if not raw:
-        return None
-    if '"tool"' not in raw:
-        return None
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    snippet = raw[start : end + 1]
-    try:
-        payload = json.loads(snippet)
-    except json.JSONDecodeError:
-        return None
-    if isinstance(payload, dict) and "tool" in payload:
-        return payload
-    return None
 
 
 def _summarize_tool_results(results: List[ToolResult]) -> str:

@@ -67,6 +67,11 @@ export function connectSocket(): Socket {
     const chatStore = useChatStore.getState()
     useUIStore.getState().clearError()
 
+    if (data.tool === 'analyze_workflow' && !data.status) {
+      chatStore.setProcessingStatus('Analyzing workflow...')
+      return
+    }
+
     if (data.status) {
       console.log('[Socket] Setting processing status:', data.status)
       chatStore.setProcessingStatus(data.status)
@@ -96,10 +101,7 @@ export function connectSocket(): Socket {
 
     const streamed = chatStore.streamingContent
     const hasTools = (data.tool_calls?.length ?? 0) > 0
-    if (hasTools) {
-      chatStore.clearStreamContent()
-      addAssistantMessage(data.response, data.tool_calls)
-    } else if (streamed) {
+    if (streamed) {
       addAssistantMessage(streamed, data.tool_calls)
       chatStore.clearStreamContent()
     } else {

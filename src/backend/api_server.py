@@ -228,7 +228,11 @@ def chat() -> Any:
             logger.exception("Failed to save uploaded image")
             return jsonify({"error": f"Invalid image data: {exc}"}), 400
 
-    response_text = convo.orchestrator.respond(message, image_name=image_name)
+    response_text = convo.orchestrator.respond(
+        message,
+        image_name=image_name,
+        allow_tools=True,
+    )
     tool_calls = _extract_tool_calls(response_text, include_result=False)
     response_summary = _summarize_response(response_text)
     flowchart = _extract_flowchart(response_text)
@@ -418,15 +422,6 @@ def socket_chat(payload: Dict[str, Any]) -> None:
                 return
 
         did_stream = False
-        wants_tool = False
-        if image_name:
-            wants_tool = True
-        else:
-            lowered = message.lower()
-            if "analy" in lowered or "analyse" in lowered:
-                wants_tool = True
-            elif any(ext in lowered for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]):
-                wants_tool = True
 
         def stream_chunk(chunk: str) -> None:
             nonlocal did_stream
@@ -434,18 +429,24 @@ def socket_chat(payload: Dict[str, Any]) -> None:
             socketio.emit("chat_stream", {"chunk": chunk}, to=sid)
             socketio.sleep(0)
 
+        def on_tool_event(event: str, tool: str, args: Dict[str, Any]) -> None:
+            if tool != "analyze_workflow":
+                return
+            status = "Analyzing workflow..."
+            socketio.emit(
+                "chat_progress",
+                {"event": event, "status": status, "tool": tool},
+                to=sid,
+            )
+
         try:
-            if wants_tool:
-                response_text = convo.orchestrator.respond(
-                    message,
-                    image_name=image_name,
-                )
-            else:
-                response_text = convo.orchestrator.respond(
-                    message,
-                    image_name=image_name,
-                    stream=stream_chunk,
-                )
+            response_text = convo.orchestrator.respond(
+                message,
+                image_name=image_name,
+                stream=stream_chunk,
+                allow_tools=True,
+                on_tool_event=on_tool_event,
+            )
         except Exception as exc:
             logger.exception("Socket chat failed")
             socketio.emit(

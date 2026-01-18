@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 import time
 from typing import Any, Callable, Dict, Optional
 
 from .history import HistoryStore
-from .llm import call_azure_openai, call_azure_openai_stream
+from .llm import call_llm, call_llm_stream
 from .utils import image_to_data_url
 
 
@@ -77,6 +78,8 @@ Rules:
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
   - Every node id must be unique across the tree.
 - Return JSON only, no extra text.
+
+Once you've received clarifications via feedback, adjust the analysis accordingly. Respond only with the updated JSON object.
 """
 
         history_messages = [
@@ -116,15 +119,30 @@ Rules:
         messages = [system_msg, *history_messages, user_msg]
 
         llm_start = time.perf_counter()
-        if stream:
-            raw = call_azure_openai_stream(
+        force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
+        should_stream = stream is not None or force_stream
+        if should_stream:
+            total_chars = 0
+            last_log = time.perf_counter()
+
+            def on_delta(chunk: str) -> None:
+                nonlocal total_chars, last_log
+                total_chars += len(chunk)
+                now = time.perf_counter()
+                if now - last_log >= 1.0:
+                    self._logger.info("Subagent streaming... chars=%d", total_chars)
+                    last_log = now
+                if stream:
+                    stream(chunk)
+
+            raw = call_llm_stream(
                 messages,
                 max_completion_tokens=60000,
                 response_format=None,
-                on_delta=stream,
+                on_delta=on_delta,
             ).strip()
         else:
-            raw = call_azure_openai(
+            raw = call_llm(
                 messages,
                 max_completion_tokens=60000,
                 response_format=None,
@@ -152,35 +170,52 @@ Rules:
         system_msg: dict,
         user_msg: dict,
     ) -> Dict[str, Any]:
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            self._logger.warning("Initial JSON parse failed, attempting recovery")
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                return json.loads(raw[start : end + 1])
+        def _strip_code_fences(text: str) -> str:
+            stripped = text.strip()
+            if stripped.startswith("```") and stripped.endswith("```"):
+                stripped = stripped.strip("`").strip()
+                if stripped.lower().startswith("json"):
+                    stripped = stripped[4:].strip()
+            return stripped
 
-            # Retry with stricter JSON-only instruction.
-            retry_messages = [
-                system_msg,
-                *history_messages,
-                user_msg,
-                {"role": "user", "content": "Return ONLY valid JSON. No extra text."},
-            ]
-            retry_raw = call_azure_openai(
-                retry_messages,
-                max_completion_tokens=60000,
-                response_format=None,
-            ).strip()
-            if not retry_raw:
-                raise ValueError("LLM returned an empty response on retry.")
+        def _try_parse(text: str) -> Dict[str, Any] | None:
+            cleaned = _strip_code_fences(text)
             try:
-                return json.loads(retry_raw)
+                return json.loads(cleaned)
             except json.JSONDecodeError:
-                self._logger.error("Retry JSON parse failed")
-                start = retry_raw.find("{")
-                end = retry_raw.rfind("}")
-                if start != -1 and end != -1 and end > start:
-                    return json.loads(retry_raw[start : end + 1])
-                raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+                pass
+            start = cleaned.find("{")
+            if start == -1:
+                return None
+            try:
+                obj, _ = json.JSONDecoder().raw_decode(cleaned[start:])
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                return None
+            return None
+
+        parsed = _try_parse(raw)
+        if parsed is not None:
+            return parsed
+        self._logger.warning("Initial JSON parse failed, attempting recovery")
+
+        # Retry with stricter JSON-only instruction.
+        retry_messages = [
+            system_msg,
+            *history_messages,
+            user_msg,
+            {"role": "user", "content": "Return ONLY valid JSON. No extra text."},
+        ]
+        retry_raw = call_llm(
+            retry_messages,
+            max_completion_tokens=60000,
+            response_format=None,
+        ).strip()
+        if not retry_raw:
+            raise ValueError("LLM returned an empty response on retry.")
+        parsed_retry = _try_parse(retry_raw)
+        if parsed_retry is not None:
+            return parsed_retry
+        self._logger.error("Retry JSON parse failed")
+        raise ValueError(f"Invalid JSON from LLM: {retry_raw}")

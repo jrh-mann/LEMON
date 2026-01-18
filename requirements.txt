@@ -1,15 +1,15 @@
 # Core runtime deps (slimmed for app service)
-openai==1.58.1
 requests==2.32.3
-anthropic==0.50.0
+anthropic==0.76.0
 python-dotenv==1.0.1
 Pillow==10.4.0
 e2b-code-interpreter
 tqdm==4.66.5
 
 # Core package deps
-pydantic==2.8.2
-pydantic-settings==2.4.0
+pydantic==2.12.5
+pydantic-settings==2.12.0
+mcp==1.25.0
 
 # Frontend/backend runtime deps
 Flask==3.0.3

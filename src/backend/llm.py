@@ -4,19 +4,26 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import json
 import time
-from openai import AzureOpenAI
-from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
 from pathlib import Path
+
+logger = logging.getLogger("backend.llm")
+
+try:
+    from anthropic import AnthropicFoundry
+except ImportError:
+    from anthropic import Anthropic
+    AnthropicFoundry = Anthropic
+    logger.warning(
+        "AnthropicFoundry not available in anthropic package; using Anthropic fallback."
+    )
 
 
 class LLMConfigError(RuntimeError):
     """Raised when LLM environment is missing or invalid."""
-
-logger = logging.getLogger("backend.llm")
 
 def _load_env() -> None:
     env_path = Path(__file__).parent.parent.parent / ".env"
@@ -33,190 +40,293 @@ def _load_env() -> None:
         os.environ.setdefault(key, value)
 
 
-def _get_deployment_name() -> str:
-    deployment = (
-        os.environ.get("DEPLOYMENT_NAME")
-        or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
-        or os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
-    )
-    if not deployment:
-        raise LLMConfigError("Missing DEPLOYMENT_NAME/AZURE_OPENAI_DEPLOYMENT.")
-    return deployment
-
-
-def _build_azure_url() -> str:
-    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("ENDPOINT")
-    deployment = _get_deployment_name()
-    api_version = (
-        os.environ.get("AZURE_OPENAI_API_VERSION")
-        or os.environ.get("API_VERSION")
-        or "2024-12-01-preview"
-    )
-    if not endpoint:
-        raise LLMConfigError("Missing AZURE_OPENAI_ENDPOINT/ENDPOINT.")
-    endpoint = endpoint.rstrip("/")
-    if not endpoint.startswith("https://"):
-        raise LLMConfigError("AZURE_OPENAI_ENDPOINT must start with https://")
-
-    # If a full OpenAI URL is provided, reuse it.
-    if "/openai/" in endpoint:
-        if "api-version=" in endpoint:
-            return endpoint
-        joiner = "&" if "?" in endpoint else "?"
-        return f"{endpoint}{joiner}api-version={api_version}"
-
-    return f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
-
-
-def _get_azure_client() -> AzureOpenAI:
+def _get_anthropic_client() -> AnthropicFoundry:
     _load_env()
-    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("API_KEY")
+    api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("API_KEY")
+    endpoint = os.environ.get("ANTHROPIC_ENDPOINT") or os.environ.get("ENDPOINT")
     if not api_key:
-        raise LLMConfigError("Missing AZURE_OPENAI_API_KEY/API_KEY.")
-    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("ENDPOINT")
-    api_version = (
-        os.environ.get("AZURE_OPENAI_API_VERSION")
-        or os.environ.get("API_VERSION")
-        or "2024-12-01-preview"
-    )
+        raise LLMConfigError("Missing ANTHROPIC_API_KEY/API_KEY.")
     if not endpoint:
-        raise LLMConfigError("Missing AZURE_OPENAI_ENDPOINT/ENDPOINT.")
-    endpoint = endpoint.rstrip("/")
-    if not endpoint.startswith("https://"):
-        raise LLMConfigError("AZURE_OPENAI_ENDPOINT must start with https://")
-    return AzureOpenAI(
-        api_key=api_key,
-        api_version=api_version,
-        azure_endpoint=endpoint,
+        raise LLMConfigError("Missing ANTHROPIC_ENDPOINT/ENDPOINT.")
+    normalized_endpoint = endpoint.strip().rstrip("/") + "/"
+    if "anthropic" not in normalized_endpoint.lower():
+        normalized_endpoint = normalized_endpoint + "anthropic/"
+    return AnthropicFoundry(api_key=api_key, base_url=normalized_endpoint)
+
+
+def _get_anthropic_model() -> str:
+    model = (
+        os.environ.get("ANTHROPIC_MODEL")
+        or os.environ.get("CLAUDE_MODEL")
+        or os.environ.get("AGENT")
+        or os.environ.get("MODEL")
     )
+    if not model:
+        raise LLMConfigError("Missing ANTHROPIC_MODEL/CLAUDE_MODEL/AGENT.")
+    return model
 
 
-def call_azure_openai(
+def _extract_system(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
+    system_parts = []
+    rest: List[Dict[str, Any]] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                system_parts.append(content)
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        system_parts.append(block.get("text", ""))
+            continue
+        rest.append(msg)
+    return "\n\n".join(system_parts), rest
+
+
+def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}] if content else []
+    if isinstance(content, list):
+        blocks: List[Dict[str, Any]] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            ptype = part.get("type")
+            if ptype == "text":
+                text = part.get("text", "")
+                if text:
+                    blocks.append({"type": "text", "text": text})
+            elif ptype == "image_url":
+                image = part.get("image_url") or {}
+                url = image.get("url", "")
+                if url.startswith("data:") and ";base64," in url:
+                    header, b64 = url.split(";base64,", 1)
+                    media_type = header.replace("data:", "") or "image/jpeg"
+                    blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64,
+                            },
+                        }
+                    )
+                else:
+                    logger.warning("Unsupported image_url for Anthropic: %s", url[:80])
+            elif ptype == "image":
+                blocks.append(part)
+        return blocks
+    fallback = json.dumps(content, ensure_ascii=True)
+    return [{"type": "text", "text": fallback}] if fallback else []
+
+
+def _convert_openai_tools_to_anthropic(tools: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    if not tools:
+        return []
+    converted: List[Dict[str, Any]] = []
+    for tool in tools:
+        fn = tool.get("function") if isinstance(tool, dict) else None
+        if not fn:
+            continue
+        converted.append(
+            {
+                "name": fn.get("name"),
+                "description": fn.get("description") or "",
+                "input_schema": fn.get("parameters") or {"type": "object", "properties": {}},
+            }
+        )
+    return converted
+
+
+def _to_anthropic_messages(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
+    system, rest = _extract_system(messages)
+    converted: List[Dict[str, Any]] = []
+    for msg in rest:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "tool":
+            tool_call_id = msg.get("tool_call_id") or msg.get("id") or ""
+            converted.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_call_id,
+                            "content": content if isinstance(content, str) else json.dumps(content, ensure_ascii=True),
+                        }
+                    ],
+                }
+            )
+            continue
+        if role == "assistant" and msg.get("tool_calls"):
+            blocks = _to_anthropic_blocks(content)
+            for call in msg.get("tool_calls") or []:
+                fn = call.get("function") or {}
+                name = fn.get("name")
+                args_text = fn.get("arguments") or "{}"
+                if isinstance(args_text, str):
+                    try:
+                        args = json.loads(args_text)
+                    except json.JSONDecodeError:
+                        args = {}
+                else:
+                    args = args_text
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": call.get("id") or "",
+                        "name": name,
+                        "input": args if isinstance(args, dict) else {},
+                    }
+                )
+            if blocks:
+                converted.append({"role": "assistant", "content": blocks})
+            continue
+        if role in {"user", "assistant"}:
+            blocks = _to_anthropic_blocks(content)
+            if blocks:
+                converted.append({"role": role, "content": blocks})
+    return system, converted
+
+
+
+
+def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]]]:
+    content_blocks = getattr(message, "content", []) or []
+    text_parts: List[str] = []
+    tool_calls: List[Dict[str, Any]] = []
+    for block in content_blocks:
+        btype = getattr(block, "type", None) or block.get("type") if isinstance(block, dict) else None
+        if btype == "text":
+            text = getattr(block, "text", None) if not isinstance(block, dict) else block.get("text")
+            if text:
+                text_parts.append(text)
+        elif btype == "tool_use":
+            name = getattr(block, "name", None) if not isinstance(block, dict) else block.get("name")
+            tool_id = getattr(block, "id", None) if not isinstance(block, dict) else block.get("id")
+            tool_input = getattr(block, "input", None) if not isinstance(block, dict) else block.get("input")
+            try:
+                args_text = json.dumps(tool_input or {}, ensure_ascii=True)
+            except (TypeError, ValueError):
+                args_text = "{}"
+            tool_calls.append(
+                {
+                    "id": tool_id,
+                    "type": "function",
+                    "function": {"name": name, "arguments": args_text},
+                }
+            )
+    return "".join(text_parts), tool_calls
+
+
+def call_llm(
     messages: List[Dict[str, Any]],
     *,
     max_completion_tokens: int = 60000,
     response_format: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Call Azure OpenAI chat completions and return assistant text."""
-    client = _get_azure_client()
-    url = _build_azure_url()
-    deployment = _get_deployment_name()
-    payload = {
-        "model": deployment,
-        "messages": messages,
-        "max_completion_tokens": max_completion_tokens,
-    }
+    _load_env()
     if response_format:
-        payload["response_format"] = response_format
-
-    payload_bytes = json.dumps(payload).encode("utf-8")
-    message_sizes = []
-    message_previews = []
-    for idx, msg in enumerate(messages):
-        content = msg.get("content")
-        if isinstance(content, str):
-            size = len(content.encode("utf-8"))
-            preview = content[:300]
-        elif isinstance(content, list):
-            serialized = json.dumps(content, ensure_ascii=True)
-            size = len(serialized.encode("utf-8"))
-            preview = serialized[:300]
-        else:
-            serialized = json.dumps(content, ensure_ascii=True)
-            size = len(serialized.encode("utf-8"))
-            preview = serialized[:300]
-        message_sizes.append({"index": idx, "role": msg.get("role"), "bytes": size})
-        message_previews.append(
-            {
-                "index": idx,
-                "role": msg.get("role"),
-                "preview": preview,
-            }
-        )
-
-    logger.debug(
-        "Calling Azure OpenAI url=%s messages=%d payload_bytes=%d max_completion_tokens=%d response_format=%s message_sizes=%s message_previews=%s",
-        url,
-        len(messages),
-        len(payload_bytes),
-        max_completion_tokens,
-        bool(response_format),
-        json.dumps(message_sizes, ensure_ascii=True),
-        json.dumps(message_previews, ensure_ascii=True),
-    )
+        logger.debug("response_format ignored for Anthropic")
+    client = _get_anthropic_client()
+    system, converted = _to_anthropic_messages(messages)
+    payload = {
+        "model": _get_anthropic_model(),
+        "max_tokens": max_completion_tokens,
+        "system": system,
+        "messages": converted,
+    }
     start = time.perf_counter()
-    try:
-        resp = client.chat.completions.create(**payload)
-    except (APIConnectionError, APITimeoutError, APIError, RateLimitError) as exc:
-        raise RuntimeError(
-            f"Network error calling Azure OpenAI: {exc}. "
-            "Check AZURE_OPENAI_ENDPOINT and network connectivity."
-        ) from exc
-    finally:
+    resp = client.messages.create(**payload)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info("Anthropic completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    text, _ = _parse_anthropic_response(resp)
+    if not text:
+        raise RuntimeError("Anthropic returned empty content.")
+    return text
+
+
+def call_llm_with_tools(
+    messages: List[Dict[str, Any]],
+    *,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[str] = None,
+    max_completion_tokens: int = 60000,
+    on_delta: Optional[Callable[[str], None]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    _load_env()
+    client = _get_anthropic_client()
+    system, converted = _to_anthropic_messages(messages)
+    tool_payload = [] if tool_choice == "none" else _convert_openai_tools_to_anthropic(tools)
+    payload: Dict[str, Any] = {
+        "model": _get_anthropic_model(),
+        "max_tokens": max_completion_tokens,
+        "system": system,
+        "messages": converted,
+        "tools": tool_payload,
+    }
+    if tool_choice:
+        if tool_choice == "none":
+            payload["tool_choice"] = {"type": "none"}
+        elif tool_choice == "any":
+            payload["tool_choice"] = {"type": "any"}
+        elif tool_choice == "auto":
+            payload["tool_choice"] = {"type": "auto"}
+        else:
+            payload["tool_choice"] = {"type": "tool", "name": tool_choice}
+    if on_delta:
+        def _call_stream() -> Any:
+            with client.messages.stream(**payload) as stream:
+                for event in stream:
+                    if getattr(event, "type", "") == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        text = getattr(delta, "text", None)
+                        if text:
+                            on_delta(text)
+                return stream.get_final_message()
+
+        start = time.perf_counter()
+        message = _call_stream()
         elapsed_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            "Azure OpenAI non-streaming completed ms=%.1f messages=%d",
-            elapsed_ms,
-            len(messages),
-        )
-    raw = resp.model_dump_json()
-
-    logger.debug("Azure OpenAI response bytes=%d", len(raw))
-
-    choices = resp.choices or []
-    if not choices:
-        raise RuntimeError("Azure OpenAI returned no choices.")
-    message = choices[0].message
-    content = message.content if message else None
-    if not content:
-        raise RuntimeError("Azure OpenAI returned empty content.")
-    return content
+        logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+        return _parse_anthropic_response(message)
+    start = time.perf_counter()
+    resp = client.messages.create(**payload)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info("Anthropic completed ms=%.1f messages=%d tools=%s", elapsed_ms, len(messages), bool(tools))
+    return _parse_anthropic_response(resp)
 
 
-def call_azure_openai_stream(
+def call_llm_stream(
     messages: List[Dict[str, Any]],
     *,
     max_completion_tokens: int = 60000,
     response_format: Optional[Dict[str, Any]] = None,
     on_delta: Callable[[str], None],
 ) -> str:
-    """Call Azure OpenAI with streaming and return full assistant text."""
-    client = _get_azure_client()
-    deployment = _get_deployment_name()
-    payload: Dict[str, Any] = {
-        "model": deployment,
-        "messages": messages,
-        "max_completion_tokens": max_completion_tokens,
-        "stream": True,
-    }
+    _load_env()
     if response_format:
-        payload["response_format"] = response_format
-
-    logger.debug("Streaming Azure OpenAI url=%s messages=%d", _build_azure_url(), len(messages))
-    chunks: List[str] = []
+        logger.debug("response_format ignored for Anthropic")
+    client = _get_anthropic_client()
+    system, converted = _to_anthropic_messages(messages)
+    payload = {
+        "model": _get_anthropic_model(),
+        "max_tokens": max_completion_tokens,
+        "system": system,
+        "messages": converted,
+    }
     start = time.perf_counter()
-    try:
-        stream = client.chat.completions.create(**payload)
+    with client.messages.stream(**payload) as stream:
         for event in stream:
-            delta = event.choices[0].delta if event.choices else None
-            content = delta.content if delta else None
-            if content:
-                chunks.append(content)
-                on_delta(content)
-    except (APIConnectionError, APITimeoutError, APIError, RateLimitError) as exc:
-        logger.warning("Streaming error, falling back to non-streaming: %s", exc)
-        return call_azure_openai(
-            messages,
-            max_completion_tokens=max_completion_tokens,
-            response_format=response_format,
-        )
-    finally:
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            "Azure OpenAI streaming completed ms=%.1f messages=%d chunks=%d",
-            elapsed_ms,
-            len(messages),
-            len(chunks),
-        )
-
-    return "".join(chunks)
+            if getattr(event, "type", "") == "content_block_delta":
+                delta = getattr(event, "delta", None)
+                text = getattr(delta, "text", None)
+                if text:
+                    on_delta(text)
+        message = stream.get_final_message()
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    text, _ = _parse_anthropic_response(message)
+    return text
