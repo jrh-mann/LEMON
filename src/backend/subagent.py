@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .history import HistoryStore
-from .llm import call_azure_openai
+from .llm import call_azure_openai, call_azure_openai_stream
 from .utils import image_to_data_url
 
 
@@ -25,6 +25,7 @@ class Subagent:
         image_path: Path,
         session_id: str,
         feedback: Optional[str] = None,
+        stream: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """Analyze a workflow image and return a JSON report."""
         self._logger.info(
@@ -105,11 +106,19 @@ Rules:
             }
         messages = [system_msg, *history_messages, user_msg]
 
-        raw = call_azure_openai(
-            messages,
-            max_completion_tokens=60000,
-            response_format=None,
-        ).strip()
+        if stream:
+            raw = call_azure_openai_stream(
+                messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                on_delta=stream,
+            ).strip()
+        else:
+            raw = call_azure_openai(
+                messages,
+                max_completion_tokens=60000,
+                response_format=None,
+            ).strip()
         if not raw:
             raise ValueError("LLM returned an empty response.")
 

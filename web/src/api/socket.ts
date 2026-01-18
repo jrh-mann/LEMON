@@ -36,8 +36,7 @@ export function connectSocket(): Socket {
 
   socket = io(socketUrl, {
     query: { session_id: sessionId },
-    // Polling avoids Werkzeug websocket errors in dev.
-    transports: ['polling'],
+    transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
@@ -79,14 +78,23 @@ export function connectSocket(): Socket {
     const chatStore = useChatStore.getState()
 
     chatStore.setStreaming(false)
-    chatStore.clearStreamContent()
     chatStore.setProcessingStatus(null)
 
     if (data.conversation_id) {
       chatStore.setConversationId(data.conversation_id)
     }
 
-    addAssistantMessage(data.response, data.tool_calls)
+    const streamed = chatStore.streamingContent
+    const hasTools = (data.tool_calls?.length ?? 0) > 0
+    if (hasTools) {
+      chatStore.clearStreamContent()
+      addAssistantMessage(data.response, data.tool_calls)
+    } else if (streamed) {
+      addAssistantMessage(streamed, data.tool_calls)
+      chatStore.clearStreamContent()
+    } else {
+      addAssistantMessage(data.response, data.tool_calls)
+    }
   })
 
   // Agent question (needs user confirmation)
@@ -132,9 +140,19 @@ export function connectSocket(): Socket {
     chatStore.setStreaming(false)
     chatStore.clearPendingQuestion()
     chatStore.setProcessingStatus(null)
+    chatStore.clearStreamContent()
 
     addAssistantMessage(`Error: ${data.error}`)
     uiStore.setError(data.error)
+  })
+
+  // Streaming response chunks
+  socket.on('chat_stream', (data: { chunk: string }) => {
+    const chatStore = useChatStore.getState()
+    if (!chatStore.isStreaming) {
+      chatStore.setStreaming(true)
+    }
+    chatStore.appendStreamContent(data.chunk || '')
   })
 
   // Workflow modification events (from orchestrator editing tools)

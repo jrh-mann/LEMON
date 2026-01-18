@@ -12,6 +12,63 @@ from .history import HistoryStore
 from .subagent import Subagent
 
 
+def _map_node_type(raw_type: str) -> str:
+    mapped = {
+        "action": "process",
+    }
+    return mapped.get(raw_type, raw_type)
+
+
+def _flowchart_from_tree(tree: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    if not tree:
+        return {"nodes": [], "edges": []}
+
+    start = tree.get("start")
+    if not isinstance(start, dict):
+        return {"nodes": [], "edges": []}
+
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    seen = set()
+    stack = [start]
+
+    while stack:
+        node = stack.pop()
+        node_id = node.get("id")
+        if not node_id or node_id in seen:
+            continue
+        seen.add(node_id)
+
+        raw_type = str(node.get("type") or "process")
+        node_type = _map_node_type(raw_type)
+        nodes.append(
+            {
+                "id": node_id,
+                "type": node_type,
+                "label": node.get("label") or node_id,
+                # Top-left coordinates; frontend auto-layout will adjust.
+                "x": 0,
+                "y": 0,
+            }
+        )
+
+        for child in node.get("children") or []:
+            child_id = child.get("id")
+            if not child_id:
+                continue
+            edges.append(
+                {
+                    "id": f"{node_id}->{child_id}",
+                    "from": node_id,
+                    "to": child_id,
+                    "label": child.get("edge_label") or "",
+                }
+            )
+            stack.append(child)
+
+    return {"nodes": nodes, "edges": edges}
+
+
 @dataclass
 class ToolParameter:
     name: str
@@ -25,7 +82,7 @@ class Tool:
     description: str
     parameters: List[ToolParameter]
 
-    def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         raise NotImplementedError
 
 
@@ -62,11 +119,12 @@ class AnalyzeWorkflowTool(Tool):
         self.subagent = Subagent(self.history)
         self._logger = logging.getLogger(__name__)
 
-    def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         self._logger.info(
             "Executing analyze_workflow args_keys=%s",
             sorted(args.keys()),
         )
+        stream = kwargs.get("stream")
         session_id = args.get("session_id")
         feedback = args.get("feedback")
         image_name = args.get("image_name")
@@ -110,10 +168,15 @@ class AnalyzeWorkflowTool(Tool):
             image_path=image_path,
             session_id=session_id,
             feedback=feedback,
+            stream=stream,
         )
         analysis = dict(data)
-        analysis.pop("tree", None)
-        return {"session_id": session_id, "analysis": analysis}
+        flowchart = _flowchart_from_tree(analysis.get("tree") or {})
+        return {
+            "session_id": session_id,
+            "analysis": analysis,
+            "flowchart": flowchart,
+        }
 
 
 class ToolRegistry:
@@ -123,8 +186,8 @@ class ToolRegistry:
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
 
-    def execute(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, name: str, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         tool = self._tools.get(name)
         if tool is None:
             raise ValueError(f"Unknown tool: {name}")
-        return tool.execute(args)
+        return tool.execute(args, **kwargs)

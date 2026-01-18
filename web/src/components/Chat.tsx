@@ -15,6 +15,7 @@ export default function Chat() {
     messages,
     conversationId,
     isStreaming,
+    streamingContent,
     processingStatus,
     pendingQuestion,
     sendUserMessage,
@@ -174,7 +175,13 @@ export default function Chat() {
         {isStreaming && (
           <div className="message assistant streaming">
             <div className="message-content">
-              {processingStatus ? (
+              {streamingContent ? (
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: renderMarkdown(streamingContent),
+                  }}
+                />
+              ) : processingStatus ? (
                 <span className="processing-status">
                   <span className="status-dot"></span>
                   {processingStatus}

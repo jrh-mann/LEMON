@@ -60,7 +60,9 @@ def _save_uploaded_image(data_url: str) -> str:
     return str(path.relative_to(_repo_root()))
 
 
-def _extract_tool_calls(response_text: str) -> List[Dict[str, Any]]:
+def _extract_tool_calls(
+    response_text: str, *, include_result: bool = True
+) -> List[Dict[str, Any]]:
     try:
         payload = json.loads(response_text)
     except json.JSONDecodeError:
@@ -68,8 +70,75 @@ def _extract_tool_calls(response_text: str) -> List[Dict[str, Any]]:
     if isinstance(payload, dict) and payload.get("source") == "subagent":
         tool = payload.get("tool") or "unknown"
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        return [{"tool": tool, "arguments": {}, "result": data}]
+        result = data if include_result else {"session_id": data.get("session_id")}
+        return [{"tool": tool, "arguments": {}, "result": result}]
     return []
+
+
+def _extract_flowchart(response_text: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("source") != "subagent":
+        return None
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    flowchart = data.get("flowchart")
+    if isinstance(flowchart, dict) and flowchart.get("nodes") is not None:
+        return flowchart
+    analysis = data.get("analysis") if isinstance(data.get("analysis"), dict) else {}
+    flowchart = analysis.get("flowchart")
+    if isinstance(flowchart, dict) and flowchart.get("nodes") is not None:
+        return flowchart
+    return None
+
+
+def _summarize_response(response_text: str) -> str:
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError:
+        return response_text
+    if not isinstance(payload, dict) or payload.get("source") != "subagent":
+        return response_text
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    analysis = data.get("analysis") if isinstance(data.get("analysis"), dict) else {}
+    inputs = analysis.get("inputs") if isinstance(analysis.get("inputs"), list) else []
+    outputs = analysis.get("outputs") if isinstance(analysis.get("outputs"), list) else []
+    doubts = analysis.get("doubts") if isinstance(analysis.get("doubts"), list) else []
+
+    def _fmt_items(items: list, key: str) -> str:
+        lines = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get(key) or ""
+            typ = item.get("type")
+            if typ:
+                lines.append(f"- {name} ({typ})")
+            else:
+                lines.append(f"- {name}")
+        return "\n".join(lines) if lines else "- None"
+
+    inputs_text = _fmt_items(inputs, "input")
+    outputs_text = _fmt_items(outputs, "output")
+    doubts_text = "\n".join(f"- {d}" for d in doubts) if doubts else "- None"
+
+    return (
+        "Analysis complete.\n\n"
+        "Inputs:\n"
+        f"{inputs_text}\n\n"
+        "Outputs:\n"
+        f"{outputs_text}\n\n"
+        "Doubts:\n"
+        f"{doubts_text}"
+    )
+
+
+def _emit_stream_chunks(text: str, *, chunk_size: int = 1000) -> None:
+    if not text:
+        return
+    for idx in range(0, len(text), chunk_size):
+        emit("chat_stream", {"chunk": text[idx : idx + chunk_size]})
 
 
 def build_orchestrator() -> Orchestrator:
@@ -115,7 +184,13 @@ def create_app() -> Flask:
 
 
 app = create_app()
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    logger=True,
+    engineio_logger=True,
+    max_http_buffer_size=10 * 1024 * 1024,
+)
 
 
 @app.get("/api/info")
@@ -153,13 +228,16 @@ def chat() -> Any:
             return jsonify({"error": f"Invalid image data: {exc}"}), 400
 
     response_text = convo.orchestrator.respond(message, image_name=image_name)
-    tool_calls = _extract_tool_calls(response_text)
+    tool_calls = _extract_tool_calls(response_text, include_result=False)
+    response_summary = _summarize_response(response_text)
+    flowchart = _extract_flowchart(response_text)
     convo.updated_at = _utc_now()
     return jsonify(
         {
             "conversation_id": convo.id,
-            "response": response_text,
+            "response": response_summary,
             "tool_calls": tool_calls,
+            "flowchart": flowchart,
         }
     )
 
@@ -275,39 +353,132 @@ def socket_disconnect() -> None:
     logger.info("Socket disconnected sid=%s", request.sid)
 
 
+@socketio.on_error_default  # type: ignore[misc]
+def default_socket_error(exc: Exception) -> None:
+    logger.exception("Socket error: %s", exc)
+
+
+@socketio.on("connect_error")
+def socket_connect_error(data: Any) -> None:
+    logger.error("Socket connect_error data=%s", data)
+
+
+@app.before_request
+def log_request() -> None:
+    logger.info(
+        "HTTP %s %s from %s",
+        request.method,
+        request.path,
+        request.remote_addr,
+    )
+
+
 @socketio.on("chat")
 def socket_chat(payload: Dict[str, Any]) -> None:
     session_id = payload.get("session_id")
     conversation_id = payload.get("conversation_id")
     message = payload.get("message", "")
     image_data = payload.get("image")
+    sid = request.sid
 
     if not isinstance(message, str) or not message.strip():
-        emit("agent_error", {"task_id": None, "error": "message is required"})
+        socketio.emit("agent_error", {"task_id": None, "error": "message is required"}, to=sid)
         return
 
-    emit("chat_progress", {"event": "start", "status": "Thinking..."})
+    def run_task() -> None:
+        socketio.emit("chat_progress", {"event": "start", "status": "Thinking..."}, to=sid)
+        done = False
 
-    convo = conversation_store.get_or_create(conversation_id)
-    image_name = None
-    if isinstance(image_data, str) and image_data.strip():
+        def heartbeat() -> None:
+            while not done:
+                socketio.sleep(5)
+                if done:
+                    break
+                socketio.emit(
+                    "chat_progress",
+                    {"event": "heartbeat", "status": "Analyzing..."},
+                    to=sid,
+                )
+
+        socketio.start_background_task(heartbeat)
+
+        convo = conversation_store.get_or_create(conversation_id)
+        image_name = None
+        if isinstance(image_data, str) and image_data.strip():
+            try:
+                image_name = _save_uploaded_image(image_data)
+            except Exception as exc:
+                logger.exception("Failed to save uploaded image")
+                socketio.emit(
+                    "agent_error",
+                    {"task_id": None, "error": f"Invalid image: {exc}"},
+                    to=sid,
+                )
+                return
+
+        did_stream = False
+        wants_tool = False
+        if image_name:
+            wants_tool = True
+        else:
+            lowered = message.lower()
+            if "analy" in lowered or "analyse" in lowered:
+                wants_tool = True
+            elif any(ext in lowered for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]):
+                wants_tool = True
+
+        def stream_chunk(chunk: str) -> None:
+            nonlocal did_stream
+            did_stream = True
+            socketio.emit("chat_stream", {"chunk": chunk}, to=sid)
+            socketio.sleep(0)
+
         try:
-            image_name = _save_uploaded_image(image_data)
+            if wants_tool:
+                response_text = convo.orchestrator.respond(
+                    message,
+                    image_name=image_name,
+                )
+            else:
+                response_text = convo.orchestrator.respond(
+                    message,
+                    image_name=image_name,
+                    stream=stream_chunk,
+                )
         except Exception as exc:
-            logger.exception("Failed to save uploaded image")
-            emit("agent_error", {"task_id": None, "error": f"Invalid image: {exc}"})
+            logger.exception("Socket chat failed")
+            socketio.emit(
+                "agent_error",
+                {"task_id": None, "error": str(exc)},
+                to=sid,
+            )
+            done = True
             return
 
-    response_text = convo.orchestrator.respond(message, image_name=image_name)
-    tool_calls = _extract_tool_calls(response_text)
-    convo.updated_at = _utc_now()
+        tool_calls = _extract_tool_calls(response_text, include_result=False)
+        flowchart = _extract_flowchart(response_text)
+        summary = _summarize_response(response_text) if tool_calls else ""
+        convo.updated_at = _utc_now()
+        done = True
 
-    emit(
-        "chat_response",
-        {
-            "response": response_text,
-            "conversation_id": convo.id,
-            "tool_calls": tool_calls,
-            "task_id": None,
-        },
-    )
+        socketio.emit(
+            "chat_response",
+            {
+                "response": summary if tool_calls else ("" if did_stream else response_text),
+                "conversation_id": convo.id,
+                "tool_calls": tool_calls,
+                "task_id": None,
+            },
+            to=sid,
+        )
+        if flowchart and flowchart.get("nodes"):
+            socketio.emit(
+                "workflow_modified",
+                {
+                    "action": "create_workflow",
+                    "data": flowchart,
+                },
+                to=sid,
+            )
+
+    socketio.start_background_task(run_task)

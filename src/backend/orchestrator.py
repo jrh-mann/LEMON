@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .tools import ToolRegistry
-from .llm import call_azure_openai
+from .llm import call_azure_openai, call_azure_openai_stream
 
 
 @dataclass
@@ -27,14 +27,20 @@ class Orchestrator:
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
 
-    def run_tool(self, tool_name: str, args: Dict[str, Any]) -> ToolResult:
+    def run_tool(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        *,
+        stream: Optional[Callable[[str], None]] = None,
+    ) -> ToolResult:
         self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
         self._tool_logger.info(
             "tool_request name=%s args=%s",
             tool_name,
             json.dumps(args, ensure_ascii=True),
         )
-        data = self.tools.execute(tool_name, args)
+        data = self.tools.execute(tool_name, args, stream=stream)
         self._tool_logger.info(
             "tool_response name=%s data=%s",
             tool_name,
@@ -42,7 +48,13 @@ class Orchestrator:
         )
         return ToolResult(tool=tool_name, data=data)
 
-    def respond(self, user_message: str, *, image_name: Optional[str] = None) -> str:
+    def respond(
+        self,
+        user_message: str,
+        *,
+        image_name: Optional[str] = None,
+        stream: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d", len(user_message.encode("utf-8")))
         tool_desc = [
@@ -90,7 +102,13 @@ class Orchestrator:
         ]
 
         try:
-            raw = call_azure_openai(messages)
+            if stream:
+                raw = call_azure_openai_stream(
+                    messages,
+                    on_delta=stream,
+                )
+            else:
+                raw = call_azure_openai(messages)
         except Exception as exc:
             self._logger.exception("LLM error while responding")
             return f"LLM error: {exc}"
@@ -102,7 +120,7 @@ class Orchestrator:
                 tool_name = payload.get("tool")
                 args = payload.get("args") or {}
                 try:
-                    result = self.run_tool(tool_name, args)
+                    result = self.run_tool(tool_name, args, stream=stream)
                     session_id = result.data.get("session_id")
                     if session_id:
                         self.last_session_id = session_id
