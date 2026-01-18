@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -32,6 +33,14 @@ class HistoryStore:
                     id TEXT PRIMARY KEY,
                     image_name TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS analyses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    analysis_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
                 );
 
                 CREATE TABLE IF NOT EXISTS messages (
@@ -83,6 +92,36 @@ class HistoryStore:
                 "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
                 (session_id, role, content, datetime.now(timezone.utc).isoformat()),
             )
+
+    def store_analysis(self, session_id: str, analysis: dict) -> None:
+        payload = json.dumps(analysis, ensure_ascii=True)
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO analyses (session_id, analysis_json, created_at) VALUES (?, ?, ?)",
+                (session_id, payload, datetime.now(timezone.utc).isoformat()),
+            )
+
+    def get_latest_analysis(self) -> Optional[Tuple[str, dict]]:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT session_id, analysis_json
+                FROM analyses
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if not row:
+            return None
+        session_id, payload = row
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            self._logger.warning("Failed to decode analysis_json for session_id=%s", session_id)
+            return None
+        if not isinstance(data, dict):
+            return None
+        return session_id, data
 
     def list_messages(self, session_id: str, limit: int = 20) -> List[Message]:
         self._logger.debug("Listing messages session_id=%s limit=%s", session_id, limit)

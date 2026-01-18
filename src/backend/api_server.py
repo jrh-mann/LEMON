@@ -17,7 +17,7 @@ from flask_socketio import SocketIO, emit
 
 from .logging_utils import setup_logging
 from .orchestrator import Orchestrator
-from .tools import AnalyzeWorkflowTool, ToolRegistry
+from .tools import AnalyzeWorkflowTool, PublishLatestAnalysisTool, ToolRegistry
 
 logger = logging.getLogger("backend.api")
 
@@ -144,6 +144,7 @@ def _emit_stream_chunks(text: str, *, chunk_size: int = 1000) -> None:
 def build_orchestrator() -> Orchestrator:
     registry = ToolRegistry()
     registry.register(AnalyzeWorkflowTool(_repo_root()))
+    registry.register(PublishLatestAnalysisTool(_repo_root()))
     return Orchestrator(registry)
 
 
@@ -430,15 +431,30 @@ def socket_chat(payload: Dict[str, Any]) -> None:
             socketio.emit("chat_stream", {"chunk": chunk}, to=sid)
             socketio.sleep(0)
 
-        def on_tool_event(event: str, tool: str, args: Dict[str, Any]) -> None:
-            if tool != "analyze_workflow":
-                return
-            status = "Analyzing workflow..."
-            socketio.emit(
-                "chat_progress",
-                {"event": event, "status": status, "tool": tool},
-                to=sid,
-            )
+        def on_tool_event(
+            event: str,
+            tool: str,
+            args: Dict[str, Any],
+            result: Optional[Dict[str, Any]],
+        ) -> None:
+            if tool == "analyze_workflow":
+                status = "Analyzing workflow..."
+                socketio.emit(
+                    "chat_progress",
+                    {"event": event, "status": status, "tool": tool},
+                    to=sid,
+                )
+            if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
+                flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
+                if flowchart and flowchart.get("nodes"):
+                    socketio.emit(
+                        "workflow_modified",
+                        {
+                            "action": "create_workflow",
+                            "data": flowchart,
+                        },
+                        to=sid,
+                    )
 
         try:
             response_text = convo.orchestrator.respond(
@@ -475,14 +491,5 @@ def socket_chat(payload: Dict[str, Any]) -> None:
             },
             to=sid,
         )
-        if flowchart and flowchart.get("nodes"):
-            socketio.emit(
-                "workflow_modified",
-                {
-                    "action": "create_workflow",
-                    "data": flowchart,
-                },
-                to=sid,
-            )
 
     socketio.start_background_task(run_task)

@@ -160,6 +160,7 @@ Once you've received clarifications via feedback, adjust the analysis accordingl
         if feedback:
             self.history.add_message(session_id, "user", feedback)
         self.history.add_message(session_id, "assistant", json.dumps(data))
+        self.history.store_analysis(session_id, data)
         return data
 
     def _parse_json(

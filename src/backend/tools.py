@@ -188,6 +188,43 @@ class AnalyzeWorkflowTool(Tool):
         }
 
 
+class PublishLatestAnalysisTool(Tool):
+    name = "publish_latest_analysis"
+    description = "Load the most recent workflow analysis and return it for rendering on the canvas."
+    parameters: List[ToolParameter] = []
+
+    def __init__(self, repo_root: Path):
+        self.repo_root = repo_root
+        history_db = repo_root / ".lemon" / "history.sqlite"
+        self.history = HistoryStore(history_db)
+        self._logger = logging.getLogger(__name__)
+
+    def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        self._logger.info("Executing publish_latest_analysis")
+        latest = self.history.get_latest_analysis()
+        if not latest:
+            return {
+                "session_id": "",
+                "analysis": {
+                    "inputs": [],
+                    "outputs": [],
+                    "tree": {},
+                    "doubts": [
+                        "No analysis found. Ask the user to upload an image and run workflow analysis."
+                    ],
+                },
+                "flowchart": {"nodes": [], "edges": []},
+            }
+
+        session_id, analysis = latest
+        flowchart = _flowchart_from_tree(analysis.get("tree") or {})
+        return {
+            "session_id": session_id,
+            "analysis": analysis,
+            "flowchart": flowchart,
+        }
+
+
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: Dict[str, Tool] = {}

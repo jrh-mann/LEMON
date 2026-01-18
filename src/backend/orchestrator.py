@@ -62,7 +62,9 @@ class Orchestrator:
         has_image: bool = False,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
-        on_tool_event: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+        on_tool_event: Optional[
+            Callable[[str, str, Dict[str, Any], Optional[Dict[str, Any]]], None]
+        ] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d", len(user_message.encode("utf-8")))
@@ -92,7 +94,22 @@ class Orchestrator:
                         "required": [],
                     },
                 },
-            }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "publish_latest_analysis",
+                    "description": (
+                        "Load the most recent workflow analysis and return it for rendering "
+                        "on the canvas."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                },
+            },
         ]
 
         system = (
@@ -210,7 +227,7 @@ class Orchestrator:
                     args = {}
                 try:
                     if on_tool_event:
-                        on_tool_event("tool_start", tool_name, args)
+                        on_tool_event("tool_start", tool_name, args, None)
                     result = self.run_tool(tool_name, args, stream=None)
                     session_id = result.data.get("session_id")
                     if session_id:
@@ -224,7 +241,7 @@ class Orchestrator:
                         }
                     )
                     if on_tool_event:
-                        on_tool_event("tool_complete", tool_name, args)
+                        on_tool_event("tool_complete", tool_name, args, result.data)
                 except Exception as exc:
                     self._tool_logger.error(
                         "tool_error name=%s error=%s",

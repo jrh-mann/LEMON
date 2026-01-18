@@ -12,7 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field
 
 from .logging_utils import setup_logging
-from .tools import AnalyzeWorkflowTool
+from .tools import AnalyzeWorkflowTool, PublishLatestAnalysisTool
 
 logger = logging.getLogger("backend.mcp")
 
@@ -104,6 +104,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         stateless_http=True,
     )
     tool = AnalyzeWorkflowTool(_repo_root())
+    publish_tool = PublishLatestAnalysisTool(_repo_root())
 
     @server.tool(
         name="analyze_workflow",
@@ -132,6 +133,18 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
         result = tool.execute(args)
         logger.info("MCP analyze_workflow complete session_id=%s", result.get("session_id"))
+        return AnalyzeWorkflowResult.model_validate(result)
+
+    @server.tool(
+        name="publish_latest_analysis",
+        description=(
+            "Load the most recent workflow analysis and return it for rendering on the canvas."
+        ),
+    )
+    def publish_latest_analysis() -> AnalyzeWorkflowResult:
+        logger.info("MCP publish_latest_analysis start")
+        result = publish_tool.execute({})
+        logger.info("MCP publish_latest_analysis complete session_id=%s", result.get("session_id"))
         return AnalyzeWorkflowResult.model_validate(result)
 
     return server

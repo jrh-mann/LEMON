@@ -7,13 +7,14 @@ from pathlib import Path
 
 from .orchestrator import Orchestrator
 from .logging_utils import setup_logging
-from .tools import AnalyzeWorkflowTool, ToolRegistry
+from .tools import AnalyzeWorkflowTool, PublishLatestAnalysisTool, ToolRegistry
 
 
 def build_orchestrator() -> Orchestrator:
     repo_root = Path(__file__).parent.parent.parent
     registry = ToolRegistry()
     registry.register(AnalyzeWorkflowTool(repo_root))
+    registry.register(PublishLatestAnalysisTool(repo_root))
     return Orchestrator(registry)
 
 
