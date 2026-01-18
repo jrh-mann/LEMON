@@ -6,8 +6,6 @@ from dataclasses import dataclass
 import os
 import json
 import logging
-import re
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .tools import ToolRegistry
@@ -61,33 +59,27 @@ class Orchestrator:
         user_message: str,
         *,
         image_name: Optional[str] = None,
+        has_image: bool = False,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
         on_tool_event: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d", len(user_message.encode("utf-8")))
-        inferred_image = self._infer_image_name(user_message) if not image_name else None
-        if inferred_image:
-            image_name = inferred_image
-            self._logger.info("Inferred image_name=%s from user message", image_name)
         tool_desc = [
             {
                 "type": "function",
                 "function": {
                     "name": "analyze_workflow",
                     "description": (
-                        "Analyze a workflow image in repo root. "
+                        "Analyze the most recently uploaded workflow image. "
                         "Returns JSON with inputs, outputs, tree, doubts, plus session_id. "
-                        "Use session_id + feedback to refine a prior analysis."
+                        "Use session_id + feedback to refine a prior analysis. "
+                        "If no image has been uploaded, the tool will report that."
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "image_name": {
-                                "type": "string",
-                                "description": "Filename of the image in the repo root.",
-                            },
                             "session_id": {
                                 "type": "string",
                                 "description": "Optional session id to continue a prior analysis.",
@@ -138,10 +130,12 @@ class Orchestrator:
             "explain what is missing, propose remedies, ask how to proceed; if the "
             "user says don't call tools, stay in plain text unless they reverse it."
         )
-        if image_name:
-            system += f" If calling analyze_workflow, use image_name: {image_name}."
         if self.last_session_id:
             system += f" Current analyze_workflow session_id: {self.last_session_id}."
+        if has_image:
+            system += (
+                " The user has uploaded an image; analyze_workflow will use the latest upload."
+            )
         if not allow_tools:
             system += (
                 " Tools are disabled for this response. Do NOT call tools; respond in "
@@ -153,8 +147,6 @@ class Orchestrator:
             *self.history,
             {"role": "user", "content": user_message},
         ]
-        force_tool = allow_tools and self._should_force_analysis(user_message, image_name)
-
         did_stream = False
         try:
             def on_delta(delta: str) -> None:
@@ -167,7 +159,7 @@ class Orchestrator:
                 raw, tool_calls = call_llm_with_tools(
                     messages,
                     tools=tool_desc,
-                    tool_choice="analyze_workflow" if force_tool else None,
+                    tool_choice=None,
                     on_delta=on_delta if stream else None,
                 )
             else:
@@ -216,9 +208,6 @@ class Orchestrator:
                     args = args_text
                 else:
                     args = {}
-                if tool_name == "analyze_workflow" and image_name and not args.get("image_name"):
-                    args["image_name"] = image_name
-
                 try:
                     if on_tool_event:
                         on_tool_event("tool_start", tool_name, args)
@@ -260,41 +249,15 @@ class Orchestrator:
             )
 
         final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
-        if stream and not did_stream:
-            _emit_stream(stream, final_text)
+        if stream:
+            if tool_results and final_text:
+                _emit_stream(stream, final_text)
+            elif not did_stream:
+                _emit_stream(stream, final_text)
         self.history.append({"role": "user", "content": user_message})
         self.history.append({"role": "assistant", "content": final_text})
         return final_text
 
-    def _infer_image_name(self, user_message: str) -> Optional[str]:
-        pattern = re.compile(r"([A-Za-z]:[\\\\/][^\\s]+\\.(?:png|jpe?g|gif|webp|bmp)|[^\\s]+\\.(?:png|jpe?g|gif|webp|bmp))", re.IGNORECASE)
-        matches = pattern.findall(user_message)
-        if not matches:
-            return None
-        repo_root = Path(__file__).parent.parent.parent
-        for match in matches:
-            candidate = match.strip().strip("\"'").rstrip(".,)")
-            candidate_path = Path(candidate)
-            if not candidate_path.is_absolute():
-                candidate_path = repo_root / candidate_path
-            try:
-                resolved = candidate_path.resolve()
-            except OSError:
-                continue
-            if not resolved.exists():
-                continue
-            try:
-                rel = resolved.relative_to(repo_root)
-            except ValueError:
-                continue
-            return str(rel).replace("\\", "/")
-        return None
-
-    def _should_force_analysis(self, user_message: str, image_name: Optional[str]) -> bool:
-        if not image_name:
-            return False
-        lowered = user_message.lower()
-        return "analy" in lowered or "analyse" in lowered or "analyze" in lowered
 
 
 def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 800) -> None:

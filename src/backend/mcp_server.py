@@ -108,29 +108,23 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     @server.tool(
         name="analyze_workflow",
         description=(
-            "Analyze a workflow diagram image and return inputs, outputs, doubts, "
-            "and a flowchart representation."
+            "Analyze the most recently uploaded workflow image and return inputs, outputs, "
+            "doubts, and a flowchart representation."
         ),
     )
     def analyze_workflow(
-        image_name: str | None = None,
         image_data_url: str | None = None,
         session_id: str | None = None,
         feedback: str | None = None,
     ) -> AnalyzeWorkflowResult:
-        logger.info("MCP analyze_workflow start session_id=%s has_image=%s", session_id, bool(image_name or image_data_url))
+        logger.info("MCP analyze_workflow start session_id=%s has_image=%s", session_id, bool(image_data_url))
         if session_id:
             if not feedback:
                 raise ValueError("feedback is required when session_id is provided.")
-        else:
-            if not image_name and not image_data_url:
-                raise ValueError("image_name or image_data_url is required.")
-            if image_data_url:
-                image_name = _save_uploaded_image(image_data_url)
+        if image_data_url:
+            _save_uploaded_image(image_data_url)
 
         args: dict[str, Any] = {}
-        if image_name:
-            args["image_name"] = image_name
         if session_id:
             args["session_id"] = session_id
         if feedback:

@@ -59,7 +59,12 @@ def call_mcp_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                         f"MCP tool call timed out after {timeout_s:.1f}s: {name}"
                     ) from exc
                 if result.isError:
-                    raise RuntimeError(f"MCP tool error: {result.error}")
+                    error_text = ""
+                    for block in result.content or []:
+                        if getattr(block, "type", None) == "text":
+                            error_text += getattr(block, "text", "")
+                    error_text = error_text.strip()
+                    raise RuntimeError(f"MCP tool error: {error_text or 'unknown error'}")
                 if result.structuredContent is not None:
                     return result.structuredContent
                 # Fallback: attempt to parse text content as JSON.

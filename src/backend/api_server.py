@@ -230,7 +230,8 @@ def chat() -> Any:
 
     response_text = convo.orchestrator.respond(
         message,
-        image_name=image_name,
+        image_name=None,
+        has_image=bool(image_data),
         allow_tools=True,
     )
     tool_calls = _extract_tool_calls(response_text, include_result=False)
@@ -442,7 +443,8 @@ def socket_chat(payload: Dict[str, Any]) -> None:
         try:
             response_text = convo.orchestrator.respond(
                 message,
-                image_name=image_name,
+                image_name=None,
+                has_image=bool(image_data),
                 stream=stream_chunk,
                 allow_tools=True,
                 on_tool_event=on_tool_event,

@@ -176,11 +176,19 @@ export default function Chat() {
           <div className="message assistant streaming">
             <div className="message-content">
               {streamingContent ? (
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: renderMarkdown(streamingContent),
-                  }}
-                />
+                <>
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: renderMarkdown(streamingContent),
+                    }}
+                  />
+                  {processingStatus && (
+                    <span className="processing-status">
+                      <span className="status-dot"></span>
+                      {processingStatus}
+                    </span>
+                  )}
+                </>
               ) : processingStatus ? (
                 <span className="processing-status">
                   <span className="status-dot"></span>

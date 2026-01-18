@@ -93,12 +93,6 @@ class AnalyzeWorkflowTool(Tool):
     )
     parameters = [
         ToolParameter(
-            name="image_name",
-            type="string",
-            description="Filename of the image in the repo root (e.g., workflow.jpeg).",
-            required=False,
-        ),
-        ToolParameter(
             name="session_id",
             type="string",
             description="Optional session id to continue a prior analysis.",
@@ -127,7 +121,6 @@ class AnalyzeWorkflowTool(Tool):
         stream = kwargs.get("stream")
         session_id = args.get("session_id")
         feedback = args.get("feedback")
-        image_name = args.get("image_name")
 
         if session_id:
             if not feedback:
@@ -138,27 +131,14 @@ class AnalyzeWorkflowTool(Tool):
             if not stored_image:
                 raise ValueError(f"Unknown session_id: {session_id}")
             image_name = stored_image
-        elif not image_name:
-            raise ValueError("image_name is required when session_id is not provided")
+        else:
+            image_name = self._latest_uploaded_image()
+            if not image_name:
+                return self._missing_image_response()
 
         image_path = self.repo_root / image_name
         if not image_path.exists():
-            # Try common extensions if none provided.
-            if "." not in image_name:
-                candidates = []
-                for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]:
-                    cand = self.repo_root / f"{image_name}{ext}"
-                    if cand.exists():
-                        image_path = cand
-                        image_name = cand.name
-                        break
-                    candidates.append(cand.name)
-                else:
-                    raise FileNotFoundError(
-                        f"Image not found: {image_path}. Tried: {', '.join(candidates)}"
-                    )
-            else:
-                raise FileNotFoundError(f"Image not found: {image_path}")
+            return self._missing_image_response()
 
         if not session_id:
             session_id = uuid4().hex
@@ -176,6 +156,35 @@ class AnalyzeWorkflowTool(Tool):
             "session_id": session_id,
             "analysis": analysis,
             "flowchart": flowchart,
+        }
+
+    def _latest_uploaded_image(self) -> Optional[str]:
+        uploads_dir = self.repo_root / ".lemon" / "uploads"
+        if not uploads_dir.exists():
+            return None
+        candidates = [
+            p
+            for p in uploads_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+        ]
+        if not candidates:
+            return None
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
+        try:
+            return str(latest.relative_to(self.repo_root))
+        except ValueError:
+            return None
+
+    def _missing_image_response(self) -> Dict[str, Any]:
+        return {
+            "session_id": "",
+            "analysis": {
+                "inputs": [],
+                "outputs": [],
+                "tree": {},
+                "doubts": ["User hasn't uploaded image, ask them to upload image."],
+            },
+            "flowchart": {"nodes": [], "edges": []},
         }
 
 
