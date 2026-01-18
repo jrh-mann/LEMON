@@ -34,16 +34,18 @@ def flowchart_from_tree(tree: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]
 
         raw_type = str(node.get("type") or "process")
         node_type = _map_node_type(raw_type)
-        nodes.append(
-            {
-                "id": node_id,
-                "type": node_type,
-                "label": node.get("label") or node_id,
-                # Top-left coordinates; frontend auto-layout will adjust.
-                "x": 0,
-                "y": 0,
-            }
-        )
+        node_entry = {
+            "id": node_id,
+            "type": node_type,
+            "label": node.get("label") or node_id,
+            # Top-left coordinates; frontend auto-layout will adjust.
+            "x": 0,
+            "y": 0,
+        }
+        input_ids = node.get("input_ids")
+        if isinstance(input_ids, list):
+            node_entry["input_ids"] = input_ids
+        nodes.append(node_entry)
 
         for child in node.get("children") or []:
             child_id = child.get("id")

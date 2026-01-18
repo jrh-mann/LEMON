@@ -9,6 +9,7 @@ import type {
   SocketAgentQuestion,
   SocketAgentComplete,
   SocketAgentError,
+  WorkflowAnalysis,
 } from '../types'
 
 let socket: Socket | null = null
@@ -178,12 +179,24 @@ export function connectSocket(): Socket {
     switch (data.action) {
       case 'create_workflow':
         // Full workflow created - load it
-        if (data.data.nodes && data.data.edges) {
-          // Transform backend data (top-left coords, BlockType) to frontend format
-          const flowchart = transformFlowchartFromBackend(data.data as { nodes: unknown[]; edges: unknown[] })
-          workflowStore.setFlowchart(flowchart)
-          // Switch canvas to workflow tab to show the new workflow
-          uiStore.setCanvasTab('workflow')
+        {
+          const payload = data.data as {
+            flowchart?: { nodes?: unknown[]; edges?: unknown[] }
+            analysis?: WorkflowAnalysis
+            nodes?: unknown[]
+            edges?: unknown[]
+          }
+          if (payload.analysis) {
+            workflowStore.setAnalysis(payload.analysis)
+          }
+          const flowchartData = payload.flowchart?.nodes ? payload.flowchart : payload
+          if (flowchartData.nodes && flowchartData.edges) {
+            // Transform backend data (top-left coords, BlockType) to frontend format
+            const flowchart = transformFlowchartFromBackend(flowchartData as { nodes: unknown[]; edges: unknown[] })
+            workflowStore.setFlowchart(flowchart)
+            // Switch canvas to workflow tab to show the new workflow
+            uiStore.setCanvasTab('workflow')
+          }
         }
         break
 

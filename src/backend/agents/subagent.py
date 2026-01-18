@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, Optional
 from ..storage.history import HistoryStore
 from ..llm import call_llm, call_llm_stream
 from ..utils.image import image_to_data_url
+from ..utils.analysis import normalize_analysis
 
 
 class Subagent:
@@ -41,7 +42,7 @@ class Subagent:
 Return ONLY a JSON object with this structure:
 {
   "inputs": [
-    {"name": "...", "type": "int|float|bool|string|enum|date", "description": "..."}
+    {"id": "input_name_type", "name": "...", "type": "int|float|bool|string|enum|date", "description": "..."}
   ],
   "outputs": [
     {"name": "...", "description": "..."}
@@ -56,6 +57,7 @@ Return ONLY a JSON object with this structure:
           "id": "n1",
           "type": "decision|action|output",
           "label": "exact text from diagram",
+          "input_ids": ["input_name_type"],
           "edge_label": "Yes|No|optional",
           "children": [ ... ]
         }
@@ -71,6 +73,10 @@ Return ONLY a JSON object with this structure:
 Rules:
 - Use exact text from the diagram.
 - If there are no doubts, return "doubts": [].
+- Every input must include an "id" computed as: input_{slug(name)}_{type}
+  - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
+- If a decision/action depends on one or more inputs, include "input_ids" on that node
+  referencing the input ids.
 - Tree rules:
   - This must be a single rooted tree starting at tree.start.
   - Allowed node types: start, decision, action, output.
@@ -79,7 +85,8 @@ Rules:
   - Every node id must be unique across the tree.
 - Return JSON only, no extra text.
 
-Once you've received clarifications via feedback, adjust the analysis accordingly. Respond only with the updated JSON object.
+Once you've received clarifications via feedback, adjust the analysis accordingly, preserving ids
+by recomputing them deterministically from name + type. Respond only with the updated JSON object.
 """
 
         history_messages = [
@@ -140,12 +147,16 @@ Once you've received clarifications via feedback, adjust the analysis accordingl
                 max_completion_tokens=60000,
                 response_format=None,
                 on_delta=on_delta,
+                caller="subagent",
+                request_tag="analyze_stream",
             ).strip()
         else:
             raw = call_llm(
                 messages,
                 max_completion_tokens=60000,
                 response_format=None,
+                caller="subagent",
+                request_tag="analyze",
             ).strip()
         llm_ms = (time.perf_counter() - llm_start) * 1000
         self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
@@ -153,6 +164,7 @@ Once you've received clarifications via feedback, adjust the analysis accordingl
             raise ValueError("LLM returned an empty response.")
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg)
+        data = normalize_analysis(data)
 
         # Persist conversation history for continuity.
         if not is_followup:
@@ -162,6 +174,56 @@ Once you've received clarifications via feedback, adjust the analysis accordingl
         self.history.add_message(session_id, "assistant", json.dumps(data))
         self.history.store_analysis(session_id, data)
         return data
+
+    def ask_image(
+        self,
+        *,
+        image_path: Path,
+        question: str,
+        region: Optional[str] = None,
+        stream: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        """Answer a targeted question about an image."""
+        self._logger.info("Subagent ask_image image=%s has_region=%s", image_path.name, bool(region))
+        prompt = "Answer the user's question about the image."
+        if region:
+            prompt += f" Focus on this region: {region}."
+        prompt += (
+            " Be concise. If the answer is unclear or unreadable, say so. "
+            "Do not guess text that isn't visible."
+        )
+        data_url = image_to_data_url(image_path)
+        user_msg = {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"{prompt}\n\nQuestion: {question}"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        }
+        messages = [
+            {"role": "system", "content": "You answer targeted questions about images."},
+            user_msg,
+        ]
+        if stream:
+            raw = call_llm_stream(
+                messages,
+                max_completion_tokens=2000,
+                response_format=None,
+                on_delta=stream,
+                caller="subagent",
+                request_tag="ask_image_stream",
+            ).strip()
+        else:
+            raw = call_llm(
+                messages,
+                max_completion_tokens=2000,
+                response_format=None,
+                caller="subagent",
+                request_tag="ask_image",
+            ).strip()
+        if not raw:
+            raise ValueError("LLM returned an empty response.")
+        return raw
 
     def _parse_json(
         self,
@@ -212,6 +274,8 @@ Once you've received clarifications via feedback, adjust the analysis accordingl
             retry_messages,
             max_completion_tokens=60000,
             response_format=None,
+            caller="subagent",
+            request_tag="json_retry",
         ).strip()
         if not retry_raw:
             raise ValueError("LLM returned an empty response on retry.")

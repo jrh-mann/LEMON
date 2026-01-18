@@ -87,11 +87,15 @@ def handle_socket_chat(
             if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
                 flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
                 if flowchart and flowchart.get("nodes"):
+                    analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
                     socketio.emit(
                         "workflow_modified",
                         {
                             "action": "create_workflow",
-                            "data": flowchart,
+                            "data": {
+                                "flowchart": flowchart,
+                                "analysis": analysis,
+                            },
                         },
                         to=sid,
                     )

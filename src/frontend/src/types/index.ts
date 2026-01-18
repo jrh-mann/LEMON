@@ -104,6 +104,23 @@ export interface WorkflowSummary {
   updated_at: string
 }
 
+export interface WorkflowInput {
+  id: string
+  name: string
+  type: InputType
+  description?: string
+  enum?: string[]
+  enum_values?: string[]
+  range?: Range
+}
+
+export interface WorkflowAnalysis {
+  inputs: WorkflowInput[]
+  outputs: Array<{ name: string; description?: string }>
+  tree: Record<string, unknown>
+  doubts: string[]
+}
+
 // ============ Flowchart Models (for canvas rendering) ============
 
 export type FlowNodeType = 'start' | 'process' | 'decision' | 'subprocess' | 'end'

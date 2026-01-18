@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis } from '../types'
 
 // Tab interface
 export interface WorkflowTab {
@@ -11,6 +11,7 @@ export interface WorkflowTab {
   historyIndex: number
   pendingImage: string | null
   pendingImageName: string | null
+  analysis: WorkflowAnalysis | null
 }
 
 interface WorkflowState {
@@ -25,6 +26,7 @@ interface WorkflowState {
   // Current workflow (derived from active tab)
   currentWorkflow: Workflow | null
   flowchart: Flowchart
+  currentAnalysis: WorkflowAnalysis | null
 
   // Canvas state
   selectedNodeId: string | null
@@ -45,6 +47,7 @@ interface WorkflowState {
   setLoadingWorkflows: (loading: boolean) => void
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setFlowchart: (flowchart: Flowchart) => void
+  setAnalysis: (analysis: WorkflowAnalysis | null) => void
 
   // Tab operations
   addTab: (title?: string, workflow?: Workflow | null, flowchart?: Flowchart) => string
@@ -102,6 +105,7 @@ const createInitialTab = (): WorkflowTab => ({
   historyIndex: -1,
   pendingImage: null,
   pendingImageName: null,
+  analysis: null,
 })
 
 const initialTab = createInitialTab()
@@ -118,6 +122,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Current state (from active tab)
   currentWorkflow: null,
   flowchart: emptyFlowchart,
+  currentAnalysis: null,
   selectedNodeId: null,
   selectedNodeIds: [],
   connectMode: false,
@@ -149,6 +154,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     )
     set({ flowchart, tabs })
   },
+  setAnalysis: (analysis) => {
+    const state = get()
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, analysis }
+        : tab
+    )
+    set({ currentAnalysis: analysis, tabs })
+  },
 
   // Tab operations
   addTab: (title = 'New Workflow', workflow = null, flowchart = emptyFlowchart) => {
@@ -161,12 +175,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      analysis: null,
     }
     // Save current tab's pending image before switching
     const state = get()
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
-        ? { ...tab, pendingImage: state.pendingImage, pendingImageName: state.pendingImageName }
+        ? {
+            ...tab,
+            pendingImage: state.pendingImage,
+            pendingImageName: state.pendingImageName,
+            analysis: state.currentAnalysis,
+          }
         : tab
     )
     set({
@@ -174,6 +194,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       activeTabId: newTab.id,
       currentWorkflow: workflow,
       flowchart,
+      currentAnalysis: null,
       selectedNodeId: null,
       selectedNodeIds: [],
       connectMode: false,
@@ -196,6 +217,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         activeTabId: newTab.id,
         currentWorkflow: null,
         flowchart: emptyFlowchart,
+        currentAnalysis: null,
         selectedNodeId: null,
         selectedNodeIds: [],
         history: [],
@@ -222,6 +244,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       activeTabId: newActiveId,
       currentWorkflow: activeTab.workflow,
       flowchart: activeTab.flowchart,
+      currentAnalysis: activeTab.analysis,
       history: activeTab.history,
       historyIndex: activeTab.historyIndex,
       selectedNodeId: null,
@@ -245,6 +268,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             historyIndex: state.historyIndex,
             pendingImage: state.pendingImage,
             pendingImageName: state.pendingImageName,
+            analysis: state.currentAnalysis,
           }
         : tab
     )
@@ -257,6 +281,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       activeTabId: tabId,
       currentWorkflow: newTab.workflow,
       flowchart: newTab.flowchart,
+      currentAnalysis: newTab.analysis,
       history: newTab.history,
       historyIndex: newTab.historyIndex,
       selectedNodeId: null,
@@ -465,6 +490,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({
       currentWorkflow: null,
       flowchart: emptyFlowchart,
+      currentAnalysis: null,
       selectedNodeId: null,
       selectedNodeIds: [],
       connectMode: false,

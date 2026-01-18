@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("backend.llm")
@@ -15,6 +17,80 @@ from .anthropic import (
     _to_anthropic_messages,
 )
 from .env import get_anthropic_client, get_anthropic_model, load_env
+from ..utils.tokens import record_token_usage
+
+
+def _extract_usage(message: Any) -> Dict[str, Any]:
+    usage = getattr(message, "usage", None)
+    if usage is None and isinstance(message, dict):
+        usage = message.get("usage")
+    if usage is None:
+        return {}
+
+    def _get(field: str) -> Optional[int]:
+        if isinstance(usage, dict):
+            value = usage.get(field)
+        else:
+            value = getattr(usage, field, None)
+        return int(value) if isinstance(value, int) else None
+
+    input_tokens = _get("input_tokens")
+    output_tokens = _get("output_tokens")
+    cache_creation_tokens = _get("cache_creation_input_tokens")
+    cache_read_tokens = _get("cache_read_input_tokens")
+    total_tokens = None
+    if input_tokens is not None or output_tokens is not None:
+        total_tokens = (input_tokens or 0) + (output_tokens or 0)
+
+    payload: Dict[str, Any] = {}
+    if input_tokens is not None:
+        payload["input_tokens"] = input_tokens
+    if output_tokens is not None:
+        payload["output_tokens"] = output_tokens
+    if total_tokens is not None:
+        payload["total_tokens"] = total_tokens
+    if cache_creation_tokens is not None:
+        payload["cache_creation_input_tokens"] = cache_creation_tokens
+    if cache_read_tokens is not None:
+        payload["cache_read_input_tokens"] = cache_read_tokens
+    return payload
+
+
+def _record_tokens(
+    *,
+    request_id: str,
+    message: Any,
+    model: str,
+    caller: Optional[str],
+    request_tag: Optional[str],
+    function_name: str,
+    tool_choice: Optional[str],
+    tool_count: int,
+    message_count: int,
+    elapsed_ms: float,
+) -> None:
+    provider_id = getattr(message, "id", None)
+    if provider_id is None and isinstance(message, dict):
+        provider_id = message.get("id")
+    entry = {
+        "request_id": request_id,
+        "provider_message_id": provider_id,
+        "model": model,
+        "caller": caller or "unknown",
+        "request_tag": request_tag or "",
+        "function": function_name,
+        "streaming": True,
+        "tool_choice": tool_choice or "",
+        "tool_count": tool_count,
+        "message_count": message_count,
+        "elapsed_ms": round(elapsed_ms, 2),
+        "usage": _extract_usage(message),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        record_token_usage(entry)
+    except Exception as exc:
+        logger.warning("Failed to record token usage: %s", exc)
 
 
 def call_llm(
@@ -22,6 +98,8 @@ def call_llm(
     *,
     max_completion_tokens: int = 60000,
     response_format: Optional[Dict[str, Any]] = None,
+    caller: Optional[str] = None,
+    request_tag: Optional[str] = None,
 ) -> str:
     load_env()
     if response_format:
@@ -41,6 +119,7 @@ def call_llm(
             chunks.append(text)
 
     start = time.perf_counter()
+    request_id = uuid.uuid4().hex
     with client.messages.stream(**payload) as stream:
         for event in stream:
             if getattr(event, "type", "") == "content_block_delta":
@@ -51,6 +130,18 @@ def call_llm(
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    _record_tokens(
+        request_id=request_id,
+        message=message,
+        model=payload["model"],
+        caller=caller,
+        request_tag=request_tag,
+        function_name="call_llm",
+        tool_choice=None,
+        tool_count=0,
+        message_count=len(messages),
+        elapsed_ms=elapsed_ms,
+    )
     parsed_text, _ = _parse_anthropic_response(message)
     text = "".join(chunks) if chunks else parsed_text
     if not text:
@@ -65,6 +156,8 @@ def call_llm_with_tools(
     tool_choice: Optional[str] = None,
     max_completion_tokens: int = 60000,
     on_delta: Optional[Callable[[str], None]] = None,
+    caller: Optional[str] = None,
+    request_tag: Optional[str] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     load_env()
     if tool_choice is None and tools:
@@ -180,9 +273,22 @@ def call_llm_with_tools(
             return stream.get_final_message()
 
     start = time.perf_counter()
+    request_id = uuid.uuid4().hex
     message = _call_stream()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    _record_tokens(
+        request_id=request_id,
+        message=message,
+        model=payload["model"],
+        caller=caller,
+        request_tag=request_tag,
+        function_name="call_llm_with_tools",
+        tool_choice=tool_choice,
+        tool_count=len(tools) if tools else 0,
+        message_count=len(messages),
+        elapsed_ms=elapsed_ms,
+    )
     parsed_text, tool_calls = _parse_anthropic_response(message)
     recovered: List[Dict[str, Any]] = []
     if tool_blocks:
@@ -235,6 +341,8 @@ def call_llm_stream(
     max_completion_tokens: int = 60000,
     response_format: Optional[Dict[str, Any]] = None,
     on_delta: Callable[[str], None],
+    caller: Optional[str] = None,
+    request_tag: Optional[str] = None,
 ) -> str:
     load_env()
     if response_format:
@@ -248,6 +356,7 @@ def call_llm_stream(
         "messages": converted,
     }
     start = time.perf_counter()
+    request_id = uuid.uuid4().hex
     with client.messages.stream(**payload) as stream:
         for event in stream:
             if getattr(event, "type", "") == "content_block_delta":
@@ -258,5 +367,17 @@ def call_llm_stream(
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    _record_tokens(
+        request_id=request_id,
+        message=message,
+        model=payload["model"],
+        caller=caller,
+        request_tag=request_tag,
+        function_name="call_llm_stream",
+        tool_choice=None,
+        tool_count=0,
+        message_count=len(messages),
+        elapsed_ms=elapsed_ms,
+    )
     text, _ = _parse_anthropic_response(message)
     return text

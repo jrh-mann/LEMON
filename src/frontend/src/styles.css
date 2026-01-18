@@ -442,6 +442,24 @@ body {
 }
 
 /* Inputs Panel */
+.inputs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.inputs-header h4 {
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.inputs-add-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
 .inputs-list {
   display: flex;
   flex-direction: column;
@@ -498,6 +516,66 @@ body {
   padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
+}
+
+.input-card-enum {
+  font-size: 0.7rem;
+  color: var(--amber);
+  background: var(--amber-light);
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.input-add-form {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 10px;
+}
+
+.input-add-row label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.input-add-row input,
+.input-add-row select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.85rem;
+  background: white;
+}
+
+.input-add-row input:focus,
+.input-add-row select:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.input-add-range {
+  display: flex;
+  flex-direction: column;
+}
+
+.input-add-range-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.input-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* Workflow Browser */

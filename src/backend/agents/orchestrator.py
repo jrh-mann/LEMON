@@ -94,12 +94,16 @@ class Orchestrator:
                     tools=tool_desc,
                     tool_choice=None,
                     on_delta=on_delta if stream else None,
+                    caller="orchestrator",
+                    request_tag="initial",
                 )
             else:
                 if stream:
                     raw = call_llm_stream(
                         messages,
                         on_delta=on_delta,
+                        caller="orchestrator",
+                        request_tag="initial_stream",
                     )
                     raw = raw.strip()
                     tool_calls = []
@@ -108,6 +112,8 @@ class Orchestrator:
                         messages,
                         tools=None,
                         tool_choice="none",
+                        caller="orchestrator",
+                        request_tag="initial_no_tools",
                     )
         except Exception as exc:
             self._logger.exception("LLM error while responding")
@@ -183,6 +189,8 @@ class Orchestrator:
                 tools=tool_desc,
                 tool_choice=None,
                 on_delta=on_delta if stream else None,
+                caller="orchestrator",
+                request_tag="post_tool",
             )
 
         final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")

@@ -10,6 +10,7 @@ from uuid import uuid4
 from ..storage.history import HistoryStore
 from ..agents.subagent import Subagent
 from ..utils.flowchart import flowchart_from_tree
+from ..utils.analysis import normalize_analysis
 from .core import Tool, ToolParameter
 
 
@@ -77,7 +78,7 @@ class AnalyzeWorkflowTool(Tool):
             feedback=feedback,
             stream=stream,
         )
-        analysis = dict(data)
+        analysis = normalize_analysis(dict(data))
         flowchart = flowchart_from_tree(analysis.get("tree") or {})
         return {
             "session_id": session_id,
@@ -144,9 +145,98 @@ class PublishLatestAnalysisTool(Tool):
             }
 
         session_id, analysis = latest
+        analysis = normalize_analysis(analysis)
         flowchart = flowchart_from_tree(analysis.get("tree") or {})
         return {
             "session_id": session_id,
             "analysis": analysis,
             "flowchart": flowchart,
+        }
+
+
+class AskImageTool(Tool):
+    name = "ask_image"
+    description = "Answer a targeted question about the most recently uploaded image."
+    parameters = [
+        ToolParameter(
+            name="question",
+            type="string",
+            description="The question to answer about the image.",
+            required=True,
+        ),
+        ToolParameter(
+            name="session_id",
+            type="string",
+            description="Optional session id to reuse a prior image.",
+            required=False,
+        ),
+        ToolParameter(
+            name="region",
+            type="string",
+            description="Optional region hint (e.g., 'top left box' or 'x=10,y=20,w=100,h=80').",
+            required=False,
+        ),
+    ]
+
+    def __init__(self, repo_root: Path):
+        self.repo_root = repo_root
+        history_db = repo_root / ".lemon" / "history.sqlite"
+        self.history = HistoryStore(history_db)
+        self.subagent = Subagent(self.history)
+        self._logger = logging.getLogger(__name__)
+
+    def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        self._logger.info("Executing ask_image args_keys=%s", sorted(args.keys()))
+        question = args.get("question")
+        if not question:
+            raise ValueError("question is required")
+        session_id = args.get("session_id")
+        region = args.get("region")
+
+        if session_id:
+            image_name = self.history.get_session_image(session_id)
+            if not image_name:
+                raise ValueError(f"Unknown session_id: {session_id}")
+        else:
+            image_name = self._latest_uploaded_image()
+            if not image_name:
+                return self._missing_image_response()
+            session_id = uuid4().hex
+            self.history.create_session(session_id, image_name)
+
+        image_path = self.repo_root / image_name
+        if not image_path.exists():
+            return self._missing_image_response()
+
+        answer = self.subagent.ask_image(
+            image_path=image_path,
+            question=question,
+            region=region,
+            stream=kwargs.get("stream"),
+        )
+        return {"session_id": session_id, "answer": answer, "region": region or ""}
+
+    def _latest_uploaded_image(self) -> Optional[str]:
+        uploads_dir = self.repo_root / ".lemon" / "uploads"
+        if not uploads_dir.exists():
+            return None
+        candidates = [
+            p
+            for p in uploads_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+        ]
+        if not candidates:
+            return None
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
+        try:
+            return str(latest.relative_to(self.repo_root))
+        except ValueError:
+            return None
+
+    def _missing_image_response(self) -> Dict[str, Any]:
+        return {
+            "session_id": "",
+            "answer": "",
+            "region": "",
+            "error": "User hasn't uploaded image, ask them to upload image.",
         }
