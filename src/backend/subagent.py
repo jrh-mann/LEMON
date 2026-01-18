@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+import time
 from typing import Any, Callable, Dict, Optional
 
 from .history import HistoryStore
@@ -96,7 +97,15 @@ Rules:
         if is_followup:
             user_msg = {"role": "user", "content": feedback}
         else:
+            encode_start = time.perf_counter()
             data_url = image_to_data_url(image_path)
+            encode_ms = (time.perf_counter() - encode_start) * 1000
+            self._logger.info(
+                "Image encoded session_id=%s ms=%.1f size_bytes=%d",
+                session_id,
+                encode_ms,
+                len(data_url.encode("utf-8")),
+            )
             user_msg = {
                 "role": "user",
                 "content": [
@@ -106,6 +115,7 @@ Rules:
             }
         messages = [system_msg, *history_messages, user_msg]
 
+        llm_start = time.perf_counter()
         if stream:
             raw = call_azure_openai_stream(
                 messages,
@@ -119,6 +129,8 @@ Rules:
                 max_completion_tokens=60000,
                 response_format=None,
             ).strip()
+        llm_ms = (time.perf_counter() - llm_start) * 1000
+        self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
         if not raw:
             raise ValueError("LLM returned an empty response.")
 

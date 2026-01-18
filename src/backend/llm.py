@@ -7,6 +7,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 import json
+import time
 from openai import AzureOpenAI
 from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
 from pathlib import Path
@@ -143,6 +144,7 @@ def call_azure_openai(
         json.dumps(message_sizes, ensure_ascii=True),
         json.dumps(message_previews, ensure_ascii=True),
     )
+    start = time.perf_counter()
     try:
         resp = client.chat.completions.create(**payload)
     except (APIConnectionError, APITimeoutError, APIError, RateLimitError) as exc:
@@ -150,6 +152,13 @@ def call_azure_openai(
             f"Network error calling Azure OpenAI: {exc}. "
             "Check AZURE_OPENAI_ENDPOINT and network connectivity."
         ) from exc
+    finally:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "Azure OpenAI non-streaming completed ms=%.1f messages=%d",
+            elapsed_ms,
+            len(messages),
+        )
     raw = resp.model_dump_json()
 
     logger.debug("Azure OpenAI response bytes=%d", len(raw))
@@ -185,6 +194,7 @@ def call_azure_openai_stream(
 
     logger.debug("Streaming Azure OpenAI url=%s messages=%d", _build_azure_url(), len(messages))
     chunks: List[str] = []
+    start = time.perf_counter()
     try:
         stream = client.chat.completions.create(**payload)
         for event in stream:
@@ -199,6 +209,14 @@ def call_azure_openai_stream(
             messages,
             max_completion_tokens=max_completion_tokens,
             response_format=response_format,
+        )
+    finally:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "Azure OpenAI streaming completed ms=%.1f messages=%d chunks=%d",
+            elapsed_ms,
+            len(messages),
+            len(chunks),
         )
 
     return "".join(chunks)

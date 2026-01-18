@@ -131,12 +131,8 @@ class Orchestrator:
         tool_iterations = 0
         tool_results: List[ToolResult] = []
         while True:
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError:
-                break
-
-            if not isinstance(payload, dict) or "tool" not in payload:
+            payload = _extract_tool_payload(raw)
+            if payload is None:
                 break
 
             tool_name = payload.get("tool")
@@ -184,6 +180,32 @@ def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 
         return
     for idx in range(0, len(text), chunk_size):
         stream(text[idx : idx + chunk_size])
+
+
+def _extract_tool_payload(raw: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict) and "tool" in payload:
+        return payload
+    # Try to salvage a JSON object if the model returned extra text.
+    if not raw:
+        return None
+    if '"tool"' not in raw:
+        return None
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    snippet = raw[start : end + 1]
+    try:
+        payload = json.loads(snippet)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, dict) and "tool" in payload:
+        return payload
+    return None
 
 
 def _summarize_tool_results(results: List[ToolResult]) -> str:
