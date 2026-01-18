@@ -7,10 +7,8 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 import json
-import requests
-from requests import exceptions as requests_exceptions
-import urllib.request
-import urllib.error
+from openai import AzureOpenAI
+from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
 from pathlib import Path
 
 
@@ -34,22 +32,27 @@ def _load_env() -> None:
         os.environ.setdefault(key, value)
 
 
-def _build_azure_url() -> str:
-    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("ENDPOINT")
+def _get_deployment_name() -> str:
     deployment = (
         os.environ.get("DEPLOYMENT_NAME")
         or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
         or os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
     )
+    if not deployment:
+        raise LLMConfigError("Missing DEPLOYMENT_NAME/AZURE_OPENAI_DEPLOYMENT.")
+    return deployment
+
+
+def _build_azure_url() -> str:
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("ENDPOINT")
+    deployment = _get_deployment_name()
     api_version = (
         os.environ.get("AZURE_OPENAI_API_VERSION")
         or os.environ.get("API_VERSION")
         or "2024-12-01-preview"
     )
-    if not endpoint or not deployment:
-        raise LLMConfigError(
-            "Missing AZURE_OPENAI_ENDPOINT/ENDPOINT or DEPLOYMENT_NAME."
-        )
+    if not endpoint:
+        raise LLMConfigError("Missing AZURE_OPENAI_ENDPOINT/ENDPOINT.")
     endpoint = endpoint.rstrip("/")
     if not endpoint.startswith("https://"):
         raise LLMConfigError("AZURE_OPENAI_ENDPOINT must start with https://")
@@ -64,6 +67,29 @@ def _build_azure_url() -> str:
     return f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
 
 
+def _get_azure_client() -> AzureOpenAI:
+    _load_env()
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("API_KEY")
+    if not api_key:
+        raise LLMConfigError("Missing AZURE_OPENAI_API_KEY/API_KEY.")
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("ENDPOINT")
+    api_version = (
+        os.environ.get("AZURE_OPENAI_API_VERSION")
+        or os.environ.get("API_VERSION")
+        or "2024-12-01-preview"
+    )
+    if not endpoint:
+        raise LLMConfigError("Missing AZURE_OPENAI_ENDPOINT/ENDPOINT.")
+    endpoint = endpoint.rstrip("/")
+    if not endpoint.startswith("https://"):
+        raise LLMConfigError("AZURE_OPENAI_ENDPOINT must start with https://")
+    return AzureOpenAI(
+        api_key=api_key,
+        api_version=api_version,
+        azure_endpoint=endpoint,
+    )
+
+
 def call_azure_openai(
     messages: List[Dict[str, Any]],
     *,
@@ -71,22 +97,16 @@ def call_azure_openai(
     response_format: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Call Azure OpenAI chat completions and return assistant text."""
-    _load_env()
-    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("API_KEY")
-    if not api_key:
-        raise LLMConfigError("Missing AZURE_OPENAI_API_KEY/API_KEY.")
-
+    client = _get_azure_client()
     url = _build_azure_url()
+    deployment = _get_deployment_name()
     payload = {
+        "model": deployment,
         "messages": messages,
         "max_completion_tokens": max_completion_tokens,
     }
     if response_format:
         payload["response_format"] = response_format
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": api_key,
-    }
 
     payload_bytes = json.dumps(payload).encode("utf-8")
     message_sizes = []
@@ -123,41 +143,24 @@ def call_azure_openai(
         json.dumps(message_sizes, ensure_ascii=True),
         json.dumps(message_previews, ensure_ascii=True),
     )
-    req = urllib.request.Request(
-        url,
-        data=payload_bytes,
-        headers=headers,
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            raw = resp.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Azure OpenAI HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
+        resp = client.chat.completions.create(**payload)
+    except (APIConnectionError, APITimeoutError, APIError, RateLimitError) as exc:
         raise RuntimeError(
             f"Network error calling Azure OpenAI: {exc}. "
             "Check AZURE_OPENAI_ENDPOINT and network connectivity."
         ) from exc
-    except Exception as exc:
-        logger.exception("Unexpected error calling Azure OpenAI")
-        raise
+    raw = resp.model_dump_json()
 
     logger.debug("Azure OpenAI response bytes=%d", len(raw))
 
-    data = json.loads(raw)
-    choices = data.get("choices") or []
+    choices = resp.choices or []
     if not choices:
-        raise RuntimeError(
-            f"Azure OpenAI returned no choices. Response: {json.dumps(data)[:1000]}"
-        )
-    message = choices[0].get("message") or {}
-    content = message.get("content")
+        raise RuntimeError("Azure OpenAI returned no choices.")
+    message = choices[0].message
+    content = message.content if message else None
     if not content:
-        raise RuntimeError(
-            f"Azure OpenAI returned empty content. Response: {json.dumps(data)[:1000]}"
-        )
+        raise RuntimeError("Azure OpenAI returned empty content.")
     return content
 
 
@@ -169,70 +172,33 @@ def call_azure_openai_stream(
     on_delta: Callable[[str], None],
 ) -> str:
     """Call Azure OpenAI with streaming and return full assistant text."""
-    _load_env()
-    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("API_KEY")
-    if not api_key:
-        raise LLMConfigError("Missing AZURE_OPENAI_API_KEY/API_KEY.")
-
-    url = _build_azure_url()
+    client = _get_azure_client()
+    deployment = _get_deployment_name()
     payload: Dict[str, Any] = {
+        "model": deployment,
         "messages": messages,
         "max_completion_tokens": max_completion_tokens,
         "stream": True,
     }
     if response_format:
         payload["response_format"] = response_format
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-        "api-key": api_key,
-    }
 
-    logger.debug("Streaming Azure OpenAI url=%s messages=%d", url, len(messages))
-    try:
-        resp = requests.post(url, headers=headers, json=payload, stream=True, timeout=600)
-        if resp.status_code >= 400:
-            raise RuntimeError(f"Azure OpenAI HTTP {resp.status_code}: {resp.text}")
-    except requests_exceptions.SSLError as exc:
-        logger.warning("Streaming SSL error, falling back to non-streaming: %s", exc)
-        return call_azure_openai(
-            messages,
-            max_completion_tokens=max_completion_tokens,
-            response_format=response_format,
-        )
-    except requests_exceptions.RequestException as exc:
-        logger.warning("Streaming request error, falling back to non-streaming: %s", exc)
-        return call_azure_openai(
-            messages,
-            max_completion_tokens=max_completion_tokens,
-            response_format=response_format,
-        )
-
+    logger.debug("Streaming Azure OpenAI url=%s messages=%d", _build_azure_url(), len(messages))
     chunks: List[str] = []
-    buffer = ""
-    for chunk in resp.iter_content(chunk_size=1, decode_unicode=True):
-        if not chunk:
-            continue
-        buffer += chunk
-        while "\n" in buffer:
-            line, buffer = buffer.split("\n", 1)
-            line = line.strip()
-            if not line or not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if data == "[DONE]":
-                return "".join(chunks)
-            try:
-                payload = json.loads(data)
-            except json.JSONDecodeError:
-                continue
-            choices = payload.get("choices") or []
-            if not choices:
-                continue
-            delta = choices[0].get("delta") or {}
-            content = delta.get("content")
+    try:
+        stream = client.chat.completions.create(**payload)
+        for event in stream:
+            delta = event.choices[0].delta if event.choices else None
+            content = delta.content if delta else None
             if content:
                 chunks.append(content)
                 on_delta(content)
+    except (APIConnectionError, APITimeoutError, APIError, RateLimitError) as exc:
+        logger.warning("Streaming error, falling back to non-streaming: %s", exc)
+        return call_azure_openai(
+            messages,
+            max_completion_tokens=max_completion_tokens,
+            response_format=response_format,
+        )
 
     return "".join(chunks)

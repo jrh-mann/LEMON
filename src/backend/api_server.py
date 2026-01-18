@@ -190,6 +190,7 @@ socketio = SocketIO(
     logger=True,
     engineio_logger=True,
     max_http_buffer_size=10 * 1024 * 1024,
+    async_mode="threading",
 )
 
 

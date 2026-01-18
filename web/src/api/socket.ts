@@ -27,7 +27,7 @@ export function getSocket(): Socket | null {
 }
 
 export function connectSocket(): Socket {
-  if (socket?.connected) {
+  if (socket) {
     return socket
   }
 
@@ -36,7 +36,8 @@ export function connectSocket(): Socket {
 
   socket = io(socketUrl, {
     query: { session_id: sessionId },
-    transports: ['websocket', 'polling'],
+    transports: ['polling'],
+    upgrade: false,
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
@@ -45,6 +46,7 @@ export function connectSocket(): Socket {
   // Connection events
   socket.on('connect', () => {
     console.log('[Socket] Connected:', socket?.id)
+    useUIStore.getState().clearError()
   })
 
   socket.on('disconnect', (reason) => {
@@ -53,13 +55,17 @@ export function connectSocket(): Socket {
 
   socket.on('connect_error', (error) => {
     console.error('[Socket] Connection error:', error)
-    useUIStore.getState().setError('Failed to connect to server')
+    if (!socket?.connected) {
+      const message = (error as Error)?.message || String(error)
+      useUIStore.getState().setError(`Failed to connect to server: ${message}`)
+    }
   })
 
   // Chat progress (incremental status updates)
   socket.on('chat_progress', (data: { event: string; status?: string; tool?: string }) => {
     console.log('[Socket] chat_progress:', data)
     const chatStore = useChatStore.getState()
+    useUIStore.getState().clearError()
 
     if (data.status) {
       console.log('[Socket] Setting processing status:', data.status)
@@ -76,6 +82,10 @@ export function connectSocket(): Socket {
   socket.on('chat_response', (data: SocketChatResponse) => {
     console.log('[Socket] chat_response:', data)
     const chatStore = useChatStore.getState()
+    useUIStore.getState().clearError()
+    console.log('[Socket] chat_response tool_calls:', data.tool_calls?.length || 0)
+    console.log('[Socket] chat_response response_length:', data.response?.length || 0)
+    console.log('[Socket] chat_response streaming_length:', chatStore.streamingContent.length)
 
     chatStore.setStreaming(false)
     chatStore.setProcessingStatus(null)
@@ -153,6 +163,8 @@ export function connectSocket(): Socket {
       chatStore.setStreaming(true)
     }
     chatStore.appendStreamContent(data.chunk || '')
+    console.log('[Socket] chat_stream chunk_length:', data.chunk?.length || 0)
+    console.log('[Socket] chat_stream total_length:', chatStore.streamingContent.length)
   })
 
   // Workflow modification events (from orchestrator editing tools)
