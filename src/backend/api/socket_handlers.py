@@ -22,7 +22,7 @@ def register_socket_handlers(
     repo_root: Path,
 ) -> None:
     @socketio.on("connect")
-    def socket_connect() -> None:
+    def socket_connect(auth: Any = None) -> None:
         session_id = request.args.get("session_id")
         logger.info("Socket connected session_id=%s sid=%s", session_id, request.sid)
 

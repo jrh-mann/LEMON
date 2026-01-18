@@ -9,9 +9,11 @@ from src.backend.api_server import app, socketio
 
 if __name__ == "__main__":
     # Use Socket.IO server so websocket events work in the web UI.
+    debug = os.environ.get("LEMON_DEBUG", "1").lower() in {"1", "true", "yes"}
     socketio.run(
         app,
-        debug=True,
+        debug=debug,
         port=5001,
         allow_unsafe_werkzeug=True,
+        use_reloader=False,
     )

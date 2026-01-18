@@ -171,14 +171,18 @@ class Orchestrator:
                     "role": "system",
                     "content": (
                         "Tool execution succeeded. The tool results are provided above. "
-                        "Respond in plain text only, summarizing inputs, outputs, and doubts."
+                        "If additional tool calls are required to complete the user's request, "
+                        "you may call them (including multiple tool calls). Otherwise respond in "
+                        "plain text only, summarizing "
+                        "inputs, outputs, and doubts."
                     ),
                 }
             )
             raw, tool_calls = call_llm_with_tools(
                 messages,
                 tools=tool_desc,
-                tool_choice="none",
+                tool_choice=None,
+                on_delta=on_delta if stream else None,
             )
 
         final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")

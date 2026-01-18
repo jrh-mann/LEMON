@@ -163,4 +163,43 @@ def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]]]:
                     "function": {"name": name, "arguments": args_text},
                 }
             )
+    raw_tool_calls = getattr(message, "tool_calls", None)
+    if raw_tool_calls is None and isinstance(message, dict):
+        raw_tool_calls = message.get("tool_calls")
+    if isinstance(raw_tool_calls, list):
+        for call in raw_tool_calls:
+            if not isinstance(call, dict):
+                continue
+            if call.get("function"):
+                tool_calls.append(call)
+                continue
+            name = call.get("name")
+            args_text = call.get("arguments", "{}")
+            if isinstance(args_text, dict):
+                try:
+                    args_text = json.dumps(args_text, ensure_ascii=True)
+                except (TypeError, ValueError):
+                    args_text = "{}"
+            tool_calls.append(
+                {
+                    "id": call.get("id"),
+                    "type": "function",
+                    "function": {"name": name, "arguments": args_text},
+                }
+            )
+    if tool_calls:
+        merged: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for call in tool_calls:
+            call_id = call.get("id")
+            if call_id:
+                key = f"id:{call_id}"
+            else:
+                fn = call.get("function") or {}
+                key = f"sig:{fn.get('name','')}:{fn.get('arguments','')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(call)
+        tool_calls = merged
     return "".join(text_parts), tool_calls

@@ -90,12 +90,18 @@ def call_llm_with_tools(
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
     chunks: List[str] = []
     tool_blocks: Dict[int, Dict[str, Any]] = {}
+    tool_block_order: List[int] = []
 
     def handle_delta(text: str) -> None:
         if text:
             chunks.append(text)
         if on_delta:
             on_delta(text)
+
+    def track_tool_block(idx: int, block: Dict[str, Any]) -> None:
+        if idx not in tool_blocks:
+            tool_blocks[idx] = block
+            tool_block_order.append(idx)
 
     def _call_stream() -> Any:
         with client.messages.stream(**payload) as stream:
@@ -104,37 +110,68 @@ def call_llm_with_tools(
                 if event_type == "content_block_start":
                     block = getattr(event, "content_block", None)
                     block_type = getattr(block, "type", None)
+                    if block_type is None and isinstance(block, dict):
+                        block_type = block.get("type")
                     if block_type == "tool_use":
                         idx = getattr(event, "index", None)
+                        if idx is None and isinstance(event, dict):
+                            idx = event.get("index")
                         if idx is None:
                             idx = getattr(event, "content_block_index", None)
-                        tool_blocks[int(idx or 0)] = {
-                            "id": getattr(block, "id", None),
-                            "name": getattr(block, "name", None),
-                            "input": getattr(block, "input", None),
+                        if idx is None and isinstance(event, dict):
+                            idx = event.get("content_block_index")
+                        if idx is None:
+                            idx = max(tool_blocks.keys(), default=-1) + 1
+                        block_id = getattr(block, "id", None) if not isinstance(block, dict) else block.get("id")
+                        block_name = getattr(block, "name", None) if not isinstance(block, dict) else block.get("name")
+                        block_input = (
+                            getattr(block, "input", None) if not isinstance(block, dict) else block.get("input")
+                        )
+                        track_tool_block(int(idx), {
+                            "id": block_id,
+                            "name": block_name,
+                            "input": block_input,
                             "buffer": "",
-                        }
+                        })
                 elif event_type == "content_block_delta":
                     delta = getattr(event, "delta", None)
                     if delta:
                         text = getattr(delta, "text", None)
+                        if text is None and isinstance(delta, dict):
+                            text = delta.get("text")
                         if text:
                             handle_delta(text)
                         delta_type = getattr(delta, "type", None)
+                        if delta_type is None and isinstance(delta, dict):
+                            delta_type = delta.get("type")
                         if delta_type == "input_json_delta":
                             idx = getattr(event, "index", None)
+                            if idx is None and isinstance(event, dict):
+                                idx = event.get("index")
                             if idx is None:
                                 idx = getattr(event, "content_block_index", None)
-                            block = tool_blocks.get(int(idx or 0))
+                            if idx is None and isinstance(event, dict):
+                                idx = event.get("content_block_index")
+                            if idx is None:
+                                continue
+                            block = tool_blocks.get(int(idx))
                             if block is not None:
                                 partial = getattr(delta, "partial_json", None)
+                                if partial is None and isinstance(delta, dict):
+                                    partial = delta.get("partial_json")
                                 if partial:
                                     block["buffer"] += partial
                 elif event_type == "content_block_stop":
                     idx = getattr(event, "index", None)
+                    if idx is None and isinstance(event, dict):
+                        idx = event.get("index")
                     if idx is None:
                         idx = getattr(event, "content_block_index", None)
-                    block = tool_blocks.get(int(idx or 0))
+                    if idx is None and isinstance(event, dict):
+                        idx = event.get("content_block_index")
+                    if idx is None:
+                        continue
+                    block = tool_blocks.get(int(idx))
                     if block is not None and block.get("buffer"):
                         try:
                             block["input"] = json.loads(block["buffer"])
@@ -147,10 +184,13 @@ def call_llm_with_tools(
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
     parsed_text, tool_calls = _parse_anthropic_response(message)
-    if not tool_calls:
-        # Fallback: recover tool calls from stream events if final message omits them.
-        recovered: List[Dict[str, Any]] = []
-        for block in tool_blocks.values():
+    recovered: List[Dict[str, Any]] = []
+    if tool_blocks:
+        indices = tool_block_order or sorted(tool_blocks.keys())
+        for idx in indices:
+            block = tool_blocks.get(idx)
+            if not block:
+                continue
             name = block.get("name")
             tool_id = block.get("id")
             tool_input = block.get("input") or {}
@@ -166,8 +206,25 @@ def call_llm_with_tools(
                         "function": {"name": name, "arguments": args_text},
                     }
                 )
-        if recovered:
-            tool_calls = recovered
+    if recovered:
+        def _tool_key(call: Dict[str, Any]) -> str:
+            call_id = call.get("id")
+            if call_id:
+                return f"id:{call_id}"
+            fn = call.get("function") or {}
+            name = fn.get("name") or ""
+            args = fn.get("arguments") or ""
+            return f"sig:{name}:{args}"
+
+        merged: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for call in recovered + tool_calls:
+            key = _tool_key(call)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(call)
+        tool_calls = merged
     text = "".join(chunks) if chunks else parsed_text
     return text, tool_calls
 

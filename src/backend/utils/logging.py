@@ -37,51 +37,43 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
 
     level_name = os.environ.get("LEMON_LOG_LEVEL", "DEBUG").upper()
     level = getattr(logging, level_name, logging.DEBUG)
+    rotate_bytes = int(os.environ.get("LEMON_LOG_ROTATE_BYTES", "0"))
+    backup_count = int(os.environ.get("LEMON_LOG_BACKUP_COUNT", "3"))
 
     formatter = logging.Formatter(
         "%(asctime)s %(levelname)s %(name)s %(message)s"
     )
 
-    root_handler = RotatingFileHandler(
+    root_handler = _build_handler(
         resolved,
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-        mode="w",
+        rotate_bytes=rotate_bytes,
+        backup_count=backup_count,
     )
     root_handler.setFormatter(formatter)
 
-    tool_handler = RotatingFileHandler(
+    tool_handler = _build_handler(
         resolved.parent / f"{prefix}_tool_calls.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-        mode="w",
+        rotate_bytes=rotate_bytes,
+        backup_count=backup_count,
     )
     tool_handler.setFormatter(formatter)
 
-    llm_handler = RotatingFileHandler(
+    llm_handler = _build_handler(
         resolved.parent / f"{prefix}_llm.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-        mode="w",
+        rotate_bytes=rotate_bytes,
+        backup_count=backup_count,
     )
     llm_handler.setFormatter(formatter)
-    subagent_handler = RotatingFileHandler(
+    subagent_handler = _build_handler(
         resolved.parent / f"{prefix}_subagent.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-        mode="w",
+        rotate_bytes=rotate_bytes,
+        backup_count=backup_count,
     )
     subagent_handler.setFormatter(formatter)
-    history_handler = RotatingFileHandler(
+    history_handler = _build_handler(
         resolved.parent / f"{prefix}_history.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-        mode="w",
+        rotate_bytes=rotate_bytes,
+        backup_count=backup_count,
     )
     history_handler.setFormatter(formatter)
 
@@ -120,3 +112,19 @@ def _attach_logger(name: str, level: int, handler: logging.Handler) -> None:
     logger.setLevel(level)
     logger.addHandler(handler)
     logger.propagate = False
+
+
+def _build_handler(path: Path, *, rotate_bytes: int, backup_count: int) -> logging.Handler:
+    if rotate_bytes > 0:
+        return RotatingFileHandler(
+            path,
+            maxBytes=rotate_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+            mode="w",
+        )
+    return logging.FileHandler(
+        path,
+        encoding="utf-8",
+        mode="w",
+    )
