@@ -130,7 +130,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
 
 def _resolve_transport() -> str:
-    raw = os.environ.get("MCP_TRANSPORT", "stdio").strip().lower()
+    raw = os.environ.get("MCP_TRANSPORT", "streamable-http").strip().lower()
     transport_map = {
         "stdio": "stdio",
         "sse": "sse",
