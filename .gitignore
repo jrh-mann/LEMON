@@ -48,9 +48,9 @@ __pycache__/
 Thumbs.db
 
 # Frontend runtime artifacts
-frontend/.orchestrator_state.json
-frontend/uploads/
-frontend/runs/
+src/frontend/.orchestrator_state.json
+src/frontend/uploads/
+src/frontend/runs/
 
 # Backend logs and local state
 .lemon/logs/

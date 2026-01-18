@@ -58,13 +58,15 @@ uv run python run_tests.py
 uv run python main.py
 ```
 
-### Frontend demo
+### Frontend
 
 ```bash
-uv run python frontend/app.py
+cd src/frontend
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:5000`.
+Then open `http://localhost:5173`.
 
 ### Repo layout
 
@@ -82,7 +84,7 @@ LEMON/
 ├── generate_test_cases.py     # test-case generator CLI (from workflow_inputs.json)
 ├── run_tests.py               # validates generated_code.py vs tests.json
 ├── workflow_prompts.py        # analysis prompt templates (repo-level)
-├── frontend/                  # Flask + SSE demo UI
+├── src/frontend/              # React + Vite frontend
 └── tests/                     # pytest unit tests
 ```
 
