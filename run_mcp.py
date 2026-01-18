@@ -5,7 +5,7 @@ import os
 
 os.environ.setdefault("LEMON_LOG_PREFIX", "mcp")
 
-from src.backend.mcp_server import main
+from src.backend.mcp.server import main
 
 if __name__ == "__main__":
     main()

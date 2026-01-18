@@ -11,7 +11,7 @@ from flask import Flask, jsonify, request
 
 from .common import utc_now
 from .conversations import ConversationStore
-from .uploads import save_uploaded_image
+from ..utils.uploads import save_uploaded_image
 from .response_utils import extract_flowchart, extract_tool_calls, summarize_response
 
 logger = logging.getLogger("backend.api")
@@ -66,7 +66,6 @@ def register_routes(
 
         response_text = convo.orchestrator.respond(
             message,
-            image_name=None,
             has_image=bool(image_data),
             allow_tools=True,
         )

@@ -1,4 +1,4 @@
-"""Image upload helpers for the API server."""
+"""Shared helpers for saving uploaded images."""
 
 from __future__ import annotations
 
@@ -26,11 +26,16 @@ def decode_data_url(data_url: str) -> tuple[bytes, str]:
     return base64.b64decode(b64), ext
 
 
-def save_uploaded_image(data_url: str, *, repo_root: Path) -> str:
+def save_uploaded_image(
+    data_url: str,
+    *,
+    repo_root: Path,
+    filename_prefix: str = "",
+) -> str:
     raw, ext = decode_data_url(data_url)
     uploads_dir = repo_root / ".lemon" / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid4().hex}.{ext}"
+    filename = f"{filename_prefix}{uuid4().hex}.{ext}"
     path = uploads_dir / filename
     path.write_bytes(raw)
     return str(path.relative_to(repo_root))

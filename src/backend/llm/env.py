@@ -23,7 +23,7 @@ class LLMConfigError(RuntimeError):
 
 
 def load_env() -> None:
-    env_path = Path(__file__).parent.parent.parent / ".env"
+    env_path = Path(__file__).parent.parent.parent.parent / ".env"
     if not env_path.exists():
         return
     logger.debug("Loading env from %s", env_path)

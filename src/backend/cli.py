@@ -5,17 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .orchestrator import Orchestrator
-from .logging_utils import setup_logging
-from .tools import AnalyzeWorkflowTool, PublishLatestAnalysisTool, ToolRegistry
-
-
-def build_orchestrator() -> Orchestrator:
-    repo_root = Path(__file__).parent.parent.parent
-    registry = ToolRegistry()
-    registry.register(AnalyzeWorkflowTool(repo_root))
-    registry.register(PublishLatestAnalysisTool(repo_root))
-    return Orchestrator(registry)
+from .agents.orchestrator import Orchestrator
+from .agents.orchestrator_factory import build_orchestrator
+from .utils.logging import setup_logging
 
 
 def run_repl(orchestrator: Orchestrator) -> None:
@@ -39,7 +31,8 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging()
-    orchestrator = build_orchestrator()
+    repo_root = Path(__file__).parent.parent.parent
+    orchestrator = build_orchestrator(repo_root)
 
     if args.one_shot:
         print(orchestrator.respond(args.one_shot))

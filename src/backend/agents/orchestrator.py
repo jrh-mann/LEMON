@@ -8,9 +8,9 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from .tools import ToolRegistry
-from .mcp_client import call_mcp_tool
-from .llm import call_llm_stream, call_llm_with_tools
+from ..tools import ToolRegistry
+from ..mcp.client import call_mcp_tool
+from ..llm import call_llm_stream, call_llm_with_tools
 from .orchestrator_config import build_system_prompt, tool_descriptions
 
 
@@ -59,7 +59,6 @@ class Orchestrator:
         self,
         user_message: str,
         *,
-        image_name: Optional[str] = None,
         has_image: bool = False,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
