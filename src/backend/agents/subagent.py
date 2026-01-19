@@ -105,7 +105,15 @@ by recomputing them deterministically from name + type. Respond only with the up
             "content": "You extract structured data from workflow images.",
         }
         if is_followup:
-            user_msg = {"role": "user", "content": feedback}
+            user_msg = {
+                "role": "user",
+                "content": (
+                    "You are in a follow-up discussion. Answer the user's question plainly. "
+                    "Do NOT return JSON unless the user explicitly asks to regenerate the full JSON. "
+                    "If the user asks for regeneration, return ONLY the full JSON object in the original format.\n\n"
+                    f"User feedback: {feedback}"
+                ),
+            }
         else:
             encode_start = time.perf_counter()
             data_url = image_to_data_url(image_path)
