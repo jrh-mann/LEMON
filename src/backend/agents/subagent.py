@@ -175,55 +175,6 @@ by recomputing them deterministically from name + type. Respond only with the up
         self.history.store_analysis(session_id, data)
         return data
 
-    def ask_image(
-        self,
-        *,
-        image_path: Path,
-        question: str,
-        region: Optional[str] = None,
-        stream: Optional[Callable[[str], None]] = None,
-    ) -> str:
-        """Answer a targeted question about an image."""
-        self._logger.info("Subagent ask_image image=%s has_region=%s", image_path.name, bool(region))
-        prompt = "Answer the user's question about the image."
-        if region:
-            prompt += f" Focus on this region: {region}."
-        prompt += (
-            " Be concise. If the answer is unclear or unreadable, say so. "
-            "Do not guess text that isn't visible."
-        )
-        data_url = image_to_data_url(image_path)
-        user_msg = {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": f"{prompt}\n\nQuestion: {question}"},
-                {"type": "image_url", "image_url": {"url": data_url}},
-            ],
-        }
-        messages = [
-            {"role": "system", "content": "You answer targeted questions about images."},
-            user_msg,
-        ]
-        if stream:
-            raw = call_llm_stream(
-                messages,
-                max_completion_tokens=2000,
-                response_format=None,
-                on_delta=stream,
-                caller="subagent",
-                request_tag="ask_image_stream",
-            ).strip()
-        else:
-            raw = call_llm(
-                messages,
-                max_completion_tokens=2000,
-                response_format=None,
-                caller="subagent",
-                request_tag="ask_image",
-            ).strip()
-        if not raw:
-            raise ValueError("LLM returned an empty response.")
-        return raw
 
     def _parse_json(
         self,

@@ -36,34 +36,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "ask_image",
-                "description": (
-                    "Answer a targeted question about the most recently uploaded image. "
-                    "Optionally provide a region hint to focus the answer."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "The question to answer about the image.",
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Optional session id to reuse a prior image.",
-                        },
-                        "region": {
-                            "type": "string",
-                            "description": "Optional region hint (e.g., 'top left box').",
-                        },
-                    },
-                    "required": ["question"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "publish_latest_analysis",
                 "description": (
                     "Load the most recent workflow analysis and return it for rendering "

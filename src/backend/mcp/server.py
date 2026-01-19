@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..utils.logging import setup_logging
-from ..tools import AnalyzeWorkflowTool, AskImageTool, PublishLatestAnalysisTool
+from ..tools import AnalyzeWorkflowTool, PublishLatestAnalysisTool
 from ..utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.mcp")
@@ -72,14 +72,6 @@ class AnalyzeWorkflowResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class AskImageResult(BaseModel):
-    session_id: str
-    answer: str
-    region: str = ""
-
-    model_config = ConfigDict(extra="allow")
-
-
 def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMCP:
     setup_logging()
     server = FastMCP(
@@ -91,7 +83,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         stateless_http=True,
     )
     tool = AnalyzeWorkflowTool(_repo_root())
-    ask_tool = AskImageTool(_repo_root())
     publish_tool = PublishLatestAnalysisTool(_repo_root())
 
     @server.tool(
@@ -134,28 +125,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         result = publish_tool.execute({})
         logger.info("MCP publish_latest_analysis complete session_id=%s", result.get("session_id"))
         return AnalyzeWorkflowResult.model_validate(result)
-
-    @server.tool(
-        name="ask_image",
-        description="Answer a targeted question about the most recently uploaded image.",
-    )
-    def ask_image(
-        question: str,
-        region: str | None = None,
-        session_id: str | None = None,
-        image_data_url: str | None = None,
-    ) -> AskImageResult:
-        logger.info("MCP ask_image start session_id=%s has_image=%s", session_id, bool(image_data_url))
-        if image_data_url:
-            _save_uploaded_image(image_data_url)
-        args: dict[str, Any] = {"question": question}
-        if region:
-            args["region"] = region
-        if session_id:
-            args["session_id"] = session_id
-        result = ask_tool.execute(args)
-        logger.info("MCP ask_image complete session_id=%s", result.get("session_id"))
-        return AskImageResult.model_validate(result)
 
     return server
 

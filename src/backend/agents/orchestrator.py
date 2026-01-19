@@ -215,13 +215,6 @@ def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 
 def _summarize_tool_results(results: List[ToolResult]) -> str:
     parts: List[str] = []
     for result in results:
-        if isinstance(result.data, dict) and result.data.get("answer"):
-            answer = result.data.get("answer", "")
-            region = result.data.get("region") or ""
-            header = f"Image answer ({result.tool})." if len(results) > 1 else "Image answer."
-            region_text = f"\n\nRegion: {region}" if region else ""
-            parts.append(f"{header}\n\n{answer}{region_text}".strip())
-            continue
         analysis = result.data.get("analysis") if isinstance(result.data, dict) else {}
         if not isinstance(analysis, dict):
             analysis = {}
