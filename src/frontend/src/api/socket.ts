@@ -243,6 +243,100 @@ export function connectSocket(): Socket {
     }
   })
 
+  // Workflow update events (from orchestrator manipulation tools)
+  socket.on('workflow_update', (data: { action: string; data: Record<string, unknown> }) => {
+    console.log('[Socket] workflow_update:', data)
+    const workflowStore = useWorkflowStore.getState()
+    const uiStore = useUIStore.getState()
+
+    switch (data.action) {
+      case 'add_node':
+        // Single node added by orchestrator
+        if (data.data.node) {
+          const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
+          workflowStore.addNode(node)
+          // Switch to workflow tab to show the change
+          uiStore.setCanvasTab('workflow')
+          console.log('[Socket] Added node:', node.id)
+        }
+        break
+
+      case 'modify_node':
+        // Node updated by orchestrator
+        if (data.data.node) {
+          const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
+          const exists = workflowStore.flowchart.nodes.find(n => n.id === node.id)
+          if (!exists) {
+            console.error('[Socket] Cannot modify non-existent node:', node.id)
+            break
+          }
+          workflowStore.updateNode(node.id, node)
+          console.log('[Socket] Modified node:', node.id)
+        }
+        break
+
+      case 'delete_node':
+        // Node deleted by orchestrator
+        if (data.data.node_id) {
+          const nodeId = data.data.node_id as string
+          const exists = workflowStore.flowchart.nodes.find(n => n.id === nodeId)
+          if (!exists) {
+            console.error('[Socket] Cannot delete non-existent node:', nodeId)
+            break
+          }
+          workflowStore.deleteNode(nodeId)
+          console.log('[Socket] Deleted node:', nodeId)
+          // Note: deleteNode() automatically removes connected edges
+        }
+        break
+
+      case 'add_connection':
+        // Edge added by orchestrator
+        if (data.data.edge) {
+          const edge = data.data.edge as {
+            from: string
+            to: string
+            label?: string
+            id?: string
+          }
+          workflowStore.addEdge({
+            from: edge.from,
+            to: edge.to,
+            label: edge.label || '',
+            id: edge.id,
+          })
+          console.log('[Socket] Added connection:', edge.from, '->', edge.to)
+        }
+        break
+
+      case 'delete_connection':
+        // Edge removed by orchestrator
+        if (data.data.from_node_id && data.data.to_node_id) {
+          const fromId = data.data.from_node_id as string
+          const toId = data.data.to_node_id as string
+          workflowStore.deleteEdge(fromId, toId)
+          console.log('[Socket] Deleted connection:', fromId, '->', toId)
+        }
+        break
+
+      case 'batch_edit':
+        // Multiple operations applied atomically
+        if (data.data.workflow) {
+          const flowchart = transformFlowchartFromBackend(
+            data.data.workflow as { nodes: unknown[]; edges: unknown[] }
+          )
+          workflowStore.setFlowchart(flowchart)
+          // Switch to workflow tab to show the changes
+          uiStore.setCanvasTab('workflow')
+          console.log('[Socket] Applied batch edit:', data.data.operations_applied, 'operations')
+        }
+        break
+
+      default:
+        console.warn('[Socket] Unknown workflow_update action:', data.action)
+    }
+  })
+
   return socket
 }
 

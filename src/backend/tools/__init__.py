@@ -2,6 +2,15 @@
 
 from .core import Tool, ToolParameter, ToolRegistry
 from .workflow import AnalyzeWorkflowTool, PublishLatestAnalysisTool
+from .workflow_edit import (
+    GetCurrentWorkflowTool,
+    AddNodeTool,
+    ModifyNodeTool,
+    DeleteNodeTool,
+    AddConnectionTool,
+    DeleteConnectionTool,
+    BatchEditWorkflowTool,
+)
 
 __all__ = [
     "Tool",
@@ -9,4 +18,11 @@ __all__ = [
     "ToolRegistry",
     "AnalyzeWorkflowTool",
     "PublishLatestAnalysisTool",
+    "GetCurrentWorkflowTool",
+    "AddNodeTool",
+    "ModifyNodeTool",
+    "DeleteNodeTool",
+    "AddConnectionTool",
+    "DeleteConnectionTool",
+    "BatchEditWorkflowTool",
 ]

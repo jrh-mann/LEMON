@@ -26,6 +26,7 @@ class Orchestrator:
     def __init__(self, tools: ToolRegistry):
         self.tools = tools
         self.last_session_id: Optional[str] = None
+        self.current_workflow: Dict[str, Any] = {"nodes": [], "edges": []}
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
@@ -47,13 +48,85 @@ class Orchestrator:
         if self._use_mcp:
             data = call_mcp_tool(tool_name, args)
         else:
-            data = self.tools.execute(tool_name, args, stream=stream)
+            data = self.tools.execute(
+                tool_name,
+                args,
+                stream=stream,
+                session_state={"current_workflow": self.current_workflow},
+            )
         self._tool_logger.info(
             "tool_response name=%s data=%s",
             tool_name,
             json.dumps(data, ensure_ascii=True),
         )
+
+        # Update current_workflow if this was a successful workflow manipulation tool
+        if isinstance(data, dict) and data.get("success"):
+            workflow_tools = [
+                "add_node",
+                "modify_node",
+                "delete_node",
+                "add_connection",
+                "delete_connection",
+                "batch_edit_workflow",
+            ]
+            if tool_name in workflow_tools:
+                self._update_workflow_from_tool_result(tool_name, data)
+
+        # Also update workflow when publish_latest_analysis returns a flowchart
+        if tool_name == "publish_latest_analysis" and isinstance(data, dict):
+            flowchart = data.get("flowchart") if isinstance(data.get("flowchart"), dict) else None
+            if flowchart and flowchart.get("nodes"):
+                self.current_workflow = flowchart
+
         return ToolResult(tool=tool_name, data=data)
+
+    def _update_workflow_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
+        """Update current_workflow based on successful tool execution."""
+        if tool_name == "add_node":
+            node = result.get("node")
+            if node:
+                self.current_workflow["nodes"].append(node)
+
+        elif tool_name == "modify_node":
+            node = result.get("node")
+            if node:
+                nodes = self.current_workflow["nodes"]
+                for i, n in enumerate(nodes):
+                    if n["id"] == node["id"]:
+                        nodes[i] = node
+                        break
+
+        elif tool_name == "delete_node":
+            node_id = result.get("node_id")
+            if node_id:
+                self.current_workflow["nodes"] = [
+                    n for n in self.current_workflow["nodes"] if n["id"] != node_id
+                ]
+                edges = self.current_workflow["edges"]
+                self.current_workflow["edges"] = [
+                    e for e in edges if e["from"] != node_id and e["to"] != node_id
+                ]
+
+        elif tool_name == "add_connection":
+            edge = result.get("edge")
+            if edge:
+                self.current_workflow["edges"].append(edge)
+
+        elif tool_name == "delete_connection":
+            from_id = result.get("from_node_id")
+            to_id = result.get("to_node_id")
+            if from_id and to_id:
+                self.current_workflow["edges"] = [
+                    e
+                    for e in self.current_workflow["edges"]
+                    if not (e["from"] == from_id and e["to"] == to_id)
+                ]
+
+        elif tool_name == "batch_edit_workflow":
+            new_workflow = result.get("workflow")
+            if new_workflow:
+                self.current_workflow = new_workflow
 
     def respond(
         self,

@@ -100,6 +100,26 @@ def handle_socket_chat(
                         to=sid,
                     )
 
+            # Handle workflow manipulation tools
+            if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+                workflow_tools = [
+                    "add_node",
+                    "modify_node",
+                    "delete_node",
+                    "add_connection",
+                    "delete_connection",
+                    "batch_edit_workflow",
+                ]
+                if tool in workflow_tools:
+                    socketio.emit(
+                        "workflow_update",
+                        {
+                            "action": result.get("action"),
+                            "data": result,
+                        },
+                        to=sid,
+                    )
+
         try:
             response_text = convo.orchestrator.respond(
                 message,
