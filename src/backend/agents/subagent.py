@@ -80,6 +80,7 @@ Rules:
 - Tree rules:
   - This must be a single rooted tree starting at tree.start.
   - Allowed node types: start, decision, action, output.
+  - Only decision nodes may have multiple children. Action/start nodes must have at most one child. Outputs have no children.
   - Outputs MUST be leaf nodes (no children).
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
   - Every node id must be unique across the tree.
