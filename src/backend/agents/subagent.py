@@ -104,6 +104,7 @@ by recomputing them deterministically from name + type. Respond only with the up
             "role": "system",
             "content": "You extract structured data from workflow images.",
         }
+        wants_json = _wants_json(feedback or "")
         if is_followup:
             user_msg = {
                 "role": "user",
@@ -171,6 +172,9 @@ by recomputing them deterministically from name + type. Respond only with the up
         if not raw:
             raise ValueError("LLM returned an empty response.")
 
+        if is_followup and not wants_json:
+            return {"message": raw}
+
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg)
         data = normalize_analysis(data)
 
@@ -182,6 +186,20 @@ by recomputing them deterministically from name + type. Respond only with the up
         self.history.add_message(session_id, "assistant", json.dumps(data))
         self.history.store_analysis(session_id, data)
         return data
+
+
+def _wants_json(feedback: str) -> bool:
+    text = feedback.lower()
+    triggers = (
+        "regenerate json",
+        "return json",
+        "full json",
+        "output json",
+        "produce json",
+        "updated json",
+        "json object",
+    )
+    return any(t in text for t in triggers)
 
 
     def _parse_json(

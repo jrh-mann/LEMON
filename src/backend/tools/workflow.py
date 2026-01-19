@@ -78,6 +78,13 @@ class AnalyzeWorkflowTool(Tool):
             feedback=feedback,
             stream=stream,
         )
+        if isinstance(data, dict) and "message" in data and "analysis" not in data:
+            return {
+                "session_id": session_id,
+                "message": data.get("message", ""),
+                "analysis": {"inputs": [], "outputs": [], "tree": {}, "doubts": []},
+                "flowchart": {"nodes": [], "edges": []},
+            }
         analysis = normalize_analysis(dict(data))
         flowchart = flowchart_from_tree(analysis.get("tree") or {})
         return {
@@ -152,4 +159,3 @@ class PublishLatestAnalysisTool(Tool):
             "analysis": analysis,
             "flowchart": flowchart,
         }
-

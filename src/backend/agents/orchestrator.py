@@ -215,6 +215,11 @@ def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 
 def _summarize_tool_results(results: List[ToolResult]) -> str:
     parts: List[str] = []
     for result in results:
+        if isinstance(result.data, dict) and result.data.get("message"):
+            message = result.data.get("message", "")
+            header = f"Discussion ({result.tool})." if len(results) > 1 else "Discussion."
+            parts.append(f"{header}\n\n{message}".strip())
+            continue
         analysis = result.data.get("analysis") if isinstance(result.data, dict) else {}
         if not isinstance(analysis, dict):
             analysis = {}
