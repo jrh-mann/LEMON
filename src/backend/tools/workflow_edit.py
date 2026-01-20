@@ -190,11 +190,12 @@ class ModifyNodeTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Return the complete updated node so orchestrator can update its state
+        updated_node = new_workflow["nodes"][node_idx]
         return {
             "success": True,
             "action": "modify_node",
-            "node_id": node_id,
-            "updates": updates,
+            "node": updated_node,  # CRITICAL: Include complete node for orchestrator state sync
             "message": f"Updated node {node_id}",
         }
 
@@ -495,10 +496,11 @@ class BatchEditWorkflowTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
-        # Success - return all changes
+        # Success - return complete workflow and operation details
         return {
             "success": True,
             "action": "batch_edit",
+            "workflow": new_workflow,  # CRITICAL: Include complete workflow for orchestrator state sync
             "operations": applied_operations,
             "operation_count": len(applied_operations),
             "message": f"Applied {len(applied_operations)} operations successfully",
