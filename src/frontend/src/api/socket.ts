@@ -196,6 +196,8 @@ export function connectSocket(): Socket {
             workflowStore.setFlowchart(flowchart)
             // Switch canvas to workflow tab to show the new workflow
             uiStore.setCanvasTab('workflow')
+            // Sync workflow to backend session (establish backend as source of truth)
+            syncWorkflow('upload')
           }
         }
         break
@@ -362,6 +364,13 @@ export function sendChatMessage(
 
   const chatStore = useChatStore.getState()
   const workflowStore = useWorkflowStore.getState()
+
+  // Sync workflow to backend before sending message (always sync, even if empty)
+  if (conversationId) {
+    console.log('[Socket] Syncing workflow before chat message')
+    syncWorkflow('manual')
+  }
+
   chatStore.setStreaming(true)
 
   // Include current workflow ID so orchestrator knows what to edit
@@ -373,6 +382,42 @@ export function sendChatMessage(
     conversation_id: conversationId || undefined,
     image,
     current_workflow_id: currentWorkflowId,
+  })
+}
+
+// Sync workflow to backend session
+export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual'): void {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.warn('[Socket] Cannot sync workflow: not connected')
+    return
+  }
+
+  const chatStore = useChatStore.getState()
+  const workflowStore = useWorkflowStore.getState()
+  const conversationId = chatStore.conversationId
+
+  if (!conversationId) {
+    console.warn('[Socket] Cannot sync workflow: no conversation ID')
+    return
+  }
+
+  const workflow = {
+    nodes: workflowStore.flowchart.nodes,
+    edges: workflowStore.flowchart.edges,
+  }
+
+  console.log('[Socket] Syncing workflow to backend:', {
+    source,
+    conversationId,
+    nodes: workflow.nodes.length,
+    edges: workflow.edges.length,
+  })
+
+  sock.emit('sync_workflow', {
+    conversation_id: conversationId,
+    workflow,
+    source,
   })
 }
 
