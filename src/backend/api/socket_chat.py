@@ -16,6 +16,18 @@ from ..utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.api")
 
+TOOL_STATUS_MESSAGES = {
+    "analyze_workflow": "Subagent analyzed the workflow.",
+    "publish_latest_analysis": "Analysis published to the canvas.",
+    "get_current_workflow": "Loaded current workflow state.",
+    "add_node": "Added a workflow node.",
+    "modify_node": "Updated a workflow node.",
+    "delete_node": "Removed a workflow node.",
+    "add_connection": "Connected workflow nodes.",
+    "delete_connection": "Removed a workflow connection.",
+    "batch_edit_workflow": "Applied workflow changes.",
+}
+
 
 def handle_socket_chat(
     socketio: SocketIO,
@@ -88,6 +100,10 @@ def handle_socket_chat(
                     {"event": event, "status": status, "tool": tool},
                     to=sid,
                 )
+            if event == "tool_complete":
+                tool_name = tool or "tool"
+                message = TOOL_STATUS_MESSAGES.get(tool_name, f"Completed: {tool_name}.")
+                stream_chunk(f"\n\n> {message}\n\n")
             if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
                 flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
                 if flowchart and flowchart.get("nodes"):
