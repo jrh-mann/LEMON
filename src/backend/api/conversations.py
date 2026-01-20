@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 from pathlib import Path
 
@@ -18,6 +18,22 @@ class Conversation:
     orchestrator: Orchestrator
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+    workflow_state: Dict[str, Any] = field(default_factory=lambda: {"nodes": [], "edges": []})
+
+    def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
+        """Update workflow state (single source of truth).
+
+        Args:
+            workflow: Complete workflow with nodes and edges
+        """
+        if not isinstance(workflow, dict):
+            return
+
+        self.workflow_state = {
+            "nodes": workflow.get("nodes", []),
+            "edges": workflow.get("edges", []),
+        }
+        self.updated_at = utc_now()
 
 
 class ConversationStore:

@@ -32,6 +32,42 @@ class Orchestrator:
         self._tool_logger = logging.getLogger("backend.tool_calls")
         self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() not in {"0", "false", "no"}
 
+    def sync_workflow(
+        self,
+        workflow_provider: Optional[Callable[[], Dict[str, Any]]] = None
+    ) -> None:
+        """Sync current_workflow from external source.
+
+        Args:
+            workflow_provider: Callable that returns current workflow state.
+                              None = use existing memory state (no-op).
+
+        Design: Uses dependency injection to decouple from storage.
+                Caller controls WHERE state comes from.
+        """
+        if workflow_provider is None:
+            return  # No sync needed
+
+        try:
+            workflow_data = workflow_provider()
+        except Exception as exc:
+            self._logger.error("Failed to sync workflow: %s", exc)
+            return
+
+        if not isinstance(workflow_data, dict):
+            return
+
+        nodes = workflow_data.get("nodes", [])
+        edges = workflow_data.get("edges", [])
+
+        if isinstance(nodes, list) and isinstance(edges, list):
+            self.current_workflow = {"nodes": nodes, "edges": edges}
+            self._logger.info(
+                "Synced workflow: %d nodes, %d edges",
+                len(nodes),
+                len(edges)
+            )
+
     def run_tool(
         self,
         tool_name: str,
@@ -45,8 +81,14 @@ class Orchestrator:
             tool_name,
             json.dumps(args, ensure_ascii=True),
         )
+
         if self._use_mcp:
-            data = call_mcp_tool(tool_name, args)
+            # Pass session_state through MCP as a regular argument
+            mcp_args = {
+                **args,
+                "session_state": {"current_workflow": self.current_workflow}
+            }
+            data = call_mcp_tool(tool_name, mcp_args)
         else:
             data = self.tools.execute(
                 tool_name,
@@ -196,8 +238,14 @@ class Orchestrator:
         tool_results: List[ToolResult] = []
         while allow_tools and tool_calls:
             tool_iterations += 1
-            if tool_iterations > 5:
+            if tool_iterations > 10:
+                self._logger.error(
+                    "Max tool iterations reached. Tools called: %s",
+                    [r.tool for r in tool_results]
+                )
                 return "Tool error (max tool calls reached)."
+
+            self._logger.info("Tool iteration %d, calling %d tools", tool_iterations, len(tool_calls))
 
             messages.append(
                 {

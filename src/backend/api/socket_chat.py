@@ -121,6 +121,9 @@ def handle_socket_chat(
                     )
 
         try:
+            # Sync workflow from session to orchestrator before responding
+            convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
+
             response_text = convo.orchestrator.respond(
                 message,
                 has_image=bool(image_data),
@@ -128,6 +131,9 @@ def handle_socket_chat(
                 allow_tools=True,
                 on_tool_event=on_tool_event,
             )
+
+            # Write orchestrator's workflow state back to session (preserve state across messages)
+            convo.update_workflow_state(convo.orchestrator.current_workflow)
         except Exception as exc:
             logger.exception("Socket chat failed")
             socketio.emit(
@@ -154,3 +160,51 @@ def handle_socket_chat(
         )
 
     socketio.start_background_task(run_task)
+
+
+def handle_sync_workflow(
+    socketio: SocketIO,
+    *,
+    conversation_store: ConversationStore,
+    payload: Dict[str, Any],
+) -> None:
+    """Handle full workflow sync from frontend.
+
+    Called when:
+    - User uploads and analyzes workflow
+    - User opens workflow from library
+    - User creates new workflow from scratch
+
+    This establishes the backend as source of truth.
+    """
+    conversation_id = payload.get("conversation_id")
+    workflow = payload.get("workflow")
+    source = payload.get("source", "unknown")  # 'upload' | 'library' | 'manual'
+    sid = request.sid
+
+    if not conversation_id:
+        logger.warning("sync_workflow missing conversation_id")
+        return
+
+    if not isinstance(workflow, dict):
+        logger.warning("sync_workflow invalid workflow format")
+        return
+
+    # Store in session
+    convo = conversation_store.get_or_create(conversation_id)
+    convo.update_workflow_state(workflow)
+
+    logger.info(
+        "Synced workflow conv=%s source=%s nodes=%d edges=%d",
+        conversation_id,
+        source,
+        len(workflow.get("nodes", [])),
+        len(workflow.get("edges", []))
+    )
+
+    # Acknowledge (for debugging)
+    socketio.emit('workflow_synced', {
+        'conversation_id': conversation_id,
+        'nodes_count': len(workflow.get("nodes", [])),
+        'edges_count': len(workflow.get("edges", []))
+    }, to=sid)
