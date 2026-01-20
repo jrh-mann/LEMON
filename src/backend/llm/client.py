@@ -68,6 +68,7 @@ def _record_tokens(
     tool_count: int,
     message_count: int,
     elapsed_ms: float,
+    tool_names: Optional[List[str]] = None,
 ) -> None:
     provider_id = getattr(message, "id", None)
     if provider_id is None and isinstance(message, dict):
@@ -82,6 +83,7 @@ def _record_tokens(
         "streaming": True,
         "tool_choice": tool_choice or "",
         "tool_count": tool_count,
+        "tools": tool_names or [],
         "message_count": message_count,
         "elapsed_ms": round(elapsed_ms, 2),
         "usage": _extract_usage(message),
@@ -130,6 +132,7 @@ def call_llm(
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    parsed_text, _ = _parse_anthropic_response(message)
     _record_tokens(
         request_id=request_id,
         message=message,
@@ -141,8 +144,8 @@ def call_llm(
         tool_count=0,
         message_count=len(messages),
         elapsed_ms=elapsed_ms,
+        tool_names=[],
     )
-    parsed_text, _ = _parse_anthropic_response(message)
     text = "".join(chunks) if chunks else parsed_text
     if not text:
         raise RuntimeError("Anthropic returned empty content.")
@@ -277,18 +280,6 @@ def call_llm_with_tools(
     message = _call_stream()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    _record_tokens(
-        request_id=request_id,
-        message=message,
-        model=payload["model"],
-        caller=caller,
-        request_tag=request_tag,
-        function_name="call_llm_with_tools",
-        tool_choice=tool_choice,
-        tool_count=len(tools) if tools else 0,
-        message_count=len(messages),
-        elapsed_ms=elapsed_ms,
-    )
     parsed_text, tool_calls = _parse_anthropic_response(message)
     recovered: List[Dict[str, Any]] = []
     if tool_blocks:
@@ -331,6 +322,27 @@ def call_llm_with_tools(
             seen.add(key)
             merged.append(call)
         tool_calls = merged
+    tool_names: List[str] = []
+    seen_names: set[str] = set()
+    for call in tool_calls:
+        fn = call.get("function") or {}
+        name = fn.get("name")
+        if name and name not in seen_names:
+            seen_names.add(name)
+            tool_names.append(name)
+    _record_tokens(
+        request_id=request_id,
+        message=message,
+        model=payload["model"],
+        caller=caller,
+        request_tag=request_tag,
+        function_name="call_llm_with_tools",
+        tool_choice=tool_choice,
+        tool_count=len(tools) if tools else 0,
+        message_count=len(messages),
+        elapsed_ms=elapsed_ms,
+        tool_names=tool_names,
+    )
     text = "".join(chunks) if chunks else parsed_text
     return text, tool_calls
 
@@ -367,6 +379,7 @@ def call_llm_stream(
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
+    text, _ = _parse_anthropic_response(message)
     _record_tokens(
         request_id=request_id,
         message=message,
@@ -378,6 +391,6 @@ def call_llm_stream(
         tool_count=0,
         message_count=len(messages),
         elapsed_ms=elapsed_ms,
+        tool_names=[],
     )
-    text, _ = _parse_anthropic_response(message)
     return text
