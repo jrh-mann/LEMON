@@ -189,20 +189,6 @@ by recomputing them deterministically from name + type. Respond only with the up
         return data
 
 
-def _wants_json(feedback: str) -> bool:
-    text = feedback.lower()
-    triggers = (
-        "regenerate json",
-        "return json",
-        "full json",
-        "output json",
-        "produce json",
-        "updated json",
-        "json object",
-    )
-    return any(t in text for t in triggers)
-
-
     def _parse_json(
         self,
         raw: str,
@@ -262,3 +248,23 @@ def _wants_json(feedback: str) -> bool:
             return parsed_retry
         self._logger.error("Retry JSON parse failed")
         raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+
+
+def _wants_json(feedback: str) -> bool:
+    """
+    Helper function to determine if feedback requests JSON output.
+
+    Returns True if feedback contains keywords indicating the user wants
+    JSON regeneration rather than a conversational response.
+    """
+    text = feedback.lower()
+    triggers = (
+        "regenerate json",
+        "return json",
+        "full json",
+        "output json",
+        "produce json",
+        "updated json",
+        "json object",
+    )
+    return any(t in text for t in triggers)
