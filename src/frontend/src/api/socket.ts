@@ -339,6 +339,29 @@ export function connectSocket(): Socket {
     }
   })
 
+  // Analysis updates (from input management tools)
+  socket.on('analysis_updated', (data: { inputs: unknown[]; outputs: unknown[] }) => {
+    console.log('[Socket] analysis_updated:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    // Update the analysis with new inputs/outputs
+    const currentAnalysis = workflowStore.currentAnalysis ?? {
+      inputs: [],
+      outputs: [],
+      tree: {},
+      doubts: [],
+    }
+
+    const updatedAnalysis: WorkflowAnalysis = {
+      ...currentAnalysis,
+      inputs: data.inputs as WorkflowAnalysis['inputs'],
+      outputs: data.outputs as WorkflowAnalysis['outputs'],
+    }
+
+    workflowStore.setAnalysis(updatedAnalysis)
+    console.log('[Socket] Updated analysis with', data.inputs.length, 'inputs and', data.outputs.length, 'outputs')
+  })
+
   return socket
 }
 

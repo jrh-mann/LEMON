@@ -19,6 +19,7 @@ class Conversation:
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
     workflow_state: Dict[str, Any] = field(default_factory=lambda: {"nodes": [], "edges": []})
+    workflow_analysis: Dict[str, Any] = field(default_factory=lambda: {"inputs": [], "outputs": []})
 
     def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
         """Update workflow state (single source of truth).
@@ -32,6 +33,21 @@ class Conversation:
         self.workflow_state = {
             "nodes": workflow.get("nodes", []),
             "edges": workflow.get("edges", []),
+        }
+        self.updated_at = utc_now()
+
+    def update_workflow_analysis(self, analysis: Dict[str, Any]) -> None:
+        """Update workflow analysis (inputs and outputs).
+
+        Args:
+            analysis: Workflow analysis with inputs and outputs
+        """
+        if not isinstance(analysis, dict):
+            return
+
+        self.workflow_analysis = {
+            "inputs": analysis.get("inputs", []),
+            "outputs": analysis.get("outputs", []),
         }
         self.updated_at = utc_now()
 

@@ -29,7 +29,7 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
   const x = (rawNode.x as number) + size.w / 2
   const y = (rawNode.y as number) + size.h / 2
 
-  return {
+  const node: FlowNode = {
     id: rawNode.id as string,
     type: nodeType,
     label: sanitizeLabel(rawNode.label as string),
@@ -37,6 +37,13 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
     y,
     color: (rawNode.color as FlowNodeColor) || BLOCK_TYPE_COLORS[type] || 'teal',
   }
+
+  // Preserve input_ref if present
+  if (rawNode.input_ref) {
+    node.input_ref = rawNode.input_ref as string
+  }
+
+  return node
 }
 
 // Check if nodes need auto-layout (all at same position or overlapping)

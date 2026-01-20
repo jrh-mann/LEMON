@@ -83,6 +83,12 @@ class AddNodeTool(Tool):
             "Y coordinate (optional, auto-positions if omitted)",
             required=False,
         ),
+        ToolParameter(
+            "input_ref",
+            "string",
+            "Optional: name of workflow input this node checks (case-insensitive)",
+            required=False,
+        ),
     ]
 
     def __init__(self):
@@ -92,6 +98,26 @@ class AddNodeTool(Tool):
         # Get current workflow from session state
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+
+        # Validate input_ref if provided
+        input_ref = args.get("input_ref")
+        if input_ref:
+            workflow_analysis = session_state.get("workflow_analysis", {})
+            inputs = workflow_analysis.get("inputs", [])
+
+            # Case-insensitive search for input
+            normalized_ref = input_ref.strip().lower()
+            input_exists = any(
+                inp.get("name", "").strip().lower() == normalized_ref
+                for inp in inputs
+            )
+
+            if not input_exists:
+                return {
+                    "success": False,
+                    "error": f"Input '{input_ref}' not found. Register it first with add_workflow_input.",
+                    "error_code": "INPUT_NOT_FOUND",
+                }
 
         # Create the new node
         node_id = f"node_{uuid.uuid4().hex[:8]}"
@@ -103,6 +129,10 @@ class AddNodeTool(Tool):
             "y": args.get("y", 0),
             "color": self._get_node_color(args["type"]),
         }
+
+        # Add input_ref if provided
+        if input_ref:
+            new_node["input_ref"] = input_ref
 
         # Apply change to a copy
         new_workflow = {
@@ -149,6 +179,12 @@ class ModifyNodeTool(Tool):
         ToolParameter("type", "string", "New node type", required=False),
         ToolParameter("x", "number", "New X coordinate", required=False),
         ToolParameter("y", "number", "New Y coordinate", required=False),
+        ToolParameter(
+            "input_ref",
+            "string",
+            "Optional: name of workflow input this node checks (case-insensitive)",
+            required=False,
+        ),
     ]
 
     def __init__(self):
@@ -157,6 +193,26 @@ class ModifyNodeTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+
+        # Validate input_ref if provided
+        input_ref = args.get("input_ref")
+        if input_ref:
+            workflow_analysis = session_state.get("workflow_analysis", {})
+            inputs = workflow_analysis.get("inputs", [])
+
+            # Case-insensitive search
+            normalized_ref = input_ref.strip().lower()
+            input_exists = any(
+                inp.get("name", "").strip().lower() == normalized_ref
+                for inp in inputs
+            )
+
+            if not input_exists:
+                return {
+                    "success": False,
+                    "error": f"Input '{input_ref}' not found. Register it first with add_workflow_input.",
+                    "error_code": "INPUT_NOT_FOUND",
+                }
 
         node_id = args.get("node_id")
         updates = {k: v for k, v in args.items() if k != "node_id" and v is not None}
@@ -423,6 +479,24 @@ class BatchEditWorkflowTool(Tool):
                 op_type = op.get("op")
 
                 if op_type == "add_node":
+                    # Validate input_ref if provided
+                    input_ref = op.get("input_ref")
+                    if input_ref:
+                        workflow_analysis = session_state.get("workflow_analysis", {})
+                        inputs = workflow_analysis.get("inputs", [])
+
+                        # Case-insensitive search
+                        normalized_ref = input_ref.strip().lower()
+                        input_exists = any(
+                            inp.get("name", "").strip().lower() == normalized_ref
+                            for inp in inputs
+                        )
+
+                        if not input_exists:
+                            raise ValueError(
+                                f"Input '{input_ref}' not found. Register it first with add_workflow_input."
+                            )
+
                     # Generate real ID
                     temp_id = op.get("id")
                     real_id = f"node_{uuid.uuid4().hex[:8]}"
@@ -437,10 +511,33 @@ class BatchEditWorkflowTool(Tool):
                         "y": op.get("y", 0),
                         "color": self._get_node_color(op["type"]),
                     }
+
+                    # Add input_ref if provided
+                    if input_ref:
+                        new_node["input_ref"] = input_ref
+
                     new_workflow["nodes"].append(new_node)
                     applied_operations.append({"op": "add_node", "node": new_node})
 
                 elif op_type == "modify_node":
+                    # Validate input_ref if being updated
+                    input_ref = op.get("input_ref")
+                    if input_ref:
+                        workflow_analysis = session_state.get("workflow_analysis", {})
+                        inputs = workflow_analysis.get("inputs", [])
+
+                        # Case-insensitive search
+                        normalized_ref = input_ref.strip().lower()
+                        input_exists = any(
+                            inp.get("name", "").strip().lower() == normalized_ref
+                            for inp in inputs
+                        )
+
+                        if not input_exists:
+                            raise ValueError(
+                                f"Input '{input_ref}' not found. Register it first with add_workflow_input."
+                            )
+
                     node_id = self._resolve_id(op["node_id"], temp_id_map)
                     node_idx = next(
                         (i for i, n in enumerate(new_workflow["nodes"]) if n["id"] == node_id),

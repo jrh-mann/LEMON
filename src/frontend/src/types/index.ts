@@ -133,6 +133,7 @@ export interface FlowNode {
   x: number
   y: number
   color: FlowNodeColor
+  input_ref?: string
 }
 
 export interface FlowEdge {

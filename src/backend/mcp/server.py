@@ -21,6 +21,9 @@ from ..tools import (
     AddConnectionTool,
     DeleteConnectionTool,
     BatchEditWorkflowTool,
+    AddWorkflowInputTool,
+    ListWorkflowInputsTool,
+    RemoveWorkflowInputTool,
 )
 from ..utils.uploads import save_uploaded_image
 
@@ -103,6 +106,11 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     add_conn_tool = AddConnectionTool()
     delete_conn_tool = DeleteConnectionTool()
     batch_edit_tool = BatchEditWorkflowTool()
+
+    # Workflow input management tools
+    add_input_tool = AddWorkflowInputTool()
+    list_inputs_tool = ListWorkflowInputsTool()
+    remove_input_tool = RemoveWorkflowInputTool()
 
     @server.tool(
         name="analyze_workflow",
@@ -220,6 +228,40 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return batch_edit_tool.execute({"operations": operations}, session_state=session_state or {})
+
+    @server.tool(name="add_workflow_input")
+    def add_workflow_input(
+        name: str,
+        type: str,
+        description: str | None = None,
+        enum_values: list[str] | None = None,
+        range_min: float | None = None,
+        range_max: float | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args: dict[str, Any] = {"name": name, "type": type}
+        if description:
+            args["description"] = description
+        if enum_values:
+            args["enum_values"] = enum_values
+        if range_min is not None:
+            args["range_min"] = range_min
+        if range_max is not None:
+            args["range_max"] = range_max
+        return add_input_tool.execute(args, session_state=session_state or {})
+
+    @server.tool(name="list_workflow_inputs")
+    def list_workflow_inputs(
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return list_inputs_tool.execute({}, session_state=session_state or {})
+
+    @server.tool(name="remove_workflow_input")
+    def remove_workflow_input(
+        name: str,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return remove_input_tool.execute({"name": name}, session_state=session_state or {})
 
     return server
 

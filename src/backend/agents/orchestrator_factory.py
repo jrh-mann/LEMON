@@ -15,6 +15,9 @@ from ..tools import (
     AddConnectionTool,
     DeleteConnectionTool,
     BatchEditWorkflowTool,
+    AddWorkflowInputTool,
+    ListWorkflowInputsTool,
+    RemoveWorkflowInputTool,
     ToolRegistry,
 )
 
@@ -34,5 +37,10 @@ def build_orchestrator(repo_root: Path) -> Orchestrator:
     registry.register(AddConnectionTool())
     registry.register(DeleteConnectionTool())
     registry.register(BatchEditWorkflowTool())
+
+    # Workflow input management tools
+    registry.register(AddWorkflowInputTool())
+    registry.register(ListWorkflowInputsTool())
+    registry.register(RemoveWorkflowInputTool())
 
     return Orchestrator(registry)

@@ -27,6 +27,7 @@ class Orchestrator:
         self.tools = tools
         self.last_session_id: Optional[str] = None
         self.current_workflow: Dict[str, Any] = {"nodes": [], "edges": []}
+        self.workflow_analysis: Dict[str, Any] = {"inputs": [], "outputs": []}
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
@@ -68,6 +69,42 @@ class Orchestrator:
                 len(edges)
             )
 
+    def sync_workflow_analysis(
+        self,
+        analysis_provider: Optional[Callable[[], Dict[str, Any]]] = None
+    ) -> None:
+        """Sync workflow_analysis from external source.
+
+        Args:
+            analysis_provider: Callable that returns workflow analysis (inputs/outputs).
+                              None = use existing memory state (no-op).
+
+        Design: Uses dependency injection to decouple from storage.
+                Caller controls WHERE state comes from.
+        """
+        if analysis_provider is None:
+            return  # No sync needed
+
+        try:
+            analysis_data = analysis_provider()
+        except Exception as exc:
+            self._logger.error("Failed to sync workflow analysis: %s", exc)
+            return
+
+        if not isinstance(analysis_data, dict):
+            return
+
+        inputs = analysis_data.get("inputs", [])
+        outputs = analysis_data.get("outputs", [])
+
+        if isinstance(inputs, list) and isinstance(outputs, list):
+            self.workflow_analysis = {"inputs": inputs, "outputs": outputs}
+            self._logger.info(
+                "Synced workflow analysis: %d inputs, %d outputs",
+                len(inputs),
+                len(outputs)
+            )
+
     def run_tool(
         self,
         tool_name: str,
@@ -86,7 +123,10 @@ class Orchestrator:
             # Pass session_state through MCP as a regular argument
             mcp_args = {
                 **args,
-                "session_state": {"current_workflow": self.current_workflow}
+                "session_state": {
+                    "current_workflow": self.current_workflow,
+                    "workflow_analysis": self.workflow_analysis,
+                }
             }
             data = call_mcp_tool(tool_name, mcp_args)
         else:
@@ -94,7 +134,10 @@ class Orchestrator:
                 tool_name,
                 args,
                 stream=stream,
-                session_state={"current_workflow": self.current_workflow},
+                session_state={
+                    "current_workflow": self.current_workflow,
+                    "workflow_analysis": self.workflow_analysis,
+                },
             )
         self._tool_logger.info(
             "tool_response name=%s data=%s",
@@ -114,6 +157,14 @@ class Orchestrator:
             ]
             if tool_name in workflow_tools:
                 self._update_workflow_from_tool_result(tool_name, data)
+
+            # Update workflow_analysis if this was a successful input management tool
+            input_tools = [
+                "add_workflow_input",
+                "remove_workflow_input",
+            ]
+            if tool_name in input_tools:
+                self._update_analysis_from_tool_result(tool_name, data)
 
         # Also update workflow when publish_latest_analysis returns a flowchart
         if tool_name == "publish_latest_analysis" and isinstance(data, dict):
@@ -169,6 +220,28 @@ class Orchestrator:
             new_workflow = result.get("workflow")
             if new_workflow:
                 self.current_workflow = new_workflow
+
+    def _update_analysis_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
+        """Update workflow_analysis based on successful input tool execution.
+
+        For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
+        For MCP calls: Tools return workflow_analysis in response, we must sync it back.
+        """
+        if tool_name in ["add_workflow_input", "remove_workflow_input", "list_workflow_inputs"]:
+            # MCP mode: Extract workflow_analysis from response and sync
+            if "workflow_analysis" in result:
+                returned_analysis = result["workflow_analysis"]
+                if isinstance(returned_analysis, dict):
+                    # Update inputs and outputs from MCP response
+                    if "inputs" in returned_analysis:
+                        self.workflow_analysis["inputs"] = returned_analysis["inputs"]
+                    if "outputs" in returned_analysis:
+                        self.workflow_analysis["outputs"] = returned_analysis["outputs"]
+                    self._logger.debug(
+                        "Synced workflow_analysis from tool result: %d inputs, %d outputs",
+                        len(self.workflow_analysis.get("inputs", [])),
+                        len(self.workflow_analysis.get("outputs", [])),
+                    )
 
     def respond(
         self,

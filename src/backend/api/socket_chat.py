@@ -140,6 +140,22 @@ def handle_socket_chat(
                         to=sid,
                     )
 
+                # Handle input management tools
+                input_tools = [
+                    "add_workflow_input",
+                    "remove_workflow_input",
+                ]
+                if tool in input_tools:
+                    # Emit analysis update with current inputs
+                    socketio.emit(
+                        "analysis_updated",
+                        {
+                            "inputs": convo.orchestrator.workflow_analysis.get("inputs", []),
+                            "outputs": convo.orchestrator.workflow_analysis.get("outputs", []),
+                        },
+                        to=sid,
+                    )
+
         try:
             # Update workflow state from chat payload (atomic: workflow travels with message)
             if isinstance(workflow, dict):
@@ -147,6 +163,7 @@ def handle_socket_chat(
 
             # Sync workflow from session to orchestrator before responding
             convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
+            convo.orchestrator.sync_workflow_analysis(lambda: convo.workflow_analysis)
 
             response_text = convo.orchestrator.respond(
                 message,
@@ -158,6 +175,7 @@ def handle_socket_chat(
 
             # Write orchestrator's workflow state back to session (preserve state across messages)
             convo.update_workflow_state(convo.orchestrator.current_workflow)
+            convo.update_workflow_analysis(convo.orchestrator.workflow_analysis)
         except Exception as exc:
             logger.exception("Socket chat failed")
             socketio.emit(

@@ -11,6 +11,11 @@ from .workflow_edit import (
     DeleteConnectionTool,
     BatchEditWorkflowTool,
 )
+from .workflow_input import (
+    AddWorkflowInputTool,
+    ListWorkflowInputsTool,
+    RemoveWorkflowInputTool,
+)
 
 __all__ = [
     "Tool",
@@ -25,4 +30,7 @@ __all__ = [
     "AddConnectionTool",
     "DeleteConnectionTool",
     "BatchEditWorkflowTool",
+    "AddWorkflowInputTool",
+    "ListWorkflowInputsTool",
+    "RemoveWorkflowInputTool",
 ]

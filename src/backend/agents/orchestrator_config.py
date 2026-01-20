@@ -93,6 +93,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "number",
                             "description": "Y coordinate (optional, auto-positions if omitted)",
                         },
+                        "input_ref": {
+                            "type": "string",
+                            "description": "Optional: name of workflow input this node checks (case-insensitive)",
+                        },
                     },
                     "required": ["type", "label"],
                 },
@@ -124,6 +128,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "x": {"type": "number", "description": "New X coordinate"},
                         "y": {"type": "number", "description": "New Y coordinate"},
+                        "input_ref": {
+                            "type": "string",
+                            "description": "Optional: name of workflow input this node checks (case-insensitive)",
+                        },
                     },
                     "required": ["node_id"],
                 },
@@ -244,6 +252,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "label": {"type": "string"},
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
+                                    "input_ref": {"type": "string", "description": "Optional: name of workflow input (case-insensitive)"},
                                     "node_id": {"type": "string", "description": "Existing node ID"},
                                     "from": {"type": "string", "description": "Source node ID or temp ID"},
                                     "to": {"type": "string", "description": "Target node ID or temp ID"},
@@ -253,6 +262,86 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         }
                     },
                     "required": ["operations"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "add_workflow_input",
+                "description": (
+                    "Register an input parameter for the workflow. This input will appear in the Inputs tab "
+                    "where users can provide values. Use this when the workflow needs data from users (e.g., "
+                    "'Patient Age', 'Email Address', 'Order Amount')."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable input name (e.g., 'Patient Age', 'Email Address')",
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": ["string", "number", "boolean", "enum"],
+                            "description": "Input type: 'string', 'number', 'boolean', or 'enum'",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional description of what this input represents",
+                        },
+                        "enum_values": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "For enum type: array of allowed values (e.g., ['Male', 'Female', 'Other'])",
+                        },
+                        "range_min": {
+                            "type": "number",
+                            "description": "For number type: minimum allowed value",
+                        },
+                        "range_max": {
+                            "type": "number",
+                            "description": "For number type: maximum allowed value",
+                        },
+                    },
+                    "required": ["name", "type"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_workflow_inputs",
+                "description": (
+                    "Get all registered workflow inputs. Returns the list of inputs that have been "
+                    "registered with add_workflow_input. Use this to see what inputs are available "
+                    "before referencing them in nodes."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "remove_workflow_input",
+                "description": (
+                    "Remove a registered workflow input by name (case-insensitive). "
+                    "Note: This does NOT remove input_ref from nodes that reference it - "
+                    "you should check if nodes reference this input first."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the input to remove (case-insensitive)",
+                        },
+                    },
+                    "required": ["name"],
                 },
             },
         },
@@ -316,7 +405,25 @@ def build_system_prompt(
         "After tools execute, briefly confirm what happened: 'Added start node', 'Deleted validation node', 'Connected X to Y'.\n"
         "Keep responses SHORT. Don't show raw JSON to the user.\n\n"
         "## Reading Workflow State\n"
-        "When the user asks 'what's on the canvas?' or 'what nodes do we have?', call get_current_workflow and describe the nodes/edges you see."
+        "When the user asks 'what's on the canvas?' or 'what nodes do we have?', call get_current_workflow and describe the nodes/edges you see.\n\n"
+        "## Workflow Inputs (CRITICAL)\n"
+        "WHENEVER you see a decision node that checks a condition on data, you MUST register that data as a workflow input:\n"
+        "1. Identify what data the decision checks (e.g., 'Patient Age', 'Order Amount', 'Email Valid')\n"
+        "2. Call add_workflow_input to register it with appropriate type (string/number/boolean/enum)\n"
+        "3. Then add the decision node with input_ref parameter pointing to that input name\n\n"
+        "Examples:\n"
+        "- User: 'Add decision: is patient over 60?'\n"
+        "  → Call add_workflow_input(name='Patient Age', type='number')\n"
+        "  → Then add_node(type='decision', label='Patient over 60?', input_ref='Patient Age')\n\n"
+        "- User: 'Create workflow for processing orders based on amount'\n"
+        "  → Call add_workflow_input(name='Order Amount', type='number')\n"
+        "  → Then create decision nodes with input_ref='Order Amount'\n\n"
+        "- User: 'Check if email is valid'\n"
+        "  → Call add_workflow_input(name='Email Address', type='string')\n"
+        "  → Then add_node(type='decision', label='Email valid?', input_ref='Email Address')\n\n"
+        "ALWAYS register inputs BEFORE creating nodes that reference them.\n"
+        "Use list_workflow_inputs to see what inputs already exist.\n"
+        "Input names are case-insensitive when referencing (e.g., 'patient age' matches 'Patient Age')."
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."
