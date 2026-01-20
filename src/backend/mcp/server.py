@@ -11,7 +11,17 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..utils.logging import setup_logging
-from ..tools import AnalyzeWorkflowTool, PublishLatestAnalysisTool
+from ..tools import (
+    AnalyzeWorkflowTool,
+    PublishLatestAnalysisTool,
+    GetCurrentWorkflowTool,
+    AddNodeTool,
+    ModifyNodeTool,
+    DeleteNodeTool,
+    AddConnectionTool,
+    DeleteConnectionTool,
+    BatchEditWorkflowTool,
+)
 from ..utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.mcp")
@@ -85,6 +95,15 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     tool = AnalyzeWorkflowTool(_repo_root())
     publish_tool = PublishLatestAnalysisTool(_repo_root())
 
+    # Workflow manipulation tools
+    get_workflow_tool = GetCurrentWorkflowTool()
+    add_node_tool = AddNodeTool()
+    modify_node_tool = ModifyNodeTool()
+    delete_node_tool = DeleteNodeTool()
+    add_conn_tool = AddConnectionTool()
+    delete_conn_tool = DeleteConnectionTool()
+    batch_edit_tool = BatchEditWorkflowTool()
+
     @server.tool(
         name="analyze_workflow",
         description=(
@@ -125,6 +144,82 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         result = publish_tool.execute({})
         logger.info("MCP publish_latest_analysis complete session_id=%s", result.get("session_id"))
         return AnalyzeWorkflowResult.model_validate(result)
+
+    @server.tool(name="get_current_workflow")
+    def get_current_workflow(session_state: dict[str, Any] | None = None) -> dict[str, Any]:
+        return get_workflow_tool.execute({}, session_state=session_state or {})
+
+    @server.tool(name="add_node")
+    def add_node(
+        type: str,
+        label: str,
+        x: float | None = None,
+        y: float | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args = {"type": type, "label": label}
+        if x is not None:
+            args["x"] = x
+        if y is not None:
+            args["y"] = y
+        return add_node_tool.execute(args, session_state=session_state or {})
+
+    @server.tool(name="modify_node")
+    def modify_node(
+        node_id: str,
+        label: str | None = None,
+        type: str | None = None,
+        x: float | None = None,
+        y: float | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args = {"node_id": node_id}
+        if label is not None:
+            args["label"] = label
+        if type is not None:
+            args["type"] = type
+        if x is not None:
+            args["x"] = x
+        if y is not None:
+            args["y"] = y
+        return modify_node_tool.execute(args, session_state=session_state or {})
+
+    @server.tool(name="delete_node")
+    def delete_node(
+        node_id: str,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return delete_node_tool.execute({"node_id": node_id}, session_state=session_state or {})
+
+    @server.tool(name="add_connection")
+    def add_connection(
+        from_node_id: str,
+        to_node_id: str,
+        label: str | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args = {"from_node_id": from_node_id, "to_node_id": to_node_id}
+        if label is not None:
+            args["label"] = label
+        return add_conn_tool.execute(args, session_state=session_state or {})
+
+    @server.tool(name="delete_connection")
+    def delete_connection(
+        from_node_id: str,
+        to_node_id: str,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return delete_conn_tool.execute(
+            {"from_node_id": from_node_id, "to_node_id": to_node_id},
+            session_state=session_state or {},
+        )
+
+    @server.tool(name="batch_edit_workflow")
+    def batch_edit_workflow(
+        operations: list[dict[str, Any]],
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return batch_edit_tool.execute({"operations": operations}, session_state=session_state or {})
 
     return server
 
