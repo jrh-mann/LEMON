@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[claude-co] Remember: Check for discussions and messages from other agents.'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[claude-co] IMPORTANT: Call check_for_discussions() and check_notifications() FIRST before doing anything else.'"
+          }
+        ]
+      }
+    ]
+  }
+}

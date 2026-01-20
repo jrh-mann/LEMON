@@ -366,6 +366,9 @@ class Orchestrator:
                     )
                     return f"Tool error ({tool_name}): {exc}"
 
+            if on_tool_event:
+                on_tool_event("tool_batch_complete", "", {}, None)
+
             messages.append(
                 {
                     "role": "system",

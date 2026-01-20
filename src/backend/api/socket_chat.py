@@ -23,8 +23,8 @@ TOOL_STATUS_MESSAGES = {
     "add_node": "Added a workflow node.",
     "modify_node": "Updated a workflow node.",
     "delete_node": "Removed a workflow node.",
-    "add_connection": "Connected workflow nodes.",
-    "delete_connection": "Removed a workflow connection.",
+    "add_connection": "Connections added.",
+    "delete_connection": "Connections removed.",
     "batch_edit_workflow": "Applied workflow changes.",
 }
 
@@ -50,6 +50,8 @@ def handle_socket_chat(
         socketio.emit("chat_progress", {"event": "start", "status": "Thinking..."}, to=sid)
         done = False
         executed_tools: list[dict[str, Any]] = []
+        tool_counts: dict[str, int] = {}
+        tool_order: list[str] = []
 
         def heartbeat() -> None:
             while not done:
@@ -85,6 +87,35 @@ def handle_socket_chat(
             socketio.emit("chat_stream", {"chunk": chunk}, to=sid)
             socketio.sleep(0)
 
+        def note_tool(tool_name: str) -> None:
+            if not tool_name:
+                return
+            if tool_name not in tool_counts:
+                tool_counts[tool_name] = 0
+                tool_order.append(tool_name)
+            tool_counts[tool_name] += 1
+
+        def format_tool_summary(tool_name: str, count: int) -> str:
+            base = TOOL_STATUS_MESSAGES.get(tool_name, f"Completed: {tool_name}.")
+            if count > 1:
+                base = base.rstrip(".")
+                return f"{base} ×{count}."
+            return base
+
+        def flush_tool_summary() -> None:
+            if not tool_order:
+                return
+            lines: list[str] = []
+            for name in tool_order:
+                count = tool_counts.get(name, 0)
+                if count <= 0:
+                    continue
+                lines.append(f"> {format_tool_summary(name, count)}")
+            if lines:
+                stream_chunk("\n\n" + "\n".join(lines) + "\n\n")
+            tool_counts.clear()
+            tool_order.clear()
+
         def on_tool_event(
             event: str,
             tool: str,
@@ -101,9 +132,9 @@ def handle_socket_chat(
                     to=sid,
                 )
             if event == "tool_complete":
-                tool_name = tool or "tool"
-                message = TOOL_STATUS_MESSAGES.get(tool_name, f"Completed: {tool_name}.")
-                stream_chunk(f"\n\n> {message}\n\n")
+                note_tool(tool)
+            if event == "tool_batch_complete":
+                flush_tool_summary()
             if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
                 flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
                 if flowchart and flowchart.get("nodes"):
