@@ -10,7 +10,7 @@ interface ChatState {
   isStreaming: boolean
   streamingContent: string
   currentTaskId: string | null
-  cancelledTaskIds: string[]
+  cancelledTaskIds: Record<string, number>
 
   // Processing status (what the orchestrator is currently doing)
   processingStatus: string | null
@@ -59,6 +59,17 @@ interface ChatState {
 }
 
 const generateId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+const CANCELLED_TASK_TTL_MS = 60_000
+
+const pruneCancelledTaskIds = (ids: Record<string, number>, now: number) => {
+  const next: Record<string, number> = {}
+  for (const [taskId, timestamp] of Object.entries(ids)) {
+    if (now - timestamp < CANCELLED_TASK_TTL_MS) {
+      next[taskId] = timestamp
+    }
+  }
+  return next
+}
 
 export const useChatStore = create<ChatState>((set, get) => ({
   // Initial state
@@ -67,7 +78,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   streamingContent: '',
   currentTaskId: null,
-  cancelledTaskIds: [],
+  cancelledTaskIds: {},
   processingStatus: null,
   pendingQuestion: null,
   taskId: null,
@@ -119,13 +130,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearCurrentTaskId: () => set({ currentTaskId: null }),
 
   markTaskCancelled: (taskId) =>
-    set((state) => ({
-      cancelledTaskIds: state.cancelledTaskIds.includes(taskId)
-        ? state.cancelledTaskIds
-        : [...state.cancelledTaskIds, taskId],
-    })),
+    set((state) => {
+      const now = Date.now()
+      const next = pruneCancelledTaskIds(state.cancelledTaskIds, now)
+      next[taskId] = now
+      return { cancelledTaskIds: next }
+    }),
 
-  isTaskCancelled: (taskId) => get().cancelledTaskIds.includes(taskId),
+  isTaskCancelled: (taskId) => {
+    const now = Date.now()
+    const state = get()
+    const timestamp = state.cancelledTaskIds[taskId]
+    if (!timestamp) {
+      return false
+    }
+    if (now - timestamp >= CANCELLED_TASK_TTL_MS) {
+      set({ cancelledTaskIds: pruneCancelledTaskIds(state.cancelledTaskIds, now) })
+      return false
+    }
+    return true
+  },
 
   finalizeStreamingMessage: () => {
     const content = get().streamingContent
@@ -169,7 +193,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       currentTaskId: null,
-      cancelledTaskIds: [],
+      cancelledTaskIds: {},
       processingStatus: null,
       pendingQuestion: null,
       taskId: null,
