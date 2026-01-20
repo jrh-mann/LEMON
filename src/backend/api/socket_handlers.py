@@ -10,7 +10,7 @@ from flask import request
 from flask_socketio import SocketIO
 
 from .conversations import ConversationStore
-from .socket_chat import handle_socket_chat
+from .socket_chat import handle_socket_chat, handle_sync_workflow
 
 logger = logging.getLogger("backend.api")
 
@@ -44,5 +44,13 @@ def register_socket_handlers(
             socketio,
             conversation_store=conversation_store,
             repo_root=repo_root,
+            payload=payload,
+        )
+
+    @socketio.on("sync_workflow")
+    def socket_sync_workflow(payload: Dict[str, Any]) -> None:
+        handle_sync_workflow(
+            socketio,
+            conversation_store=conversation_store,
             payload=payload,
         )
