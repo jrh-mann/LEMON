@@ -18,26 +18,52 @@ class Conversation:
     orchestrator: Orchestrator
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
-    workflow_state: Dict[str, Any] = field(default_factory=lambda: {"nodes": [], "edges": []})
-    workflow_analysis: Dict[str, Any] = field(default_factory=lambda: {"inputs": [], "outputs": []})
+
+    # Single canonical workflow dict (nodes + edges + inputs + outputs + metadata)
+    workflow: Dict[str, Any] = field(default_factory=lambda: {
+        "nodes": [],
+        "edges": [],
+        "inputs": [],
+        "outputs": [],
+        "tree": {},
+        "doubts": []
+    })
+
+    # Backward-compatible properties for existing code
+    @property
+    def workflow_state(self) -> Dict[str, Any]:
+        """View of workflow structure (nodes/edges only) for backward compatibility."""
+        return {
+            "nodes": self.workflow.get("nodes", []),
+            "edges": self.workflow.get("edges", [])
+        }
+
+    @property
+    def workflow_analysis(self) -> Dict[str, Any]:
+        """View of workflow metadata (inputs/outputs/tree/doubts) for backward compatibility."""
+        return {
+            "inputs": self.workflow.get("inputs", []),
+            "outputs": self.workflow.get("outputs", []),
+            "tree": self.workflow.get("tree", {}),
+            "doubts": self.workflow.get("doubts", [])
+        }
 
     def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
-        """Update workflow state (single source of truth).
+        """Update workflow structure (nodes/edges).
 
         Args:
-            workflow: Complete workflow with nodes and edges
+            workflow: Workflow with nodes and edges
         """
         if not isinstance(workflow, dict):
             return
 
-        self.workflow_state = {
-            "nodes": workflow.get("nodes", []),
-            "edges": workflow.get("edges", []),
-        }
+        # Update nodes and edges in the unified workflow dict
+        self.workflow["nodes"] = workflow.get("nodes", [])
+        self.workflow["edges"] = workflow.get("edges", [])
         self.updated_at = utc_now()
 
     def update_workflow_analysis(self, analysis: Dict[str, Any]) -> None:
-        """Update workflow analysis (inputs and outputs).
+        """Update workflow metadata (inputs/outputs/tree/doubts).
 
         Args:
             analysis: Workflow analysis with inputs and outputs
@@ -45,10 +71,13 @@ class Conversation:
         if not isinstance(analysis, dict):
             return
 
-        self.workflow_analysis = {
-            "inputs": analysis.get("inputs", []),
-            "outputs": analysis.get("outputs", []),
-        }
+        # Update inputs/outputs/tree/doubts in the unified workflow dict
+        self.workflow["inputs"] = analysis.get("inputs", [])
+        self.workflow["outputs"] = analysis.get("outputs", [])
+        if "tree" in analysis:
+            self.workflow["tree"] = analysis.get("tree", {})
+        if "doubts" in analysis:
+            self.workflow["doubts"] = analysis.get("doubts", [])
         self.updated_at = utc_now()
 
 

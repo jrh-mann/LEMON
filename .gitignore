@@ -4,6 +4,8 @@
 vision.md
 .azure/
 
+data/
+
 # Token tracking
 tokens.json
 

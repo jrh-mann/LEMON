@@ -26,18 +26,46 @@ class Orchestrator:
     def __init__(self, tools: ToolRegistry):
         self.tools = tools
         self.last_session_id: Optional[str] = None
-        self.current_workflow: Dict[str, Any] = {"nodes": [], "edges": []}
-        self.workflow_analysis: Dict[str, Any] = {"inputs": [], "outputs": []}
+
+        # Single canonical workflow dict (nodes + edges + inputs + outputs + metadata)
+        self.workflow: Dict[str, Any] = {
+            "nodes": [],
+            "edges": [],
+            "inputs": [],
+            "outputs": [],
+            "tree": {},
+            "doubts": []
+        }
+
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
         self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() not in {"0", "false", "no"}
 
+    # Backward-compatible properties for existing code
+    @property
+    def current_workflow(self) -> Dict[str, Any]:
+        """View of workflow structure (nodes/edges only) for backward compatibility."""
+        return {
+            "nodes": self.workflow.get("nodes", []),
+            "edges": self.workflow.get("edges", [])
+        }
+
+    @property
+    def workflow_analysis(self) -> Dict[str, Any]:
+        """View of workflow metadata (inputs/outputs/tree/doubts) for backward compatibility."""
+        return {
+            "inputs": self.workflow.get("inputs", []),
+            "outputs": self.workflow.get("outputs", []),
+            "tree": self.workflow.get("tree", {}),
+            "doubts": self.workflow.get("doubts", [])
+        }
+
     def sync_workflow(
         self,
         workflow_provider: Optional[Callable[[], Dict[str, Any]]] = None
     ) -> None:
-        """Sync current_workflow from external source.
+        """Sync workflow structure (nodes/edges) from external source.
 
         Args:
             workflow_provider: Callable that returns current workflow state.
@@ -62,7 +90,9 @@ class Orchestrator:
         edges = workflow_data.get("edges", [])
 
         if isinstance(nodes, list) and isinstance(edges, list):
-            self.current_workflow = {"nodes": nodes, "edges": edges}
+            # Update the unified workflow dict
+            self.workflow["nodes"] = nodes
+            self.workflow["edges"] = edges
             self._logger.info(
                 "Synced workflow: %d nodes, %d edges",
                 len(nodes),
@@ -73,7 +103,7 @@ class Orchestrator:
         self,
         analysis_provider: Optional[Callable[[], Dict[str, Any]]] = None
     ) -> None:
-        """Sync workflow_analysis from external source.
+        """Sync workflow metadata (inputs/outputs/tree/doubts) from external source.
 
         Args:
             analysis_provider: Callable that returns workflow analysis (inputs/outputs).
@@ -98,7 +128,13 @@ class Orchestrator:
         outputs = analysis_data.get("outputs", [])
 
         if isinstance(inputs, list) and isinstance(outputs, list):
-            self.workflow_analysis = {"inputs": inputs, "outputs": outputs}
+            # Update the unified workflow dict
+            self.workflow["inputs"] = inputs
+            self.workflow["outputs"] = outputs
+            if "tree" in analysis_data:
+                self.workflow["tree"] = analysis_data.get("tree", {})
+            if "doubts" in analysis_data:
+                self.workflow["doubts"] = analysis_data.get("doubts", [])
             self._logger.info(
                 "Synced workflow analysis: %d inputs, %d outputs",
                 len(inputs),
@@ -170,21 +206,22 @@ class Orchestrator:
         if tool_name == "publish_latest_analysis" and isinstance(data, dict):
             flowchart = data.get("flowchart") if isinstance(data.get("flowchart"), dict) else None
             if flowchart and flowchart.get("nodes"):
-                self.current_workflow = flowchart
+                self.workflow["nodes"] = flowchart.get("nodes", [])
+                self.workflow["edges"] = flowchart.get("edges", [])
 
         return ToolResult(tool=tool_name, data=data)
 
     def _update_workflow_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update current_workflow based on successful tool execution."""
+        """Update workflow structure based on successful tool execution."""
         if tool_name == "add_node":
             node = result.get("node")
             if node:
-                self.current_workflow["nodes"].append(node)
+                self.workflow["nodes"].append(node)
 
         elif tool_name == "modify_node":
             node = result.get("node")
             if node:
-                nodes = self.current_workflow["nodes"]
+                nodes = self.workflow["nodes"]
                 for i, n in enumerate(nodes):
                     if n["id"] == node["id"]:
                         nodes[i] = node
@@ -193,36 +230,36 @@ class Orchestrator:
         elif tool_name == "delete_node":
             node_id = result.get("node_id")
             if node_id:
-                self.current_workflow["nodes"] = [
-                    n for n in self.current_workflow["nodes"] if n["id"] != node_id
+                self.workflow["nodes"] = [
+                    n for n in self.workflow["nodes"] if n["id"] != node_id
                 ]
-                edges = self.current_workflow["edges"]
-                self.current_workflow["edges"] = [
-                    e for e in edges if e["from"] != node_id and e["to"] != node_id
+                self.workflow["edges"] = [
+                    e for e in self.workflow["edges"]
+                    if e["from"] != node_id and e["to"] != node_id
                 ]
 
         elif tool_name == "add_connection":
             edge = result.get("edge")
             if edge:
-                self.current_workflow["edges"].append(edge)
+                self.workflow["edges"].append(edge)
 
         elif tool_name == "delete_connection":
             from_id = result.get("from_node_id")
             to_id = result.get("to_node_id")
             if from_id and to_id:
-                self.current_workflow["edges"] = [
-                    e
-                    for e in self.current_workflow["edges"]
+                self.workflow["edges"] = [
+                    e for e in self.workflow["edges"]
                     if not (e["from"] == from_id and e["to"] == to_id)
                 ]
 
         elif tool_name == "batch_edit_workflow":
             new_workflow = result.get("workflow")
             if new_workflow:
-                self.current_workflow = new_workflow
+                self.workflow["nodes"] = new_workflow.get("nodes", [])
+                self.workflow["edges"] = new_workflow.get("edges", [])
 
     def _update_analysis_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update workflow_analysis based on successful input tool execution.
+        """Update workflow metadata based on successful input tool execution.
 
         For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
         For MCP calls: Tools return workflow_analysis in response, we must sync it back.
@@ -232,15 +269,15 @@ class Orchestrator:
             if "workflow_analysis" in result:
                 returned_analysis = result["workflow_analysis"]
                 if isinstance(returned_analysis, dict):
-                    # Update inputs and outputs from MCP response
+                    # Update inputs and outputs in the unified workflow dict
                     if "inputs" in returned_analysis:
-                        self.workflow_analysis["inputs"] = returned_analysis["inputs"]
+                        self.workflow["inputs"] = returned_analysis["inputs"]
                     if "outputs" in returned_analysis:
-                        self.workflow_analysis["outputs"] = returned_analysis["outputs"]
+                        self.workflow["outputs"] = returned_analysis["outputs"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d inputs, %d outputs",
-                        len(self.workflow_analysis.get("inputs", [])),
-                        len(self.workflow_analysis.get("outputs", [])),
+                        len(self.workflow.get("inputs", [])),
+                        len(self.workflow.get("outputs", [])),
                     )
 
     def respond(
