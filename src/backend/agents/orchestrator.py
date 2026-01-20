@@ -255,7 +255,7 @@ class Orchestrator:
         ] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
-        self._logger.info("Received message bytes=%d", len(user_message.encode("utf-8")))
+        self._logger.info("Received message bytes=%d history_len=%d", len(user_message.encode("utf-8")), len(self.history))
         tool_desc = tool_descriptions()
         system = build_system_prompt(
             last_session_id=self.last_session_id,
@@ -263,9 +263,17 @@ class Orchestrator:
             allow_tools=allow_tools,
         )
 
+        # Limit history to last 20 messages (10 exchanges) to prevent context overflow
+        limited_history = self.history[-20:] if len(self.history) > 20 else self.history
+        if len(self.history) > 20:
+            self._logger.warning(
+                "History truncated from %d to 20 messages to fit context window",
+                len(self.history)
+            )
+
         messages = [
             {"role": "system", "content": system},
-            *self.history,
+            *limited_history,
             {"role": "user", "content": user_message},
         ]
         did_stream = False
@@ -305,7 +313,11 @@ class Orchestrator:
                     )
         except Exception as exc:
             self._logger.exception("LLM error while responding")
-            return f"LLM error: {exc}"
+            error_msg = f"LLM error: {exc}"
+            # Save to history before returning error
+            self.history.append({"role": "user", "content": user_message})
+            self.history.append({"role": "assistant", "content": error_msg})
+            return error_msg
 
         tool_iterations = 0
         tool_results: List[ToolResult] = []
@@ -316,7 +328,11 @@ class Orchestrator:
                     "Max tool iterations reached. Tools called: %s",
                     [r.tool for r in tool_results]
                 )
-                return "Tool error (max tool calls reached)."
+                error_msg = f"Reached maximum tool iterations (10). Executed {len(tool_results)} tools successfully before stopping."
+                # Save to history before returning error
+                self.history.append({"role": "user", "content": user_message})
+                self.history.append({"role": "assistant", "content": error_msg})
+                return error_msg
 
             self._logger.info("Tool iteration %d, calling %d tools", tool_iterations, len(tool_calls))
 
@@ -364,7 +380,11 @@ class Orchestrator:
                         tool_name,
                         str(exc),
                     )
-                    return f"Tool error ({tool_name}): {exc}"
+                    error_msg = f"Tool error ({tool_name}): {exc}"
+                    # Save to history before returning error
+                    self.history.append({"role": "user", "content": user_message})
+                    self.history.append({"role": "assistant", "content": error_msg})
+                    return error_msg
 
             if on_tool_event:
                 on_tool_event("tool_batch_complete", "", {}, None)
@@ -391,13 +411,21 @@ class Orchestrator:
             )
 
         final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
+
+        # Ensure we never return empty response when tools were executed
+        if tool_results and not final_text.strip():
+            final_text = f"Completed {len(tool_results)} tool operation(s)."
+            self._logger.warning("Empty final response after %d tool calls - using fallback", len(tool_results))
+
         if stream:
             if tool_results and final_text:
                 _emit_stream(stream, final_text)
             elif not did_stream:
                 _emit_stream(stream, final_text)
+
         self.history.append({"role": "user", "content": user_message})
         self.history.append({"role": "assistant", "content": final_text})
+        self._logger.debug("History now has %d messages", len(self.history))
         return final_text
 
 
