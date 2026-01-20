@@ -167,7 +167,7 @@ def handle_sync_workflow(
     *,
     conversation_store: ConversationStore,
     payload: Dict[str, Any],
-) -> None:
+) -> Dict[str, Any]:
     """Handle full workflow sync from frontend.
 
     Called when:
@@ -176,6 +176,8 @@ def handle_sync_workflow(
     - User creates new workflow from scratch
 
     This establishes the backend as source of truth.
+
+    Returns acknowledgment dict for Socket.IO callback.
     """
     conversation_id = payload.get("conversation_id")
     workflow = payload.get("workflow")
@@ -184,11 +186,11 @@ def handle_sync_workflow(
 
     if not conversation_id:
         logger.warning("sync_workflow missing conversation_id")
-        return
+        return {"success": False, "error": "Missing conversation_id"}
 
     if not isinstance(workflow, dict):
         logger.warning("sync_workflow invalid workflow format")
-        return
+        return {"success": False, "error": "Invalid workflow format"}
 
     # Store in session
     convo = conversation_store.get_or_create(conversation_id)
@@ -208,3 +210,6 @@ def handle_sync_workflow(
         'nodes_count': len(workflow.get("nodes", [])),
         'edges_count': len(workflow.get("edges", []))
     }, to=sid)
+
+    # Return success acknowledgment for Socket.IO callback
+    return {"success": True}
