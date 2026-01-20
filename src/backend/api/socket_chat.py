@@ -37,6 +37,7 @@ def handle_socket_chat(
     def run_task() -> None:
         socketio.emit("chat_progress", {"event": "start", "status": "Thinking..."}, to=sid)
         done = False
+        executed_tools: list[dict[str, Any]] = []
 
         def heartbeat() -> None:
             while not done:
@@ -78,6 +79,8 @@ def handle_socket_chat(
             args: Dict[str, Any],
             result: Optional[Dict[str, Any]],
         ) -> None:
+            if event == "tool_start":
+                executed_tools.append({"tool": tool, "arguments": args})
             if tool == "analyze_workflow":
                 status = "Analyzing workflow..."
                 socketio.emit(
@@ -149,6 +152,8 @@ def handle_socket_chat(
             return
 
         tool_calls = extract_tool_calls(response_text, include_result=False)
+        if not tool_calls and executed_tools:
+            tool_calls = executed_tools
         summary = summarize_response(response_text) if tool_calls else ""
         convo.updated_at = utc_now()
         done = True

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from flask import Flask, jsonify, request
@@ -64,12 +64,26 @@ def register_routes(
                 logger.exception("Failed to save uploaded image")
                 return jsonify({"error": f"Invalid image data: {exc}"}), 400
 
+        executed_tools: list[dict[str, Any]] = []
+
+        def on_tool_event(
+            event: str,
+            tool: str,
+            args: Dict[str, Any],
+            result: Optional[Dict[str, Any]],
+        ) -> None:
+            if event == "tool_start":
+                executed_tools.append({"tool": tool, "arguments": args})
+
         response_text = convo.orchestrator.respond(
             message,
             has_image=bool(image_data),
             allow_tools=True,
+            on_tool_event=on_tool_event,
         )
         tool_calls = extract_tool_calls(response_text, include_result=False)
+        if not tool_calls and executed_tools:
+            tool_calls = executed_tools
         response_summary = summarize_response(response_text)
         flowchart = extract_flowchart(response_text)
         convo.updated_at = utc_now()
