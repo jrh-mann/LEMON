@@ -13,6 +13,7 @@ from ..storage.history import HistoryStore
 from ..llm import call_llm, call_llm_stream
 from ..utils.image import image_to_data_url
 from ..utils.analysis import normalize_analysis
+from ..utils.cancellation import CancellationError
 
 
 class Subagent:
@@ -29,6 +30,7 @@ class Subagent:
         session_id: str,
         feedback: Optional[str] = None,
         stream: Optional[Callable[[str], None]] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """Analyze a workflow image and return a JSON report."""
         self._logger.info(
@@ -37,6 +39,10 @@ class Subagent:
             image_path.name,
             bool(feedback),
         )
+        def is_cancelled() -> bool:
+            return bool(should_cancel and should_cancel())
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled before analysis.")
         prompt = """Analyze this workflow diagram image.
 
 Return ONLY a JSON object with this structure:
@@ -144,6 +150,8 @@ by recomputing them deterministically from name + type. Respond only with the up
 
             def on_delta(chunk: str) -> None:
                 nonlocal total_chars, last_log
+                if is_cancelled():
+                    raise CancellationError("Subagent cancelled while streaming.")
                 total_chars += len(chunk)
                 now = time.perf_counter()
                 if now - last_log >= 1.0:
@@ -170,6 +178,8 @@ by recomputing them deterministically from name + type. Respond only with the up
             ).strip()
         llm_ms = (time.perf_counter() - llm_start) * 1000
         self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled after LLM call.")
         if not raw:
             raise ValueError("LLM returned an empty response.")
 
@@ -178,6 +188,8 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg)
         data = normalize_analysis(data)
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled before persisting history.")
 
         # Persist conversation history for continuity.
         if not is_followup:

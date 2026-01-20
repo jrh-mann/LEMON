@@ -63,10 +63,23 @@ export function connectSocket(): Socket {
   })
 
   // Chat progress (incremental status updates)
-  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string }) => {
+  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string; task_id?: string }) => {
     console.log('[Socket] chat_progress:', data)
     const chatStore = useChatStore.getState()
     useUIStore.getState().clearError()
+    const taskId = data.task_id
+
+    if (taskId) {
+      if (chatStore.isTaskCancelled(taskId)) {
+        return
+      }
+      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
+        return
+      }
+      if (!chatStore.currentTaskId && data.event === 'start') {
+        chatStore.setCurrentTaskId(taskId)
+      }
+    }
 
     if (data.tool === 'analyze_workflow' && !data.status) {
       chatStore.setProcessingStatus('Analyzing workflow...')
@@ -89,12 +102,25 @@ export function connectSocket(): Socket {
     console.log('[Socket] chat_response:', data)
     const chatStore = useChatStore.getState()
     useUIStore.getState().clearError()
+    const taskId = data.task_id
+
+    if (taskId) {
+      if (chatStore.isTaskCancelled(taskId)) {
+        console.log('[Socket] Ignoring cancelled chat_response:', taskId)
+        return
+      }
+      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
+        console.log('[Socket] Ignoring stale chat_response:', taskId)
+        return
+      }
+    }
     console.log('[Socket] chat_response tool_calls:', data.tool_calls?.length || 0)
     console.log('[Socket] chat_response response_length:', data.response?.length || 0)
     console.log('[Socket] chat_response streaming_length:', chatStore.streamingContent.length)
 
     chatStore.setStreaming(false)
     chatStore.setProcessingStatus(null)
+    chatStore.clearCurrentTaskId()
 
     if (data.conversation_id) {
       chatStore.setConversationId(data.conversation_id)
@@ -149,25 +175,69 @@ export function connectSocket(): Socket {
     console.error('[Socket] agent_error:', data)
     const chatStore = useChatStore.getState()
     const uiStore = useUIStore.getState()
+    const taskId = data.task_id
+
+    if (taskId) {
+      if (chatStore.isTaskCancelled(taskId)) {
+        console.log('[Socket] Ignoring cancelled agent_error:', taskId)
+        return
+      }
+      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
+        console.log('[Socket] Ignoring stale agent_error:', taskId)
+        return
+      }
+    }
 
     chatStore.setStreaming(false)
     chatStore.clearPendingQuestion()
     chatStore.setProcessingStatus(null)
     chatStore.clearStreamContent()
+    chatStore.clearCurrentTaskId()
 
     addAssistantMessage(`Error: ${data.error}`)
     uiStore.setError(data.error)
   })
 
   // Streaming response chunks
-  socket.on('chat_stream', (data: { chunk: string }) => {
+  socket.on('chat_stream', (data: { chunk: string; task_id?: string }) => {
     const chatStore = useChatStore.getState()
+    const taskId = data.task_id
+
+    if (taskId) {
+      if (chatStore.isTaskCancelled(taskId)) {
+        return
+      }
+      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
+        return
+      }
+      if (!chatStore.currentTaskId) {
+        chatStore.setCurrentTaskId(taskId)
+      }
+    }
+
     if (!chatStore.isStreaming) {
       chatStore.setStreaming(true)
     }
     chatStore.appendStreamContent(data.chunk || '')
     console.log('[Socket] chat_stream chunk_length:', data.chunk?.length || 0)
     console.log('[Socket] chat_stream total_length:', chatStore.streamingContent.length)
+  })
+
+  socket.on('chat_cancelled', (data: { task_id?: string }) => {
+    console.log('[Socket] chat_cancelled:', data)
+    const chatStore = useChatStore.getState()
+    const taskId = data.task_id
+
+    if (taskId && chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
+      return
+    }
+
+    if (taskId) {
+      chatStore.markTaskCancelled(taskId)
+    }
+    chatStore.setStreaming(false)
+    chatStore.setProcessingStatus(null)
+    chatStore.clearCurrentTaskId()
   })
 
   // Workflow modification events (from orchestrator editing tools)
@@ -391,6 +461,8 @@ export function sendChatMessage(
   // Ensure conversation ID exists (generates UUID if first message)
   chatStore.ensureConversationId()
 
+  const taskId = crypto.randomUUID()
+  chatStore.setCurrentTaskId(taskId)
   chatStore.setStreaming(true)
 
   // Include current workflow ID so orchestrator knows what to edit
@@ -405,12 +477,22 @@ export function sendChatMessage(
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
     image,
+    task_id: taskId,
     current_workflow_id: currentWorkflowId,
     workflow: {
       nodes: workflowStore.flowchart.nodes,
       edges: workflowStore.flowchart.edges,
     },
   })
+}
+
+export function cancelChatTask(taskId: string): void {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.warn('[Socket] Cannot cancel task: not connected')
+    return
+  }
+  sock.emit('cancel_task', { task_id: taskId })
 }
 
 // Sync workflow to backend session (fire-and-forget for upload/library)

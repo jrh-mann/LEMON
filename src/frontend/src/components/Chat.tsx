@@ -3,7 +3,7 @@ import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { sendChatMessage } from '../api/socket'
+import { cancelChatTask, sendChatMessage } from '../api/socket'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
@@ -18,8 +18,12 @@ export default function Chat() {
     isStreaming,
     streamingContent,
     processingStatus,
+    currentTaskId,
     pendingQuestion,
     sendUserMessage,
+    finalizeStreamingMessage,
+    markTaskCancelled,
+    clearCurrentTaskId,
   } = useChatStore()
 
   const {
@@ -86,11 +90,21 @@ export default function Chat() {
     sendChatMessage(trimmed, conversationId, pendingImage || undefined)
 
     // Keep pending image around so user can reference it in Source Image tab
-    // Image is only cleared when user explicitly clicks × or uploads a new one
+    // Image is only cleared when user explicitly clicks x or uploads a new one
 
     // Clear input and reset voice base text
     setInputValue('')
     baseTextRef.current = ''
+  }
+
+  const handleStop = () => {
+    if (currentTaskId) {
+      cancelChatTask(currentTaskId)
+      markTaskCancelled(currentTaskId)
+    }
+    finalizeStreamingMessage()
+    clearCurrentTaskId()
+    textareaRef.current?.focus()
   }
 
   // Handle key press
@@ -219,7 +233,7 @@ export default function Chat() {
               onClick={clearPendingImage}
               title="Remove image"
             >
-              ×
+              x
             </button>
           </div>
         )}
@@ -257,14 +271,24 @@ export default function Chat() {
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
           </button>
-          <button
-            className="primary"
-            id="sendBtn"
-            onClick={handleSend}
-            disabled={!inputValue.trim() || isStreaming}
-          >
-            {isStreaming ? 'Sending...' : 'Send'}
-          </button>
+          {isStreaming ? (
+            <button
+              className="ghost"
+              id="stopBtn"
+              onClick={handleStop}
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              className="primary"
+              id="sendBtn"
+              onClick={handleSend}
+              disabled={!inputValue.trim()}
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
     </div>

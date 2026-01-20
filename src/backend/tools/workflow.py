@@ -11,6 +11,7 @@ from ..storage.history import HistoryStore
 from ..agents.subagent import Subagent
 from ..utils.flowchart import flowchart_from_tree
 from ..utils.analysis import normalize_analysis
+from ..utils.cancellation import CancellationError
 from .core import Tool, ToolParameter
 
 
@@ -47,8 +48,11 @@ class AnalyzeWorkflowTool(Tool):
             sorted(args.keys()),
         )
         stream = kwargs.get("stream")
+        should_cancel = kwargs.get("should_cancel")
         session_id = args.get("session_id")
         feedback = args.get("feedback")
+        if should_cancel and should_cancel():
+            raise CancellationError("Analyze workflow cancelled before execution.")
 
         if session_id:
             if not feedback:
@@ -77,6 +81,7 @@ class AnalyzeWorkflowTool(Tool):
             session_id=session_id,
             feedback=feedback,
             stream=stream,
+            should_cancel=should_cancel,
         )
         if isinstance(data, dict) and "message" in data and "analysis" not in data:
             return {

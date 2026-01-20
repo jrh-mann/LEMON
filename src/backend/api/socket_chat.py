@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 from flask import request
 from flask_socketio import SocketIO
@@ -28,6 +30,29 @@ TOOL_STATUS_MESSAGES = {
     "batch_edit_workflow": "Applied workflow changes.",
 }
 
+_TASK_CANCELLED: Dict[str, bool] = {}
+_TASK_LOCK = Lock()
+
+
+def _register_task(task_id: str) -> None:
+    with _TASK_LOCK:
+        _TASK_CANCELLED.setdefault(task_id, False)
+
+
+def _cancel_task(task_id: str) -> None:
+    with _TASK_LOCK:
+        _TASK_CANCELLED[task_id] = True
+
+
+def _is_task_cancelled(task_id: str) -> bool:
+    with _TASK_LOCK:
+        return _TASK_CANCELLED.get(task_id, False)
+
+
+def _clear_task(task_id: str) -> None:
+    with _TASK_LOCK:
+        _TASK_CANCELLED.pop(task_id, None)
+
 
 def handle_socket_chat(
     socketio: SocketIO,
@@ -40,27 +65,39 @@ def handle_socket_chat(
     message = payload.get("message", "")
     image_data = payload.get("image")
     workflow = payload.get("workflow")  # Extract workflow from chat payload
+    task_id = payload.get("task_id")
     sid = request.sid
 
     if not isinstance(message, str) or not message.strip():
-        socketio.emit("agent_error", {"task_id": None, "error": "message is required"}, to=sid)
+        socketio.emit("agent_error", {"task_id": task_id, "error": "message is required"}, to=sid)
         return
 
+    if not isinstance(task_id, str) or not task_id.strip():
+        task_id = uuid4().hex
+    _register_task(task_id)
+
     def run_task() -> None:
-        socketio.emit("chat_progress", {"event": "start", "status": "Thinking..."}, to=sid)
+        socketio.emit(
+            "chat_progress",
+            {"event": "start", "status": "Thinking...", "task_id": task_id},
+            to=sid,
+        )
         done = False
         executed_tools: list[dict[str, Any]] = []
         tool_counts: dict[str, int] = {}
         tool_order: list[str] = []
 
+        def is_cancelled() -> bool:
+            return _is_task_cancelled(task_id)
+
         def heartbeat() -> None:
             while not done:
                 socketio.sleep(5)
-                if done:
+                if done or is_cancelled():
                     break
                 socketio.emit(
                     "chat_progress",
-                    {"event": "heartbeat", "status": "Analyzing..."},
+                    {"event": "heartbeat", "status": "Analyzing...", "task_id": task_id},
                     to=sid,
                 )
 
@@ -74,17 +111,20 @@ def handle_socket_chat(
                 logger.exception("Failed to save uploaded image")
                 socketio.emit(
                     "agent_error",
-                    {"task_id": None, "error": f"Invalid image: {exc}"},
+                    {"task_id": task_id, "error": f"Invalid image: {exc}"},
                     to=sid,
                 )
+                _clear_task(task_id)
                 return
 
         did_stream = False
 
         def stream_chunk(chunk: str) -> None:
             nonlocal did_stream
+            if is_cancelled():
+                return
             did_stream = True
-            socketio.emit("chat_stream", {"chunk": chunk}, to=sid)
+            socketio.emit("chat_stream", {"chunk": chunk, "task_id": task_id}, to=sid)
             socketio.sleep(0)
 
         def note_tool(tool_name: str) -> None:
@@ -99,7 +139,7 @@ def handle_socket_chat(
             base = TOOL_STATUS_MESSAGES.get(tool_name, f"Completed: {tool_name}.")
             if count > 1:
                 base = base.rstrip(".")
-                return f"{base} ×{count}."
+                return f"{base} x{count}."
             return base
 
         def flush_tool_summary() -> None:
@@ -122,13 +162,15 @@ def handle_socket_chat(
             args: Dict[str, Any],
             result: Optional[Dict[str, Any]],
         ) -> None:
+            if is_cancelled():
+                return
             if event == "tool_start":
                 executed_tools.append({"tool": tool, "arguments": args})
             if tool == "analyze_workflow":
                 status = "Analyzing workflow..."
                 socketio.emit(
                     "chat_progress",
-                    {"event": event, "status": status, "tool": tool},
+                    {"event": event, "status": status, "tool": tool, "task_id": task_id},
                     to=sid,
                 )
             if event == "tool_complete":
@@ -201,6 +243,7 @@ def handle_socket_chat(
                 has_image=bool(image_data),
                 stream=stream_chunk,
                 allow_tools=True,
+                should_cancel=is_cancelled,
                 on_tool_event=on_tool_event,
             )
 
@@ -209,11 +252,19 @@ def handle_socket_chat(
             convo.update_workflow_analysis(convo.orchestrator.workflow_analysis)
         except Exception as exc:
             logger.exception("Socket chat failed")
-            socketio.emit(
-                "agent_error",
-                {"task_id": None, "error": str(exc)},
-                to=sid,
-            )
+            if not is_cancelled():
+                socketio.emit(
+                    "agent_error",
+                    {"task_id": task_id, "error": str(exc)},
+                    to=sid,
+                )
+            _clear_task(task_id)
+            return
+
+        if is_cancelled():
+            done = True
+            socketio.emit("chat_cancelled", {"task_id": task_id}, to=sid)
+            _clear_task(task_id)
             return
 
         tool_calls = extract_tool_calls(response_text, include_result=False)
@@ -222,6 +273,7 @@ def handle_socket_chat(
         summary = summarize_response(response_text) if tool_calls else ""
         convo.updated_at = utc_now()
         done = True
+        _clear_task(task_id)
 
         socketio.emit(
             "chat_response",
@@ -229,12 +281,24 @@ def handle_socket_chat(
                 "response": summary if tool_calls else ("" if did_stream else response_text),
                 "conversation_id": convo.id,
                 "tool_calls": tool_calls,
-                "task_id": None,
+                "task_id": task_id,
             },
             to=sid,
         )
 
     socketio.start_background_task(run_task)
+
+
+def handle_cancel_task(
+    socketio: SocketIO,
+    *,
+    payload: Dict[str, Any],
+) -> None:
+    task_id = payload.get("task_id")
+    if not isinstance(task_id, str) or not task_id.strip():
+        return
+    _cancel_task(task_id)
+    socketio.emit("chat_cancelled", {"task_id": task_id}, to=request.sid)
 
 
 def handle_sync_workflow(

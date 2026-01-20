@@ -12,6 +12,7 @@ from ..tools import ToolRegistry
 from ..mcp.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .orchestrator_config import build_system_prompt, tool_descriptions
+from ..utils.cancellation import CancellationError
 
 
 @dataclass
@@ -147,6 +148,7 @@ class Orchestrator:
         args: Dict[str, Any],
         *,
         stream: Optional[Callable[[str], None]] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
     ) -> ToolResult:
         self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
         self._tool_logger.info(
@@ -170,6 +172,7 @@ class Orchestrator:
                 tool_name,
                 args,
                 stream=stream,
+                should_cancel=should_cancel,
                 session_state={
                     "current_workflow": self.current_workflow,
                     "workflow_analysis": self.workflow_analysis,
@@ -287,12 +290,23 @@ class Orchestrator:
         has_image: bool = False,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
+        should_cancel: Optional[Callable[[], bool]] = None,
         on_tool_event: Optional[
             Callable[[str, str, Dict[str, Any], Optional[Dict[str, Any]]], None]
         ] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d history_len=%d", len(user_message.encode("utf-8")), len(self.history))
+        def is_cancelled() -> bool:
+            return bool(should_cancel and should_cancel())
+        did_stream = False
+        streamed_chunks: List[str] = []
+        def finalize_cancel() -> str:
+            partial = "".join(streamed_chunks)
+            self.history.append({"role": "user", "content": user_message})
+            if partial:
+                self.history.append({"role": "assistant", "content": partial})
+            return partial
         tool_desc = tool_descriptions()
         system = build_system_prompt(
             last_session_id=self.last_session_id,
@@ -313,11 +327,13 @@ class Orchestrator:
             *limited_history,
             {"role": "user", "content": user_message},
         ]
-        did_stream = False
         try:
             def on_delta(delta: str) -> None:
                 nonlocal did_stream
+                if is_cancelled():
+                    return
                 did_stream = True
+                streamed_chunks.append(delta)
                 if stream:
                     stream(delta)
 
@@ -348,6 +364,10 @@ class Orchestrator:
                         caller="orchestrator",
                         request_tag="initial_no_tools",
                     )
+            if is_cancelled():
+                return finalize_cancel()
+        except CancellationError:
+            return finalize_cancel()
         except Exception as exc:
             self._logger.exception("LLM error while responding")
             error_msg = f"LLM error: {exc}"
@@ -359,6 +379,8 @@ class Orchestrator:
         tool_iterations = 0
         tool_results: List[ToolResult] = []
         while allow_tools and tool_calls:
+            if is_cancelled():
+                return finalize_cancel()
             tool_iterations += 1
             if tool_iterations > 10:
                 self._logger.error(
@@ -382,6 +404,8 @@ class Orchestrator:
             )
 
             for call in tool_calls:
+                if is_cancelled():
+                    return finalize_cancel()
                 fn = call.get("function") or {}
                 tool_name = fn.get("name")
                 args_text = fn.get("arguments") or "{}"
@@ -397,7 +421,7 @@ class Orchestrator:
                 try:
                     if on_tool_event:
                         on_tool_event("tool_start", tool_name, args, None)
-                    result = self.run_tool(tool_name, args, stream=None)
+                    result = self.run_tool(tool_name, args, stream=None, should_cancel=should_cancel)
                     session_id = result.data.get("session_id")
                     if session_id:
                         self.last_session_id = session_id
@@ -411,6 +435,10 @@ class Orchestrator:
                     )
                     if on_tool_event:
                         on_tool_event("tool_complete", tool_name, args, result.data)
+                    if is_cancelled():
+                        return finalize_cancel()
+                except CancellationError:
+                    return finalize_cancel()
                 except Exception as exc:
                     self._tool_logger.error(
                         "tool_error name=%s error=%s",
@@ -425,6 +453,9 @@ class Orchestrator:
 
             if on_tool_event:
                 on_tool_event("tool_batch_complete", "", {}, None)
+
+            if is_cancelled():
+                return finalize_cancel()
 
             messages.append(
                 {
@@ -446,6 +477,8 @@ class Orchestrator:
                 caller="orchestrator",
                 request_tag="post_tool",
             )
+            if is_cancelled():
+                return finalize_cancel()
 
         final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
 

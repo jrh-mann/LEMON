@@ -10,7 +10,7 @@ from flask import request
 from flask_socketio import SocketIO
 
 from .conversations import ConversationStore
-from .socket_chat import handle_socket_chat, handle_sync_workflow
+from .socket_chat import handle_cancel_task, handle_socket_chat, handle_sync_workflow
 
 logger = logging.getLogger("backend.api")
 
@@ -54,3 +54,7 @@ def register_socket_handlers(
             conversation_store=conversation_store,
             payload=payload,
         )
+
+    @socketio.on("cancel_task")
+    def socket_cancel_task(payload: Dict[str, Any]) -> None:
+        handle_cancel_task(socketio, payload=payload)

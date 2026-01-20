@@ -9,6 +9,8 @@ interface ChatState {
   // Streaming state
   isStreaming: boolean
   streamingContent: string
+  currentTaskId: string | null
+  cancelledTaskIds: string[]
 
   // Processing status (what the orchestrator is currently doing)
   processingStatus: string | null
@@ -32,6 +34,11 @@ interface ChatState {
   setStreaming: (streaming: boolean) => void
   appendStreamContent: (content: string) => void
   clearStreamContent: () => void
+  setCurrentTaskId: (taskId: string | null) => void
+  clearCurrentTaskId: () => void
+  markTaskCancelled: (taskId: string) => void
+  isTaskCancelled: (taskId: string) => boolean
+  finalizeStreamingMessage: () => void
 
   // Processing status
   setProcessingStatus: (status: string | null) => void
@@ -59,6 +66,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversationId: null,
   isStreaming: false,
   streamingContent: '',
+  currentTaskId: null,
+  cancelledTaskIds: [],
   processingStatus: null,
   pendingQuestion: null,
   taskId: null,
@@ -105,6 +114,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearStreamContent: () => set({ streamingContent: '' }),
 
+  setCurrentTaskId: (taskId) => set({ currentTaskId: taskId }),
+
+  clearCurrentTaskId: () => set({ currentTaskId: null }),
+
+  markTaskCancelled: (taskId) =>
+    set((state) => ({
+      cancelledTaskIds: state.cancelledTaskIds.includes(taskId)
+        ? state.cancelledTaskIds
+        : [...state.cancelledTaskIds, taskId],
+    })),
+
+  isTaskCancelled: (taskId) => get().cancelledTaskIds.includes(taskId),
+
+  finalizeStreamingMessage: () => {
+    const content = get().streamingContent
+    if (content) {
+      addAssistantMessage(content)
+    }
+    set({ streamingContent: '', isStreaming: false, processingStatus: null })
+  },
+
   // Processing status
   setProcessingStatus: (status) => set({ processingStatus: status }),
 
@@ -138,6 +168,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversationId: null,
       isStreaming: false,
       streamingContent: '',
+      currentTaskId: null,
+      cancelledTaskIds: [],
       processingStatus: null,
       pendingQuestion: null,
       taskId: null,

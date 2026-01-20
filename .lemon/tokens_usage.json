@@ -1,0 +1,265 @@
+[
+  {
+    "request_id": "9b6a8dab16aa44a9ba307f19beb73063",
+    "provider_message_id": "msg_01A6T6EerfE4r9LQP3diCPLo",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "analyze_workflow"
+    ],
+    "message_count": 2,
+    "elapsed_ms": 10222.98,
+    "usage": {
+      "input_tokens": 3842,
+      "output_tokens": 47,
+      "total_tokens": 3889,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:09:46.685790+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "ccc27f183d31404c98d9a0462470edc4",
+    "provider_message_id": "msg_01E5DY8jwR75XmBRQNqArihf",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [],
+    "message_count": 2,
+    "elapsed_ms": 5120.89,
+    "usage": {
+      "input_tokens": 3838,
+      "output_tokens": 103,
+      "total_tokens": 3941,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:10:14.477539+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "a5e1dab28242462787ab68e2398e1958",
+    "provider_message_id": "msg_01AV8AtMxdrVAVw5vH4mCorM",
+    "model": "claude-sonnet-4-5",
+    "caller": "subagent",
+    "request_tag": "analyze",
+    "function": "call_llm",
+    "streaming": true,
+    "tool_choice": "",
+    "tool_count": 0,
+    "tools": [],
+    "message_count": 2,
+    "elapsed_ms": 39527.11,
+    "usage": {
+      "input_tokens": 1866,
+      "output_tokens": 3226,
+      "total_tokens": 5092,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:10:26.834670+00:00",
+    "session_id": "d8c9bea57e3e4ce98b090cf51620dc1e"
+  },
+  {
+    "request_id": "49a0d5cae26540589301e905c046a5be",
+    "provider_message_id": "msg_01FhDuZPsV3tmwdGQeeaP1uN",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [],
+    "message_count": 4,
+    "elapsed_ms": 9434.83,
+    "usage": {
+      "input_tokens": 3948,
+      "output_tokens": 36,
+      "total_tokens": 3984,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:10:46.612568+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "a1f6aa9e89fc4085a3c2be5a5164f39d",
+    "provider_message_id": "msg_01MzVVwrjvyX1brz8ukzRts6",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [],
+    "message_count": 4,
+    "elapsed_ms": 26661.52,
+    "usage": {
+      "input_tokens": 3947,
+      "output_tokens": 736,
+      "total_tokens": 4683,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:10:47.169758+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "fffe9e247552411b9ad5b5ceb005c099",
+    "provider_message_id": "msg_01PFX1ZiGe3bYXQZBD2cwxNY",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [],
+    "message_count": 8,
+    "elapsed_ms": 5147.9,
+    "usage": {
+      "input_tokens": 4099,
+      "output_tokens": 64,
+      "total_tokens": 4163,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:11:01.503370+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "2c00b35e9cfd440b93a088fb0a63ef7c",
+    "provider_message_id": "msg_01DpeofSRJiqobsjukPvdpaA",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [],
+    "message_count": 10,
+    "elapsed_ms": 8372.79,
+    "usage": {
+      "input_tokens": 4184,
+      "output_tokens": 76,
+      "total_tokens": 4260,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:11:45.916352+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "2ab7cdfc9fa64f8284866c950fd1bdb6",
+    "provider_message_id": "msg_014A6Wkw7NnHbHwbnCzkdn1R",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "add_workflow_input"
+    ],
+    "message_count": 12,
+    "elapsed_ms": 11957.61,
+    "usage": {
+      "input_tokens": 4615,
+      "output_tokens": 469,
+      "total_tokens": 5084,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:12:31.275998+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "30707f550bd64f71bde55b9e6a576162",
+    "provider_message_id": "msg_01X7V7aPhPdp4FJUDA5Zgyu2",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "add_node"
+    ],
+    "message_count": 19,
+    "elapsed_ms": 12082.92,
+    "usage": {
+      "input_tokens": 6123,
+      "output_tokens": 121,
+      "total_tokens": 6244,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:12:44.445270+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "2401d3e89efc46da906ec074cfeb575b",
+    "provider_message_id": "msg_016FAWeFqCe6svwKWJ66WG2V",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "batch_edit_workflow"
+    ],
+    "message_count": 22,
+    "elapsed_ms": 6005.95,
+    "usage": {
+      "input_tokens": 6388,
+      "output_tokens": 374,
+      "total_tokens": 6762,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:12:50.631414+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "adc39e87048e43cdbb172a2232a690cf",
+    "provider_message_id": "msg_01W1vk2ChuV2hXeq4QXDthXu",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "add_node"
+    ],
+    "message_count": 25,
+    "elapsed_ms": 9852.58,
+    "usage": {
+      "input_tokens": 7658,
+      "output_tokens": 203,
+      "total_tokens": 7861,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:13:00.640986+00:00",
+    "session_id": "4721274cf6fe44408741c02b707db65d"
+  }
+]

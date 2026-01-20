@@ -365,6 +365,7 @@ export interface SocketChatEvent {
   message: string
   conversation_id?: string
   image?: string
+  task_id?: string
 }
 
 export interface SocketChatResponse {
@@ -391,7 +392,7 @@ export interface SocketAgentComplete {
 }
 
 export interface SocketAgentError {
-  task_id: string
+  task_id?: string
   error: string
 }
 
