@@ -27,6 +27,7 @@ def handle_socket_chat(
     conversation_id = payload.get("conversation_id")
     message = payload.get("message", "")
     image_data = payload.get("image")
+    workflow = payload.get("workflow")  # Extract workflow from chat payload
     sid = request.sid
 
     if not isinstance(message, str) or not message.strip():
@@ -121,6 +122,10 @@ def handle_socket_chat(
                     )
 
         try:
+            # Update workflow state from chat payload (atomic: workflow travels with message)
+            if isinstance(workflow, dict):
+                convo.update_workflow_state(workflow)
+
             # Sync workflow from session to orchestrator before responding
             convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
 
@@ -167,7 +172,7 @@ def handle_sync_workflow(
     *,
     conversation_store: ConversationStore,
     payload: Dict[str, Any],
-) -> Dict[str, Any]:
+) -> None:
     """Handle full workflow sync from frontend.
 
     Called when:
@@ -176,8 +181,7 @@ def handle_sync_workflow(
     - User creates new workflow from scratch
 
     This establishes the backend as source of truth.
-
-    Returns acknowledgment dict for Socket.IO callback.
+    Fire-and-forget - chat messages now carry workflow atomically.
     """
     conversation_id = payload.get("conversation_id")
     workflow = payload.get("workflow")
@@ -186,11 +190,11 @@ def handle_sync_workflow(
 
     if not conversation_id:
         logger.warning("sync_workflow missing conversation_id")
-        return {"success": False, "error": "Missing conversation_id"}
+        return
 
     if not isinstance(workflow, dict):
         logger.warning("sync_workflow invalid workflow format")
-        return {"success": False, "error": "Invalid workflow format"}
+        return
 
     # Store in session
     convo = conversation_store.get_or_create(conversation_id)
@@ -210,6 +214,3 @@ def handle_sync_workflow(
         'nodes_count': len(workflow.get("nodes", [])),
         'edges_count': len(workflow.get("edges", []))
     }, to=sid)
-
-    # Return success acknowledgment for Socket.IO callback
-    return {"success": True}

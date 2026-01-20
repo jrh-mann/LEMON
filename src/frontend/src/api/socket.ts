@@ -197,9 +197,7 @@ export function connectSocket(): Socket {
             // Switch canvas to workflow tab to show the new workflow
             uiStore.setCanvasTab('workflow')
             // Sync workflow to backend session (establish backend as source of truth)
-            syncWorkflow('upload').catch(err => {
-              console.error('[Socket] Failed to sync workflow after upload:', err)
-            })
+            syncWorkflow('upload')
           }
         }
         break
@@ -351,12 +349,12 @@ export function disconnectSocket(): void {
   }
 }
 
-// Send chat message via socket (async to ensure workflow sync completes first)
-export async function sendChatMessage(
+// Send chat message via socket (includes workflow atomically in payload)
+export function sendChatMessage(
   message: string,
   conversationId?: string | null,
   image?: string
-): Promise<void> {
+): void {
   const sock = getSocket()
   if (!sock?.connected) {
     console.error('[Socket] Not connected')
@@ -367,19 +365,8 @@ export async function sendChatMessage(
   const chatStore = useChatStore.getState()
   const workflowStore = useWorkflowStore.getState()
 
-  // Ensure conversation ID exists before sync (generates UUID if first message)
+  // Ensure conversation ID exists (generates UUID if first message)
   chatStore.ensureConversationId()
-
-  // Sync workflow to backend before sending message (AWAIT to ensure ordering)
-  console.log('[Socket] Syncing workflow before chat message')
-  try {
-    await syncWorkflow('manual')
-    console.log('[Socket] Workflow sync complete, sending chat message')
-  } catch (error) {
-    console.error('[Socket] Workflow sync failed:', error)
-    useUIStore.getState().setError('Failed to sync workflow')
-    return
-  }
 
   chatStore.setStreaming(true)
 
@@ -389,70 +376,57 @@ export async function sendChatMessage(
   // Get the ensured conversation ID
   const ensuredConversationId = chatStore.conversationId
 
+  // Atomic: workflow travels with message (no race conditions)
   sock.emit('chat', {
     session_id: getSessionId(),
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
     image,
     current_workflow_id: currentWorkflowId,
+    workflow: {
+      nodes: workflowStore.flowchart.nodes,
+      edges: workflowStore.flowchart.edges,
+    },
   })
 }
 
-// Sync workflow to backend session (returns Promise that resolves when backend acknowledges)
-export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual'): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const sock = getSocket()
-    if (!sock?.connected) {
-      console.warn('[Socket] Cannot sync workflow: not connected')
-      reject(new Error('Socket not connected'))
-      return
-    }
+// Sync workflow to backend session (fire-and-forget for upload/library)
+// Chat messages now carry workflow atomically, so this is only needed for non-chat syncs
+export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual'): void {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.warn('[Socket] Cannot sync workflow: not connected')
+    return
+  }
 
-    const chatStore = useChatStore.getState()
-    const workflowStore = useWorkflowStore.getState()
+  const chatStore = useChatStore.getState()
+  const workflowStore = useWorkflowStore.getState()
 
-    // Ensure conversationId exists (caller should have called ensureConversationId())
-    chatStore.ensureConversationId()
-    const conversationId = chatStore.conversationId
+  // Ensure conversationId exists
+  chatStore.ensureConversationId()
+  const conversationId = chatStore.conversationId
 
-    // conversationId should always exist now, but check for safety
-    if (!conversationId) {
-      console.error('[Socket] Failed to generate conversation ID')
-      reject(new Error('Failed to generate conversation ID'))
-      return
-    }
+  if (!conversationId) {
+    console.error('[Socket] Failed to generate conversation ID')
+    return
+  }
 
-    const workflow = {
-      nodes: workflowStore.flowchart.nodes,
-      edges: workflowStore.flowchart.edges,
-    }
+  const workflow = {
+    nodes: workflowStore.flowchart.nodes,
+    edges: workflowStore.flowchart.edges,
+  }
 
-    console.log('[Socket] Syncing workflow to backend:', {
-      source,
-      conversationId,
-      nodes: workflow.nodes.length,
-      edges: workflow.edges.length,
-    })
+  console.log('[Socket] Syncing workflow to backend:', {
+    source,
+    conversationId,
+    nodes: workflow.nodes.length,
+    edges: workflow.edges.length,
+  })
 
-    // Emit with acknowledgment callback
-    sock.emit('sync_workflow', {
-      conversation_id: conversationId,
-      workflow,
-      source,
-    }, (ack: any) => {
-      if (ack?.success) {
-        console.log('[Socket] Workflow sync acknowledged by backend')
-        resolve()
-      } else {
-        console.error('[Socket] Workflow sync failed:', ack?.error)
-        reject(new Error(ack?.error || 'Sync failed'))
-      }
-    })
-
-    // Timeout after 5 seconds
-    setTimeout(() => {
-      reject(new Error('Sync workflow timeout'))
-    }, 5000)
+  sock.emit('sync_workflow', {
+    conversation_id: conversationId,
+    workflow,
+    source,
   })
 }
 
