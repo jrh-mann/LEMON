@@ -48,8 +48,8 @@ def register_socket_handlers(
         )
 
     @socketio.on("sync_workflow")
-    def socket_sync_workflow(payload: Dict[str, Any]) -> None:
-        handle_sync_workflow(
+    def socket_sync_workflow(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return handle_sync_workflow(
             socketio,
             conversation_store=conversation_store,
             payload=payload,
