@@ -219,8 +219,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "operations": {
                             "type": "array",
                             "description": (
-                                "List of operations. Each has 'op' field (add_node, modify_node, "
-                                "delete_node, add_connection, delete_connection) plus operation-specific fields."
+                                "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
+                                "add_node: {op, type, label, id (temp ID for referencing), x, y}\n"
+                                "modify_node: {op, node_id, label?, type?, x?, y?}\n"
+                                "delete_node: {op, node_id}\n"
+                                "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
+                                "delete_connection: {op, from (node_id), to (node_id)}"
                             ),
                             "items": {
                                 "type": "object",
@@ -234,7 +238,15 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                             "add_connection",
                                             "delete_connection",
                                         ],
-                                    }
+                                    },
+                                    "id": {"type": "string", "description": "Temp ID for new nodes (e.g., temp_1)"},
+                                    "type": {"type": "string", "enum": ["start", "process", "decision", "subprocess", "end"]},
+                                    "label": {"type": "string"},
+                                    "x": {"type": "number"},
+                                    "y": {"type": "number"},
+                                    "node_id": {"type": "string", "description": "Existing node ID"},
+                                    "from": {"type": "string", "description": "Source node ID or temp ID"},
+                                    "to": {"type": "string", "description": "Target node ID or temp ID"},
                                 },
                                 "required": ["op"],
                             },
@@ -292,13 +304,14 @@ def build_system_prompt(
         "Decision nodes are the ONLY case where you MUST use batch_edit_workflow:\n"
         "```\n"
         "operations=[\n"
-        "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\"},\n"
-        "  {\"op\": \"add_node\", \"id\": \"temp_true_branch\", \"type\": \"process\", \"label\": \"Adult Path\"},\n"
-        "  {\"op\": \"add_node\", \"id\": \"temp_false_branch\", \"type\": \"process\", \"label\": \"Minor Path\"},\n"
-        "  {\"op\": \"add_connection\", \"from_node_id\": \"temp_decision\", \"to_node_id\": \"temp_true_branch\", \"label\": \"true\"},\n"
-        "  {\"op\": \"add_connection\", \"from_node_id\": \"temp_decision\", \"to_node_id\": \"temp_false_branch\", \"label\": \"false\"}\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\", \"x\": 100, \"y\": 100},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_true\", \"type\": \"end\", \"label\": \"Adult\", \"x\": 50, \"y\": 200},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_false\", \"type\": \"end\", \"label\": \"Minor\", \"x\": 150, \"y\": 200},\n"
+        "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_true\", \"label\": \"true\"},\n"
+        "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_false\", \"label\": \"false\"}\n"
         "]\n"
-        "```\n\n"
+        "```\n"
+        "CRITICAL: Use 'from' and 'to' fields (NOT 'from_node_id'/'to_node_id') in batch add_connection operations.\n\n"
         "## Response Format\n"
         "After tools execute, briefly confirm what happened: 'Added start node', 'Deleted validation node', 'Connected X to Y'.\n"
         "Keep responses SHORT. Don't show raw JSON to the user.\n\n"
