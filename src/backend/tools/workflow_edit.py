@@ -357,8 +357,23 @@ class BatchEditWorkflowTool(Tool):
     name = "batch_edit_workflow"
     description = """
     Apply multiple workflow changes in a single atomic operation.
-    All changes are validated together - if any fail validation, none are applied.
-    Use this when you need to make multiple related changes (e.g., add a node AND connect it).
+    Validation uses lenient mode - you can create decision nodes without branches, then add connections later.
+
+    Use this for efficient bulk operations:
+    - Add multiple nodes at once
+    - Add node + connections together
+    - Complex multi-step changes
+
+    Example: Add decision with both branches
+    {
+      "operations": [
+        {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_decision", "x": 100, "y": 100},
+        {"op": "add_node", "type": "end", "label": "Child", "id": "temp_child", "x": 50, "y": 200},
+        {"op": "add_node", "type": "end", "label": "Adult", "id": "temp_adult", "x": 150, "y": 200},
+        {"op": "add_connection", "from": "temp_decision", "to": "temp_child", "label": "true"},
+        {"op": "add_connection", "from": "temp_decision", "to": "temp_adult", "label": "false"}
+      ]
+    }
     """
     parameters = [
         ToolParameter(
@@ -487,8 +502,8 @@ class BatchEditWorkflowTool(Tool):
         except Exception as e:
             return {"success": False, "error": f"Failed to apply operations: {str(e)}"}
 
-        # Validate the entire result
-        is_valid, errors = self.validator.validate(new_workflow)
+        # Validate the entire result (lenient mode for incremental edits)
+        is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
                 "success": False,

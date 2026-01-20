@@ -269,6 +269,52 @@ class TestWorkflowManipulation:
 
         print("\n[DEBUG] ✓ Complex workflow scenario passed - all nodes and connections created successfully")
 
+    def test_batch_edit_creates_decision_with_branches(self, conversation_store, conversation_id):
+        """Test that batch_edit_workflow can create decision node + branches atomically."""
+        from ..tools.workflow_edit import BatchEditWorkflowTool
+
+        convo = conversation_store.get_or_create(conversation_id)
+        convo.orchestrator.current_workflow = {"nodes": [], "edges": []}
+
+        tool = BatchEditWorkflowTool()
+
+        # Create decision node with both branches in a single batch operation
+        result = tool.execute(
+            {
+                "operations": [
+                    {"op": "add_node", "type": "decision", "label": "Age over 18?", "id": "temp_decision", "x": 100, "y": 100},
+                    {"op": "add_node", "type": "end", "label": "Adult", "id": "temp_adult", "x": 50, "y": 200},
+                    {"op": "add_node", "type": "end", "label": "Minor", "id": "temp_minor", "x": 150, "y": 200},
+                    {"op": "add_connection", "from": "temp_decision", "to": "temp_adult", "label": "true"},
+                    {"op": "add_connection", "from": "temp_decision", "to": "temp_minor", "label": "false"},
+                ]
+            },
+            session_state={"current_workflow": convo.orchestrator.current_workflow}
+        )
+
+        print(f"\n[DEBUG] Batch edit result: {json.dumps(result, indent=2)}")
+
+        assert result["success"] is True, f"Batch operation failed: {result.get('error')}"
+        assert result["action"] == "batch_edit"
+        assert result["operation_count"] == 5
+
+        # Verify workflow has all nodes and connections
+        workflow = result["workflow"]
+        assert len(workflow["nodes"]) == 3, f"Expected 3 nodes, got {len(workflow['nodes'])}"
+        assert len(workflow["edges"]) == 2, f"Expected 2 edges, got {len(workflow['edges'])}"
+
+        # Verify node types
+        node_types = [n["type"] for n in workflow["nodes"]]
+        assert node_types.count("decision") == 1
+        assert node_types.count("end") == 2
+
+        # Verify edge labels
+        edge_labels = [e["label"] for e in workflow["edges"]]
+        assert "true" in edge_labels
+        assert "false" in edge_labels
+
+        print("\n[DEBUG] ✓ Batch edit successfully created decision node with both branches")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
