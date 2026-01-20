@@ -18,6 +18,7 @@ from .anthropic import (
 )
 from .env import get_anthropic_client, get_anthropic_model, load_env
 from ..utils.tokens import record_token_usage
+from ..utils.cancellation import CancellationError
 
 
 def _extract_usage(message: Any) -> Dict[str, Any]:
@@ -95,6 +96,15 @@ def _record_tokens(
         logger.warning("Failed to record token usage: %s", exc)
 
 
+def _close_stream(stream: Any) -> None:
+    close = getattr(stream, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            logger.debug("Failed to close LLM stream", exc_info=True)
+
+
 def call_llm(
     messages: List[Dict[str, Any]],
     *,
@@ -102,6 +112,7 @@ def call_llm(
     response_format: Optional[Dict[str, Any]] = None,
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> str:
     load_env()
     if response_format:
@@ -124,11 +135,17 @@ def call_llm(
     request_id = uuid.uuid4().hex
     with client.messages.stream(**payload) as stream:
         for event in stream:
+            if should_cancel and should_cancel():
+                _close_stream(stream)
+                raise CancellationError("LLM streaming cancelled.")
             if getattr(event, "type", "") == "content_block_delta":
                 delta = getattr(event, "delta", None)
                 text = getattr(delta, "text", None)
                 if text:
                     on_delta(text)
+        if should_cancel and should_cancel():
+            _close_stream(stream)
+            raise CancellationError("LLM streaming cancelled.")
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
@@ -161,6 +178,7 @@ def call_llm_with_tools(
     on_delta: Optional[Callable[[str], None]] = None,
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     load_env()
     if tool_choice is None and tools:
@@ -202,6 +220,9 @@ def call_llm_with_tools(
     def _call_stream() -> Any:
         with client.messages.stream(**payload) as stream:
             for event in stream:
+                if should_cancel and should_cancel():
+                    _close_stream(stream)
+                    raise CancellationError("LLM streaming cancelled.")
                 event_type = getattr(event, "type", "")
                 if event_type == "content_block_start":
                     block = getattr(event, "content_block", None)
@@ -273,6 +294,9 @@ def call_llm_with_tools(
                             block["input"] = json.loads(block["buffer"])
                         except json.JSONDecodeError:
                             pass
+            if should_cancel and should_cancel():
+                _close_stream(stream)
+                raise CancellationError("LLM streaming cancelled.")
             return stream.get_final_message()
 
     start = time.perf_counter()
@@ -355,6 +379,7 @@ def call_llm_stream(
     on_delta: Callable[[str], None],
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> str:
     load_env()
     if response_format:
@@ -371,11 +396,17 @@ def call_llm_stream(
     request_id = uuid.uuid4().hex
     with client.messages.stream(**payload) as stream:
         for event in stream:
+            if should_cancel and should_cancel():
+                _close_stream(stream)
+                raise CancellationError("LLM streaming cancelled.")
             if getattr(event, "type", "") == "content_block_delta":
                 delta = getattr(event, "delta", None)
                 text = getattr(delta, "text", None)
                 if text:
                     on_delta(text)
+        if should_cancel and should_cancel():
+            _close_stream(stream)
+            raise CancellationError("LLM streaming cancelled.")
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))

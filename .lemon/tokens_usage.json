@@ -261,5 +261,149 @@
     },
     "timestamp": "2026-01-20T22:13:00.640986+00:00",
     "session_id": "4721274cf6fe44408741c02b707db65d"
+  },
+  {
+    "request_id": "e8338ab21e0e49ccb2707fcd369d0610",
+    "provider_message_id": "msg_01VACtZ4kvXGNZwspggRtcB5",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "analyze_workflow"
+    ],
+    "message_count": 2,
+    "elapsed_ms": 2624.98,
+    "usage": {
+      "input_tokens": 3841,
+      "output_tokens": 47,
+      "total_tokens": 3888,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:23:54.762592+00:00",
+    "session_id": "01dad1bfc48b44cd9cfee10909c95703"
+  },
+  {
+    "request_id": "ed7c3170a5dd4168bc49197b227cf9d3",
+    "provider_message_id": "msg_01F6QAg4Y4Q3SofeJhDNmqZK",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "analyze_workflow"
+    ],
+    "message_count": 2,
+    "elapsed_ms": 8869.33,
+    "usage": {
+      "input_tokens": 3847,
+      "output_tokens": 36,
+      "total_tokens": 3883,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:24:20.056800+00:00",
+    "session_id": "01dad1bfc48b44cd9cfee10909c95703"
+  },
+  {
+    "request_id": "0e4d3aacb46046d4a1a0968a2de00740",
+    "provider_message_id": "msg_01MmfteuoVgM7JrMjKRH8a8M",
+    "model": "claude-sonnet-4-5",
+    "caller": "subagent",
+    "request_tag": "analyze",
+    "function": "call_llm",
+    "streaming": true,
+    "tool_choice": "",
+    "tool_count": 0,
+    "tools": [],
+    "message_count": 2,
+    "elapsed_ms": 42479.17,
+    "usage": {
+      "input_tokens": 1866,
+      "output_tokens": 3271,
+      "total_tokens": 5137,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:24:38.024577+00:00",
+    "session_id": "1a827f900ca141229f500b6a0ca44e9f"
+  },
+  {
+    "request_id": "d6b53b1384f74e05bd65f0777101287f",
+    "provider_message_id": "msg_014d4bCGSctipdG7vuGmPrn4",
+    "model": "claude-sonnet-4-5",
+    "caller": "subagent",
+    "request_tag": "analyze",
+    "function": "call_llm",
+    "streaming": true,
+    "tool_choice": "",
+    "tool_count": 0,
+    "tools": [],
+    "message_count": 2,
+    "elapsed_ms": 38065.2,
+    "usage": {
+      "input_tokens": 1866,
+      "output_tokens": 3175,
+      "total_tokens": 5041,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:25:16.340026+00:00",
+    "session_id": "1a827f900ca141229f500b6a0ca44e9f"
+  },
+  {
+    "request_id": "a43375cb955e47cab4c789c093775f50",
+    "provider_message_id": "msg_01Uifk5sMcaQcF9yvj1ZMnHe",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 12,
+    "tools": [
+      "analyze_workflow"
+    ],
+    "message_count": 4,
+    "elapsed_ms": 2075.02,
+    "usage": {
+      "input_tokens": 3895,
+      "output_tokens": 49,
+      "total_tokens": 3944,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:25:18.638634+00:00",
+    "session_id": "01dad1bfc48b44cd9cfee10909c95703"
+  },
+  {
+    "request_id": "c130e2dfbb3b4aee94df8930adb9888f",
+    "provider_message_id": "msg_01FAq8JwcSyjBhLLcRGRB3Ps",
+    "model": "claude-sonnet-4-5",
+    "caller": "subagent",
+    "request_tag": "analyze",
+    "function": "call_llm",
+    "streaming": true,
+    "tool_choice": "",
+    "tool_count": 0,
+    "tools": [],
+    "message_count": 2,
+    "elapsed_ms": 50714.07,
+    "usage": {
+      "input_tokens": 1866,
+      "output_tokens": 3140,
+      "total_tokens": 5006,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-20T22:26:09.599060+00:00",
+    "session_id": "1a827f900ca141229f500b6a0ca44e9f"
   }
 ]

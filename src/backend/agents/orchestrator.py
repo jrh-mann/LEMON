@@ -345,6 +345,7 @@ class Orchestrator:
                     on_delta=on_delta if stream else None,
                     caller="orchestrator",
                     request_tag="initial",
+                    should_cancel=should_cancel,
                 )
             else:
                 if stream:
@@ -353,6 +354,7 @@ class Orchestrator:
                         on_delta=on_delta,
                         caller="orchestrator",
                         request_tag="initial_stream",
+                        should_cancel=should_cancel,
                     )
                     raw = raw.strip()
                     tool_calls = []
@@ -363,6 +365,7 @@ class Orchestrator:
                         tool_choice="none",
                         caller="orchestrator",
                         request_tag="initial_no_tools",
+                        should_cancel=should_cancel,
                     )
             if is_cancelled():
                 return finalize_cancel()
@@ -476,6 +479,7 @@ class Orchestrator:
                 on_delta=on_delta if stream else None,
                 caller="orchestrator",
                 request_tag="post_tool",
+                should_cancel=should_cancel,
             )
             if is_cancelled():
                 return finalize_cancel()

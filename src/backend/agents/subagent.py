@@ -167,6 +167,7 @@ by recomputing them deterministically from name + type. Respond only with the up
                 on_delta=on_delta,
                 caller="subagent",
                 request_tag="analyze_stream",
+                should_cancel=should_cancel,
             ).strip()
         else:
             raw = call_llm(
@@ -175,6 +176,7 @@ by recomputing them deterministically from name + type. Respond only with the up
                 response_format=None,
                 caller="subagent",
                 request_tag="analyze",
+                should_cancel=should_cancel,
             ).strip()
         llm_ms = (time.perf_counter() - llm_start) * 1000
         self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
@@ -186,7 +188,7 @@ by recomputing them deterministically from name + type. Respond only with the up
         if is_followup and not wants_json:
             return {"message": raw}
 
-        data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg)
+        data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
         if is_cancelled():
             raise CancellationError("Subagent cancelled before persisting history.")
@@ -208,6 +210,8 @@ by recomputing them deterministically from name + type. Respond only with the up
         history_messages: list[dict],
         system_msg: dict,
         user_msg: dict,
+        *,
+        should_cancel: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         def _strip_code_fences(text: str) -> str:
             stripped = text.strip()
@@ -246,12 +250,15 @@ by recomputing them deterministically from name + type. Respond only with the up
             user_msg,
             {"role": "user", "content": "Return ONLY valid JSON. No extra text."},
         ]
+        if should_cancel and should_cancel():
+            raise CancellationError("Subagent cancelled before JSON retry.")
         retry_raw = call_llm(
             retry_messages,
             max_completion_tokens=60000,
             response_format=None,
             caller="subagent",
             request_tag="json_retry",
+            should_cancel=should_cancel,
         ).strip()
         if not retry_raw:
             raise ValueError("LLM returned an empty response on retry.")
