@@ -290,15 +290,29 @@ function MessageBubble({
           __html: isUser || isSystem ? message.content : renderMarkdown(message.content),
         }}
       />
-      {message.tool_calls.length > 0 && (
-        <div className="tool-calls">
-          {message.tool_calls.map((tc, idx) => (
-            <div key={idx} className="tool-call">
-              <span className="tool-name">{tc.tool}</span>
+      {message.tool_calls.length > 0 &&
+        (message.tool_calls.length > 3 ? (
+          <details className="tool-call-disclosure">
+            <summary className="tool-call-summary">
+              Tools ({message.tool_calls.length})
+            </summary>
+            <div className="tool-calls">
+              {message.tool_calls.map((tc, idx) => (
+                <div key={idx} className="tool-call">
+                  <span className="tool-name">{tc.tool}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </details>
+        ) : (
+          <div className="tool-calls">
+            {message.tool_calls.map((tc, idx) => (
+              <div key={idx} className="tool-call">
+                <span className="tool-name">{tc.tool}</span>
+              </div>
+            ))}
+          </div>
+        ))}
     </div>
   )
 }
