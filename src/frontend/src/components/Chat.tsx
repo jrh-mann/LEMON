@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
+import { useUIStore } from '../stores/uiStore'
 import { sendChatMessage } from '../api/socket'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
@@ -26,6 +27,8 @@ export default function Chat() {
     pendingImageName,
     clearPendingImage,
   } = useWorkflowStore()
+
+  const { chatHeight, setChatHeight } = useUIStore()
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -107,7 +110,6 @@ export default function Chat() {
     }
   }
 
-  const [chatHeight, setChatHeight] = useState(280)
   const isDragging = useRef(false)
   const startY = useRef(0)
   const startHeight = useRef(0)

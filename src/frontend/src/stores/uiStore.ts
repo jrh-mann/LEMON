@@ -26,6 +26,9 @@ interface UIState {
   panX: number
   panY: number
 
+  // Chat panel height (for dynamic workspace sizing)
+  chatHeight: number
+
   // Actions
   setStage: (stage: Stage) => void
   openModal: (modal: ModalType) => void
@@ -42,6 +45,9 @@ interface UIState {
   zoomOut: () => void
   resetZoom: () => void
   setPan: (x: number, y: number) => void
+
+  // Chat
+  setChatHeight: (height: number) => void
 
   // Reset
   reset: () => void
@@ -63,6 +69,7 @@ export const useUIStore = create<UIState>((set) => ({
   zoom: 1,
   panX: 0,
   panY: 0,
+  chatHeight: 280,
 
   // Actions
   setStage: (stage) => set({ stage }),
@@ -100,6 +107,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   setPan: (x, y) => set({ panX: x, panY: y }),
 
+  // Chat
+  setChatHeight: (height) => set({ chatHeight: height }),
+
   // Reset
   reset: () =>
     set({
@@ -113,5 +123,6 @@ export const useUIStore = create<UIState>((set) => ({
       zoom: 1,
       panX: 0,
       panY: 0,
+      chatHeight: 280,
     }),
 }))

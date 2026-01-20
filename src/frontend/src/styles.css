@@ -46,7 +46,7 @@ body {
 .app-layout {
   display: grid;
   grid-template-rows: auto 1fr;
-  height: calc(100vh - 280px); /* Leave room for fixed chat dock */
+  height: calc(100vh - var(--chat-height, 280px)); /* Dynamically adjust for chat dock height */
 }
 
 /* Header */

@@ -14,7 +14,7 @@ function App() {
   // Initialize session and socket connection
   useSession()
 
-  const { error, clearError } = useUIStore()
+  const { error, clearError, chatHeight } = useUIStore()
 
   // Show error toast
   useEffect(() => {
@@ -28,7 +28,7 @@ function App() {
     <>
       <div className="backdrop"></div>
 
-      <div className="app-layout">
+      <div className="app-layout" style={{ '--chat-height': `${chatHeight}px` } as React.CSSProperties}>
         <Header />
         <TabBar />
 
