@@ -110,8 +110,8 @@ class AddNodeTool(Tool):
             "edges": current_workflow.get("edges", []),
         }
 
-        # Validate
-        is_valid, errors = self.validator.validate(new_workflow)
+        # Validate (lenient mode for incremental edits - allows partial workflows)
+        is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
                 "success": False,
@@ -181,8 +181,8 @@ class ModifyNodeTool(Tool):
         }
         new_workflow["nodes"][node_idx].update(updates)
 
-        # Validate
-        is_valid, errors = self.validator.validate(new_workflow)
+        # Validate (lenient mode for incremental edits - allows partial workflows)
+        is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
                 "success": False,
@@ -228,8 +228,8 @@ class DeleteNodeTool(Tool):
             ],
         }
 
-        # Validate
-        is_valid, errors = self.validator.validate(new_workflow)
+        # Validate (lenient mode for incremental edits - allows partial workflows)
+        is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
                 "success": False,
@@ -286,8 +286,8 @@ class AddConnectionTool(Tool):
             "edges": [*current_workflow.get("edges", []), new_edge],
         }
 
-        # Validate
-        is_valid, errors = self.validator.validate(new_workflow)
+        # Validate (lenient mode for incremental edits - allows partial workflows)
+        is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
                 "success": False,
@@ -334,8 +334,8 @@ class DeleteConnectionTool(Tool):
             ],
         }
 
-        # Validate
-        is_valid, errors = self.validator.validate(new_workflow)
+        # Validate (lenient mode for incremental edits - allows partial workflows)
+        is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
                 "success": False,

@@ -22,16 +22,27 @@ class WorkflowValidator:
     VALID_NODE_TYPES = {"start", "process", "decision", "subprocess", "end"}
     REQUIRED_NODE_FIELDS = {"id", "type", "label", "x", "y"}
 
-    def validate(self, workflow: Dict[str, Any]) -> Tuple[bool, List[ValidationError]]:
+    def validate(
+        self,
+        workflow: Dict[str, Any],
+        strict: bool = True
+    ) -> Tuple[bool, List[ValidationError]]:
         """
         Validate a workflow and return (is_valid, errors).
 
-        Rules:
+        Args:
+            workflow: The workflow to validate
+            strict: If True, enforce complete workflow rules (decision branches, connections).
+                   If False, only validate structure (useful for incremental edits).
+
+        Rules (always enforced):
         1. All nodes must have: id, type, label, x, y
         2. Node types must be: start, process, decision, subprocess, or end
         3. All edge 'from' and 'to' must reference existing node IDs
         4. No duplicate node IDs
         5. No duplicate edge IDs
+
+        Rules (strict mode only):
         6. Decision nodes must have at least 2 outgoing edges (true/false paths)
         7. Start nodes should have at least 1 outgoing edge
         8. End nodes should have 0 outgoing edges
@@ -130,56 +141,57 @@ class WorkflowValidator:
 
             incoming_edges[to_id] = incoming_edges.get(to_id, 0) + 1
 
-        # Rules 6, 7, 8: Validate node-specific connection requirements
-        for node in nodes:
-            node_id = node.get("id")
-            if not node_id:
-                continue
+        # Rules 6, 7, 8: Validate node-specific connection requirements (strict mode only)
+        if strict:
+            for node in nodes:
+                node_id = node.get("id")
+                if not node_id:
+                    continue
 
-            node_type = node.get("type")
-            node_label = node.get("label", node_id)
-            outgoing = outgoing_edges.get(node_id, [])
+                node_type = node.get("type")
+                node_label = node.get("label", node_id)
+                outgoing = outgoing_edges.get(node_id, [])
 
-            # Rule 6: Decision nodes must have 2+ outgoing edges
-            if node_type == "decision":
-                if len(outgoing) < 2:
+                # Rule 6: Decision nodes must have 2+ outgoing edges
+                if node_type == "decision":
+                    if len(outgoing) < 2:
+                        errors.append(
+                            ValidationError(
+                                code="DECISION_NEEDS_BRANCHES",
+                                message=f"Decision node '{node_label}' must have at least 2 branches",
+                                node_id=node_id,
+                            )
+                        )
+                    # Check for true/false labels
+                    labels = set(outgoing)
+                    if "true" not in labels or "false" not in labels:
+                        errors.append(
+                            ValidationError(
+                                code="DECISION_MISSING_LABELS",
+                                message=f"Decision node '{node_label}' should have 'true' and 'false' branches",
+                                node_id=node_id,
+                            )
+                        )
+
+                # Rule 7: Start nodes should have outgoing edges (only if workflow has multiple nodes)
+                if node_type == "start" and len(outgoing) == 0 and len(nodes) > 1:
                     errors.append(
                         ValidationError(
-                            code="DECISION_NEEDS_BRANCHES",
-                            message=f"Decision node '{node_label}' must have at least 2 branches",
+                            code="START_NO_OUTGOING",
+                            message=f"Start node '{node_label}' has no outgoing connections",
                             node_id=node_id,
                         )
                     )
-                # Check for true/false labels
-                labels = set(outgoing)
-                if "true" not in labels or "false" not in labels:
+
+                # Rule 8: End nodes should have NO outgoing edges
+                if node_type == "end" and len(outgoing) > 0:
                     errors.append(
                         ValidationError(
-                            code="DECISION_MISSING_LABELS",
-                            message=f"Decision node '{node_label}' should have 'true' and 'false' branches",
+                            code="END_HAS_OUTGOING",
+                            message=f"End node '{node_label}' should not have outgoing connections",
                             node_id=node_id,
                         )
                     )
-
-            # Rule 7: Start nodes should have outgoing edges (only if workflow has multiple nodes)
-            if node_type == "start" and len(outgoing) == 0 and len(nodes) > 1:
-                errors.append(
-                    ValidationError(
-                        code="START_NO_OUTGOING",
-                        message=f"Start node '{node_label}' has no outgoing connections",
-                        node_id=node_id,
-                    )
-                )
-
-            # Rule 8: End nodes should have NO outgoing edges
-            if node_type == "end" and len(outgoing) > 0:
-                errors.append(
-                    ValidationError(
-                        code="END_HAS_OUTGOING",
-                        message=f"End node '{node_label}' should not have outgoing connections",
-                        node_id=node_id,
-                    )
-                )
 
         return (len(errors) == 0, errors)
 
