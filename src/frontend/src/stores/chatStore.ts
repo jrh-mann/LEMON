@@ -25,6 +25,7 @@ interface ChatState {
   addMessage: (message: Message) => void
   updateLastMessage: (content: string) => void
   setConversationId: (id: string | null) => void
+  ensureConversationId: () => void
   setMessages: (messages: Message[]) => void
 
   // Streaming
@@ -83,6 +84,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }),
 
   setConversationId: (id) => set({ conversationId: id }),
+
+  // Ensure conversationId exists before sync operations
+  ensureConversationId: () => {
+    const state = get()
+    if (!state.conversationId) {
+      set({ conversationId: crypto.randomUUID() })
+    }
+  },
 
   setMessages: (messages) => set({ messages }),
 

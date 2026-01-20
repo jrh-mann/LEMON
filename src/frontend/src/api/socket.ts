@@ -365,21 +365,25 @@ export function sendChatMessage(
   const chatStore = useChatStore.getState()
   const workflowStore = useWorkflowStore.getState()
 
+  // Ensure conversation ID exists before sync (generates UUID if first message)
+  chatStore.ensureConversationId()
+
   // Sync workflow to backend before sending message (always sync, even if empty)
-  if (conversationId) {
-    console.log('[Socket] Syncing workflow before chat message')
-    syncWorkflow('manual')
-  }
+  console.log('[Socket] Syncing workflow before chat message')
+  syncWorkflow('manual')
 
   chatStore.setStreaming(true)
 
   // Include current workflow ID so orchestrator knows what to edit
   const currentWorkflowId = workflowStore.currentWorkflow?.id
 
+  // Get the ensured conversation ID
+  const ensuredConversationId = chatStore.conversationId
+
   sock.emit('chat', {
     session_id: getSessionId(),
     message,
-    conversation_id: conversationId || undefined,
+    conversation_id: ensuredConversationId || conversationId || undefined,
     image,
     current_workflow_id: currentWorkflowId,
   })
@@ -395,10 +399,14 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
 
   const chatStore = useChatStore.getState()
   const workflowStore = useWorkflowStore.getState()
+
+  // Ensure conversationId exists (caller should have called ensureConversationId())
+  chatStore.ensureConversationId()
   const conversationId = chatStore.conversationId
 
+  // conversationId should always exist now, but check for safety
   if (!conversationId) {
-    console.warn('[Socket] Cannot sync workflow: no conversation ID')
+    console.error('[Socket] Failed to generate conversation ID')
     return
   }
 
