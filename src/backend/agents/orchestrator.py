@@ -9,6 +9,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from ..tools import ToolRegistry
+from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..mcp.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .orchestrator_config import build_system_prompt, tool_descriptions
@@ -19,6 +20,9 @@ from ..utils.cancellation import CancellationError
 class ToolResult:
     tool: str
     data: Dict[str, Any]
+    success: bool
+    message: str
+    error: Optional[str] = None
 
 
 class Orchestrator:
@@ -52,6 +56,17 @@ class Orchestrator:
             "edges": self.workflow.get("edges", [])
         }
 
+    @current_workflow.setter
+    def current_workflow(self, value: Dict[str, Any]) -> None:
+        if not isinstance(value, dict):
+            return
+        nodes = value.get("nodes", [])
+        edges = value.get("edges", [])
+        if isinstance(nodes, list):
+            self.workflow["nodes"] = nodes
+        if isinstance(edges, list):
+            self.workflow["edges"] = edges
+
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
         """View of workflow metadata (inputs/outputs/tree/doubts) for backward compatibility."""
@@ -61,6 +76,21 @@ class Orchestrator:
             "tree": self.workflow.get("tree", {}),
             "doubts": self.workflow.get("doubts", [])
         }
+
+    @workflow_analysis.setter
+    def workflow_analysis(self, value: Dict[str, Any]) -> None:
+        if not isinstance(value, dict):
+            return
+        inputs = value.get("inputs", [])
+        outputs = value.get("outputs", [])
+        if isinstance(inputs, list):
+            self.workflow["inputs"] = inputs
+        if isinstance(outputs, list):
+            self.workflow["outputs"] = outputs
+        if "tree" in value and isinstance(value.get("tree"), dict):
+            self.workflow["tree"] = value.get("tree", {})
+        if "doubts" in value and isinstance(value.get("doubts"), list):
+            self.workflow["doubts"] = value.get("doubts", [])
 
     def sync_workflow(
         self,
@@ -178,41 +208,61 @@ class Orchestrator:
                     "workflow_analysis": self.workflow_analysis,
                 },
             )
+        result = self._normalize_tool_result(tool_name, data)
         self._tool_logger.info(
             "tool_response name=%s data=%s",
             tool_name,
-            json.dumps(data, ensure_ascii=True),
+            json.dumps(result.data, ensure_ascii=True),
         )
 
         # Update current_workflow if this was a successful workflow manipulation tool
-        if isinstance(data, dict) and data.get("success"):
-            workflow_tools = [
-                "add_node",
-                "modify_node",
-                "delete_node",
-                "add_connection",
-                "delete_connection",
-                "batch_edit_workflow",
-            ]
-            if tool_name in workflow_tools:
-                self._update_workflow_from_tool_result(tool_name, data)
+        if result.success:
+            if tool_name in WORKFLOW_EDIT_TOOLS:
+                self._update_workflow_from_tool_result(tool_name, result.data)
 
             # Update workflow_analysis if this was a successful input management tool
-            input_tools = [
-                "add_workflow_input",
-                "remove_workflow_input",
-            ]
-            if tool_name in input_tools:
-                self._update_analysis_from_tool_result(tool_name, data)
+            if tool_name in WORKFLOW_INPUT_TOOLS:
+                self._update_analysis_from_tool_result(tool_name, result.data)
 
         # Also update workflow when publish_latest_analysis returns a flowchart
-        if tool_name == "publish_latest_analysis" and isinstance(data, dict):
-            flowchart = data.get("flowchart") if isinstance(data.get("flowchart"), dict) else None
+        if tool_name == "publish_latest_analysis" and isinstance(result.data, dict):
+            flowchart = (
+                result.data.get("flowchart")
+                if isinstance(result.data.get("flowchart"), dict)
+                else None
+            )
             if flowchart and flowchart.get("nodes"):
                 self.workflow["nodes"] = flowchart.get("nodes", [])
                 self.workflow["edges"] = flowchart.get("edges", [])
 
-        return ToolResult(tool=tool_name, data=data)
+        return result
+
+    def _normalize_tool_result(self, tool_name: str, data: Any) -> ToolResult:
+        if not isinstance(data, dict):
+            data = {"result": data}
+        success = data.get("success")
+        if success is None:
+            success = "error" not in data
+            data["success"] = bool(success)
+        success = bool(success)
+        message = data.get("message") if isinstance(data.get("message"), str) else ""
+        error = data.get("error") if isinstance(data.get("error"), str) else ""
+        if not success and not error:
+            error = message or f"Tool {tool_name} failed."
+        return ToolResult(
+            tool=tool_name,
+            data=data,
+            success=success,
+            message=message,
+            error=error if not success else None,
+        )
+
+    def _format_tool_failure(self, result: ToolResult) -> str:
+        if result.error:
+            return result.error
+        if result.message:
+            return result.message
+        return f"Tool error ({result.tool})"
 
     def _update_workflow_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
         """Update workflow structure based on successful tool execution."""
@@ -267,7 +317,7 @@ class Orchestrator:
         For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
         For MCP calls: Tools return workflow_analysis in response, we must sync it back.
         """
-        if tool_name in ["add_workflow_input", "remove_workflow_input", "list_workflow_inputs"]:
+        if tool_name in WORKFLOW_INPUT_TOOLS:
             # MCP mode: Extract workflow_analysis from response and sync
             if "workflow_analysis" in result:
                 returned_analysis = result["workflow_analysis"]
@@ -385,12 +435,15 @@ class Orchestrator:
             if is_cancelled():
                 return finalize_cancel()
             tool_iterations += 1
-            if tool_iterations > 10:
+            if tool_iterations > 50:
                 self._logger.error(
                     "Max tool iterations reached. Tools called: %s",
                     [r.tool for r in tool_results]
                 )
-                error_msg = f"Reached maximum tool iterations (10). Executed {len(tool_results)} tools successfully before stopping."
+                error_msg = (
+                    "Reached maximum tool iterations (50). "
+                    f"Executed {len(tool_results)} tools successfully before stopping."
+                )
                 # Save to history before returning error
                 self.history.append({"role": "user", "content": user_message})
                 self.history.append({"role": "assistant", "content": error_msg})
@@ -406,7 +459,9 @@ class Orchestrator:
                 }
             )
 
-            for call in tool_calls:
+            tool_failure: Optional[ToolResult] = None
+            skipped_calls: List[Dict[str, Any]] = []
+            for idx, call in enumerate(tool_calls):
                 if is_cancelled():
                     return finalize_cancel()
                 fn = call.get("function") or {}
@@ -438,6 +493,10 @@ class Orchestrator:
                     )
                     if on_tool_event:
                         on_tool_event("tool_complete", tool_name, args, result.data)
+                    if not result.success:
+                        tool_failure = result
+                        skipped_calls = tool_calls[idx + 1:]
+                        break
                     if is_cancelled():
                         return finalize_cancel()
                 except CancellationError:
@@ -454,6 +513,37 @@ class Orchestrator:
                     self.history.append({"role": "assistant", "content": error_msg})
                     return error_msg
 
+            if tool_failure and skipped_calls:
+                for skipped in skipped_calls:
+                    fn = skipped.get("function") or {}
+                    skipped_tool = fn.get("name")
+                    skipped_args_text = fn.get("arguments") or "{}"
+                    if isinstance(skipped_args_text, str):
+                        try:
+                            skipped_args = json.loads(skipped_args_text)
+                        except json.JSONDecodeError:
+                            skipped_args = {}
+                    elif isinstance(skipped_args_text, dict):
+                        skipped_args = skipped_args_text
+                    else:
+                        skipped_args = {}
+                    skipped_payload = {
+                        "success": False,
+                        "skipped": True,
+                        "error": (
+                            f"Skipped {skipped_tool or 'tool'} because a previous tool failed."
+                        ),
+                    }
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": skipped.get("id"),
+                            "content": json.dumps(skipped_payload),
+                        }
+                    )
+                    if on_tool_event:
+                        on_tool_event("tool_complete", skipped_tool, skipped_args, skipped_payload)
+
             if on_tool_event:
                 on_tool_event("tool_batch_complete", "", {}, None)
 
@@ -464,7 +554,12 @@ class Orchestrator:
                 {
                     "role": "system",
                     "content": (
-                        "Tool execution succeeded. The tool results are provided above. "
+                        "A tool call failed. The tool result and error details are provided above. "
+                        "Explain the failure clearly to the user and suggest next steps. "
+                        "If you can recover with additional tool calls, you may call them. "
+                        "Otherwise respond in plain text."
+                        if tool_failure
+                        else "Tool execution succeeded. The tool results are provided above. "
                         "If additional tool calls are required to complete the user's request, "
                         "you may call them (including multiple tool calls). Otherwise respond in "
                         "plain text only, summarizing "
@@ -491,11 +586,8 @@ class Orchestrator:
             final_text = f"Completed {len(tool_results)} tool operation(s)."
             self._logger.warning("Empty final response after %d tool calls - using fallback", len(tool_results))
 
-        if stream:
-            if tool_results and final_text:
-                _emit_stream(stream, final_text)
-            elif not did_stream:
-                _emit_stream(stream, final_text)
+        if stream and final_text and not did_stream:
+            _emit_stream(stream, final_text)
 
         self.history.append({"role": "user", "content": user_message})
         self.history.append({"role": "assistant", "content": final_text})
@@ -514,8 +606,15 @@ def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 
 def _summarize_tool_results(results: List[ToolResult]) -> str:
     parts: List[str] = []
     for result in results:
-        if isinstance(result.data, dict) and result.data.get("message"):
-            message = result.data.get("message", "")
+        if isinstance(result.data, dict) and result.data.get("skipped"):
+            continue
+        if not result.success:
+            error_text = result.error or result.message or "Tool failed."
+            header = f"Tool failed ({result.tool})."
+            parts.append(f"{header}\n\n{error_text}".strip())
+            continue
+        if result.message:
+            message = result.message
             header = f"Discussion ({result.tool})." if len(results) > 1 else "Discussion."
             parts.append(f"{header}\n\n{message}".strip())
             continue

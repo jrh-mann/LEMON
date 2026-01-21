@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any, Dict, Optional
@@ -13,80 +14,270 @@ from flask import request
 from flask_socketio import SocketIO
 
 from .common import utc_now
-from .conversations import ConversationStore
+from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
+from .tool_summaries import ToolSummaryTracker
+from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.api")
 
-TOOL_STATUS_MESSAGES = {
-    "analyze_workflow": "Subagent analyzed the workflow.",
-    "publish_latest_analysis": "Analysis published to the canvas.",
-    "get_current_workflow": "Loaded current workflow state.",
-    "add_node": "Added a workflow node.",
-    "modify_node": "Updated a workflow node.",
-    "delete_node": "Removed a workflow node.",
-    "add_connection": "Connections added.",
-    "delete_connection": "Connections removed.",
-    "batch_edit_workflow": "Applied workflow changes.",
-}
-
-_TASK_STATE: Dict[str, Dict[str, Any]] = {}
+_TASK_STATE: Dict[str, Dict[str, Dict[str, Any]]] = {}
 _TASK_LOCK = Lock()
 _TASK_TTL_SECONDS = 1800.0
 
 
 def _purge_stale_tasks_locked(now: float) -> None:
-    stale = [
-        task_id
-        for task_id, state in _TASK_STATE.items()
-        if now - state.get("created_at", now) > _TASK_TTL_SECONDS
-    ]
-    for task_id in stale:
-        _TASK_STATE.pop(task_id, None)
+    stale_sessions: list[str] = []
+    for sid, tasks in _TASK_STATE.items():
+        stale_tasks = [
+            task_id
+            for task_id, state in tasks.items()
+            if now - state.get("created_at", now) > _TASK_TTL_SECONDS
+        ]
+        for task_id in stale_tasks:
+            tasks.pop(task_id, None)
+        if not tasks:
+            stale_sessions.append(sid)
+    for sid in stale_sessions:
+        _TASK_STATE.pop(sid, None)
 
 
-def _register_task(task_id: str) -> None:
+def _register_task(sid: str, task_id: str) -> None:
     with _TASK_LOCK:
         now = time.monotonic()
         _purge_stale_tasks_locked(now)
-        _TASK_STATE.setdefault(
+        session_tasks = _TASK_STATE.setdefault(sid, {})
+        session_tasks.setdefault(
             task_id,
             {"cancelled": False, "notified": False, "created_at": now},
         )
 
 
-def _cancel_task(task_id: str) -> None:
+def _cancel_task(sid: str, task_id: str) -> None:
     with _TASK_LOCK:
         now = time.monotonic()
         _purge_stale_tasks_locked(now)
-        state = _TASK_STATE.get(task_id)
+        session_tasks = _TASK_STATE.setdefault(sid, {})
+        state = session_tasks.get(task_id)
         if not state:
-            _TASK_STATE[task_id] = {"cancelled": True, "notified": False, "created_at": now}
+            session_tasks[task_id] = {"cancelled": True, "notified": False, "created_at": now}
             return
         state["cancelled"] = True
 
 
-def _is_task_cancelled(task_id: str) -> bool:
+def _is_task_cancelled(sid: str, task_id: str) -> bool:
     with _TASK_LOCK:
         _purge_stale_tasks_locked(time.monotonic())
-        state = _TASK_STATE.get(task_id)
+        state = _TASK_STATE.get(sid, {}).get(task_id)
         return bool(state and state.get("cancelled"))
 
 
-def _mark_task_notified(task_id: str) -> bool:
+def _mark_task_notified(sid: str, task_id: str) -> bool:
     with _TASK_LOCK:
-        state = _TASK_STATE.get(task_id)
+        state = _TASK_STATE.get(sid, {}).get(task_id)
         if not state or state.get("notified"):
             return False
         state["notified"] = True
         return True
 
 
-def _clear_task(task_id: str) -> None:
+def _clear_task(sid: str, task_id: str) -> None:
     with _TASK_LOCK:
-        _TASK_STATE.pop(task_id, None)
+        session_tasks = _TASK_STATE.get(sid)
+        if not session_tasks:
+            return
+        session_tasks.pop(task_id, None)
+        if not session_tasks:
+            _TASK_STATE.pop(sid, None)
 
+
+@dataclass
+class SocketChatTask:
+    socketio: SocketIO
+    conversation_store: ConversationStore
+    repo_root: Path
+    sid: str
+    task_id: str
+    message: str
+    conversation_id: Optional[str]
+    image_data: Optional[str]
+    workflow: Optional[Dict[str, Any]]
+    done: Event = field(default_factory=Event)
+    executed_tools: list[dict[str, Any]] = field(default_factory=list)
+    tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
+    did_stream: bool = False
+    convo: Optional[Conversation] = None
+
+    def is_cancelled(self) -> bool:
+        return _is_task_cancelled(self.sid, self.task_id)
+
+    def emit_progress(self, event: str, status: str, *, tool: Optional[str] = None) -> None:
+        payload: Dict[str, Any] = {"event": event, "status": status, "task_id": self.task_id}
+        if tool:
+            payload["tool"] = tool
+        self.socketio.emit("chat_progress", payload, to=self.sid)
+
+    def emit_error(self, error: str) -> None:
+        if self.is_cancelled():
+            return
+        self.socketio.emit("agent_error", {"task_id": self.task_id, "error": error}, to=self.sid)
+
+    def emit_cancelled(self) -> None:
+        if _mark_task_notified(self.sid, self.task_id):
+            self.socketio.emit("chat_cancelled", {"task_id": self.task_id}, to=self.sid)
+
+    def stream_chunk(self, chunk: str) -> None:
+        if self.is_cancelled():
+            return
+        self.did_stream = True
+        self.socketio.emit("chat_stream", {"chunk": chunk, "task_id": self.task_id}, to=self.sid)
+        self.socketio.sleep(0)
+
+    def heartbeat(self) -> None:
+        while not self.done.is_set():
+            self.socketio.sleep(5)
+            if self.done.is_set() or self.is_cancelled():
+                break
+            self.emit_progress("heartbeat", "Analyzing...")
+
+    def flush_tool_summary(self) -> None:
+        summary = self.tool_summary.flush()
+        if summary:
+            self.stream_chunk(summary)
+
+    def on_tool_event(
+        self,
+        event: str,
+        tool: str,
+        args: Dict[str, Any],
+        result: Optional[Dict[str, Any]],
+    ) -> None:
+        if self.is_cancelled():
+            return
+        if event == "tool_start":
+            self.executed_tools.append({"tool": tool, "arguments": args})
+        if tool == "analyze_workflow":
+            self.emit_progress(event, "Analyzing workflow...", tool=tool)
+        if event == "tool_complete":
+            if isinstance(result, dict) and result.get("skipped"):
+                return
+            success = True
+            if isinstance(result, dict) and "success" in result:
+                success = bool(result.get("success"))
+            self.tool_summary.note(tool, success=success)
+        if event == "tool_batch_complete":
+            self.flush_tool_summary()
+        if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
+            flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
+            if flowchart and flowchart.get("nodes"):
+                analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
+                self.socketio.emit(
+                    "workflow_modified",
+                    {
+                        "action": "create_workflow",
+                        "data": {
+                            "flowchart": flowchart,
+                            "analysis": analysis,
+                        },
+                    },
+                    to=self.sid,
+                )
+
+        if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            if tool in WORKFLOW_EDIT_TOOLS:
+                self.socketio.emit(
+                    "workflow_update",
+                    {
+                        "action": result.get("action"),
+                        "data": result,
+                    },
+                    to=self.sid,
+                )
+
+            if tool in WORKFLOW_INPUT_TOOLS and self.convo:
+                self.socketio.emit(
+                    "analysis_updated",
+                    {
+                        "inputs": self.convo.orchestrator.workflow_analysis.get("inputs", []),
+                        "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                    },
+                    to=self.sid,
+                )
+
+    def _save_uploaded_image(self) -> bool:
+        if not isinstance(self.image_data, str) or not self.image_data.strip():
+            return True
+        try:
+            save_uploaded_image(self.image_data, repo_root=self.repo_root)
+        except Exception as exc:
+            logger.exception("Failed to save uploaded image")
+            self.emit_error(f"Invalid image: {exc}")
+            return False
+        return True
+
+    def _sync_payload_workflow(self) -> None:
+        if self.convo and isinstance(self.workflow, dict):
+            self.convo.update_workflow_state(self.workflow)
+
+    def _sync_orchestrator_from_convo(self) -> None:
+        if not self.convo:
+            return
+        self.convo.orchestrator.sync_workflow(lambda: self.convo.workflow_state)
+        self.convo.orchestrator.sync_workflow_analysis(lambda: self.convo.workflow_analysis)
+
+    def _sync_convo_from_orchestrator(self) -> None:
+        if not self.convo:
+            return
+        self.convo.update_workflow_state(self.convo.orchestrator.current_workflow)
+        self.convo.update_workflow_analysis(self.convo.orchestrator.workflow_analysis)
+
+    def _emit_response(self, response_text: str) -> None:
+        tool_calls = extract_tool_calls(response_text, include_result=False)
+        if not tool_calls and self.executed_tools:
+            tool_calls = self.executed_tools
+        summary = summarize_response(response_text) if tool_calls else ""
+        if self.convo:
+            self.convo.updated_at = utc_now()
+        self.socketio.emit(
+            "chat_response",
+            {
+                "response": summary if tool_calls else ("" if self.did_stream else response_text),
+                "conversation_id": self.convo.id if self.convo else "",
+                "tool_calls": tool_calls,
+                "task_id": self.task_id,
+            },
+            to=self.sid,
+        )
+
+    def run(self) -> None:
+        self.emit_progress("start", "Thinking...")
+        self.socketio.start_background_task(self.heartbeat)
+        try:
+            self.convo = self.conversation_store.get_or_create(self.conversation_id)
+            if not self._save_uploaded_image():
+                return
+            self._sync_payload_workflow()
+            self._sync_orchestrator_from_convo()
+            response_text = self.convo.orchestrator.respond(
+                self.message,
+                has_image=bool(self.image_data),
+                stream=self.stream_chunk,
+                allow_tools=True,
+                should_cancel=self.is_cancelled,
+                on_tool_event=self.on_tool_event,
+            )
+            self._sync_convo_from_orchestrator()
+            if self.is_cancelled():
+                self.emit_cancelled()
+                return
+            self._emit_response(response_text)
+        except Exception as exc:
+            logger.exception("Socket chat failed")
+            self.emit_error(str(exc))
+        finally:
+            self.done.set()
+            _clear_task(self.sid, self.task_id)
 
 def handle_socket_chat(
     socketio: SocketIO,
@@ -95,10 +286,7 @@ def handle_socket_chat(
     repo_root: Path,
     payload: Dict[str, Any],
 ) -> None:
-    conversation_id = payload.get("conversation_id")
     message = payload.get("message", "")
-    image_data = payload.get("image")
-    workflow = payload.get("workflow")  # Extract workflow from chat payload
     task_id = payload.get("task_id")
     sid = request.sid
 
@@ -108,215 +296,19 @@ def handle_socket_chat(
 
     if not isinstance(task_id, str) or not task_id.strip():
         task_id = uuid4().hex
-    _register_task(task_id)
-
-    def run_task() -> None:
-        socketio.emit(
-            "chat_progress",
-            {"event": "start", "status": "Thinking...", "task_id": task_id},
-            to=sid,
-        )
-        done = Event()
-        executed_tools: list[dict[str, Any]] = []
-        tool_counts: dict[str, int] = {}
-        tool_order: list[str] = []
-
-        def is_cancelled() -> bool:
-            return _is_task_cancelled(task_id)
-
-        def heartbeat() -> None:
-            while not done.is_set():
-                socketio.sleep(5)
-                if done.is_set() or is_cancelled():
-                    break
-                socketio.emit(
-                    "chat_progress",
-                    {"event": "heartbeat", "status": "Analyzing...", "task_id": task_id},
-                    to=sid,
-                )
-
-        socketio.start_background_task(heartbeat)
-        try:
-            convo = conversation_store.get_or_create(conversation_id)
-            if isinstance(image_data, str) and image_data.strip():
-                try:
-                    save_uploaded_image(image_data, repo_root=repo_root)
-                except Exception as exc:
-                    logger.exception("Failed to save uploaded image")
-                    socketio.emit(
-                        "agent_error",
-                        {"task_id": task_id, "error": f"Invalid image: {exc}"},
-                        to=sid,
-                    )
-                    return
-
-            did_stream = False
-
-            def stream_chunk(chunk: str) -> None:
-                nonlocal did_stream
-                if is_cancelled():
-                    return
-                did_stream = True
-                socketio.emit("chat_stream", {"chunk": chunk, "task_id": task_id}, to=sid)
-                socketio.sleep(0)
-
-            def note_tool(tool_name: str) -> None:
-                if not tool_name:
-                    return
-                if tool_name not in tool_counts:
-                    tool_counts[tool_name] = 0
-                    tool_order.append(tool_name)
-                tool_counts[tool_name] += 1
-
-            def format_tool_summary(tool_name: str, count: int) -> str:
-                base = TOOL_STATUS_MESSAGES.get(tool_name, f"Completed: {tool_name}.")
-                if count > 1:
-                    base = base.rstrip(".")
-                    return f"{base} x{count}."
-                return base
-
-            def flush_tool_summary() -> None:
-                if not tool_order:
-                    return
-                lines: list[str] = []
-                for name in tool_order:
-                    count = tool_counts.get(name, 0)
-                    if count <= 0:
-                        continue
-                    lines.append(f"> {format_tool_summary(name, count)}")
-                if lines:
-                    stream_chunk("\n\n" + "\n".join(lines) + "\n\n")
-                tool_counts.clear()
-                tool_order.clear()
-
-            def on_tool_event(
-                event: str,
-                tool: str,
-                args: Dict[str, Any],
-                result: Optional[Dict[str, Any]],
-            ) -> None:
-                if is_cancelled():
-                    return
-                if event == "tool_start":
-                    executed_tools.append({"tool": tool, "arguments": args})
-                if tool == "analyze_workflow":
-                    status = "Analyzing workflow..."
-                    socketio.emit(
-                        "chat_progress",
-                        {"event": event, "status": status, "tool": tool, "task_id": task_id},
-                        to=sid,
-                    )
-                if event == "tool_complete":
-                    note_tool(tool)
-                if event == "tool_batch_complete":
-                    flush_tool_summary()
-                if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
-                    flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
-                    if flowchart and flowchart.get("nodes"):
-                        analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
-                        socketio.emit(
-                            "workflow_modified",
-                            {
-                                "action": "create_workflow",
-                                "data": {
-                                    "flowchart": flowchart,
-                                    "analysis": analysis,
-                                },
-                            },
-                            to=sid,
-                        )
-
-                # Handle workflow manipulation tools
-                if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
-                    workflow_tools = [
-                        "add_node",
-                        "modify_node",
-                        "delete_node",
-                        "add_connection",
-                        "delete_connection",
-                        "batch_edit_workflow",
-                    ]
-                    if tool in workflow_tools:
-                        socketio.emit(
-                            "workflow_update",
-                            {
-                                "action": result.get("action"),
-                                "data": result,
-                            },
-                            to=sid,
-                        )
-
-                    # Handle input management tools
-                    input_tools = [
-                        "add_workflow_input",
-                        "remove_workflow_input",
-                    ]
-                    if tool in input_tools:
-                        # Emit analysis update with current inputs
-                        socketio.emit(
-                            "analysis_updated",
-                            {
-                                "inputs": convo.orchestrator.workflow_analysis.get("inputs", []),
-                                "outputs": convo.orchestrator.workflow_analysis.get("outputs", []),
-                            },
-                            to=sid,
-                        )
-
-            # Update workflow state from chat payload (atomic: workflow travels with message)
-            if isinstance(workflow, dict):
-                convo.update_workflow_state(workflow)
-
-            # Sync workflow from session to orchestrator before responding
-            convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
-            convo.orchestrator.sync_workflow_analysis(lambda: convo.workflow_analysis)
-
-            response_text = convo.orchestrator.respond(
-                message,
-                has_image=bool(image_data),
-                stream=stream_chunk,
-                allow_tools=True,
-                should_cancel=is_cancelled,
-                on_tool_event=on_tool_event,
-            )
-
-            # Write orchestrator's workflow state back to session (preserve state across messages)
-            convo.update_workflow_state(convo.orchestrator.current_workflow)
-            convo.update_workflow_analysis(convo.orchestrator.workflow_analysis)
-
-            if is_cancelled():
-                if _mark_task_notified(task_id):
-                    socketio.emit("chat_cancelled", {"task_id": task_id}, to=sid)
-                return
-
-            tool_calls = extract_tool_calls(response_text, include_result=False)
-            if not tool_calls and executed_tools:
-                tool_calls = executed_tools
-            summary = summarize_response(response_text) if tool_calls else ""
-            convo.updated_at = utc_now()
-
-            socketio.emit(
-                "chat_response",
-                {
-                    "response": summary if tool_calls else ("" if did_stream else response_text),
-                    "conversation_id": convo.id,
-                    "tool_calls": tool_calls,
-                    "task_id": task_id,
-                },
-                to=sid,
-            )
-        except Exception as exc:
-            logger.exception("Socket chat failed")
-            if not is_cancelled():
-                socketio.emit(
-                    "agent_error",
-                    {"task_id": task_id, "error": str(exc)},
-                    to=sid,
-                )
-        finally:
-            done.set()
-            _clear_task(task_id)
-
-    socketio.start_background_task(run_task)
+    _register_task(sid, task_id)
+    task = SocketChatTask(
+        socketio=socketio,
+        conversation_store=conversation_store,
+        repo_root=repo_root,
+        sid=sid,
+        task_id=task_id,
+        message=message,
+        conversation_id=payload.get("conversation_id"),
+        image_data=payload.get("image"),
+        workflow=payload.get("workflow"),
+    )
+    socketio.start_background_task(task.run)
 
 
 def handle_cancel_task(
@@ -327,8 +319,8 @@ def handle_cancel_task(
     task_id = payload.get("task_id")
     if not isinstance(task_id, str) or not task_id.strip():
         return
-    _cancel_task(task_id)
-    if _mark_task_notified(task_id):
+    _cancel_task(request.sid, task_id)
+    if _mark_task_notified(request.sid, task_id):
         socketio.emit("chat_cancelled", {"task_id": task_id}, to=request.sid)
 
 

@@ -27,8 +27,11 @@ def register_socket_handlers(
         logger.info("Socket connected session_id=%s sid=%s", session_id, request.sid)
 
     @socketio.on("disconnect")
-    def socket_disconnect() -> None:
-        logger.info("Socket disconnected sid=%s", request.sid)
+    def socket_disconnect(reason: Any = None) -> None:
+        if reason:
+            logger.info("Socket disconnected sid=%s reason=%s", request.sid, reason)
+        else:
+            logger.info("Socket disconnected sid=%s", request.sid)
 
     @socketio.on_error_default  # type: ignore[misc]
     def default_socket_error(exc: Exception) -> None:
