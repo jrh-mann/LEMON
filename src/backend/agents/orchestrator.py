@@ -333,6 +333,21 @@ class Orchestrator:
                         len(self.workflow.get("outputs", [])),
                     )
 
+            # CRITICAL: Also sync current_workflow if tool modified nodes/edges
+            # (e.g., remove_workflow_input with force=true removes input_ref from nodes)
+            if "current_workflow" in result:
+                returned_workflow = result["current_workflow"]
+                if isinstance(returned_workflow, dict):
+                    if "nodes" in returned_workflow:
+                        self.workflow["nodes"] = returned_workflow["nodes"]
+                    if "edges" in returned_workflow:
+                        self.workflow["edges"] = returned_workflow["edges"]
+                    self._logger.debug(
+                        "Synced current_workflow from tool result: %d nodes, %d edges",
+                        len(self.workflow.get("nodes", [])),
+                        len(self.workflow.get("edges", [])),
+                    )
+
     def respond(
         self,
         user_message: str,

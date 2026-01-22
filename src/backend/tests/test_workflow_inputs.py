@@ -184,6 +184,211 @@ class TestWorkflowInputManagement:
         assert result["success"] is True
         assert len(session_state["workflow_analysis"]["inputs"]) == 0
 
+    def test_remove_input_with_node_references_fails(self, conversation_store, conversation_id):
+        """Test that removing an input fails if nodes reference it (without force)."""
+        from ..tools.workflow_input import AddWorkflowInputTool, RemoveWorkflowInputTool
+        from ..tools.workflow_edit import AddNodeTool
+
+        add_input_tool = AddWorkflowInputTool()
+        add_node_tool = AddNodeTool()
+        remove_tool = RemoveWorkflowInputTool()
+
+        session_state = {
+            "workflow_analysis": {"inputs": [], "outputs": []},
+            "current_workflow": {"nodes": [], "edges": []}
+        }
+
+        # Add input
+        add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+
+        # Add node that references the input
+        node_result = add_node_tool.execute(
+            {
+                "type": "decision",
+                "label": "Age > 60?",
+                "input_ref": "Patient Age",
+                "x": 100,
+                "y": 100
+            },
+            session_state=session_state
+        )
+
+        # Manually update session_state with the new node (simulating orchestrator behavior)
+        session_state["current_workflow"]["nodes"].append(node_result["node"])
+
+        # Try to remove input WITHOUT force (should fail)
+        result = remove_tool.execute({"name": "Patient Age"}, session_state=session_state)
+
+        print(f"\n[DEBUG] Remove referenced input result: {json.dumps(result, indent=2)}")
+
+        # Should fail
+        assert result["success"] is False
+        assert "Cannot remove input 'Patient Age'" in result["error"]
+        assert "referenced by 1 node(s)" in result["error"]
+        assert "force=true" in result["error"]
+        assert "referencing_nodes" in result
+        assert len(result["referencing_nodes"]) == 1
+
+        # Input should still exist
+        assert len(session_state["workflow_analysis"]["inputs"]) == 1
+
+    def test_remove_input_with_force_cascades(self, conversation_store, conversation_id):
+        """Test that removing an input with force=true removes input_ref from nodes."""
+        from ..tools.workflow_input import AddWorkflowInputTool, RemoveWorkflowInputTool
+        from ..tools.workflow_edit import AddNodeTool
+
+        add_input_tool = AddWorkflowInputTool()
+        add_node_tool = AddNodeTool()
+        remove_tool = RemoveWorkflowInputTool()
+
+        session_state = {
+            "workflow_analysis": {"inputs": [], "outputs": []},
+            "current_workflow": {"nodes": [], "edges": []}
+        }
+
+        # Add input
+        add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+
+        # Add TWO nodes that reference the input
+        node1_result = add_node_tool.execute(
+            {
+                "type": "decision",
+                "label": "Age > 60?",
+                "input_ref": "Patient Age",
+                "x": 100,
+                "y": 100
+            },
+            session_state=session_state
+        )
+        session_state["current_workflow"]["nodes"].append(node1_result["node"])
+
+        node2_result = add_node_tool.execute(
+            {
+                "type": "decision",
+                "label": "Age > 18?",
+                "input_ref": "Patient Age",
+                "x": 100,
+                "y": 200
+            },
+            session_state=session_state
+        )
+        session_state["current_workflow"]["nodes"].append(node2_result["node"])
+
+        # Verify nodes have input_ref
+        assert session_state["current_workflow"]["nodes"][0].get("input_ref") == "Patient Age"
+        assert session_state["current_workflow"]["nodes"][1].get("input_ref") == "Patient Age"
+
+        # Remove input WITH force=true (should cascade)
+        result = remove_tool.execute(
+            {"name": "Patient Age", "force": True},
+            session_state=session_state
+        )
+
+        print(f"\n[DEBUG] Force remove input result: {json.dumps(result, indent=2)}")
+
+        # Should succeed
+        assert result["success"] is True
+        assert "Removed input 'Patient Age'" in result["message"]
+        assert "cleared references from 2 node(s)" in result["message"]
+        assert result["affected_nodes"] == 2
+
+        # Input should be removed
+        assert len(session_state["workflow_analysis"]["inputs"]) == 0
+
+        # Nodes should no longer have input_ref
+        assert "input_ref" not in session_state["current_workflow"]["nodes"][0]
+        assert "input_ref" not in session_state["current_workflow"]["nodes"][1]
+
+    def test_remove_input_force_as_string_boolean(self, conversation_store, conversation_id):
+        """Test that force parameter works when passed as string 'true' (MCP compatibility)."""
+        from ..tools.workflow_input import AddWorkflowInputTool, RemoveWorkflowInputTool
+        from ..tools.workflow_edit import AddNodeTool
+
+        add_input_tool = AddWorkflowInputTool()
+        add_node_tool = AddNodeTool()
+        remove_tool = RemoveWorkflowInputTool()
+
+        session_state = {
+            "workflow_analysis": {"inputs": [], "outputs": []},
+            "current_workflow": {"nodes": [], "edges": []}
+        }
+
+        # Add input
+        add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+
+        # Add node that references the input
+        node_result = add_node_tool.execute(
+            {
+                "type": "decision",
+                "label": "Age > 60?",
+                "input_ref": "Patient Age",
+                "x": 100,
+                "y": 100
+            },
+            session_state=session_state
+        )
+        session_state["current_workflow"]["nodes"].append(node_result["node"])
+
+        # Remove input with force as STRING "true" (simulating MCP JSON deserialization)
+        result = remove_tool.execute(
+            {"name": "Patient Age", "force": "true"},  # String instead of boolean
+            session_state=session_state
+        )
+
+        print(f"\n[DEBUG] Remove with force='true' (string): {json.dumps(result, indent=2)}")
+
+        # Should succeed even though force is a string
+        assert result["success"] is True
+        assert "Removed input 'Patient Age'" in result["message"]
+        assert result["affected_nodes"] == 1
+
+        # Node should no longer have input_ref
+        assert "input_ref" not in session_state["current_workflow"]["nodes"][0]
+
+    def test_remove_input_multiple_references_error_shows_nodes(self, conversation_store, conversation_id):
+        """Test that error message shows node labels when multiple nodes reference the input."""
+        from ..tools.workflow_input import AddWorkflowInputTool, RemoveWorkflowInputTool
+        from ..tools.workflow_edit import AddNodeTool
+
+        add_input_tool = AddWorkflowInputTool()
+        add_node_tool = AddNodeTool()
+        remove_tool = RemoveWorkflowInputTool()
+
+        session_state = {
+            "workflow_analysis": {"inputs": [], "outputs": []},
+            "current_workflow": {"nodes": [], "edges": []}
+        }
+
+        # Add input
+        add_input_tool.execute({"name": "Blood Pressure", "type": "number"}, session_state=session_state)
+
+        # Add multiple nodes with different labels
+        for i, label in enumerate(["BP > 140?", "BP < 90?", "BP Normal?", "BP Critical?"]):
+            node_result = add_node_tool.execute(
+                {
+                    "type": "decision",
+                    "label": label,
+                    "input_ref": "Blood Pressure",
+                    "x": 100,
+                    "y": 100 * i
+                },
+                session_state=session_state
+            )
+            session_state["current_workflow"]["nodes"].append(node_result["node"])
+
+        # Try to remove without force
+        result = remove_tool.execute({"name": "Blood Pressure"}, session_state=session_state)
+
+        print(f"\n[DEBUG] Multiple references error: {json.dumps(result, indent=2)}")
+
+        # Should show first 3 node labels
+        assert result["success"] is False
+        assert "referenced by 4 node(s)" in result["error"]
+        assert "BP > 140?" in result["error"]
+        assert "BP < 90?" in result["error"]
+        assert "BP Normal?" in result["error"]
+        assert "and 1 more" in result["error"]  # 4th node truncated
+
 
 class TestNodeInputLinking:
     """Test linking nodes to inputs via input_ref."""
