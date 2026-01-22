@@ -1,4 +1,6 @@
 import { useRef, useCallback } from 'react'
+import { ApiError } from '../api/client'
+import { logoutUser } from '../api/auth'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { addAssistantMessage } from '../stores/chatStore'
@@ -6,7 +8,7 @@ import { addAssistantMessage } from '../stores/chatStore'
 export default function Header() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { openModal } = useUIStore()
+  const { openModal, setError } = useUIStore()
   const { currentWorkflow, flowchart, setPendingImage } = useWorkflowStore()
 
   // Handle image upload - just store the image, don't auto-analyse
@@ -73,6 +75,16 @@ export default function Header() {
 
   const canExport = currentWorkflow || flowchart.nodes.length > 0
 
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutUser()
+      window.location.hash = '#/auth'
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Sign out failed.'
+      setError(message)
+    }
+  }, [setError])
+
   return (
     <header className="app-header">
       <div className="logo">
@@ -116,6 +128,10 @@ export default function Header() {
           title={canExport ? 'Export workflow as JSON' : 'No workflow to export'}
         >
           Export
+        </button>
+
+        <button className="ghost" onClick={handleLogout}>
+          Sign out
         </button>
       </div>
     </header>

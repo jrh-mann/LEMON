@@ -43,7 +43,7 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { body, headers: customHeaders, ...rest } = options
+  const { body, headers: customHeaders, credentials, ...rest } = options
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -54,6 +54,7 @@ export async function apiRequest<T>(
   const config: RequestInit = {
     ...rest,
     headers,
+    credentials: credentials ?? 'include',
   }
 
   if (body !== undefined) {
@@ -63,6 +64,13 @@ export async function apiRequest<T>(
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`
 
   const response = await fetch(url, config)
+
+  if (response.status === 401 && typeof window !== 'undefined') {
+    const isAuthEndpoint = endpoint.includes('/api/auth/login')
+    if (!isAuthEndpoint) {
+      window.location.hash = '#/auth'
+    }
+  }
 
   if (!response.ok) {
     let errorData: unknown

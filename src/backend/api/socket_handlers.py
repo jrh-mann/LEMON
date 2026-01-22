@@ -10,6 +10,8 @@ from flask import request
 from flask_socketio import SocketIO
 
 from .conversations import ConversationStore
+from .auth import get_session_from_request
+from ..storage.auth import AuthStore
 from .socket_chat import handle_cancel_task, handle_socket_chat, handle_sync_workflow
 
 logger = logging.getLogger("backend.api")
@@ -20,11 +22,17 @@ def register_socket_handlers(
     *,
     conversation_store: ConversationStore,
     repo_root: Path,
+    auth_store: AuthStore,
 ) -> None:
     @socketio.on("connect")
     def socket_connect(auth: Any = None) -> None:
+        session = get_session_from_request(auth_store)
+        if not session:
+            logger.warning("Socket rejected unauthenticated sid=%s", request.sid)
+            return False
+        _, user = session
         session_id = request.args.get("session_id")
-        logger.info("Socket connected session_id=%s sid=%s", session_id, request.sid)
+        logger.info("Socket connected user_id=%s session_id=%s sid=%s", user.id, session_id, request.sid)
 
     @socketio.on("disconnect")
     def socket_disconnect(reason: Any = None) -> None:

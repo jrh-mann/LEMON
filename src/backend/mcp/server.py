@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..utils.logging import setup_logging
@@ -28,6 +31,35 @@ from ..tools import (
 from ..utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.mcp")
+
+
+class StaticTokenVerifier(TokenVerifier):
+    def __init__(self, token: str, client_id: str, scopes: list[str]):
+        self._token = token
+        self._client_id = client_id
+        self._scopes = scopes
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not hmac.compare_digest(token, self._token):
+            return None
+        return AccessToken(token=token, client_id=self._client_id, scopes=self._scopes)
+
+
+def _auth_settings() -> tuple[AuthSettings | None, TokenVerifier | None]:
+    token = os.environ.get("LEMON_MCP_AUTH_TOKEN", "").strip()
+    if not token:
+        return None, None
+    issuer_url = os.environ.get("LEMON_MCP_ISSUER_URL", "http://127.0.0.1:8000").strip()
+    resource_url = os.environ.get("LEMON_MCP_RESOURCE_URL", issuer_url).strip()
+    scopes_raw = os.environ.get("LEMON_MCP_REQUIRED_SCOPES", "").strip()
+    scopes = [scope.strip() for scope in scopes_raw.split(",") if scope.strip()]
+    client_id = os.environ.get("LEMON_MCP_CLIENT_ID", "lemon-backend").strip()
+    auth_settings = AuthSettings(
+        issuer_url=issuer_url,
+        resource_server_url=resource_url,
+        required_scopes=scopes or None,
+    )
+    return auth_settings, StaticTokenVerifier(token=token, client_id=client_id, scopes=scopes)
 
 
 def _repo_root() -> Path:
@@ -87,6 +119,9 @@ class AnalyzeWorkflowResult(BaseModel):
 
 def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMCP:
     setup_logging()
+    auth_settings, token_verifier = _auth_settings()
+    if auth_settings and token_verifier:
+        logger.info("MCP auth enabled")
     server = FastMCP(
         name="LEMON MCP",
         instructions="Analyze workflow images and return structured workflow data.",
@@ -94,6 +129,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         port=port or 8000,
         json_response=True,
         stateless_http=True,
+        auth=auth_settings,
+        token_verifier=token_verifier,
     )
     tool = AnalyzeWorkflowTool(_repo_root())
     publish_tool = PublishLatestAnalysisTool(_repo_root())

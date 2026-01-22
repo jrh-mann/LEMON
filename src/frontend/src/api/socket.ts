@@ -39,6 +39,7 @@ export function connectSocket(): Socket {
     query: { session_id: sessionId },
     transports: ['polling'],
     upgrade: false,
+    withCredentials: true,
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
@@ -127,7 +128,6 @@ export function connectSocket(): Socket {
     }
 
     const streamed = chatStore.streamingContent
-    const hasTools = (data.tool_calls?.length ?? 0) > 0
     if (streamed) {
       addAssistantMessage(streamed, data.tool_calls)
       chatStore.clearStreamContent()

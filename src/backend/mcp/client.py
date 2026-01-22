@@ -9,6 +9,7 @@ from datetime import timedelta
 from typing import Any, Iterable
 
 import anyio
+from mcp.shared._httpx_utils import create_mcp_http_client
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -21,64 +22,80 @@ def _get_mcp_url() -> str:
     return os.environ.get("LEMON_MCP_URL", DEFAULT_MCP_URL)
 
 
+def _get_mcp_headers() -> dict[str, str] | None:
+    token = os.environ.get("LEMON_MCP_AUTH_TOKEN", "").strip()
+    if not token:
+        return None
+    return {"Authorization": f"Bearer {token}"}
+
+
 def call_mcp_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     url = _get_mcp_url()
 
     async def _call() -> dict[str, Any]:
         timeout_s = float(os.environ.get("LEMON_MCP_TIMEOUT", "120"))
-        async with streamable_http_client(url) as (read_stream, write_stream, _):
-            async with ClientSession(
-                read_stream,
-                write_stream,
-                read_timeout_seconds=timedelta(seconds=timeout_s),
-            ) as session:
-                logger.info("MCP initialize start")
-                try:
-                    with anyio.fail_after(timeout_s):
-                        await session.initialize()
-                except TimeoutError as exc:
-                    raise RuntimeError(
-                        f"MCP initialize timed out after {timeout_s:.1f}s"
-                    ) from exc
-                logger.info("MCP initialize complete")
-                logger.info("MCP list_tools start")
-                try:
-                    with anyio.fail_after(timeout_s):
-                        await session.list_tools()
-                except TimeoutError as exc:
-                    raise RuntimeError(
-                        f"MCP list_tools timed out after {timeout_s:.1f}s"
-                    ) from exc
-                logger.info("MCP list_tools complete")
-                logger.info("MCP call_tool start name=%s timeout_s=%.1f", name, timeout_s)
-                try:
-                    with anyio.fail_after(timeout_s):
-                        result = await session.call_tool(name, args or {})
-                except TimeoutError as exc:
-                    raise RuntimeError(
-                        f"MCP tool call timed out after {timeout_s:.1f}s: {name}"
-                    ) from exc
-                if result.isError:
-                    error_text = ""
+        headers = _get_mcp_headers()
+
+        async def run_session(http_client=None) -> dict[str, Any]:
+            async with streamable_http_client(url, http_client=http_client) as (read_stream, write_stream, _):
+                async with ClientSession(
+                    read_stream,
+                    write_stream,
+                    read_timeout_seconds=timedelta(seconds=timeout_s),
+                ) as session:
+                    logger.info("MCP initialize start")
+                    try:
+                        with anyio.fail_after(timeout_s):
+                            await session.initialize()
+                    except TimeoutError as exc:
+                        raise RuntimeError(
+                            f"MCP initialize timed out after {timeout_s:.1f}s"
+                        ) from exc
+                    logger.info("MCP initialize complete")
+                    logger.info("MCP list_tools start")
+                    try:
+                        with anyio.fail_after(timeout_s):
+                            await session.list_tools()
+                    except TimeoutError as exc:
+                        raise RuntimeError(
+                            f"MCP list_tools timed out after {timeout_s:.1f}s"
+                        ) from exc
+                    logger.info("MCP list_tools complete")
+                    logger.info("MCP call_tool start name=%s timeout_s=%.1f", name, timeout_s)
+                    try:
+                        with anyio.fail_after(timeout_s):
+                            result = await session.call_tool(name, args or {})
+                    except TimeoutError as exc:
+                        raise RuntimeError(
+                            f"MCP tool call timed out after {timeout_s:.1f}s: {name}"
+                        ) from exc
+                    if result.isError:
+                        error_text = ""
+                        for block in result.content or []:
+                            if getattr(block, "type", None) == "text":
+                                error_text += getattr(block, "text", "")
+                        error_text = error_text.strip()
+                        raise RuntimeError(f"MCP tool error: {error_text or 'unknown error'}")
+                    if result.structuredContent is not None:
+                        return result.structuredContent
+                    # Fallback: attempt to parse text content as JSON.
+                    text_parts: list[str] = []
                     for block in result.content or []:
                         if getattr(block, "type", None) == "text":
-                            error_text += getattr(block, "text", "")
-                    error_text = error_text.strip()
-                    raise RuntimeError(f"MCP tool error: {error_text or 'unknown error'}")
-                if result.structuredContent is not None:
-                    return result.structuredContent
-                # Fallback: attempt to parse text content as JSON.
-                text_parts: list[str] = []
-                for block in result.content or []:
-                    if getattr(block, "type", None) == "text":
-                        text_parts.append(getattr(block, "text", ""))
-                joined = "".join(text_parts).strip()
-                if joined:
-                    try:
-                        return json.loads(joined)
-                    except json.JSONDecodeError:
-                        return {"text": joined}
-                return {}
+                            text_parts.append(getattr(block, "text", ""))
+                    joined = "".join(text_parts).strip()
+                    if joined:
+                        try:
+                            return json.loads(joined)
+                        except json.JSONDecodeError:
+                            return {"text": joined}
+                    return {}
+
+        if headers:
+            async with create_mcp_http_client(headers=headers) as http_client:
+                return await run_session(http_client=http_client)
+
+        return await run_session()
 
     logger.info("Calling MCP tool name=%s url=%s", name, url)
     try:
