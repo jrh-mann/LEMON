@@ -7,7 +7,7 @@ Critical feature correctness issues
    Impact: Runtime breakage; nodes point to data that no longer exists.
    Expected: Reject deletion or remove input_ref from nodes.
 
-2) Invalid input references accepted
+2) [FIXED] Invalid input references accepted
    Nodes can reference inputs that were never registered.
    Impact: Decisions reference data that will never exist.
    Expected: Validate input_ref against registered inputs.

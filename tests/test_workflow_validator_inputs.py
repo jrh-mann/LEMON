@@ -1,0 +1,115 @@
+"""Tests for workflow input reference validation"""
+
+import pytest
+from src.backend.validation.workflow_validator import (
+    WorkflowValidator,
+    ValidationError,
+)
+
+
+class TestWorkflowValidatorInputs:
+    """Test validation of input references in workflow nodes"""
+
+    def setup_method(self):
+        """Setup validator instance for each test"""
+        self.validator = WorkflowValidator()
+
+    def test_decision_referencing_valid_input(self):
+        """Decision node referencing registered input should be valid"""
+        workflow = {
+            "inputs": [
+                {"name": "Age", "type": "int", "id": "input_age"}
+            ],
+            "nodes": [
+                {"id": "d1", "type": "decision", "label": "Age > 18", "x": 0, "y": 0},
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_decision_referencing_unregistered_input(self):
+        """Decision node referencing unregistered input should fail"""
+        workflow = {
+            "inputs": [
+                {"name": "Height", "type": "int", "id": "input_height"}
+            ],
+            "nodes": [
+                {"id": "d1", "type": "decision", "label": "Age > 18", "x": 0, "y": 0},
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "INVALID_INPUT_REF" for err in errors)
+        assert any("Age" in err.message for err in errors)
+
+    def test_decision_referencing_multiple_inputs(self):
+        """Decision node referencing multiple inputs"""
+        workflow = {
+            "inputs": [
+                {"name": "Age", "type": "int", "id": "input_age"},
+                {"name": "Smoker", "type": "bool", "id": "input_smoker"}
+            ],
+            "nodes": [
+                {"id": "d1", "type": "decision", "label": "Age > 18 and Smoker == True", "x": 0, "y": 0},
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+
+    def test_decision_referencing_mixed_validity(self):
+        """Decision node referencing one valid and one invalid input"""
+        workflow = {
+            "inputs": [
+                {"name": "Age", "type": "int", "id": "input_age"}
+            ],
+            "nodes": [
+                {"id": "d1", "type": "decision", "label": "Age > 18 and Smoker == True", "x": 0, "y": 0},
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "INVALID_INPUT_REF" for err in errors)
+        assert any("Smoker" in err.message for err in errors)
+
+    def test_decision_invalid_syntax(self):
+        """Decision node with invalid condition syntax should fail"""
+        workflow = {
+            "inputs": [{"name": "Age", "type": "int", "id": "input_age"}],
+            "nodes": [
+                {"id": "d1", "type": "decision", "label": "Age >> 18", "x": 0, "y": 0},
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "INVALID_CONDITION_SYNTAX" for err in errors)

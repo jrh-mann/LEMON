@@ -330,8 +330,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "remove_workflow_input",
                 "description": (
                     "Remove a registered workflow input by name (case-insensitive). "
-                    "Note: This does NOT remove input_ref from nodes that reference it - "
-                    "you should check if nodes reference this input first."
+                    "If the input is referenced by nodes, deletion will fail by default. "
+                    "Use force=true to cascade delete (automatically removes input_ref from all nodes)."
                 ),
                 "parameters": {
                     "type": "object",
@@ -339,6 +339,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "name": {
                             "type": "string",
                             "description": "Name of the input to remove (case-insensitive)",
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "If true, removes input even if referenced by nodes (cascade delete). Default: false",
                         },
                     },
                     "required": ["name"],
@@ -423,7 +427,21 @@ def build_system_prompt(
         "  → Then add_node(type='decision', label='Email valid?', input_ref='Email Address')\n\n"
         "ALWAYS register inputs BEFORE creating nodes that reference them.\n"
         "Use list_workflow_inputs to see what inputs already exist.\n"
-        "Input names are case-insensitive when referencing (e.g., 'patient age' matches 'Patient Age')."
+        "Input names are case-insensitive when referencing (e.g., 'patient age' matches 'Patient Age').\n\n"
+        "## Removing Workflow Inputs (CRITICAL)\n"
+        "When removing workflow inputs with remove_workflow_input:\n"
+        "1. By default, deletion FAILS if nodes still reference the input\n"
+        "2. If deletion fails, ask the user: 'This input is referenced by N node(s). Should I:\n"
+        "   a) Remove references manually (you'll need to update/delete those nodes), or\n"
+        "   b) Force delete (automatically removes input_ref from all nodes)?'\n"
+        "3. ONLY use force=true if the user explicitly approves cascade deletion\n"
+        "4. NEVER use force=true without asking the user first\n\n"
+        "Example:\n"
+        "- Tool fails: 'Cannot remove input 'Patient Age': referenced by 3 nodes'\n"
+        "- You respond: 'This input is used by 3 nodes (Age Check, Eligibility, Treatment). "
+        "Would you like me to force delete it (which will remove the references from these nodes)?'\n"
+        "- User: 'Yes, force delete it'\n"
+        "- You call: remove_workflow_input(name='Patient Age', force=true)"
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."

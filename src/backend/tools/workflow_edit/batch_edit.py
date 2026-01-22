@@ -67,9 +67,11 @@ class BatchEditWorkflowTool(Tool):
         if not isinstance(operations, list):
             return {"success": False, "error": "operations must be an array"}
 
+        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {
             "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
             "edges": [dict(e) for e in current_workflow.get("edges", [])],
+            "inputs": inputs,
         }
 
         temp_id_map: Dict[str, str] = {}

@@ -72,9 +72,11 @@ class AddNodeTool(Tool):
         if input_ref:
             new_node["input_ref"] = input_ref
 
+        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {
             "nodes": [*current_workflow.get("nodes", []), new_node],
             "edges": current_workflow.get("edges", []),
+            "inputs": inputs,
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)

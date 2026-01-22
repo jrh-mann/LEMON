@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from src.backend.execution.parser import parse_condition, ParseError
+from src.backend.execution.types import Variable, BinaryOp, UnaryOp
+
 
 @dataclass
 class ValidationError:
@@ -54,6 +57,11 @@ class WorkflowValidator:
         # Collect node IDs for validation
         node_ids: Set[str] = set()
 
+        # Collect registered input names (if available)
+        valid_input_names: Optional[Set[str]] = None
+        if "inputs" in workflow:
+            valid_input_names = {inp.get("name") for inp in workflow.get("inputs", []) if inp.get("name")}
+
         # Rule 1 & 2: Validate node structure
         for node in nodes:
             node_id = node.get("id")
@@ -91,6 +99,34 @@ class WorkflowValidator:
                     )
                 )
             node_ids.add(node_id)
+
+            # Rule 9: Validate input references in decision nodes
+            if node_type == "decision":
+                condition_str = node.get("label", "")
+                try:
+                    expr = parse_condition(condition_str)
+
+                    if valid_input_names is not None:
+                        referenced_vars = self._get_variables(expr)
+                        for var in referenced_vars:
+                            if var not in valid_input_names:
+                                errors.append(
+                                    ValidationError(
+                                        code="INVALID_INPUT_REF",
+                                        message=f"Decision references unregistered input: '{var}'",
+                                        node_id=node_id,
+                                    )
+                                )
+                except ParseError:
+                    errors.append(
+                        ValidationError(
+                            code="INVALID_CONDITION_SYNTAX",
+                            message=f"Invalid condition syntax: '{condition_str}'",
+                            node_id=node_id,
+                        )
+                    )
+                except Exception:
+                    pass
 
         # Track edge connections
         edge_ids: Set[str] = set()
@@ -194,6 +230,20 @@ class WorkflowValidator:
                     )
 
         return (len(errors) == 0, errors)
+
+    def _get_variables(self, expr: Any) -> Set[str]:
+        """Extract all variable names from an expression tree."""
+        variables = set()
+
+        if isinstance(expr, Variable):
+            variables.add(expr.name)
+        elif isinstance(expr, UnaryOp):
+            variables.update(self._get_variables(expr.operand))
+        elif isinstance(expr, BinaryOp):
+            variables.update(self._get_variables(expr.left))
+            variables.update(self._get_variables(expr.right))
+
+        return variables
 
     def format_errors(self, errors: List[ValidationError]) -> str:
         """Format validation errors as a readable string."""

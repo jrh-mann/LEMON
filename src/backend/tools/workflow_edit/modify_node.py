@@ -59,9 +59,11 @@ class ModifyNodeTool(Tool):
                 "error_code": "NODE_NOT_FOUND",
             }
 
+        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {
             "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
             "edges": current_workflow.get("edges", []),
+            "inputs": inputs,
         }
         new_workflow["nodes"][node_idx].update(updates)
 

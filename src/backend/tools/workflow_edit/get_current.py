@@ -17,10 +17,16 @@ class GetCurrentWorkflowTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
         workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        
+        # Merge inputs into workflow if available
+        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
+        if inputs:
+            workflow["inputs"] = inputs
 
         node_descriptions = []
         for node in workflow.get("nodes", []):
-            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']})"
+            input_ref_part = f" (input: {node['input_ref']})" if node.get("input_ref") else ""
+            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){input_ref_part}"
             node_descriptions.append(desc)
 
         edge_descriptions = []
@@ -36,6 +42,11 @@ class GetCurrentWorkflowTool(Tool):
             label_part = f" [{edge.get('label', '')}]" if edge.get("label") else ""
             desc = f"- {edge['from']} -> {edge['to']}: \"{from_label}\"{label_part} -> \"{to_label}\""
             edge_descriptions.append(desc)
+            
+        input_descriptions = []
+        for inp in inputs:
+            desc = f"- {inp['name']} ({inp['type']})"
+            input_descriptions.append(desc)
 
         return {
             "success": True,
@@ -50,6 +61,9 @@ class GetCurrentWorkflowTool(Tool):
                 ),
                 "edge_descriptions": (
                     "\n".join(edge_descriptions) if edge_descriptions else "No connections"
+                ),
+                "input_descriptions": (
+                    "\n".join(input_descriptions) if input_descriptions else "No inputs"
                 ),
             },
         }
