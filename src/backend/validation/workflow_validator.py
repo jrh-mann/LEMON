@@ -177,6 +177,30 @@ class WorkflowValidator:
 
             incoming_edges[to_id] = incoming_edges.get(to_id, 0) + 1
 
+        # Rule 9: Detect self-loops (always enforced)
+        for edge in edges:
+            from_id = edge.get("from")
+            to_id = edge.get("to")
+            edge_id = edge.get("id", f"{from_id}->{to_id}")
+
+            if from_id == to_id and from_id in node_ids:
+                # Get node label for better error message
+                node_label = next(
+                    (n.get("label", from_id) for n in nodes if n.get("id") == from_id),
+                    from_id
+                )
+                errors.append(
+                    ValidationError(
+                        code="SELF_LOOP_DETECTED",
+                        message=f"Self-loop detected on node '{node_label}'. Cycles are not allowed.",
+                        node_id=from_id,
+                    )
+                )
+
+        # Rule 10: Detect cycles using DFS (always enforced)
+        cycle_errors = self._detect_cycles(nodes, edges)
+        errors.extend(cycle_errors)
+
         # Rules 6, 7, 8: Validate node-specific connection requirements (strict mode only)
         if strict:
             for node in nodes:
@@ -230,6 +254,103 @@ class WorkflowValidator:
                     )
 
         return (len(errors) == 0, errors)
+
+    def _detect_cycles(
+        self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
+    ) -> List[ValidationError]:
+        """
+        Detect cycles in the workflow graph using depth-first search.
+
+        Uses three-color DFS algorithm:
+        - WHITE (0): Not visited
+        - GRAY (1): Currently being explored (in DFS stack)
+        - BLACK (2): Completely explored
+
+        A cycle exists if we encounter a GRAY node during exploration.
+
+        Args:
+            nodes: List of workflow nodes
+            edges: List of workflow edges
+
+        Returns:
+            List of ValidationError objects for any cycles found
+        """
+        errors: List[ValidationError] = []
+
+        # Build adjacency list for graph traversal
+        # adjacency[node_id] = [list of target node IDs]
+        adjacency: Dict[str, List[str]] = {}
+        node_labels: Dict[str, str] = {}
+
+        for node in nodes:
+            node_id = node.get("id")
+            if node_id:
+                adjacency[node_id] = []
+                node_labels[node_id] = node.get("label", node_id)
+
+        for edge in edges:
+            from_id = edge.get("from")
+            to_id = edge.get("to")
+            # Only add edges between valid nodes (already validated)
+            if from_id in adjacency and to_id in adjacency:
+                adjacency[from_id].append(to_id)
+
+        # DFS state: WHITE=0 (not visited), GRAY=1 (in progress), BLACK=2 (done)
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color: Dict[str, int] = {node_id: WHITE for node_id in adjacency}
+        parent: Dict[str, Optional[str]] = {node_id: None for node_id in adjacency}
+
+        def dfs_visit(node_id: str) -> Optional[List[str]]:
+            """
+            Visit a node during DFS.
+
+            Returns:
+                List of node IDs forming the cycle if one is detected, None otherwise
+            """
+            color[node_id] = GRAY
+
+            for neighbor_id in adjacency[node_id]:
+                if color[neighbor_id] == GRAY:
+                    # Back edge found - cycle detected!
+                    # Reconstruct the cycle path
+                    cycle_path = [neighbor_id]
+                    current = node_id
+                    while current != neighbor_id and current is not None:
+                        cycle_path.append(current)
+                        current = parent.get(current)
+                    cycle_path.append(neighbor_id)
+                    cycle_path.reverse()
+                    return cycle_path
+
+                elif color[neighbor_id] == WHITE:
+                    parent[neighbor_id] = node_id
+                    cycle = dfs_visit(neighbor_id)
+                    if cycle:
+                        return cycle
+
+            color[node_id] = BLACK
+            return None
+
+        # Run DFS from each unvisited node (handles disconnected components)
+        for node_id in adjacency:
+            if color[node_id] == WHITE:
+                cycle_path = dfs_visit(node_id)
+                if cycle_path:
+                    # Format the cycle path for error message
+                    cycle_labels = [node_labels.get(nid, nid) for nid in cycle_path]
+                    cycle_str = " → ".join(cycle_labels)
+
+                    errors.append(
+                        ValidationError(
+                            code="CYCLE_DETECTED",
+                            message=f"Cycle detected in workflow: {cycle_str}. Workflows must be acyclic.",
+                            node_id=cycle_path[0] if cycle_path else None,
+                        )
+                    )
+                    # Report only the first cycle found
+                    break
+
+        return errors
 
     def _get_variables(self, expr: Any) -> Set[str]:
         """Extract all variable names from an expression tree."""
