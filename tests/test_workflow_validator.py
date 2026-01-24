@@ -165,11 +165,13 @@ class TestWorkflowValidator:
         """Decision node with 2 branches should be valid"""
         workflow = {
             "nodes": [
-                {"id": "decision", "type": "decision", "label": "Check?", "x": 0, "y": 0},
-                {"id": "yes", "type": "end", "label": "Yes", "x": 100, "y": 50},
-                {"id": "no", "type": "end", "label": "No", "x": 100, "y": 150},
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "decision", "type": "decision", "label": "Check?", "x": 100, "y": 0},
+                {"id": "yes", "type": "end", "label": "Yes", "x": 200, "y": 50},
+                {"id": "no", "type": "end", "label": "No", "x": 200, "y": 150},
             ],
             "edges": [
+                {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
                 {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],

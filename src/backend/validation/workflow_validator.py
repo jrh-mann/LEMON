@@ -44,11 +44,15 @@ class WorkflowValidator:
         3. All edge 'from' and 'to' must reference existing node IDs
         4. No duplicate node IDs
         5. No duplicate edge IDs
+        6. Workflow must have at most 1 start node (no multiple start nodes)
+        7. No self-loops (edges where from == to)
+        8. No cycles (workflow must be a directed acyclic graph)
 
         Rules (strict mode only):
-        6. Decision nodes must have at least 2 outgoing edges (true/false paths)
-        7. Start nodes should have at least 1 outgoing edge
-        8. End nodes should have 0 outgoing edges
+        9. Workflow must have at least 1 start node (if nodes exist)
+        10. Decision nodes must have at least 2 outgoing edges (true/false paths)
+        11. Start nodes should have at least 1 outgoing edge
+        12. End nodes should have 0 outgoing edges
         """
         errors: List[ValidationError] = []
         nodes = workflow.get("nodes", [])
@@ -177,7 +181,31 @@ class WorkflowValidator:
 
             incoming_edges[to_id] = incoming_edges.get(to_id, 0) + 1
 
-        # Rule 9: Detect self-loops (always enforced)
+        # Rule 9: Validate start node count (always enforced for multiple, strict for zero)
+        start_nodes = [n for n in nodes if n.get("type") == "start"]
+
+        # Multiple start nodes is always invalid
+        if len(start_nodes) > 1:
+            start_labels = [n.get("label", n.get("id", "unknown")) for n in start_nodes]
+            errors.append(
+                ValidationError(
+                    code="MULTIPLE_START_NODES",
+                    message=f"Workflow has {len(start_nodes)} start nodes but must have exactly one. Found: {', '.join(start_labels)}",
+                    node_id=None,
+                )
+            )
+
+        # In strict mode, require at least one start node for non-empty workflows
+        if strict and len(start_nodes) == 0 and len(nodes) > 0:
+            errors.append(
+                ValidationError(
+                    code="NO_START_NODE",
+                    message="Workflow has no start node. Add a start node to define the entry point.",
+                    node_id=None,
+                )
+            )
+
+        # Rule 10: Detect self-loops (always enforced)
         for edge in edges:
             from_id = edge.get("from")
             to_id = edge.get("to")
@@ -197,7 +225,7 @@ class WorkflowValidator:
                     )
                 )
 
-        # Rule 10: Detect cycles using DFS (always enforced)
+        # Rule 11: Detect cycles using DFS (always enforced)
         cycle_errors = self._detect_cycles(nodes, edges)
         errors.extend(cycle_errors)
 
