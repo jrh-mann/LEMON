@@ -50,38 +50,8 @@ export default function AuthPage() {
           </div>
 
           <div className="auth-hero-copy">
-            <h1>Run workflows with full traceability.</h1>
-            <p>Design, validate, and share automation with a clear audit trail for every change.</p>
-          </div>
-
-          <div className="auth-stats">
-            <div className="auth-stat">
-              <span className="auth-stat-value">4x</span>
-              <span className="auth-stat-label">faster iteration cycles</span>
-            </div>
-            <div className="auth-stat">
-              <span className="auth-stat-value">92%</span>
-              <span className="auth-stat-label">validation confidence</span>
-            </div>
-            <div className="auth-stat">
-              <span className="auth-stat-value">1 hub</span>
-              <span className="auth-stat-label">for workflows and evidence</span>
-            </div>
-          </div>
-
-          <div className="auth-highlights">
-            <div className="auth-highlight-card">
-              <h3>Live collaboration</h3>
-              <p>Share runs, capture feedback, and keep approvals in one place.</p>
-            </div>
-            <div className="auth-highlight-card">
-              <h3>Risk-aware testing</h3>
-              <p>Run validation cases and watch scores update in real time.</p>
-            </div>
-            <div className="auth-highlight-card">
-              <h3>Clean exports</h3>
-              <p>Ship JSON runbooks with versioned history baked in.</p>
-            </div>
+            <h1>Build and run workflows.</h1>
+            <p>Design, test, and iterate on automation workflows.</p>
           </div>
         </aside>
 
