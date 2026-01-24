@@ -117,9 +117,10 @@ export default function Canvas() {
   // Track last click for double-click detection on canvas
   const lastCanvasClickRef = useRef<{ time: number; x: number; y: number } | null>(null)
 
-  // Calculate viewBox with pan offset
+  // Calculate viewBox with pan offset and zoom
+  // Zoom is applied via viewBox (not CSS transform) to maintain vector crispness at any zoom level
   const viewBox = calculateViewBox(flowchart.nodes)
-  const viewBoxStr = `${viewBox.x - panOffset.x} ${viewBox.y - panOffset.y} ${viewBox.width} ${viewBox.height}`
+  const viewBoxStr = `${viewBox.x - panOffset.x} ${viewBox.y - panOffset.y} ${viewBox.width / zoom} ${viewBox.height / zoom}`
 
   // Convert screen coords to SVG coords
   const screenToSVG = useCallback(
@@ -1193,8 +1194,6 @@ export default function Canvas() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           style={{
-            transform: `scale(${zoom})`,
-            transformOrigin: 'center',
             cursor: isPanning ? 'grabbing' : 'grab'
           }}
         >
