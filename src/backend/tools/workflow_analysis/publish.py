@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from ...storage.history import HistoryStore
 from ...utils.analysis import normalize_analysis
 from ...utils.flowchart import flowchart_from_tree
+from ...utils.paths import lemon_data_dir
 from ..core import Tool, ToolParameter
 
 
@@ -19,7 +20,7 @@ class PublishLatestAnalysisTool(Tool):
 
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
-        history_db = repo_root / ".lemon" / "history.sqlite"
+        history_db = lemon_data_dir(repo_root) / "history.sqlite"
         self.history = HistoryStore(history_db)
         self._logger = logging.getLogger(__name__)
 

@@ -10,26 +10,24 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List
 
+from .paths import lemon_data_dir
+
 _LOCK = Lock()
 _SESSION_ID = os.environ.get("LEMON_TOKEN_SESSION_ID") or uuid.uuid4().hex
 _SESSION_STARTED_AT = datetime.now(timezone.utc).isoformat()
-
-
-def _repo_root() -> Path:
-    return Path(__file__).parent.parent.parent.parent
 
 
 def _tokens_summary_path() -> Path:
     env_path = os.environ.get("LEMON_TOKENS_FILE")
     if env_path:
         return Path(env_path)
-    return _repo_root() / ".lemon" / "tokens.json"
+    return lemon_data_dir() / "tokens.json"
 
 def _tokens_log_path() -> Path:
     env_path = os.environ.get("LEMON_TOKENS_LOG_FILE")
     if env_path:
         return Path(env_path)
-    return _repo_root() / ".lemon" / "tokens_usage.json"
+    return lemon_data_dir() / "tokens_usage.json"
 
 
 def _empty_usage() -> Dict[str, int]:

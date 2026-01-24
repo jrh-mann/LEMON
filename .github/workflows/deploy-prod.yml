@@ -1,0 +1,55 @@
+name: Deploy to Azure Web App (prod)
+
+on:
+  push:
+    branches:
+      - prod
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Remove local env override
+        run: rm -f src/frontend/.env.local
+
+      - name: Install frontend deps
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: src/frontend
+        env:
+          VITE_API_URL: ''
+        run: npm run build
+
+      - name: Package app
+        run: |
+          zip -r backend.zip \
+            src/backend \
+            src/frontend/dist \
+            scripts \
+            requirements.txt \
+            run_mcp.py \
+            run_api.py \
+            main.py \
+            pyproject.toml \
+            uv.lock
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: lemon-backend
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: backend.zip

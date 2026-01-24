@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from .paths import lemon_data_dir
+
 _CONFIGURED = False
 
 
@@ -103,8 +105,8 @@ def _resolve_log_path(log_path: Optional[Path], prefix: str) -> Path:
     env_path = os.environ.get("LEMON_LOG_FILE")
     if env_path:
         return Path(env_path)
-    repo_root = Path(__file__).parent.parent.parent.parent
-    return repo_root / ".lemon" / "logs" / f"{prefix}.log"
+    data_dir = lemon_data_dir()
+    return data_dir / "logs" / f"{prefix}.log"
 
 
 def _attach_logger(name: str, level: int, handler: logging.Handler) -> None:
