@@ -183,20 +183,21 @@ class TestBatchEditWorkflowTool:
             "operations": [
                 # Add a valid start node
                 {"op": "add_node", "type": "start", "label": "Input", "id": "temp_1"},
-                # Try to add decision without branches (invalid)
-                {"op": "add_node", "type": "decision", "label": "Check?", "id": "temp_2"},
-                # Add connection between them
+                # Add a process node
+                {"op": "add_node", "type": "process", "label": "Process", "id": "temp_2"},
+                # Add connections that create a cycle
                 {"op": "add_connection", "from": "temp_1", "to": "temp_2", "label": ""},
+                {"op": "add_connection", "from": "temp_2", "to": "temp_1", "label": ""},
             ]
         }
         session_state = {"current_workflow": existing_workflow}
 
         result = self.tool.execute(args, session_state=session_state)
 
-        # Should fail because decision node doesn't have 2 branches
+        # Should fail because of cycle detection (enforced even in lenient mode)
         assert result["success"] is False
         assert "error" in result
-        assert "2 branches" in result["error"]
+        assert "cycle" in result["error"].lower()
 
     def test_invalid_operation_type_fails(self):
         """Should fail if operation type is unknown"""
@@ -332,15 +333,14 @@ class TestBatchEditWorkflowTool:
         # Note: The tool currently doesn't auto-update color on type change
         # This is OK - the frontend can handle it, or we can add logic later
 
-    def test_validation_prevents_end_node_with_outgoing(self):
-        """Should fail if trying to create end node with outgoing edge"""
+    def test_validation_prevents_self_loop(self):
+        """Should fail if trying to create a self-loop (always enforced)"""
         existing_workflow = {"nodes": [], "edges": []}
         args = {
             "operations": [
-                {"op": "add_node", "type": "end", "label": "End", "id": "temp_end"},
                 {"op": "add_node", "type": "process", "label": "Process", "id": "temp_proc"},
-                # Try to connect FROM end node (invalid)
-                {"op": "add_connection", "from": "temp_end", "to": "temp_proc", "label": ""},
+                # Try to connect node to itself (self-loop - always invalid)
+                {"op": "add_connection", "from": "temp_proc", "to": "temp_proc", "label": ""},
             ]
         }
         session_state = {"current_workflow": existing_workflow}
@@ -348,7 +348,7 @@ class TestBatchEditWorkflowTool:
         result = self.tool.execute(args, session_state=session_state)
 
         assert result["success"] is False
-        assert "outgoing" in result.get("error", "").lower()
+        assert "self-loop" in result.get("error", "").lower() or "cycle" in result.get("error", "").lower()
 
     def test_preserves_existing_workflow(self):
         """Should not modify existing nodes/edges unless explicitly operated on"""
