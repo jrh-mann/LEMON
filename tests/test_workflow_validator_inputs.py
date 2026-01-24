@@ -21,11 +21,13 @@ class TestWorkflowValidatorInputs:
                 {"name": "Age", "type": "int", "id": "input_age"}
             ],
             "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {"id": "d1", "type": "decision", "label": "Age > 18", "x": 0, "y": 0},
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
             ],
             "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
                 {"from": "d1", "to": "y", "label": "true"},
                 {"from": "d1", "to": "n", "label": "false"},
             ]
@@ -41,11 +43,13 @@ class TestWorkflowValidatorInputs:
                 {"name": "Height", "type": "int", "id": "input_height"}
             ],
             "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {"id": "d1", "type": "decision", "label": "Age > 18", "x": 0, "y": 0},
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
             ],
             "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
                 {"from": "d1", "to": "y", "label": "true"},
                 {"from": "d1", "to": "n", "label": "false"},
             ]
@@ -63,11 +67,13 @@ class TestWorkflowValidatorInputs:
                 {"name": "Smoker", "type": "bool", "id": "input_smoker"}
             ],
             "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {"id": "d1", "type": "decision", "label": "Age > 18 and Smoker == True", "x": 0, "y": 0},
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
             ],
             "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
                 {"from": "d1", "to": "y", "label": "true"},
                 {"from": "d1", "to": "n", "label": "false"},
             ]
@@ -82,11 +88,13 @@ class TestWorkflowValidatorInputs:
                 {"name": "Age", "type": "int", "id": "input_age"}
             ],
             "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {"id": "d1", "type": "decision", "label": "Age > 18 and Smoker == True", "x": 0, "y": 0},
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
             ],
             "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
                 {"from": "d1", "to": "y", "label": "true"},
                 {"from": "d1", "to": "n", "label": "false"},
             ]
@@ -101,11 +109,13 @@ class TestWorkflowValidatorInputs:
         workflow = {
             "inputs": [{"name": "Age", "type": "int", "id": "input_age"}],
             "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {"id": "d1", "type": "decision", "label": "Age >> 18", "x": 0, "y": 0},
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
             ],
             "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
                 {"from": "d1", "to": "y", "label": "true"},
                 {"from": "d1", "to": "n", "label": "false"},
             ]

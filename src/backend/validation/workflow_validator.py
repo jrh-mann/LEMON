@@ -53,6 +53,7 @@ class WorkflowValidator:
         10. Decision nodes must have at least 2 outgoing edges (true/false paths)
         11. Start nodes should have at least 1 outgoing edge
         12. End nodes should have 0 outgoing edges
+        13. Decision nodes must have all referenced variables registered as workflow inputs
         """
         errors: List[ValidationError] = []
         nodes = workflow.get("nodes", [])
@@ -109,9 +110,10 @@ class WorkflowValidator:
                 condition_str = node.get("label", "")
                 try:
                     expr = parse_condition(condition_str)
+                    referenced_vars = self._get_variables(expr)
 
+                    # Check if inputs are registered (always enforced when inputs exist)
                     if valid_input_names is not None:
-                        referenced_vars = self._get_variables(expr)
                         for var in referenced_vars:
                             if var not in valid_input_names:
                                 errors.append(
@@ -121,6 +123,17 @@ class WorkflowValidator:
                                         node_id=node_id,
                                     )
                                 )
+                    # In strict mode, require all decision variables to be registered
+                    elif strict and referenced_vars:
+                        # No inputs registered but decision uses variables
+                        var_list = ", ".join(f"'{v}'" for v in sorted(referenced_vars))
+                        errors.append(
+                            ValidationError(
+                                code="DECISION_MISSING_INPUT",
+                                message=f"Decision node '{node.get('label', node_id)}' references variables {var_list} but no workflow inputs are registered. Register inputs using add_workflow_input tool.",
+                                node_id=node_id,
+                            )
+                        )
                 except ParseError:
                     errors.append(
                         ValidationError(
@@ -307,6 +320,16 @@ class WorkflowValidator:
                                 node_id=node_id,
                             )
                         )
+
+                # Rule 12: Process/Subprocess nodes must have outgoing edges
+                if node_type in ("process", "subprocess") and len(outgoing) == 0:
+                    errors.append(
+                        ValidationError(
+                            code="DEAD_END_NODE",
+                            message=f"{node_type.capitalize()} node '{node_label}' has no outgoing connections. Flow must continue or end explicitly.",
+                            node_id=node_id,
+                        )
+                    )
 
                 # Rule 7: Start nodes should have outgoing edges (only if workflow has multiple nodes)
                 if node_type == "start" and len(outgoing) == 0 and len(nodes) > 1:
