@@ -8,7 +8,8 @@
       "Bash(py -m pip install:*)",
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nFix force delete bug: handle string boolean parameters from MCP\n\nCritical fix for force delete feature that was failing in production.\n\nRoot cause: MCP serializes boolean parameters as strings \\(\"true\"/\"false\"\\),\nbut the remove_workflow_input tool was checking the raw value, causing\nforce=true to be treated as force=False.\n\nChanges:\n- src/backend/tools/workflow_input/remove.py: Added explicit string-to-bool\n  conversion for force parameter to handle MCP''s JSON serialization\n- src/backend/tests/test_workflow_inputs.py: Added test for string boolean\n  parameter compatibility\n- src/backend/tests/test_force_delete_integration.py: Added comprehensive\n  integration tests with MCP disabled to verify full feature flow\n- src/backend/agents/orchestrator.py: Fixed current_workflow sync from tool\n  responses \\(from previous session\\)\n- requirements.txt: Fixed uvicorn version conflict with mcp package\n\nTests:\n- All force delete integration tests pass \\(4/4\\)\n- String boolean parameter test passes\n- Feature now works correctly in production with MCP\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(python -c:*)"
     ]
   }
 }
