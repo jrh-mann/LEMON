@@ -64,3 +64,10 @@ src/frontend/runs/
 .lemon/uploads/
 .lemon/tokens.json
 .lemon/tokens_usage.json
+
+# Local deployment artifacts
+frontend.zip
+cookies.txt
+job-logs.zip
+publishprofile.xml
+*.publishsettings
