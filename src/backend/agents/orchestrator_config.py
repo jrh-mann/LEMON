@@ -70,8 +70,9 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "add_node",
                 "description": (
                     "Add a new node (block) to the workflow. Returns the created node with a real ID. "
-                    "Note: Decision nodes require 2 branches to be valid - use batch_edit_workflow "
-                    "to add a decision node with its branches atomically."
+                    "Note: Decision nodes should have 2 branches (true/false). You can add them separately "
+                    "with add_node + add_connection, or use batch_edit_workflow to create the decision + branches "
+                    "atomically with temporary IDs."
                 ),
                 "parameters": {
                     "type": "object",
@@ -215,11 +216,17 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "batch_edit_workflow",
                 "description": (
                     "Apply multiple workflow changes in a single atomic operation. All changes "
-                    "are validated together - if any fail, none are applied. Use this for: "
-                    "(1) Adding decision nodes with their branches atomically, "
-                    "(2) Making multiple related changes that should succeed or fail together. "
-                    "Supports temp IDs: use 'temp_X' for new nodes, then reference them in "
-                    "subsequent operations. They'll be replaced with real UUIDs."
+                    "are validated together - if any fail, none are applied. "
+                    "\n\n"
+                    "PRIMARY USE CASE - Temporary ID References: "
+                    "When you need to create nodes and immediately connect them in the same operation, "
+                    "use temporary IDs (like 'temp_decision', 'temp_start') instead of real node IDs. "
+                    "The tool automatically maps temp IDs to real UUIDs and updates all references. "
+                    "\n\n"
+                    "Common scenarios: "
+                    "(1) Decision nodes with branches - create decision + 2 branch nodes + 2 connections atomically, "
+                    "(2) Node chains - create start->process->end with connections in one operation, "
+                    "(3) Complex multi-step changes that should succeed or fail together."
                 ),
                 "parameters": {
                     "type": "object",
@@ -410,8 +417,15 @@ def build_system_prompt(
         "2. Find the node ID by matching the label\n"
         "3. Use that ID in your tool calls\n"
         "NEVER guess node IDs.\n\n"
-        "## Decision Nodes (ONLY Exception to Single Tool Rule)\n"
-        "Decision nodes are the ONLY case where you MUST use batch_edit_workflow:\n"
+        "## When to Use batch_edit_workflow vs Single Tools\n"
+        "Most operations should use single tools (add_node, add_connection, etc.).\n\n"
+        "Use batch_edit_workflow when you need to REFERENCE newly created nodes within the same operation.\n\n"
+        "KEY FEATURE - Temporary IDs:\n"
+        "- Single tools generate real IDs immediately (like 'node_abc123') - you don't know the ID beforehand\n"
+        "- batch_edit lets you use temporary IDs (like 'temp_start') that get mapped to real IDs automatically\n"
+        "- All operations in the batch can reference each other using these temp IDs\n\n"
+        "Common scenarios where batch_edit is recommended:\n\n"
+        "1. Decision nodes with branches (most common):\n"
         "```\n"
         "operations=[\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\", \"x\": 100, \"y\": 100},\n"
@@ -420,8 +434,19 @@ def build_system_prompt(
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_true\", \"label\": \"true\"},\n"
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_false\", \"label\": \"false\"}\n"
         "]\n"
+        "```\n\n"
+        "2. Creating connected chains:\n"
         "```\n"
-        "CRITICAL: Use 'from' and 'to' fields (NOT 'from_node_id'/'to_node_id') in batch add_connection operations.\n\n"
+        "operations=[\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_start\", \"type\": \"start\", \"label\": \"Begin\", \"x\": 100, \"y\": 100},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_process\", \"type\": \"process\", \"label\": \"Process Data\", \"x\": 100, \"y\": 200},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_end\", \"type\": \"end\", \"label\": \"Complete\", \"x\": 100, \"y\": 300},\n"
+        "  {\"op\": \"add_connection\", \"from\": \"temp_start\", \"to\": \"temp_process\"},\n"
+        "  {\"op\": \"add_connection\", \"from\": \"temp_process\", \"to\": \"temp_end\"}\n"
+        "]\n"
+        "```\n\n"
+        "Alternative: You can also create nodes one-by-one with add_node, then connect them using the returned node IDs. Use whichever approach fits the user's request better.\n\n"
+        "CRITICAL: In batch add_connection operations, use 'from' and 'to' fields (NOT 'from_node_id'/'to_node_id').\n\n"
         "## Response Format\n"
         "After tools execute, briefly confirm what happened: 'Added start node', 'Deleted validation node', 'Connected X to Y'.\n"
         "Keep responses SHORT. Don't show raw JSON to the user.\n\n"
