@@ -268,6 +268,22 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "validate_workflow",
+                "description": (
+                    "Check if the workflow is valid. Reports errors like disconnected nodes, "
+                    "missing branches, or unreachable paths. Use this when the user asks to "
+                    "validate, check, or verify the workflow."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "add_workflow_input",
                 "description": (
                     "Register an input parameter for the workflow. This input will appear in the Inputs tab "
@@ -368,7 +384,8 @@ def build_system_prompt(
         "- DISCONNECT/UNLINK → call delete_connection\n"
         "- MODIFY/CHANGE/UPDATE/RENAME → call modify_node\n"
         "- CONNECT/LINK → call add_connection\n"
-        "- WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow\n\n"
+        "- WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow\n"
+        "- VALIDATE/CHECK/VERIFY → call validate_workflow\n\n"
         "DO NOT ask for confirmation. DO NOT clarify unless the request is truly ambiguous (e.g., 'add a node' without any description). "
         "If the user says 'add a start node', immediately call add_node. "
         "If the user says 'delete the validation node', immediately call get_current_workflow to find it, then delete_node. "

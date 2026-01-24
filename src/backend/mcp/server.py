@@ -27,6 +27,7 @@ from ..tools import (
     AddWorkflowInputTool,
     ListWorkflowInputsTool,
     RemoveWorkflowInputTool,
+    ValidateWorkflowTool,
 )
 from ..utils.uploads import save_uploaded_image
 
@@ -148,6 +149,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     add_input_tool = AddWorkflowInputTool()
     list_inputs_tool = ListWorkflowInputsTool()
     remove_input_tool = RemoveWorkflowInputTool()
+    validate_tool = ValidateWorkflowTool()
 
     @server.tool(
         name="analyze_workflow",
@@ -299,6 +301,12 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return remove_input_tool.execute({"name": name}, session_state=session_state or {})
+
+    @server.tool(name="validate_workflow")
+    def validate_workflow(
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return validate_tool.execute({}, session_state=session_state or {})
 
     return server
 

@@ -201,8 +201,55 @@ class WorkflowValidator:
         cycle_errors = self._detect_cycles(nodes, edges)
         errors.extend(cycle_errors)
 
-        # Rules 6, 7, 8: Validate node-specific connection requirements (strict mode only)
+        # Rules 6, 7, 8, 11: Validate node-specific connection requirements and reachability (strict mode only)
         if strict:
+            # Rule 11: Check for unreachable nodes
+            # Find all start nodes
+            start_node_ids = {n["id"] for n in nodes if n.get("type") == "start"}
+            
+            if start_node_ids:
+                # Perform BFS traversal to find all reachable nodes
+                reachable_ids = set(start_node_ids)
+                queue = list(start_node_ids)
+                
+                # Build adjacency list for traversal
+                # node_id -> list of target_ids
+                adjacency_list: Dict[str, List[str]] = {}
+                for edge in edges:
+                    u, v = edge.get("from"), edge.get("to")
+                    if u and v:
+                        if u not in adjacency_list:
+                            adjacency_list[u] = []
+                        adjacency_list[u].append(v)
+                
+                while queue:
+                    curr_id = queue.pop(0)
+                    neighbors = adjacency_list.get(curr_id, [])
+                    for neighbor_id in neighbors:
+                        if neighbor_id not in reachable_ids:
+                            reachable_ids.add(neighbor_id)
+                            queue.append(neighbor_id)
+                
+                # Check for unreachable nodes
+                all_node_ids = {n["id"] for n in nodes if n.get("id")}
+                unreachable_ids = all_node_ids - reachable_ids
+                
+                if unreachable_ids:
+                    # Sort for deterministic error ordering
+                    for node_id in sorted(unreachable_ids):
+                         # Get label for better message
+                        node_label = next(
+                            (n.get("label", node_id) for n in nodes if n.get("id") == node_id),
+                            node_id
+                        )
+                        errors.append(
+                            ValidationError(
+                                code="UNREACHABLE_NODE",
+                                message=f"Node '{node_label}' is not reachable from any start node",
+                                node_id=node_id,
+                            )
+                        )
+
             for node in nodes:
                 node_id = node.get("id")
                 if not node_id:

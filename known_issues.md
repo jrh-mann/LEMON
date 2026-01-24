@@ -2,7 +2,7 @@ Known Issues (Development Priorities)
 
 Critical feature correctness issues
 
-1) Orphaned input references
+1) [fixed] Orphaned input references
    You can delete a workflow input that is still referenced by nodes.
    Impact: Runtime breakage; nodes point to data that no longer exists.
    Expected: Reject deletion or remove input_ref from nodes.
@@ -12,12 +12,13 @@ Critical feature correctness issues
    Impact: Decisions reference data that will never exist.
    Expected: Validate input_ref against registered inputs.
 
-3) Cycles and self-loops allowed
+3) [fixed] Cycles and self-loops allowed
    Circular graphs (including self-loops) are accepted.
    Impact: Workflow execution can loop forever.
    Expected: Detect and reject cycles or warn prominently.
 
-4) Disconnected subgraphs allowed
+
+4) [fixed] Disconnected subgraphs allowed
    You can add a disconnected chain unrelated to the main flow.
    Impact: Dead/unreachable nodes create confusion.
    Expected: Warn about unreachable nodes or prevent creation.
