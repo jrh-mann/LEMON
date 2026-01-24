@@ -17,4 +17,4 @@ flask-cors==4.0.1
 Flask-SocketIO==5.3.6
 eventlet==0.36.1
 gunicorn==22.0.0
-uvicorn>=0.31.1
+uvicorn==0.31.1

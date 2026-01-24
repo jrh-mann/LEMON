@@ -6,9 +6,11 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 
+from ..utils.paths import repo_root as _repo_root
+
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent.parent
+    return _repo_root()
 
 
 def utc_now() -> str:

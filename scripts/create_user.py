@@ -26,6 +26,7 @@ def main() -> int:
         validate_password,
     )
     from backend.storage.auth import AuthStore
+    from backend.utils.paths import lemon_data_dir
 
     parser = argparse.ArgumentParser(description="Create a local auth user.")
     parser.add_argument("--email", required=True, help="Email address for the user.")
@@ -50,7 +51,10 @@ def main() -> int:
         print(f"Error: {password_errors[0]}", file=sys.stderr)
         return 1
 
-    db_path = Path(args.db) if args.db else _repo_root() / ".lemon" / "auth.sqlite"
+    if args.db:
+        db_path = Path(args.db)
+    else:
+        db_path = lemon_data_dir(_repo_root()) / "auth.sqlite"
     auth_store = AuthStore(db_path)
 
     if auth_store.get_user_by_email(email):

@@ -6,6 +6,8 @@ import base64
 from pathlib import Path
 from uuid import uuid4
 
+from .paths import lemon_data_dir
+
 
 def decode_data_url(data_url: str) -> tuple[bytes, str]:
     if not data_url.startswith("data:"):
@@ -33,9 +35,10 @@ def save_uploaded_image(
     filename_prefix: str = "",
 ) -> str:
     raw, ext = decode_data_url(data_url)
-    uploads_dir = repo_root / ".lemon" / "uploads"
+    data_dir = lemon_data_dir(repo_root)
+    uploads_dir = data_dir / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{filename_prefix}{uuid4().hex}.{ext}"
     path = uploads_dir / filename
     path.write_bytes(raw)
-    return str(path.relative_to(repo_root))
+    return str(path.relative_to(data_dir))
