@@ -74,7 +74,11 @@ export default function Canvas() {
     clearPendingImage,
   } = useWorkflowStore()
 
-  const { zoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab } = useUIStore()
+  const { zoom, setZoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab, canvasMode, toggleCanvasMode, setCanvasMode } = useUIStore()
+
+  // Zoom limits for wheel zoom - matches uiStore constants
+  const MIN_ZOOM = 0.25
+  const MAX_ZOOM = 8
 
   // Auto-switch to image tab when image is uploaded
   useEffect(() => {
@@ -518,7 +522,7 @@ export default function Canvas() {
     [screenToSVG, addNode]
   )
 
-  // Handle canvas pointer down (start box selection or panning)
+  // Handle canvas pointer down (start box selection or panning based on mode)
   const handleCanvasPointerDown = useCallback(
     (e: React.PointerEvent) => {
       // Only handle if clicking on background (svg, grid rect, or pattern elements)
@@ -543,8 +547,8 @@ export default function Canvas() {
         // Update last click tracking
         lastCanvasClickRef.current = { time: now, x: e.clientX, y: e.clientY }
 
-        // Double-click or middle mouse = panning
-        if (isDoubleClick || e.button === 1) {
+        // Pan mode, double-click, or middle mouse = panning
+        if (canvasMode === 'pan' || isDoubleClick || e.button === 1) {
           setIsPanning(true)
           setPanStart({
             x: e.clientX,
@@ -555,7 +559,7 @@ export default function Canvas() {
           // Clear any selection box that may have started
           setSelectionBox(null)
         } else {
-          // Single click = box selection
+          // Select mode: single click = box selection
           const svgCoords = screenToSVG(e.clientX, e.clientY)
           setSelectionBox({
             startX: svgCoords.x,
@@ -571,7 +575,7 @@ export default function Canvas() {
         svgRef.current?.setPointerCapture(e.pointerId)
       }
     },
-    [panOffset, screenToSVG, clearSelection]
+    [panOffset, screenToSVG, clearSelection, canvasMode]
   )
 
   // Handle canvas click (just cancel connect mode, selection handled by pointer events)
@@ -606,6 +610,12 @@ export default function Canvas() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore shortcuts when typing in input fields
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return
+      }
+
       // Delete selected nodes
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeIds.length > 0) {
         // Delete all selected nodes
@@ -629,11 +639,61 @@ export default function Canvas() {
           clearSelection()
         }
       }
+
+      // Canvas mode shortcuts (V for select, H for pan/hand)
+      if (e.key === 'v' || e.key === 'V') {
+        setCanvasMode('select')
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        setCanvasMode('pan')
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeIds, deleteNode, undo, redo, connectMode, cancelConnect, clearSelection])
+  }, [selectedNodeIds, deleteNode, undo, redo, connectMode, cancelConnect, clearSelection, setCanvasMode])
+
+  // Mouse wheel zoom handler - zooms centered on cursor position
+  // Wheel up = zoom in, wheel down = zoom out
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      // Prevent default scroll behavior on the canvas
+      e.preventDefault()
+
+      const svg = svgRef.current
+      const container = containerRef.current
+      if (!svg || !container) return
+
+      // Calculate zoom factor based on wheel delta
+      // Smaller factor for smoother zooming
+      const zoomFactor = 0.1
+      const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
+
+      // Calculate new zoom level with clamping
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
+
+      // If zoom didn't change (at limits), don't update
+      if (newZoom === zoom) return
+
+      // Get cursor position in SVG coordinates before zoom
+      const cursorSVG = screenToSVG(e.clientX, e.clientY)
+
+      // Calculate the ratio of zoom change
+      const zoomRatio = zoom / newZoom
+
+      // Adjust pan offset to keep cursor position fixed
+      // The formula ensures that the point under the cursor stays in place
+      // newPan = oldPan + cursorSVG * (1 - zoomRatio)
+      // This compensates for the viewBox width/height change when zooming
+      const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
+      const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
+
+      // Apply the new zoom and pan offset
+      setZoom(newZoom)
+      setPanOffset({ x: newPanX, y: newPanY })
+    },
+    [zoom, panOffset, screenToSVG, setZoom]
+  )
 
   // Render node
   const renderNode = (node: FlowNode) => {
@@ -1193,8 +1253,9 @@ export default function Canvas() {
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onWheel={handleWheel}
           style={{
-            cursor: isPanning ? 'grabbing' : 'grab'
+            cursor: isPanning ? 'grabbing' : (canvasMode === 'pan' ? 'grab' : 'default')
           }}
         >
           <defs>
@@ -1304,6 +1365,48 @@ export default function Canvas() {
             Click another node to connect, or press Escape to cancel
           </div>
         )}
+
+        {/* Mode toggle control */}
+        <div className="mode-toggle-control">
+          <button
+            className={`mode-btn ${canvasMode === 'select' ? 'active' : ''}`}
+            onClick={() => canvasMode !== 'select' && toggleCanvasMode()}
+            title="Select mode - drag to select elements (V)"
+          >
+            {/* Cursor/pointer icon for select mode */}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+              <path d="M13 13l6 6" />
+            </svg>
+          </button>
+          <button
+            className={`mode-btn ${canvasMode === 'pan' ? 'active' : ''}`}
+            onClick={() => canvasMode !== 'pan' && toggleCanvasMode()}
+            title="Pan mode - drag to move canvas (H)"
+          >
+            {/* Hand/pan icon for pan mode */}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0" />
+              <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6" />
+              <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+            </svg>
+          </button>
+        </div>
 
         {/* Zoom controls */}
         <div className="zoom-controls">
