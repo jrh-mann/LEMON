@@ -3,6 +3,9 @@ import type { Stage, ModalType, SidebarTab } from '../types'
 
 export type CanvasTab = 'workflow' | 'image'
 
+// Canvas interaction mode: 'select' for box selection, 'pan' for viewport dragging
+export type CanvasMode = 'select' | 'pan'
+
 interface UIState {
   // App stage
   stage: Stage
@@ -15,6 +18,9 @@ interface UIState {
 
   // Canvas tab (workflow vs source image)
   canvasTab: CanvasTab
+
+  // Canvas interaction mode (select vs pan)
+  canvasMode: CanvasMode
 
   // Loading/error
   isLoading: boolean
@@ -35,6 +41,8 @@ interface UIState {
   closeModal: () => void
   setActiveTab: (tab: SidebarTab) => void
   setCanvasTab: (tab: CanvasTab) => void
+  setCanvasMode: (mode: CanvasMode) => void
+  toggleCanvasMode: () => void
   setLoading: (loading: boolean, message?: string | null) => void
   setError: (error: string | null) => void
   clearError: () => void
@@ -63,6 +71,7 @@ export const useUIStore = create<UIState>((set) => ({
   modalOpen: 'none',
   activeTab: 'library',
   canvasTab: 'workflow',
+  canvasMode: 'select',
   isLoading: false,
   loadingMessage: null,
   error: null,
@@ -81,6 +90,13 @@ export const useUIStore = create<UIState>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   setCanvasTab: (tab) => set({ canvasTab: tab }),
+
+  setCanvasMode: (mode) => set({ canvasMode: mode }),
+
+  toggleCanvasMode: () =>
+    set((state) => ({
+      canvasMode: state.canvasMode === 'select' ? 'pan' : 'select',
+    })),
 
   setLoading: (loading, message = null) =>
     set({ isLoading: loading, loadingMessage: message }),
@@ -117,6 +133,7 @@ export const useUIStore = create<UIState>((set) => ({
       modalOpen: 'none',
       activeTab: 'library',
       canvasTab: 'workflow',
+      canvasMode: 'select',
       isLoading: false,
       loadingMessage: null,
       error: null,

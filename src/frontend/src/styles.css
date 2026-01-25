@@ -1108,6 +1108,56 @@ body {
   border-top: 1px solid var(--edge);
 }
 
+/* Mode toggle control - select/pan mode switcher */
+.mode-toggle-control {
+  position: absolute;
+  bottom: 16px;
+  right: 124px;
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+
+.mode-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+
+.mode-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.mode-btn:active {
+  transform: scale(0.95);
+}
+
+/* Active state for the selected mode */
+.mode-btn.active {
+  background: var(--teal-light);
+  color: var(--teal);
+}
+
+.mode-btn.active:hover {
+  background: var(--teal-light);
+  color: var(--teal);
+}
+
 /* Zoom controls */
 .zoom-controls {
   position: absolute;
