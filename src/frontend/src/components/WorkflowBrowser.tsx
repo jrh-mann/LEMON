@@ -3,7 +3,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow } from '../api/workflows'
 import { autoLayoutFlowchart } from '../utils/canvas'
-import type { WorkflowSummary, Block, FlowNode, Flowchart } from '../types'
+import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis } from '../types'
 
 export default function WorkflowBrowser() {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
@@ -11,7 +11,7 @@ export default function WorkflowBrowser() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const { addTab } = useWorkflowStore()
+  const { addTab, setAnalysis } = useWorkflowStore()
   const { closeModal } = useUIStore()
 
   // Load workflows on mount
@@ -88,9 +88,28 @@ export default function WorkflowBrowser() {
       }
 
       // Open workflow in a new tab
-      // Cast back to Workflow for compatibility
-      const workflow = workflowData as Workflow
-      addTab(workflow.metadata.name, workflow, flowchart)
+      // Create a proper Workflow object with empty blocks/connections
+      // (we only need the flowchart for rendering)
+      const workflow: Workflow = {
+        id: workflowData.id,
+        metadata: workflowData.metadata,
+        blocks: [],
+        connections: [],
+      }
+
+      addTab(workflowData.metadata.name, workflow, flowchart)
+
+      // Set analysis data if available
+      if (workflowData.inputs || workflowData.outputs || workflowData.tree || workflowData.doubts) {
+        const analysis: WorkflowAnalysis = {
+          inputs: workflowData.inputs || [],
+          outputs: workflowData.outputs || [],
+          tree: workflowData.tree || {},
+          doubts: workflowData.doubts || [],
+        }
+        setAnalysis(analysis)
+      }
+
       closeModal()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflow')

@@ -16410,5 +16410,151 @@
     },
     "timestamp": "2026-01-26T13:00:21.070979+00:00",
     "session_id": "44e8c94f25344cc3806fd1f3e8d94e0c"
+  },
+  {
+    "request_id": "e3189e692fae43d5a2a78ad3c1e23c22",
+    "provider_message_id": "msg_01W79oAhkUf3f4ucRGiG6jFH",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 13,
+    "tools": [
+      "add_workflow_input"
+    ],
+    "message_count": 2,
+    "elapsed_ms": 4440.73,
+    "usage": {
+      "input_tokens": 4802,
+      "output_tokens": 282,
+      "total_tokens": 5084,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-26T13:04:09.691622+00:00",
+    "session_id": "0dab4d56a18c49329b7e12f81758e5a5"
+  },
+  {
+    "request_id": "4fc3d391399c45f9bd11fb3459b7430a",
+    "provider_message_id": "msg_01EKi1uJg9PyQh7jTyjhnAdn",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 13,
+    "tools": [
+      "batch_edit_workflow"
+    ],
+    "message_count": 6,
+    "elapsed_ms": 12516.4,
+    "usage": {
+      "input_tokens": 5497,
+      "output_tokens": 971,
+      "total_tokens": 6468,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-26T13:04:23.191762+00:00",
+    "session_id": "0dab4d56a18c49329b7e12f81758e5a5"
+  },
+  {
+    "request_id": "fb2303273baf4500833cc72fddf146af",
+    "provider_message_id": "msg_016CRrm9MXwx6dayCvYmv3eC",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 13,
+    "tools": [],
+    "message_count": 9,
+    "elapsed_ms": 5202.94,
+    "usage": {
+      "input_tokens": 8239,
+      "output_tokens": 206,
+      "total_tokens": 8445,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-26T13:04:28.888821+00:00",
+    "session_id": "0dab4d56a18c49329b7e12f81758e5a5"
+  },
+  {
+    "request_id": "3ea7effd3fc9411db57492a28f1fc6e7",
+    "provider_message_id": "msg_01AZU5v1UghRFG7s5j8h32mT",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "initial",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 13,
+    "tools": [
+      "add_workflow_input"
+    ],
+    "message_count": 2,
+    "elapsed_ms": 3513.42,
+    "usage": {
+      "input_tokens": 4802,
+      "output_tokens": 240,
+      "total_tokens": 5042,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-26T13:07:43.607387+00:00",
+    "session_id": "0dab4d56a18c49329b7e12f81758e5a5"
+  },
+  {
+    "request_id": "73ef30cb72ec40f1936b7f6842f50511",
+    "provider_message_id": "msg_01SpeuCR9Y2Kmr72fXujokNk",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 13,
+    "tools": [
+      "batch_edit_workflow"
+    ],
+    "message_count": 6,
+    "elapsed_ms": 11007.79,
+    "usage": {
+      "input_tokens": 5417,
+      "output_tokens": 989,
+      "total_tokens": 6406,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-26T13:07:55.684640+00:00",
+    "session_id": "0dab4d56a18c49329b7e12f81758e5a5"
+  },
+  {
+    "request_id": "c9b70f66ccad4b42a76ae43df6721d89",
+    "provider_message_id": "msg_014Cz7VU2iwJzeU2CebQcgZy",
+    "model": "claude-sonnet-4-5",
+    "caller": "orchestrator",
+    "request_tag": "post_tool",
+    "function": "call_llm_with_tools",
+    "streaming": true,
+    "tool_choice": "auto",
+    "tool_count": 13,
+    "tools": [],
+    "message_count": 9,
+    "elapsed_ms": 5191.54,
+    "usage": {
+      "input_tokens": 8185,
+      "output_tokens": 202,
+      "total_tokens": 8387,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    },
+    "timestamp": "2026-01-26T13:08:01.510250+00:00",
+    "session_id": "0dab4d56a18c49329b7e12f81758e5a5"
   }
 ]
