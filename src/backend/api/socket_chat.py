@@ -19,6 +19,7 @@ from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..utils.uploads import save_uploaded_image
+from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
 
@@ -97,6 +98,8 @@ class SocketChatTask:
     socketio: SocketIO
     conversation_store: ConversationStore
     repo_root: Path
+    workflow_store: WorkflowStore
+    user_id: str
     sid: str
     task_id: str
     message: str
@@ -225,6 +228,9 @@ class SocketChatTask:
             return
         self.convo.orchestrator.sync_workflow(lambda: self.convo.workflow_state)
         self.convo.orchestrator.sync_workflow_analysis(lambda: self.convo.workflow_analysis)
+        # Set workflow_store and user_id for tool access
+        self.convo.orchestrator.workflow_store = self.workflow_store
+        self.convo.orchestrator.user_id = self.user_id
 
     def _sync_convo_from_orchestrator(self) -> None:
         if not self.convo:
@@ -284,6 +290,8 @@ def handle_socket_chat(
     *,
     conversation_store: ConversationStore,
     repo_root: Path,
+    workflow_store: Any,
+    user_id: str,
     payload: Dict[str, Any],
 ) -> None:
     message = payload.get("message", "")
@@ -301,6 +309,8 @@ def handle_socket_chat(
         socketio=socketio,
         conversation_store=conversation_store,
         repo_root=repo_root,
+        workflow_store=workflow_store,
+        user_id=user_id,
         sid=sid,
         task_id=task_id,
         message=message,

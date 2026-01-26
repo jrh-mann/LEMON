@@ -53,10 +53,19 @@ def register_socket_handlers(
 
     @socketio.on("chat")
     def socket_chat(payload: Dict[str, Any]) -> None:
+        # Get user from auth session
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("agent_error", {"error": "Authentication required"}, to=request.sid)
+            return
+        _, user = session
+
         handle_socket_chat(
             socketio,
             conversation_store=conversation_store,
             repo_root=repo_root,
+            workflow_store=workflow_store,
+            user_id=user.id,
             payload=payload,
         )
 

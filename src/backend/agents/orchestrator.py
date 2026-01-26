@@ -47,6 +47,10 @@ class Orchestrator:
         self._tool_logger = logging.getLogger("backend.tool_calls")
         self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() not in {"0", "false", "no"}
 
+        # Session context for tools (workflow_store, user_id)
+        self.workflow_store: Optional[Any] = None
+        self.user_id: Optional[str] = None
+
     # Backward-compatible properties for existing code
     @property
     def current_workflow(self) -> Dict[str, Any]:
@@ -187,14 +191,22 @@ class Orchestrator:
             json.dumps(args, ensure_ascii=True),
         )
 
+        # Build session_state with workflow context and user context
+        session_state = {
+            "current_workflow": self.current_workflow,
+            "workflow_analysis": self.workflow_analysis,
+        }
+        # Add workflow_store and user_id if available
+        if self.workflow_store is not None:
+            session_state["workflow_store"] = self.workflow_store
+        if self.user_id is not None:
+            session_state["user_id"] = self.user_id
+
         if self._use_mcp:
             # Pass session_state through MCP as a regular argument
             mcp_args = {
                 **args,
-                "session_state": {
-                    "current_workflow": self.current_workflow,
-                    "workflow_analysis": self.workflow_analysis,
-                }
+                "session_state": session_state,
             }
             data = call_mcp_tool(tool_name, mcp_args)
         else:
@@ -203,10 +215,7 @@ class Orchestrator:
                 args,
                 stream=stream,
                 should_cancel=should_cancel,
-                session_state={
-                    "current_workflow": self.current_workflow,
-                    "workflow_analysis": self.workflow_analysis,
-                },
+                session_state=session_state,
             )
         result = self._normalize_tool_result(tool_name, data)
         self._tool_logger.info(

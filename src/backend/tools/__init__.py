@@ -18,6 +18,7 @@ from .workflow_input import (
     RemoveWorkflowInputTool,
 )
 from .validate_workflow import ValidateWorkflowTool
+from .workflow_library import ListWorkflowsInLibrary
 
 __all__ = [
     "Tool",
@@ -38,4 +39,5 @@ __all__ = [
     "ListWorkflowInputsTool",
     "RemoveWorkflowInputTool",
     "ValidateWorkflowTool",
+    "ListWorkflowsInLibrary",
 ]

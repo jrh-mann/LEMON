@@ -372,6 +372,39 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_workflows_in_library",
+                "description": (
+                    "List all workflows saved in the user's library. "
+                    "Returns workflow metadata including name, description, domain, tags, "
+                    "validation status, and input/output information. "
+                    "Use this to check if similar workflows already exist before creating new ones, "
+                    "or to recommend existing workflows to the user."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "search_query": {
+                            "type": "string",
+                            "description": "Optional text to search for in workflow names, descriptions, or domains",
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain filter (e.g., 'Healthcare', 'Finance')",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of workflows to return (default: 50, max: 100)",
+                            "minimum": 1,
+                            "maximum": 100,
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
     ]
 
 
@@ -392,7 +425,15 @@ def build_system_prompt(
         "- MODIFY/CHANGE/UPDATE/RENAME → call modify_node\n"
         "- CONNECT/LINK → call add_connection\n"
         "- WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow\n"
-        "- VALIDATE/CHECK/VERIFY → call validate_workflow\n\n"
+        "- VALIDATE/CHECK/VERIFY → call validate_workflow\n"
+        "- VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library\n\n"
+        "## Checking for Existing Workflows\n"
+        "WHENEVER the user wants to create a new workflow, ALWAYS call list_workflows_in_library first to check "
+        "if a similar workflow already exists. This prevents duplicates and helps users discover what they've already built.\n\n"
+        "Examples:\n"
+        "- User: 'Create a BMI calculation workflow' → First call list_workflows_in_library(search_query='BMI') to check\n"
+        "- User: 'Show me my saved workflows' → Call list_workflows_in_library()\n"
+        "- User: 'Do I have any healthcare workflows?' → Call list_workflows_in_library(domain='Healthcare')\n\n"
         "DO NOT ask for confirmation. DO NOT clarify unless the request is truly ambiguous (e.g., 'add a node' without any description). "
         "If the user says 'add a start node', immediately call add_node. "
         "If the user says 'delete the validation node', immediately call get_current_workflow to find it, then delete_node. "
