@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict, List
 
 from ..core import Tool, ToolParameter
 
 
 class GetCurrentWorkflowTool(Tool):
-    """Get the current workflow displayed on the canvas."""
+    """Get the current workflow displayed on the canvas.
+    
+    Returns workflow structure including nodes, edges, and inputs.
+    For subprocess nodes, includes subworkflow reference information.
+    """
 
     name = "get_current_workflow"
     description = "Get the current workflow displayed on the canvas as JSON (nodes and edges)."
@@ -19,7 +24,6 @@ class GetCurrentWorkflowTool(Tool):
         raw_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
         
         # Deep copy to avoid modifying orchestrator state when adding defaults for tool output
-        import copy
         workflow = {
             "nodes": [copy.deepcopy(n) for n in raw_workflow.get("nodes", [])],
             "edges": [copy.deepcopy(e) for e in raw_workflow.get("edges", [])]
@@ -31,6 +35,11 @@ class GetCurrentWorkflowTool(Tool):
                 node.setdefault("output_type", "string")
                 node.setdefault("output_template", "")
                 node.setdefault("output_value", None)
+            # Ensure subprocess fields are present for 'subprocess' nodes
+            elif node.get("type") == "subprocess":
+                node.setdefault("subworkflow_id", None)
+                node.setdefault("input_mapping", {})
+                node.setdefault("output_variable", None)
         
         # Merge inputs into workflow if available
         inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
@@ -53,7 +62,23 @@ class GetCurrentWorkflowTool(Tool):
                 if parts:
                     output_part = f" [Output: {', '.join(parts)}]"
             
-            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){input_ref_part}{output_part}"
+            # Show subprocess configuration
+            subprocess_part = ""
+            if node.get("type") == "subprocess":
+                parts = []
+                if node.get("subworkflow_id"):
+                    parts.append(f"calls={node['subworkflow_id']}")
+                if node.get("input_mapping"):
+                    mapping_str = ", ".join(
+                        f"{k}->{v}" for k, v in node['input_mapping'].items()
+                    )
+                    parts.append(f"maps=[{mapping_str}]")
+                if node.get("output_variable"):
+                    parts.append(f"output_as={node['output_variable']}")
+                if parts:
+                    subprocess_part = f" [Subflow: {', '.join(parts)}]"
+            
+            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){input_ref_part}{output_part}{subprocess_part}"
             node_descriptions.append(desc)
 
         edge_descriptions = []

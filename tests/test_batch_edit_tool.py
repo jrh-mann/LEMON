@@ -322,7 +322,7 @@ class TestBatchEditWorkflowTool:
         }
         args = {
             "operations": [
-                {"op": "modify_node", "node_id": "n1", "type": "subprocess"}
+                {"op": "modify_node", "node_id": "n1", "type": "end"}  # end doesn't require special fields
             ]
         }
         session_state = {"current_workflow": existing_workflow}
@@ -371,3 +371,215 @@ class TestBatchEditWorkflowTool:
         assert result["success"] is True
         # Only new node and connection should be in operations
         assert result["operation_count"] == 2
+
+
+class TestBatchEditSubprocessNodes:
+    """Test batch_edit_workflow handling of subprocess nodes."""
+
+    def setup_method(self):
+        self.tool = BatchEditWorkflowTool()
+
+    def test_subprocess_node_preserves_all_fields(self):
+        """Should preserve subworkflow_id, input_mapping, and output_variable fields."""
+        existing_workflow = {"nodes": [], "edges": []}
+        args = {
+            "operations": [
+                {
+                    "op": "add_node",
+                    "type": "subprocess",
+                    "label": "BMI Analysis",
+                    "id": "temp_subprocess",
+                    "subworkflow_id": "wf_test123",
+                    "input_mapping": {"BMI": "BMI"},
+                    "output_variable": "BMI_Result",
+                    "x": 100,
+                    "y": 150,
+                }
+            ]
+        }
+        # Provide workflow_store so validation passes
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
+            "workflow_store": {
+                "wf_test123": {
+                    "id": "wf_test123",
+                    "metadata": {"name": "BMI Calculator"},
+                    "nodes": [],
+                    "edges": [],
+                }
+            },
+        }
+
+        result = self.tool.execute(args, session_state=session_state)
+
+        assert result["success"] is True
+        node = result["operations"][0]["node"]
+        assert node["subworkflow_id"] == "wf_test123"
+        assert node["input_mapping"] == {"BMI": "BMI"}
+        assert node["output_variable"] == "BMI_Result"
+
+    def test_subprocess_auto_registers_output_variable_as_input(self):
+        """Should automatically register output_variable as a workflow input."""
+        existing_workflow = {"nodes": [], "edges": []}
+        args = {
+            "operations": [
+                {
+                    "op": "add_node",
+                    "type": "subprocess",
+                    "label": "BMI Analysis",
+                    "id": "temp_subprocess",
+                    "subworkflow_id": "wf_test123",
+                    "input_mapping": {"BMI": "BMI"},
+                    "output_variable": "BMI_Result",
+                }
+            ]
+        }
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
+            "workflow_store": {
+                "wf_test123": {
+                    "id": "wf_test123",
+                    "metadata": {"name": "BMI Calculator"},
+                    "nodes": [],
+                    "edges": [],
+                }
+            },
+        }
+
+        result = self.tool.execute(args, session_state=session_state)
+
+        assert result["success"] is True
+        # Check that BMI_Result was added to workflow inputs
+        inputs = result["workflow"]["inputs"]
+        output_var_input = next((inp for inp in inputs if inp["name"] == "BMI_Result"), None)
+        assert output_var_input is not None
+        assert output_var_input["type"] == "string"
+
+    def test_subprocess_output_variable_allows_subsequent_decision_reference(self):
+        """Should allow decision nodes to reference subprocess output_variable."""
+        existing_workflow = {"nodes": [], "edges": []}
+        args = {
+            "operations": [
+                # Add subprocess first - this should register BMI_Result as input
+                {
+                    "op": "add_node",
+                    "type": "subprocess",
+                    "label": "BMI Analysis",
+                    "id": "temp_subprocess",
+                    "subworkflow_id": "wf_test123",
+                    "input_mapping": {"BMI": "BMI"},
+                    "output_variable": "BMI_Result",
+                    "x": 100,
+                    "y": 100,
+                },
+                # Then add decision that references the output_variable
+                {
+                    "op": "add_node",
+                    "type": "decision",
+                    "label": "BMI_Result == 'Normal'",
+                    "id": "temp_decision",
+                    "input_ref": "BMI_Result",  # Should work because subprocess registered it
+                    "x": 100,
+                    "y": 200,
+                },
+            ]
+        }
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
+            "workflow_store": {
+                "wf_test123": {
+                    "id": "wf_test123",
+                    "metadata": {"name": "BMI Calculator"},
+                    "nodes": [],
+                    "edges": [],
+                }
+            },
+        }
+
+        result = self.tool.execute(args, session_state=session_state)
+
+        # This should succeed - the subprocess should have registered BMI_Result
+        assert result["success"] is True
+        assert result["operation_count"] == 2
+
+    def test_subprocess_missing_fields_fails_validation(self):
+        """Should fail if subprocess node is missing required fields."""
+        existing_workflow = {"nodes": [], "edges": []}
+        args = {
+            "operations": [
+                {
+                    "op": "add_node",
+                    "type": "subprocess",
+                    "label": "BMI Analysis",
+                    "id": "temp_subprocess",
+                    # Missing subworkflow_id, input_mapping, output_variable
+                }
+            ]
+        }
+        session_state = {"current_workflow": existing_workflow}
+
+        result = self.tool.execute(args, session_state=session_state)
+
+        assert result["success"] is False
+        assert "subworkflow_id" in result["error"] or "missing" in result["error"].lower()
+
+    def test_subprocess_with_complete_workflow(self):
+        """Should successfully create a complete workflow with subprocess."""
+        existing_workflow = {"nodes": [], "edges": []}
+        args = {
+            "operations": [
+                {"op": "add_node", "type": "start", "label": "Start", "id": "temp_start", "x": 100, "y": 50},
+                {
+                    "op": "add_node",
+                    "type": "subprocess",
+                    "label": "Process BMI",
+                    "id": "temp_subprocess",
+                    "subworkflow_id": "wf_bmi",
+                    "input_mapping": {"BMI": "BMI"},
+                    "output_variable": "result",
+                    "x": 100,
+                    "y": 150,
+                },
+                {
+                    "op": "add_node",
+                    "type": "decision",
+                    "label": "result == 'Normal'",
+                    "id": "temp_decision",
+                    "input_ref": "result",
+                    "x": 100,
+                    "y": 250,
+                },
+                {"op": "add_node", "type": "end", "label": "Healthy", "id": "temp_end1", "x": 50, "y": 350},
+                {"op": "add_node", "type": "end", "label": "Unhealthy", "id": "temp_end2", "x": 150, "y": 350},
+                {"op": "add_connection", "from": "temp_start", "to": "temp_subprocess", "label": ""},
+                {"op": "add_connection", "from": "temp_subprocess", "to": "temp_decision", "label": ""},
+                {"op": "add_connection", "from": "temp_decision", "to": "temp_end1", "label": "true"},
+                {"op": "add_connection", "from": "temp_decision", "to": "temp_end2", "label": "false"},
+            ]
+        }
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
+            "workflow_store": {
+                "wf_bmi": {
+                    "id": "wf_bmi",
+                    "metadata": {"name": "BMI Calculator"},
+                    "nodes": [],
+                    "edges": [],
+                }
+            },
+        }
+
+        result = self.tool.execute(args, session_state=session_state)
+
+        assert result["success"] is True
+        assert result["operation_count"] == 9
+        
+        # Verify subprocess node has all fields
+        subprocess_op = next(op for op in result["operations"] if op["op"] == "add_node" and op["node"]["type"] == "subprocess")
+        assert subprocess_op["node"]["subworkflow_id"] == "wf_bmi"
+        assert subprocess_op["node"]["input_mapping"] == {"BMI": "BMI"}
+        assert subprocess_op["node"]["output_variable"] == "result"

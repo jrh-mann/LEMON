@@ -97,10 +97,10 @@ class TestAddNodeTool:
     def test_add_node_assigns_correct_color(self):
         """Should assign color based on node type"""
         # Decision nodes can't be added alone (need 2 branches), so exclude them
+        # Subprocess nodes require additional fields, tested separately
         test_cases = [
             ("start", "teal"),
             ("end", "green"),
-            ("subprocess", "rose"),
             ("process", "slate"),
         ]
 
@@ -110,6 +110,23 @@ class TestAddNodeTool:
             result = self.tool.execute(args, session_state=session_state)
             assert result["success"] is True, f"Failed for {node_type}: {result.get('error')}"
             assert result["node"]["color"] == expected_color
+    
+    def test_add_subprocess_node_assigns_correct_color(self):
+        """Should assign rose color to subprocess nodes with proper config"""
+        args = {
+            "type": "subprocess",
+            "label": "Test Subprocess",
+            "subworkflow_id": "wf_test",
+            "input_mapping": {},
+            "output_variable": "TestOutput",
+        }
+        session_state = {
+            "current_workflow": {"nodes": [], "edges": []},
+            "workflow_analysis": {"inputs": []},
+        }
+        result = self.tool.execute(args, session_state=session_state)
+        assert result["success"] is True, f"Failed: {result.get('error')}"
+        assert result["node"]["color"] == "rose"  # Backend uses rose for subprocess
 
     def test_add_invalid_node_type_fails_validation(self):
         """Should fail validation for invalid node type"""
@@ -189,14 +206,40 @@ class TestModifyNodeTool:
             ],
             "edges": [],
         }
-        # Change to subprocess (which is valid alone)
-        args = {"node_id": "n1", "type": "subprocess"}
+        # Change to end (which is valid alone and doesn't require special fields)
+        args = {"node_id": "n1", "type": "end"}
         session_state = {"current_workflow": existing_workflow}
 
         result = self.tool.execute(args, session_state=session_state)
 
         assert result["success"] is True
+        assert result["node"]["type"] == "end"
+    
+    def test_modify_node_to_subprocess(self):
+        """Should allow changing node type to subprocess with required fields"""
+        existing_workflow = {
+            "nodes": [
+                {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0, "color": "slate"},
+            ],
+            "edges": [],
+        }
+        args = {
+            "node_id": "n1",
+            "type": "subprocess",
+            "subworkflow_id": "wf_test",
+            "input_mapping": {},
+            "output_variable": "Result",
+        }
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": []},
+        }
+
+        result = self.tool.execute(args, session_state=session_state)
+
+        assert result["success"] is True
         assert result["node"]["type"] == "subprocess"
+        assert result["node"]["subworkflow_id"] == "wf_test"
 
     def test_modify_nonexistent_node_fails(self):
         """Should fail validation when modifying non-existent node"""

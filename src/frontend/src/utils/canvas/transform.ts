@@ -54,6 +54,17 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
     node.output_value = rawNode.output_value
   }
 
+  // Preserve subprocess configuration if present
+  if (rawNode.subworkflow_id) {
+    node.subworkflow_id = rawNode.subworkflow_id as string
+  }
+  if (rawNode.input_mapping) {
+    node.input_mapping = rawNode.input_mapping as Record<string, string>
+  }
+  if (rawNode.output_variable) {
+    node.output_variable = rawNode.output_variable as string
+  }
+
   return node
 }
 

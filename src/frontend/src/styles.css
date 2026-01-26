@@ -3952,3 +3952,118 @@ button.primary.warning:hover {
   margin-bottom: 16px;
 }
 
+/* ==================== Subprocess Configuration Styles ==================== */
+
+/* Info section showing subflow inputs/outputs */
+.subprocess-info {
+  background: var(--surface-alt);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.subprocess-info p {
+  margin: 4px 0;
+}
+
+.subprocess-info strong {
+  color: var(--text-primary);
+}
+
+/* Input mapping list - shows existing mappings */
+.mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.mapping-parent {
+  color: var(--teal);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mapping-subflow {
+  color: var(--amber);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-remove {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.mapping-remove:hover {
+  opacity: 1;
+  color: var(--rose);
+}
+
+/* Add new mapping row */
+.mapping-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mapping-add select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.mapping-add select:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.mapping-add button {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.mapping-add button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Warning text style */
+.warning {
+  color: var(--amber);
+}
+

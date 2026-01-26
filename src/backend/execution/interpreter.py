@@ -4,25 +4,38 @@ Interprets workflow trees by:
 1. Starting at the start node
 2. Evaluating conditions at decision nodes
 3. Following appropriate branches based on results
-4. Tracking execution path
-5. Returning output when reached
+4. Executing subworkflows when subprocess nodes are encountered
+5. Tracking execution path
+6. Returning output when reached
+
+Subflow Execution:
+- Subprocess nodes reference other workflows by ID
+- Input mapping translates parent inputs to subworkflow inputs
+- Subworkflow output is injected as a new input variable in parent context
+- Cycle detection prevents infinite recursion (A->B->A)
 """
 
 import json
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+import re
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from dataclasses import dataclass, field
 from .parser import parse_condition
 from .evaluator import evaluate
+
+if TYPE_CHECKING:
+    from ..storage.workflows import WorkflowStore
 
 
 @dataclass
 class ExecutionResult:
     """Result of workflow execution"""
     success: bool
-    output: Optional[str] = None
-    path: List[str] = None
-    context: Dict[str, Any] = None
+    output: Optional[Any] = None
+    path: Optional[List[str]] = None
+    context: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    # Track subflow executions for debugging
+    subflow_results: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         if self.path is None:
@@ -36,16 +49,46 @@ class InterpreterError(Exception):
     pass
 
 
+class SubflowCycleError(InterpreterError):
+    """Raised when a circular subflow reference is detected"""
+    pass
+
+
 class TreeInterpreter:
-    """Interprets and executes workflow trees"""
+    """Interprets and executes workflow trees with subflow support.
+    
+    Supports executing subprocess nodes that reference other workflows.
+    When a subprocess node is encountered:
+    1. The referenced workflow is loaded from workflow_store
+    2. Parent inputs are mapped to subworkflow inputs via input_mapping
+    3. The subworkflow is executed recursively
+    4. The subworkflow's output is injected as a new input variable
+    5. Execution continues to the next node
+    
+    Cycle detection prevents infinite recursion by tracking the call stack
+    of workflow IDs being executed.
+    """
 
-    def __init__(self, tree: Dict[str, Any], inputs: List[Dict[str, Any]], outputs: List[Dict[str, Any]]):
+    def __init__(
+        self,
+        tree: Dict[str, Any],
+        inputs: List[Dict[str, Any]],
+        outputs: List[Dict[str, Any]],
+        workflow_id: Optional[str] = None,
+        call_stack: Optional[List[str]] = None,
+        workflow_store: Optional["WorkflowStore"] = None,
+        user_id: Optional[str] = None,
+    ):
         """Initialize interpreter
-
+        
         Args:
             tree: Workflow tree (must have 'start' key)
             inputs: List of input definitions with id, name, type, range, enum_values
             outputs: List of output definitions with name
+            workflow_id: ID of this workflow (for cycle detection in subflows)
+            call_stack: Stack of workflow IDs currently being executed (for cycle detection)
+            workflow_store: Store for loading subworkflows (required for subprocess nodes)
+            user_id: User ID for loading subworkflows (required for subprocess nodes)
         """
         self.tree = tree
         self.inputs_schema = {inp['id']: inp for inp in inputs}
@@ -54,16 +97,25 @@ class TreeInterpreter:
         # Create mapping from input names to IDs for condition evaluation
         # e.g., "Age" -> "input_age_int", "BMI" -> "input_bmi_float"
         self.name_to_id = {inp['name']: inp['id'] for inp in inputs}
+        
+        # Subflow support
+        self.workflow_id = workflow_id
+        self.call_stack = call_stack or []
+        self.workflow_store = workflow_store
+        self.user_id = user_id
+        
+        # Track subflow execution results
+        self.subflow_results: List[Dict[str, Any]] = []
 
     def execute(self, input_values: Dict[str, Any]) -> ExecutionResult:
         """Execute workflow with given inputs
-
+        
         Args:
             input_values: Dictionary mapping input IDs to values
-
+            
         Returns:
             ExecutionResult with output, path, and context
-
+            
         Example:
             >>> result = interpreter.execute({"input_age_int": 25})
             >>> result.success
@@ -109,14 +161,19 @@ class TreeInterpreter:
                         success=True,
                         output=output_val,
                         path=path,
-                        context=context
+                        context=context,
+                        subflow_results=self.subflow_results
                     )
 
                 elif node_type == 'decision':
                     # Evaluate condition and branch
                     current = self._handle_decision_node(current, context)
 
-                elif node_type in ('start', 'action'):
+                elif node_type == 'subprocess':
+                    # Execute subworkflow and inject output as new input
+                    current = self._handle_subprocess_node(current, context)
+
+                elif node_type in ('start', 'action', 'process'):
                     # Pass through to first child
                     children = current.get('children', [])
                     if not children:
@@ -124,7 +181,8 @@ class TreeInterpreter:
                             success=False,
                             error=f"Node '{node_id}' has no children",
                             path=path,
-                            context=context
+                            context=context,
+                            subflow_results=self.subflow_results
                         )
                     current = children[0]
 
@@ -133,7 +191,8 @@ class TreeInterpreter:
                         success=False,
                         error=f"Unknown node type '{node_type}' at node '{node_id}'",
                         path=path,
-                        context=context
+                        context=context,
+                        subflow_results=self.subflow_results
                     )
 
             # Fell through without reaching output
@@ -141,16 +200,293 @@ class TreeInterpreter:
                 success=False,
                 error="No output node reached",
                 path=path,
-                context=context
+                context=context,
+                subflow_results=self.subflow_results
             )
 
+        except SubflowCycleError as e:
+            # Propagate cycle errors with clear message
+            return ExecutionResult(
+                success=False,
+                error=str(e),
+                path=path,
+                context=context,
+                subflow_results=self.subflow_results
+            )
         except Exception as e:
             return ExecutionResult(
                 success=False,
                 error=f"Execution error: {str(e)}",
                 path=path,
-                context=context
+                context=context,
+                subflow_results=self.subflow_results
             )
+
+    def _handle_subprocess_node(
+        self,
+        node: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Execute a subworkflow and inject its output as a new input variable.
+        
+        Steps:
+        1. Detect cycles (prevent infinite recursion)
+        2. Load subworkflow from WorkflowStore
+        3. Map parent inputs to subworkflow inputs
+        4. Create TreeInterpreter for subworkflow
+        5. Execute subworkflow
+        6. Inject output as new input in parent context
+        7. Continue to next node
+        
+        Args:
+            node: Subprocess node with subworkflow_id, input_mapping, output_variable
+            context: Parent workflow execution context
+            
+        Returns:
+            Next node to execute
+            
+        Raises:
+            SubflowCycleError: If circular subflow reference detected
+            InterpreterError: If subworkflow fails or configuration invalid
+        """
+        node_id = node.get('id', 'unknown')
+        node_label = node.get('label', node_id)
+        subworkflow_id = node.get('subworkflow_id')
+        input_mapping = node.get('input_mapping', {})
+        output_variable = node.get('output_variable')
+        
+        # Validate required fields
+        if not subworkflow_id:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}' missing subworkflow_id"
+            )
+        if not output_variable:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}' missing output_variable"
+            )
+        if not isinstance(input_mapping, dict):
+            raise InterpreterError(
+                f"Subprocess node '{node_label}': input_mapping must be a dictionary"
+            )
+        
+        # Cycle detection: Check if subworkflow is already in call stack
+        if subworkflow_id in self.call_stack:
+            cycle_path = self.call_stack + [subworkflow_id]
+            raise SubflowCycleError(
+                f"Circular subflow detected: {' -> '.join(cycle_path)}. "
+                f"A workflow cannot call itself directly or indirectly."
+            )
+        
+        # Verify we have workflow_store to load subworkflow
+        if not self.workflow_store:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}': workflow_store not available. "
+                f"Cannot execute subflows without access to workflow storage."
+            )
+        if not self.user_id:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}': user_id not available. "
+                f"Cannot load subworkflows without user context."
+            )
+        
+        # Load subworkflow
+        subworkflow = self.workflow_store.get_workflow(subworkflow_id, self.user_id)
+        if not subworkflow:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}': subworkflow '{subworkflow_id}' not found"
+            )
+        
+        # Map parent inputs to subworkflow inputs
+        sub_input_values = self._map_inputs_to_subworkflow(
+            input_mapping,
+            context,
+            subworkflow.inputs,
+            node_label
+        )
+        
+        # Build new call stack with current workflow
+        new_call_stack = self.call_stack.copy()
+        if self.workflow_id:
+            new_call_stack.append(self.workflow_id)
+        
+        # Create interpreter for subworkflow
+        sub_interpreter = TreeInterpreter(
+            tree=subworkflow.tree,
+            inputs=subworkflow.inputs,
+            outputs=subworkflow.outputs,
+            workflow_id=subworkflow_id,
+            call_stack=new_call_stack,
+            workflow_store=self.workflow_store,
+            user_id=self.user_id,
+        )
+        
+        # Execute subworkflow
+        sub_result = sub_interpreter.execute(sub_input_values)
+        
+        # Record subflow execution for debugging
+        self.subflow_results.append({
+            "node_id": node_id,
+            "subworkflow_id": subworkflow_id,
+            "subworkflow_name": subworkflow.name,
+            "input_mapping": input_mapping,
+            "sub_inputs": sub_input_values,
+            "output_variable": output_variable,
+            "result": {
+                "success": sub_result.success,
+                "output": sub_result.output,
+                "error": sub_result.error,
+            }
+        })
+        
+        # Propagate subworkflow errors to parent
+        if not sub_result.success:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}' failed: "
+                f"Subworkflow '{subworkflow.name}' returned error: {sub_result.error}"
+            )
+        
+        # Inject subworkflow output as new input variable in parent context
+        self._inject_subflow_output(output_variable, sub_result.output, context)
+        
+        # Continue to next node
+        children = node.get('children', [])
+        if not children:
+            raise InterpreterError(
+                f"Subprocess node '{node_label}' has no children. "
+                f"Flow must continue after subprocess or end explicitly."
+            )
+        
+        return children[0]
+
+    def _map_inputs_to_subworkflow(
+        self,
+        input_mapping: Dict[str, str],
+        context: Dict[str, Any],
+        sub_inputs: List[Dict[str, Any]],
+        node_label: str,
+    ) -> Dict[str, Any]:
+        """Map parent workflow inputs to subworkflow input values.
+        
+        Args:
+            input_mapping: Dict mapping parent input names to subworkflow input names
+            context: Parent workflow execution context (input_id -> value)
+            sub_inputs: Subworkflow input definitions
+            node_label: Label of subprocess node for error messages
+            
+        Returns:
+            Dict mapping subworkflow input IDs to values
+            
+        Raises:
+            InterpreterError: If mapping fails (missing inputs, type mismatch)
+        """
+        # Build subworkflow name->id mapping
+        sub_name_to_id = {inp['name']: inp['id'] for inp in sub_inputs}
+        
+        # Map values
+        sub_input_values = {}
+        
+        for parent_name, sub_name in input_mapping.items():
+            # Find parent input ID
+            parent_id = self.name_to_id.get(parent_name)
+            if not parent_id:
+                raise InterpreterError(
+                    f"Subprocess '{node_label}': input_mapping references "
+                    f"non-existent parent input '{parent_name}'"
+                )
+            
+            # Find subworkflow input ID
+            sub_id = sub_name_to_id.get(sub_name)
+            if not sub_id:
+                raise InterpreterError(
+                    f"Subprocess '{node_label}': input_mapping maps to "
+                    f"non-existent subworkflow input '{sub_name}'"
+                )
+            
+            # Get value from parent context
+            if parent_id not in context:
+                raise InterpreterError(
+                    f"Subprocess '{node_label}': parent input '{parent_name}' "
+                    f"has no value in context"
+                )
+            
+            sub_input_values[sub_id] = context[parent_id]
+        
+        return sub_input_values
+
+    def _inject_subflow_output(
+        self,
+        output_variable: str,
+        output_value: Any,
+        context: Dict[str, Any]
+    ) -> None:
+        """Inject subflow output as a new input variable in parent context.
+        
+        Dynamically registers the output as a new input that can be used
+        in subsequent decision nodes.
+        
+        Args:
+            output_variable: Name of the variable (e.g., "CreditScore")
+            output_value: The value returned by subworkflow
+            context: Parent workflow context (modified in place)
+        """
+        # Infer type from output value
+        output_type = self._infer_type(output_value)
+        
+        # Generate deterministic input ID
+        input_id = self._generate_input_id(output_variable, output_type)
+        
+        # Add to name->id mapping for future condition evaluation
+        self.name_to_id[output_variable] = input_id
+        
+        # Add to context
+        context[input_id] = output_value
+        
+        # Track in inputs_schema for potential validation
+        self.inputs_schema[input_id] = {
+            "id": input_id,
+            "name": output_variable,
+            "type": output_type,
+            "source": "subflow",  # Mark as dynamically injected
+        }
+
+    def _infer_type(self, value: Any) -> str:
+        """Infer input type from value.
+        
+        Args:
+            value: The value to analyze
+            
+        Returns:
+            Type string: 'int', 'float', 'bool', 'string', or 'json'
+        """
+        if isinstance(value, bool):
+            return "bool"
+        elif isinstance(value, int):
+            return "int"
+        elif isinstance(value, float):
+            return "float"
+        elif isinstance(value, str):
+            return "string"
+        elif isinstance(value, (dict, list)):
+            return "json"
+        else:
+            return "string"  # Fallback
+
+    def _generate_input_id(self, name: str, input_type: str) -> str:
+        """Generate deterministic input ID from name and type.
+        
+        Follows the same pattern as deterministic_input_id in utils/analysis.py:
+        input_{slug}_{type}
+        
+        Args:
+            name: Input name (e.g., "Credit Score")
+            input_type: Input type (e.g., "int")
+            
+        Returns:
+            Input ID (e.g., "input_credit_score_int")
+        """
+        # Slugify: lowercase, replace non-alphanumeric with underscore
+        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+        return f"input_{slug}_{input_type}"
 
     def _resolve_output_value(self, node: Dict[str, Any], context: Dict[str, Any]) -> Any:
         """Resolve output value from node configuration.

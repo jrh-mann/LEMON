@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import get_node_color, input_ref_error
+from .helpers import get_node_color, input_ref_error, validate_subprocess_node
 
 
 class BatchEditWorkflowTool(Tool):
@@ -116,6 +116,54 @@ class BatchEditWorkflowTool(Tool):
                             new_node["output_template"] = op["output_template"]
                         if "output_value" in op:
                             new_node["output_value"] = op["output_value"]
+
+                    # Handle subprocess-specific fields
+                    if op["type"] == "subprocess":
+                        subworkflow_id = op.get("subworkflow_id")
+                        input_mapping = op.get("input_mapping")
+                        output_variable = op.get("output_variable")
+                        
+                        if subworkflow_id:
+                            new_node["subworkflow_id"] = subworkflow_id
+                        if input_mapping is not None:
+                            new_node["input_mapping"] = input_mapping
+                        if output_variable:
+                            new_node["output_variable"] = output_variable
+                            
+                            # Auto-register output_variable as a workflow input
+                            # This allows subsequent decision nodes to reference it
+                            existing_input_names = [inp.get("name", "").lower() for inp in new_workflow.get("inputs", [])]
+                            if output_variable.lower() not in existing_input_names:
+                                new_input = {
+                                    "id": f"input_{output_variable.lower().replace(' ', '_')}",
+                                    "name": output_variable,
+                                    "type": "string",  # Subflow outputs are strings
+                                    "description": f"Output from subprocess '{op['label']}'",
+                                }
+                                if "inputs" not in new_workflow:
+                                    new_workflow["inputs"] = []
+                                new_workflow["inputs"].append(new_input)
+                                # Also update session_state so subsequent ops can reference it
+                                if "workflow_analysis" not in session_state:
+                                    session_state["workflow_analysis"] = {"inputs": []}
+                                session_state["workflow_analysis"]["inputs"].append(new_input)
+                        
+                        # Validate subprocess node configuration
+                        subprocess_errors = validate_subprocess_node(
+                            new_node,
+                            session_state,
+                            check_workflow_exists=True,
+                        )
+                        if subprocess_errors:
+                            raise ValueError("\n".join(subprocess_errors))
+                    else:
+                        # Still allow subprocess fields on other types (for type changes)
+                        if "subworkflow_id" in op:
+                            new_node["subworkflow_id"] = op["subworkflow_id"]
+                        if "input_mapping" in op:
+                            new_node["input_mapping"] = op["input_mapping"]
+                        if "output_variable" in op:
+                            new_node["output_variable"] = op["output_variable"]
 
                     new_workflow["nodes"].append(new_node)
                     applied_operations.append({"op": "add_node", "node": new_node})

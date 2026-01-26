@@ -276,7 +276,7 @@ function ValidationFlow() {
 
 // Save workflow form component
 function SaveWorkflowForm() {
-  const { closeModal, setError } = useUIStore()
+  const { closeModal } = useUIStore()
   const { flowchart, currentAnalysis } = useWorkflowStore()
 
   const [name, setName] = useState('')

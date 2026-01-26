@@ -139,6 +139,10 @@ export interface FlowNode {
   output_type?: string
   output_template?: string
   output_value?: unknown
+  // Subprocess-specific fields (for type='subprocess')
+  subworkflow_id?: string
+  input_mapping?: Record<string, string>
+  output_variable?: string
 }
 
 export interface FlowEdge {

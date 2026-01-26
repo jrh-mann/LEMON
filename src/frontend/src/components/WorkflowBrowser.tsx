@@ -3,7 +3,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow, deleteWorkflow } from '../api/workflows'
 import { autoLayoutFlowchart } from '../utils/canvas'
-import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis } from '../types'
+import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 export default function WorkflowBrowser() {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
@@ -11,7 +11,7 @@ export default function WorkflowBrowser() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const { addTab, setAnalysis } = useWorkflowStore()
+  const { addTab, setAnalysis, setWorkflows: setGlobalWorkflows } = useWorkflowStore()
   const { closeModal } = useUIStore()
 
   // Load workflows on mount
@@ -22,6 +22,8 @@ export default function WorkflowBrowser() {
       try {
         const workflowsData = await listWorkflows()
         setWorkflows(workflowsData)
+        // Also update the global store so other components can access workflows
+        setGlobalWorkflows(workflowsData)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load workflows')
       } finally {
@@ -55,6 +57,8 @@ export default function WorkflowBrowser() {
       // Refresh the list
       const updatedWorkflows = await listWorkflows()
       setWorkflows(updatedWorkflows)
+      // Also update the global store
+      setGlobalWorkflows(updatedWorkflows)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete workflow')
     }

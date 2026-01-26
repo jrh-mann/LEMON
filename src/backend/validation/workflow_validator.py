@@ -9,6 +9,10 @@ from src.backend.execution.parser import parse_condition, ParseError
 from src.backend.execution.types import Variable, BinaryOp, UnaryOp
 
 
+# Required fields for subprocess nodes
+SUBPROCESS_REQUIRED_FIELDS = ["subworkflow_id", "input_mapping", "output_variable"]
+
+
 @dataclass
 class ValidationError:
     """Represents a workflow validation error."""
@@ -104,6 +108,11 @@ class WorkflowValidator:
                     )
                 )
             node_ids.add(node_id)
+
+            # Validate subprocess nodes have required fields
+            if node_type == "subprocess":
+                subprocess_errors = self._validate_subprocess_node(node, valid_input_names)
+                errors.extend(subprocess_errors)
 
             # Rule 9: Validate input references in decision nodes
             if node_type == "decision":
@@ -463,6 +472,91 @@ class WorkflowValidator:
             variables.update(self._get_variables(expr.right))
 
         return variables
+
+    def _validate_subprocess_node(
+        self,
+        node: Dict[str, Any],
+        valid_input_names: Optional[Set[str]],
+    ) -> List[ValidationError]:
+        """Validate subprocess node has required fields and valid references.
+        
+        Subprocess nodes reference other workflows (subflows) and must have:
+        - subworkflow_id: ID of the workflow to execute
+        - input_mapping: Dict mapping parent inputs to subworkflow inputs  
+        - output_variable: Name of variable to store subflow output
+        
+        Args:
+            node: The subprocess node to validate
+            valid_input_names: Set of valid input names from parent workflow
+            
+        Returns:
+            List of ValidationError objects for any issues found
+        """
+        errors = []
+        node_id = node.get("id", "unknown")
+        node_label = node.get("label", node_id)
+        
+        # Check required fields exist
+        for field in SUBPROCESS_REQUIRED_FIELDS:
+            if field not in node or node[field] is None:
+                errors.append(
+                    ValidationError(
+                        code="SUBPROCESS_MISSING_FIELD",
+                        message=f"Subprocess node '{node_label}' missing required field '{field}'",
+                        node_id=node_id,
+                    )
+                )
+        
+        # Validate input_mapping is a dict
+        input_mapping = node.get("input_mapping")
+        if input_mapping is not None and not isinstance(input_mapping, dict):
+            errors.append(
+                ValidationError(
+                    code="SUBPROCESS_INVALID_MAPPING",
+                    message=f"Subprocess node '{node_label}': input_mapping must be a dictionary",
+                    node_id=node_id,
+                )
+            )
+        
+        # Validate output_variable is a valid identifier
+        output_var = node.get("output_variable")
+        if output_var is not None:
+            if not isinstance(output_var, str):
+                errors.append(
+                    ValidationError(
+                        code="SUBPROCESS_INVALID_OUTPUT",
+                        message=f"Subprocess node '{node_label}': output_variable must be a string",
+                        node_id=node_id,
+                    )
+                )
+            elif not output_var.replace("_", "").isalnum():
+                errors.append(
+                    ValidationError(
+                        code="SUBPROCESS_INVALID_OUTPUT",
+                        message=(
+                            f"Subprocess node '{node_label}': output_variable must be "
+                            f"alphanumeric with underscores, got '{output_var}'"
+                        ),
+                        node_id=node_id,
+                    )
+                )
+        
+        # Validate input_mapping references existing parent inputs
+        if isinstance(input_mapping, dict) and valid_input_names is not None:
+            for parent_input_name in input_mapping.keys():
+                if parent_input_name not in valid_input_names:
+                    errors.append(
+                        ValidationError(
+                            code="SUBPROCESS_INVALID_INPUT_REF",
+                            message=(
+                                f"Subprocess node '{node_label}': input_mapping references "
+                                f"non-existent parent input '{parent_input_name}'"
+                            ),
+                            node_id=node_id,
+                        )
+                    )
+        
+        return errors
 
     def format_errors(self, errors: List[ValidationError]) -> str:
         """Format validation errors as a readable string."""

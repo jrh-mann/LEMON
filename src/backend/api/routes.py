@@ -538,14 +538,87 @@ def register_routes(
 
     @app.post("/api/execute/<workflow_id>")
     def execute_workflow(workflow_id: str) -> Any:
-        return jsonify(
-            {
+        """Execute a workflow with provided input values.
+        
+        Request body should contain input values keyed by input name:
+        {
+            "Age": 25,
+            "Income": 50000.0,
+            "Smoker": false
+        }
+        
+        Supports subprocess nodes that reference other workflows.
+        Subflow outputs are injected as new inputs for subsequent decisions.
+        """
+        from ..execution.interpreter import TreeInterpreter
+        
+        user_id = g.auth_user.id
+        
+        # Load the workflow
+        workflow = workflow_store.get_workflow(workflow_id, user_id)
+        if not workflow:
+            return jsonify({
                 "success": False,
-                "error": "Workflow execution not implemented.",
+                "error": f"Workflow '{workflow_id}' not found",
                 "path": [],
                 "context": {},
-            }
+            }), 404
+        
+        # Validate workflow has tree structure
+        if not workflow.tree or "start" not in workflow.tree:
+            return jsonify({
+                "success": False,
+                "error": "Workflow has no execution tree. Build the workflow tree first.",
+                "path": [],
+                "context": {},
+            }), 400
+        
+        # Get input values from request
+        payload = request.get_json(force=True, silent=True) or {}
+        
+        # Convert input names to input IDs for the interpreter
+        # User provides: {"Age": 25} -> interpreter needs: {"input_age_int": 25}
+        name_to_id = {inp['name']: inp['id'] for inp in workflow.inputs}
+        input_values = {}
+        
+        for inp in workflow.inputs:
+            inp_name = inp.get('name')
+            inp_id = inp.get('id')
+            
+            if inp_name in payload:
+                input_values[inp_id] = payload[inp_name]
+            elif inp_id in payload:
+                # Also accept input IDs directly
+                input_values[inp_id] = payload[inp_id]
+        
+        # Create interpreter with workflow_store for subflow support
+        interpreter = TreeInterpreter(
+            tree=workflow.tree,
+            inputs=workflow.inputs,
+            outputs=workflow.outputs,
+            workflow_id=workflow_id,
+            call_stack=[],
+            workflow_store=workflow_store,
+            user_id=user_id,
         )
+        
+        # Execute workflow
+        result = interpreter.execute(input_values)
+        
+        # Build response
+        response = {
+            "success": result.success,
+            "output": result.output,
+            "path": result.path,
+            "context": result.context,
+            "error": result.error,
+        }
+        
+        # Include subflow execution details if any
+        if result.subflow_results:
+            response["subflow_results"] = result.subflow_results
+        
+        return jsonify(response)
 
     @app.post("/api/validation/start")
     def start_validation() -> Any:

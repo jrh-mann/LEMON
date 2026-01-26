@@ -72,7 +72,11 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                     "Add a new node (block) to the workflow. Returns the created node with a real ID. "
                     "Note: Decision nodes should have 2 branches (true/false). You can add them separately "
                     "with add_node + add_connection, or use batch_edit_workflow to create the decision + branches "
-                    "atomically with temporary IDs."
+                    "atomically with temporary IDs.\n\n"
+                    "For SUBPROCESS nodes (subflows): Use subprocess type to call another workflow. "
+                    "You MUST provide subworkflow_id, input_mapping, and output_variable. "
+                    "The subworkflow's output will be available as a new input variable that "
+                    "subsequent decision nodes can reference."
                 ),
                 "parameters": {
                     "type": "object",
@@ -111,6 +115,19 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "For 'end' nodes: Static value (or JSON string).",
                         },
+                        "subworkflow_id": {
+                            "type": "string",
+                            "description": "For 'subprocess' nodes: ID of the workflow to call as a subflow.",
+                        },
+                        "input_mapping": {
+                            "type": "object",
+                            "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names. Example: {\"ParentAge\": \"SubAge\", \"ParentIncome\": \"SubIncome\"}",
+                            "additionalProperties": {"type": "string"},
+                        },
+                        "output_variable": {
+                            "type": "string",
+                            "description": "For 'subprocess' nodes: Name for the variable that will hold the subworkflow's output. This becomes available as a new input for subsequent nodes.",
+                        },
                     },
                     "required": ["type", "label"],
                 },
@@ -122,7 +139,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "modify_node",
                 "description": (
                     "Update an existing node's properties (label, type, position). "
-                    "You must know the node_id first - call get_current_workflow to find it."
+                    "You must know the node_id first - call get_current_workflow to find it.\n\n"
+                    "For SUBPROCESS nodes: You can update subworkflow_id, input_mapping, and output_variable."
                 ),
                 "parameters": {
                     "type": "object",
@@ -158,6 +176,19 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "output_value": {
                             "type": "string",
                             "description": "For 'end' nodes: Static value (or JSON string).",
+                        },
+                        "subworkflow_id": {
+                            "type": "string",
+                            "description": "For 'subprocess' nodes: ID of the workflow to call.",
+                        },
+                        "input_mapping": {
+                            "type": "object",
+                            "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names.",
+                            "additionalProperties": {"type": "string"},
+                        },
+                        "output_variable": {
+                            "type": "string",
+                            "description": "For 'subprocess' nodes: Name for the output variable.",
                         },
                     },
                     "required": ["node_id"],
@@ -252,7 +283,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                     "Common scenarios: "
                     "(1) Decision nodes with branches - create decision + 2 branch nodes + 2 connections atomically, "
                     "(2) Node chains - create start->process->end with connections in one operation, "
-                    "(3) Complex multi-step changes that should succeed or fail together."
+                    "(3) Complex multi-step changes that should succeed or fail together, "
+                    "(4) Subprocess nodes with their connections - create subprocess and connect it atomically."
                 ),
                 "parameters": {
                     "type": "object",
@@ -261,8 +293,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "array",
                             "description": (
                                 "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
-                                "add_node: {op, type, label, id (temp ID for referencing), x, y, output_type?, output_template?, output_value?}\n"
-                                "modify_node: {op, node_id, label?, type?, x?, y?, output_type?, output_template?, output_value?}\n"
+                                "add_node: {op, type, label, id (temp ID for referencing), x, y, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
+                                "modify_node: {op, node_id, label?, type?, x?, y?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
                                 "delete_node: {op, node_id}\n"
                                 "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
                                 "delete_connection: {op, from (node_id), to (node_id)}"
@@ -289,6 +321,9 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "output_type": {"type": "string", "enum": ["string", "int", "float", "bool", "json"]},
                                     "output_template": {"type": "string"},
                                     "output_value": {"type": "string"},
+                                    "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
+                                    "input_mapping": {"type": "object", "description": "For subprocess: parent->subworkflow input mapping"},
+                                    "output_variable": {"type": "string", "description": "For subprocess: name for output variable"},
                                     "node_id": {"type": "string", "description": "Existing node ID"},
                                     "from": {"type": "string", "description": "Source node ID or temp ID"},
                                     "to": {"type": "string", "description": "Target node ID or temp ID"},
@@ -570,7 +605,41 @@ def build_system_prompt(
         "- You respond: 'This input is used by 3 nodes (Age Check, Eligibility, Treatment). "
         "Would you like me to force delete it (which will remove the references from these nodes)?'\n"
         "- User: 'Yes, force delete it'\n"
-        "- You call: remove_workflow_input(name='Patient Age', force=true)"
+        "- You call: remove_workflow_input(name='Patient Age', force=true)\n\n"
+        "## Subprocess Nodes (Subflows)\n"
+        "Use subprocess nodes to call other workflows as reusable components.\n\n"
+        "WHEN TO USE SUBPROCESS:\n"
+        "- When a workflow has complex sub-logic that exists as a separate workflow\n"
+        "- When the user wants to reuse an existing workflow within another\n"
+        "- When breaking down large workflows into modular pieces\n\n"
+        "REQUIRED FIELDS FOR SUBPROCESS NODES:\n"
+        "1. subworkflow_id: The ID of the workflow to call (use list_workflows_in_library to find it)\n"
+        "2. input_mapping: Maps parent workflow inputs to subworkflow inputs\n"
+        "   Example: {\"ApplicantAge\": \"Age\", \"AnnualIncome\": \"Income\"}\n"
+        "   This maps parent's 'ApplicantAge' to subworkflow's 'Age' input\n"
+        "3. output_variable: Name for the output (e.g., 'CreditScore')\n"
+        "   This becomes available as a NEW INPUT for subsequent decision nodes\n\n"
+        "EXAMPLE - Creating a subprocess node:\n"
+        "```\n"
+        "add_node(\n"
+        "  type='subprocess',\n"
+        "  label='Credit Check',\n"
+        "  subworkflow_id='wf_abc123',  // Found from list_workflows_in_library\n"
+        "  input_mapping={'ApplicantAge': 'Age', 'AnnualIncome': 'Income'},\n"
+        "  output_variable='CreditScore'\n"
+        ")\n"
+        "```\n\n"
+        "After this subprocess executes:\n"
+        "- The subworkflow runs with the mapped inputs\n"
+        "- Its output is stored as 'CreditScore'\n"
+        "- Subsequent decisions can check 'CreditScore >= 700'\n\n"
+        "WORKFLOW:\n"
+        "1. Call list_workflows_in_library to find available workflows\n"
+        "2. Note the workflow ID and its input requirements\n"
+        "3. Register any needed parent workflow inputs with add_workflow_input\n"
+        "4. Create the subprocess node with proper mapping\n"
+        "5. Connect subprocess to other nodes\n"
+        "6. Use output_variable in subsequent decision conditions"
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."

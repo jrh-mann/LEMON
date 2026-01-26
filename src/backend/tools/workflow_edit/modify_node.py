@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import input_ref_error
+from .helpers import input_ref_error, validate_subprocess_node
 
 
 class ModifyNodeTool(Tool):
@@ -42,6 +42,25 @@ class ModifyNodeTool(Tool):
             "output_value",
             "any",
             "Optional: static value to return",
+            required=False,
+        ),
+        # Subprocess-specific parameters
+        ToolParameter(
+            "subworkflow_id",
+            "string",
+            "For subprocess: ID of the workflow to call as a subflow",
+            required=False,
+        ),
+        ToolParameter(
+            "input_mapping",
+            "object",
+            "For subprocess: dict mapping parent input names to subworkflow input names",
+            required=False,
+        ),
+        ToolParameter(
+            "output_variable",
+            "string",
+            "For subprocess: name for the variable that stores subworkflow output",
             required=False,
         ),
     ]
@@ -84,6 +103,21 @@ class ModifyNodeTool(Tool):
             "inputs": inputs,
         }
         new_workflow["nodes"][node_idx].update(updates)
+
+        # Validate subprocess configuration if node is/becomes a subprocess
+        updated_node = new_workflow["nodes"][node_idx]
+        if updated_node.get("type") == "subprocess":
+            subprocess_errors = validate_subprocess_node(
+                updated_node,
+                session_state,
+                check_workflow_exists=True,
+            )
+            if subprocess_errors:
+                return {
+                    "success": False,
+                    "error": "\n".join(subprocess_errors),
+                    "error_code": "SUBPROCESS_VALIDATION_FAILED",
+                }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
