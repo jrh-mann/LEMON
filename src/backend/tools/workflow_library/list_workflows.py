@@ -54,23 +54,15 @@ class ListWorkflowsInLibrary(Tool):
             "required": [],
         }
 
-    def execute(
-        self,
-        *,
-        search_query: Optional[str] = None,
-        domain: Optional[str] = None,
-        limit: int = 50,
-        session_state: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
+    def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """Execute the list_workflows_in_library tool.
 
         Args:
-            search_query: Optional text search filter
-            domain: Optional domain filter
-            limit: Maximum workflows to return
-            session_state: Session state containing workflow_store and user_id
-            **kwargs: Additional arguments (ignored)
+            args: Tool arguments containing:
+                - search_query: Optional text search filter
+                - domain: Optional domain filter
+                - limit: Maximum workflows to return
+            **kwargs: Additional arguments including session_state
 
         Returns:
             Dict with:
@@ -79,6 +71,13 @@ class ListWorkflowsInLibrary(Tool):
                 - count: total number of workflows
                 - message: human-readable result
         """
+        # Extract parameters from args
+        search_query = args.get("search_query")
+        domain = args.get("domain")
+        limit = args.get("limit", 50)
+
+        # Get session_state from kwargs
+        session_state = kwargs.get("session_state", {})
         # Validate session state
         if not session_state:
             return {
