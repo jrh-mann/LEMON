@@ -277,7 +277,7 @@ function ValidationFlow() {
 // Save workflow form component
 function SaveWorkflowForm() {
   const { closeModal, setError } = useUIStore()
-  const { flowchart, workflowAnalysis } = useWorkflowStore()
+  const { flowchart, currentAnalysis } = useWorkflowStore()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -316,10 +316,10 @@ function SaveWorkflowForm() {
         tags: tagArray,
         nodes: flowchart.nodes,
         edges: flowchart.edges,
-        inputs: workflowAnalysis.inputs || [],
-        outputs: workflowAnalysis.outputs || [],
-        tree: workflowAnalysis.tree || {},
-        doubts: workflowAnalysis.doubts || [],
+        inputs: currentAnalysis?.inputs || [],
+        outputs: currentAnalysis?.outputs || [],
+        tree: currentAnalysis?.tree || {},
+        doubts: currentAnalysis?.doubts || [],
         validation_score: 0,
         validation_count: 0,
         is_validated: false,
@@ -342,7 +342,7 @@ function SaveWorkflowForm() {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, flowchart, workflowAnalysis, closeModal])
+  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal])
 
   if (flowchart.nodes.length === 0) {
     return (
