@@ -2750,6 +2750,50 @@ body {
   font-size: 0.7rem;
 }
 
+/* Workflow card container with delete button */
+.workflow-card-container {
+  position: relative;
+  display: flex;
+  gap: 8px;
+}
+
+.workflow-card-container .workflow-card {
+  flex: 1;
+}
+
+.workflow-delete-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.workflow-delete-btn:hover {
+  background: var(--rose);
+  border-color: var(--rose);
+  color: white;
+}
+
+.workflow-delete-btn:active {
+  transform: scale(0.95);
+}
+
+.workflow-card-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 /* Chat Empty State */
 .chat-empty {
   display: flex;
