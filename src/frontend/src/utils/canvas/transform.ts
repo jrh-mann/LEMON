@@ -43,6 +43,17 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
     node.input_ref = rawNode.input_ref as string
   }
 
+  // Preserve output configuration if present
+  if (rawNode.output_type) {
+    node.output_type = rawNode.output_type as string
+  }
+  if (rawNode.output_template) {
+    node.output_template = rawNode.output_template as string
+  }
+  if (rawNode.output_value !== undefined) {
+    node.output_value = rawNode.output_value
+  }
+
   return node
 }
 

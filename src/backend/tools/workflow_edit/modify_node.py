@@ -26,6 +26,24 @@ class ModifyNodeTool(Tool):
             "Optional: name of workflow input this node checks (case-insensitive)",
             required=False,
         ),
+        ToolParameter(
+            "output_type",
+            "string",
+            "Optional: data type for output nodes (string, int, bool, json, file)",
+            required=False,
+        ),
+        ToolParameter(
+            "output_template",
+            "string",
+            "Optional: python f-string template for output (e.g., 'Result: {value}')",
+            required=False,
+        ),
+        ToolParameter(
+            "output_value",
+            "any",
+            "Optional: static value to return",
+            required=False,
+        ),
     ]
 
     def __init__(self):

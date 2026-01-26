@@ -16,7 +16,21 @@ class GetCurrentWorkflowTool(Tool):
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
-        workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        raw_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        
+        # Deep copy to avoid modifying orchestrator state when adding defaults for tool output
+        import copy
+        workflow = {
+            "nodes": [copy.deepcopy(n) for n in raw_workflow.get("nodes", [])],
+            "edges": [copy.deepcopy(e) for e in raw_workflow.get("edges", [])]
+        }
+
+        # Ensure output fields are present in the JSON data for 'end' nodes
+        for node in workflow["nodes"]:
+            if node.get("type") == "end":
+                node.setdefault("output_type", "string")
+                node.setdefault("output_template", "")
+                node.setdefault("output_value", None)
         
         # Merge inputs into workflow if available
         inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
@@ -26,7 +40,20 @@ class GetCurrentWorkflowTool(Tool):
         node_descriptions = []
         for node in workflow.get("nodes", []):
             input_ref_part = f" (input: {node['input_ref']})" if node.get("input_ref") else ""
-            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){input_ref_part}"
+            
+            output_part = ""
+            if node.get("type") == "end":
+                parts = []
+                if node.get("output_type"):
+                    parts.append(f"type={node['output_type']}")
+                if node.get("output_template"):
+                    parts.append(f"template='{node['output_template']}'")
+                if node.get("output_value"):
+                    parts.append(f"value={node['output_value']}")
+                if parts:
+                    output_part = f" [Output: {', '.join(parts)}]"
+            
+            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){input_ref_part}{output_part}"
             node_descriptions.append(desc)
 
         edge_descriptions = []

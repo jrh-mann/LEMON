@@ -47,6 +47,8 @@ export interface OutputBlock extends BlockBase {
   type: 'output'
   value: string
   description: string
+  output_type?: string
+  output_template?: string
 }
 
 export interface WorkflowRefBlock extends BlockBase {
@@ -134,6 +136,9 @@ export interface FlowNode {
   y: number
   color: FlowNodeColor
   input_ref?: string
+  output_type?: string
+  output_template?: string
+  output_value?: unknown
 }
 
 export interface FlowEdge {
@@ -393,4 +398,4 @@ export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running'
 
 export type ModalType = 'library' | 'validation' | 'save' | 'none'
 
-export type SidebarTab = 'library' | 'inputs'
+export type SidebarTab = 'library' | 'inputs' | 'properties'

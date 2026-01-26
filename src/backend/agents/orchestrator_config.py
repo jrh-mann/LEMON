@@ -98,6 +98,19 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "Optional: name of workflow input this node checks (case-insensitive)",
                         },
+                        "output_type": {
+                            "type": "string",
+                            "enum": ["string", "int", "float", "bool", "json"],
+                            "description": "For 'end' nodes: data type of the output.",
+                        },
+                        "output_template": {
+                            "type": "string",
+                            "description": "For 'end' nodes: Python f-string template (e.g. 'Result: {Age}').",
+                        },
+                        "output_value": {
+                            "type": "string",
+                            "description": "For 'end' nodes: Static value (or JSON string).",
+                        },
                     },
                     "required": ["type", "label"],
                 },
@@ -132,6 +145,19 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "input_ref": {
                             "type": "string",
                             "description": "Optional: name of workflow input this node checks (case-insensitive)",
+                        },
+                        "output_type": {
+                            "type": "string",
+                            "enum": ["string", "int", "float", "bool", "json"],
+                            "description": "For 'end' nodes: data type of the output.",
+                        },
+                        "output_template": {
+                            "type": "string",
+                            "description": "For 'end' nodes: Python f-string template (e.g. 'Result: {Age}').",
+                        },
+                        "output_value": {
+                            "type": "string",
+                            "description": "For 'end' nodes: Static value (or JSON string).",
                         },
                     },
                     "required": ["node_id"],
@@ -235,8 +261,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "array",
                             "description": (
                                 "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
-                                "add_node: {op, type, label, id (temp ID for referencing), x, y}\n"
-                                "modify_node: {op, node_id, label?, type?, x?, y?}\n"
+                                "add_node: {op, type, label, id (temp ID for referencing), x, y, output_type?, output_template?, output_value?}\n"
+                                "modify_node: {op, node_id, label?, type?, x?, y?, output_type?, output_template?, output_value?}\n"
                                 "delete_node: {op, node_id}\n"
                                 "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
                                 "delete_connection: {op, from (node_id), to (node_id)}"
@@ -260,6 +286,9 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
                                     "input_ref": {"type": "string", "description": "Optional: name of workflow input (case-insensitive)"},
+                                    "output_type": {"type": "string", "enum": ["string", "int", "float", "bool", "json"]},
+                                    "output_template": {"type": "string"},
+                                    "output_value": {"type": "string"},
                                     "node_id": {"type": "string", "description": "Existing node ID"},
                                     "from": {"type": "string", "description": "Source node ID or temp ID"},
                                     "to": {"type": "string", "description": "Target node ID or temp ID"},
@@ -458,6 +487,13 @@ def build_system_prompt(
         "2. Find the node ID by matching the label\n"
         "3. Use that ID in your tool calls\n"
         "NEVER guess node IDs.\n\n"
+        "## Output Nodes (Templates & Types)\n"
+        "Output nodes ('end' type) support dynamic values and templates:\n"
+        "- output_type: 'string', 'int', 'float', 'bool', or 'json'\n"
+        "- output_template: Python f-string style template using input variables, e.g. 'Patient BMI is {BMI}'\n"
+        "- output_value: Static value if no template is needed\n"
+        "You can set these fields in add_node, modify_node, and batch_edit_workflow.\n"
+        "Use templates to make outputs more informative based on inputs.\n\n"
         "## When to Use batch_edit_workflow vs Single Tools\n"
         "Most operations should use single tools (add_node, add_connection, etc.).\n\n"
         "Use batch_edit_workflow when you need to REFERENCE newly created nodes within the same operation.\n\n"

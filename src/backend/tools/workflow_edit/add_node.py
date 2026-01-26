@@ -41,6 +41,24 @@ class AddNodeTool(Tool):
             "Optional: name of workflow input this node checks (case-insensitive)",
             required=False,
         ),
+        ToolParameter(
+            "output_type",
+            "string",
+            "Optional: data type for output nodes (string, int, bool, json, file)",
+            required=False,
+        ),
+        ToolParameter(
+            "output_template",
+            "string",
+            "Optional: python f-string template for output (e.g., 'Result: {value}')",
+            required=False,
+        ),
+        ToolParameter(
+            "output_value",
+            "any",
+            "Optional: static value to return",
+            required=False,
+        ),
     ]
 
     def __init__(self):
@@ -71,6 +89,20 @@ class AddNodeTool(Tool):
 
         if input_ref:
             new_node["input_ref"] = input_ref
+        
+        # Add output configuration for 'end' nodes
+        if args["type"] == "end":
+            new_node["output_type"] = args.get("output_type", "string")
+            new_node["output_template"] = args.get("output_template", "")
+            new_node["output_value"] = args.get("output_value", None)
+        else:
+            # Still allow manual setting for other types if passed (future proofing)
+            if "output_type" in args:
+                new_node["output_type"] = args["output_type"]
+            if "output_template" in args:
+                new_node["output_template"] = args["output_template"]
+            if "output_value" in args:
+                new_node["output_value"] = args["output_value"]
 
         inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {

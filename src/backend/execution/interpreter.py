@@ -8,6 +8,7 @@ Interprets workflow trees by:
 5. Returning output when reached
 """
 
+import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from .parser import parse_condition
@@ -103,10 +104,10 @@ class TreeInterpreter:
 
                 if node_type == 'output':
                     # Reached output node - success!
-                    output_label = current.get('label', '')
+                    output_val = self._resolve_output_value(current, context)
                     return ExecutionResult(
                         success=True,
-                        output=output_label,
+                        output=output_val,
                         path=path,
                         context=context
                     )
@@ -150,6 +151,56 @@ class TreeInterpreter:
                 path=path,
                 context=context
             )
+
+    def _resolve_output_value(self, node: Dict[str, Any], context: Dict[str, Any]) -> Any:
+        """Resolve output value from node configuration.
+        
+        Supports:
+        - output_template: Python f-string style template (e.g., "Result: {Age}")
+        - output_value: Static value
+        - output_type: Type casting (int, float, bool, json)
+        - label: Fallback
+        """
+        output_type = node.get('output_type', 'string')
+        
+        # 1. Template (Dynamic)
+        if node.get('output_template'):
+            template = node['output_template']
+            try:
+                # Build user-friendly context (Name -> Value)
+                friendly_context = {}
+                for name, input_id in self.name_to_id.items():
+                    if input_id in context:
+                        friendly_context[name] = context[input_id]
+                
+                # Combine with raw ID context
+                full_context = {**context, **friendly_context}
+                
+                # Safe format
+                return template.format(**full_context)
+            except Exception as e:
+                return f"Error formatting output: {str(e)}"
+
+        # 2. Static Value
+        if 'output_value' in node:
+            val = node['output_value']
+            try:
+                if output_type == 'int':
+                    return int(val)
+                elif output_type == 'float':
+                    return float(val)
+                elif output_type == 'bool':
+                    return str(val).lower() in ('true', '1', 'yes', 'on')
+                elif output_type == 'json':
+                    if isinstance(val, str):
+                        return json.loads(val)
+                    return val
+                return val
+            except Exception as e:
+                return f"Error casting output: {str(e)}"
+
+        # 3. Fallback to label
+        return node.get('label', '')
 
     def _validate_inputs(self, input_values: Dict[str, Any]) -> None:
         """Validate input values against schema

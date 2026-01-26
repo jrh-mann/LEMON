@@ -103,6 +103,19 @@ class BatchEditWorkflowTool(Tool):
 
                     if input_ref:
                         new_node["input_ref"] = input_ref
+                    
+                    # Add output configuration for 'end' nodes
+                    if op["type"] == "end":
+                        new_node["output_type"] = op.get("output_type", "string")
+                        new_node["output_template"] = op.get("output_template", "")
+                        new_node["output_value"] = op.get("output_value", None)
+                    else:
+                        if "output_type" in op:
+                            new_node["output_type"] = op["output_type"]
+                        if "output_template" in op:
+                            new_node["output_template"] = op["output_template"]
+                        if "output_value" in op:
+                            new_node["output_value"] = op["output_value"]
 
                     new_workflow["nodes"].append(new_node)
                     applied_operations.append({"op": "add_node", "node": new_node})

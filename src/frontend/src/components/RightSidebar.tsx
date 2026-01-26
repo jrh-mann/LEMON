@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { executeWorkflow } from '../api/execution'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { SidebarTab, ExecutionResult, InputBlock, InputType, WorkflowAnalysis, WorkflowInput } from '../types'
+import type { SidebarTab, ExecutionResult, InputBlock, InputType, WorkflowAnalysis, WorkflowInput, FlowNode } from '../types'
 
 const slugifyInputName = (name: string): string =>
   name
@@ -20,7 +20,7 @@ const buildInputId = (name: string, type: InputType): string => {
 
 export default function RightSidebar() {
   const { activeTab, setActiveTab, openModal } = useUIStore()
-  const { currentWorkflow, currentAnalysis, setAnalysis } = useWorkflowStore()
+  const { currentWorkflow, currentAnalysis, setAnalysis, selectedNodeId, flowchart, updateNode } = useWorkflowStore()
 
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({})
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
@@ -34,6 +34,18 @@ export default function RightSidebar() {
   const [draftRangeMin, setDraftRangeMin] = useState('')
   const [draftRangeMax, setDraftRangeMax] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
+
+  // Auto-switch to properties tab when a node is selected
+  useEffect(() => {
+    if (selectedNodeId) {
+      setActiveTab('properties')
+    }
+  }, [selectedNodeId, setActiveTab])
+
+  // Get selected node
+  const selectedNode = selectedNodeId
+    ? flowchart.nodes.find((n) => n.id === selectedNodeId)
+    : null
 
   // Get input blocks from current workflow
   const inputBlocks = currentWorkflow?.blocks.filter(
@@ -202,6 +214,16 @@ export default function RightSidebar() {
           </svg>
           <span>Inputs</span>
         </button>
+        <button
+          className={`sidebar-tab ${activeTab === 'properties' ? 'active' : ''}`}
+          onClick={() => handleTabClick('properties')}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+          <span>Props</span>
+        </button>
       </div>
 
       {/* Library panel */}
@@ -217,6 +239,7 @@ export default function RightSidebar() {
         className={`sidebar-panel ${activeTab === 'inputs' ? '' : 'hidden'}`}
         data-panel="inputs"
       >
+        {/* ... Inputs content ... */}
         <div className="inputs-header">
           <div>
             <h4>Inputs</h4>
@@ -393,6 +416,82 @@ export default function RightSidebar() {
               </button>
             </div>
           </>
+        )}
+      </div>
+
+      {/* Properties panel */}
+      <div
+        className={`sidebar-panel ${activeTab === 'properties' ? '' : 'hidden'}`}
+        data-panel="properties"
+      >
+        {selectedNode ? (
+          <div className="properties-panel">
+            <div className="properties-header">
+              <h4>Properties</h4>
+              <p className="muted small">{selectedNode.type} node</p>
+            </div>
+            
+            <div className="form-group">
+              <label>Label</label>
+              <input
+                type="text"
+                value={selectedNode.label}
+                onChange={(e) => updateNode(selectedNode.id, { label: e.target.value })}
+                placeholder="Node label"
+              />
+              <p className="muted small">Display text for the node</p>
+            </div>
+
+            {selectedNode.type === 'end' && (
+              <>
+                <div className="form-divider" />
+                <h5>Output Configuration</h5>
+                
+                <div className="form-group">
+                  <label>Data Type</label>
+                  <select
+                    value={selectedNode.output_type || 'string'}
+                    onChange={(e) => updateNode(selectedNode.id, { output_type: e.target.value })}
+                  >
+                    <option value="string">String</option>
+                    <option value="int">Integer</option>
+                    <option value="float">Float</option>
+                    <option value="bool">Boolean</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Value Template</label>
+                  <textarea
+                    value={selectedNode.output_template || ''}
+                    onChange={(e) => updateNode(selectedNode.id, { output_template: e.target.value })}
+                    placeholder="e.g. Result: {value}"
+                    rows={3}
+                  />
+                  <p className="muted small">
+                    Use {'{variable}'} to insert input values.
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label>Static Value (Optional)</label>
+                  <input
+                    type="text"
+                    value={String(selectedNode.output_value || '')}
+                    onChange={(e) => updateNode(selectedNode.id, { output_value: e.target.value })}
+                    placeholder="Constant value"
+                  />
+                  <p className="muted small">Overridden by template if present.</p>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="properties-empty">
+            <p className="muted">No node selected.</p>
+            <p className="muted small">Select a node on the canvas to edit its properties.</p>
+          </div>
         )}
       </div>
     </aside>

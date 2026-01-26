@@ -3913,3 +3913,42 @@ button.primary.warning:hover {
   background: #ffb300;
   border-color: #ffb300;
 }
+
+
+/* Properties Panel */
+.properties-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.properties-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.properties-header h4 {
+  font-size: 1rem;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.properties-empty {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.form-divider {
+  height: 1px;
+  background: var(--edge);
+  margin: 20px 0;
+}
+
+.properties-panel h5 {
+  font-size: 0.9rem;
+  color: var(--teal);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 16px;
+}
+
