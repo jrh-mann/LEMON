@@ -3,7 +3,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
-import { createWorkflow } from '../api/workflows'
+import { createWorkflow, validateWorkflow, ValidationError } from '../api/workflows'
 import WorkflowBrowser from './WorkflowBrowser'
 
 export default function Modals() {
@@ -286,8 +286,10 @@ function SaveWorkflowForm() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<ValidationError[] | null>(null)
+  const [showValidationWarning, setShowValidationWarning] = useState(false)
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (skipValidation = false) => {
     if (!name.trim()) {
       setSaveError('Workflow name is required')
       return
@@ -300,8 +302,26 @@ function SaveWorkflowForm() {
 
     setIsSaving(true)
     setSaveError(null)
+    setValidationErrors(null)
 
     try {
+      // Validate workflow first (unless explicitly skipping)
+      if (!skipValidation) {
+        const validationResult = await validateWorkflow({
+          nodes: flowchart.nodes,
+          edges: flowchart.edges,
+          inputs: currentAnalysis?.inputs || [],
+        })
+
+        if (!validationResult.valid) {
+          // Show validation errors and ask user to confirm
+          setValidationErrors(validationResult.errors || [])
+          setShowValidationWarning(true)
+          setIsSaving(false)
+          return
+        }
+      }
+
       // Parse tags from comma-separated string
       const tagArray = tags
         .split(',')
@@ -328,6 +348,8 @@ function SaveWorkflowForm() {
       await createWorkflow(payload)
 
       setSaveSuccess(true)
+      setShowValidationWarning(false)
+      setValidationErrors(null)
 
       // Close modal after short delay to show success message
       setTimeout(() => {
@@ -422,14 +444,50 @@ function SaveWorkflowForm() {
 
       {saveError && <p className="error-text">{saveError}</p>}
 
-      <div className="form-actions">
-        <button className="ghost" onClick={closeModal} disabled={isSaving}>
-          Cancel
-        </button>
-        <button className="primary" onClick={handleSave} disabled={isSaving}>
-          {isSaving ? 'Saving...' : 'Save Workflow'}
-        </button>
-      </div>
+      {showValidationWarning && validationErrors && (
+        <div className="validation-warning">
+          <h4>⚠️ Workflow Validation Failed</h4>
+          <p>The workflow has the following issues:</p>
+          <ul className="validation-errors">
+            {validationErrors.map((error, idx) => (
+              <li key={idx}>
+                <strong>{error.code}:</strong> {error.message}
+                {error.node_id && <span className="node-ref"> (Node: {error.node_id})</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">You can still save this workflow, but it may not execute correctly.</p>
+          <div className="validation-actions">
+            <button
+              className="ghost"
+              onClick={() => {
+                setShowValidationWarning(false)
+                setValidationErrors(null)
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="primary warning"
+              onClick={() => handleSave(true)}
+              disabled={isSaving}
+            >
+              Save Anyway
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!showValidationWarning && (
+        <div className="form-actions">
+          <button className="ghost" onClick={closeModal} disabled={isSaving}>
+            Cancel
+          </button>
+          <button className="primary" onClick={() => handleSave(false)} disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save Workflow'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

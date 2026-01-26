@@ -1,15 +1,17 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useState } from 'react'
 import { ApiError } from '../api/client'
 import { logoutUser } from '../api/auth'
+import { validateWorkflow } from '../api/workflows'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { addAssistantMessage } from '../stores/chatStore'
 
 export default function Header() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isValidating, setIsValidating] = useState(false)
 
   const { openModal, setError } = useUIStore()
-  const { currentWorkflow, flowchart, setPendingImage } = useWorkflowStore()
+  const { currentWorkflow, flowchart, setPendingImage, currentAnalysis } = useWorkflowStore()
 
   // Handle image upload - just store the image, don't auto-analyse
   const handleImageUpload = useCallback(
@@ -44,34 +46,65 @@ export default function Header() {
   )
 
   // Handle export
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (!currentWorkflow && flowchart.nodes.length === 0) return
 
-    const exportData = currentWorkflow || {
-      id: 'draft',
-      metadata: {
-        name: 'Draft Workflow',
-        description: '',
-        tags: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        validation_score: 0,
-        validation_count: 0,
-        is_validated: false,
-      },
-      flowchart,
-    }
+    setIsValidating(true)
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${exportData.metadata?.name || 'workflow'}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [currentWorkflow, flowchart])
+    try {
+      // Validate workflow first
+      const validationResult = await validateWorkflow({
+        nodes: flowchart.nodes,
+        edges: flowchart.edges,
+        inputs: currentAnalysis?.inputs || [],
+      })
+
+      if (!validationResult.valid) {
+        // Show validation errors and ask for confirmation
+        const errorMessages = validationResult.errors
+          ?.map(e => `• ${e.code}: ${e.message}${e.node_id ? ` (Node: ${e.node_id})` : ''}`)
+          .join('\n')
+
+        const proceed = confirm(
+          `⚠️ Workflow Validation Failed\n\n${errorMessages}\n\nDo you want to export anyway?`
+        )
+
+        if (!proceed) {
+          setIsValidating(false)
+          return
+        }
+      }
+
+      const exportData = currentWorkflow || {
+        id: 'draft',
+        metadata: {
+          name: 'Draft Workflow',
+          description: '',
+          tags: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          validation_score: 0,
+          validation_count: 0,
+          is_validated: false,
+        },
+        flowchart,
+      }
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportData.metadata?.name || 'workflow'}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Validation failed')
+    } finally {
+      setIsValidating(false)
+    }
+  }, [currentWorkflow, flowchart, currentAnalysis, setError])
 
   const canExport = currentWorkflow || flowchart.nodes.length > 0
 
@@ -132,11 +165,11 @@ export default function Header() {
 
         <button
           className="ghost"
-          disabled={!canExport}
+          disabled={!canExport || isValidating}
           onClick={handleExport}
           title={canExport ? 'Export workflow as JSON' : 'No workflow to export'}
         >
-          Export
+          {isValidating ? 'Validating...' : 'Export'}
         </button>
 
         <button className="ghost" onClick={handleLogout}>

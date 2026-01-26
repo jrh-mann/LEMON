@@ -64,3 +64,25 @@ export async function getDomains(): Promise<string[]> {
   const response = await api.get<DomainsResponse>('/api/domains')
   return response.domains
 }
+
+// Validate workflow structure
+export interface ValidationError {
+  code: string
+  message: string
+  node_id?: string
+}
+
+export interface ValidationResponse {
+  success: boolean
+  valid: boolean
+  message: string
+  errors?: ValidationError[]
+}
+
+export async function validateWorkflow(payload: {
+  nodes: any[]
+  edges: any[]
+  inputs: any[]
+}): Promise<ValidationResponse> {
+  return api.post<ValidationResponse>('/api/validate', payload)
+}

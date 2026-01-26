@@ -3851,3 +3851,65 @@ details summary {
   color: var(--green);
   margin-bottom: 8px;
 }
+
+/* Validation warning styles */
+.validation-warning {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.validation-warning h4 {
+  margin: 0 0 12px 0;
+  color: #856404;
+  font-size: 1rem;
+}
+
+.validation-warning p {
+  margin: 8px 0;
+  color: #856404;
+}
+
+.validation-errors {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  background: white;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.validation-errors li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--edge);
+  color: var(--text);
+}
+
+.validation-errors li:last-child {
+  border-bottom: none;
+}
+
+.validation-errors .node-ref {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.validation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+button.primary.warning {
+  background: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+}
+
+button.primary.warning:hover {
+  background: #ffb300;
+  border-color: #ffb300;
+}

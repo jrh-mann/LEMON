@@ -498,6 +498,44 @@ def register_routes(
         domains = workflow_store.get_domains(user_id)
         return jsonify({"domains": domains})
 
+    @app.post("/api/validate")
+    def validate_workflow_endpoint() -> Any:
+        """Validate a workflow structure before saving/exporting."""
+        from ..validation.workflow_validator import WorkflowValidator
+
+        payload = request.get_json(force=True, silent=True) or {}
+        nodes = payload.get("nodes", [])
+        edges = payload.get("edges", [])
+        inputs = payload.get("inputs", [])
+
+        validator = WorkflowValidator()
+        workflow_to_validate = {
+            "nodes": nodes,
+            "edges": edges,
+            "inputs": inputs,
+        }
+
+        # Use strict=True to check for unreachable nodes and complete structure
+        is_valid, errors = validator.validate(workflow_to_validate, strict=True)
+
+        if is_valid:
+            return jsonify({
+                "success": True,
+                "valid": True,
+                "message": "Workflow is valid. All nodes are reachable and connected correctly.",
+            })
+        else:
+            error_message = validator.format_errors(errors)
+            return jsonify({
+                "success": True,
+                "valid": False,
+                "errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in errors
+                ],
+                "message": error_message,
+            })
+
     @app.post("/api/execute/<workflow_id>")
     def execute_workflow(workflow_id: str) -> Any:
         return jsonify(
