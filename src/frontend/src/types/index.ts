@@ -270,24 +270,15 @@ export interface CreateWorkflowRequest {
   description: string
   domain?: string
   tags?: string[]
-  inputs: Array<{
-    name: string
-    type: InputType
-    range?: Range
-    enum_values?: string[]
-    description?: string
-  }>
-  decisions: Array<{
-    id: string
-    condition: string
-    description?: string
-  }>
-  outputs: string[]
-  connections: Array<{
-    from_block: string
-    to_block: string
-    from_port: PortType
-  }>
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  inputs: WorkflowInput[]
+  outputs: Array<{ name: string; description?: string }>
+  tree: Record<string, unknown>
+  doubts: string[]
+  validation_score?: number
+  validation_count?: number
+  is_validated?: boolean
 }
 
 export interface CreateWorkflowResponse {

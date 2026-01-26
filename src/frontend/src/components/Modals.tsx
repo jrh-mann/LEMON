@@ -3,7 +3,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
-import { createWorkflow, validateWorkflow, ValidationError } from '../api/workflows'
+import { createWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
 import WorkflowBrowser from './WorkflowBrowser'
 
 export default function Modals() {
