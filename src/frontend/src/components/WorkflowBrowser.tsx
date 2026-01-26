@@ -45,35 +45,51 @@ export default function WorkflowBrowser() {
   // Handle workflow selection - opens in new tab
   const handleSelectWorkflow = async (workflowId: string) => {
     try {
-      const workflow = await getWorkflow(workflowId)
+      const workflowData: any = await getWorkflow(workflowId)
 
-      // Convert workflow blocks to flowchart nodes/edges for canvas
-      const nodes: FlowNode[] = workflow.blocks.map((block) => ({
-        id: block.id,
-        type: blockTypeToFlowType(block.type),
-        label: getBlockLabel(block),
-        x: block.position.x,
-        y: block.position.y,
-        color: getBlockColor(block.type),
-      }))
+      // Workflow can be in two formats:
+      // 1. Old format: blocks/connections (Block-based)
+      // 2. New format: nodes/edges (Flowchart-based)
+      let flowchart: Flowchart
 
-      const edges = workflow.connections.map((conn) => ({
-        from: conn.from_block,
-        to: conn.to_block,
-        label: conn.from_port === 'default' ? '' : conn.from_port,
-      }))
+      if (workflowData.blocks && workflowData.connections) {
+        // Old format: convert blocks to flowchart nodes
+        const nodes: FlowNode[] = workflowData.blocks.map((block: Block) => ({
+          id: block.id,
+          type: blockTypeToFlowType(block.type),
+          label: getBlockLabel(block),
+          x: block.position.x,
+          y: block.position.y,
+          color: getBlockColor(block.type),
+        }))
 
-      let flowchart: Flowchart = { nodes, edges }
+        const edges = workflowData.connections.map((conn: any) => ({
+          from: conn.from_block,
+          to: conn.to_block,
+          label: conn.from_port === 'default' ? '' : conn.from_port,
+        }))
+
+        flowchart = { nodes, edges }
+      } else {
+        // New format: use nodes/edges directly
+        flowchart = {
+          nodes: workflowData.nodes || [],
+          edges: workflowData.edges || [],
+        }
+      }
 
       // Check if positions are all at (0,0) or overlapping - apply auto-layout
-      const needsLayout = nodes.length > 1 && nodes.every((n) => n.x === 0 && n.y === 0)
-        || new Set(nodes.map((n) => `${n.x},${n.y}`)).size < nodes.length / 2
+      const needsLayout = flowchart.nodes.length > 1 &&
+        (flowchart.nodes.every((n) => n.x === 0 && n.y === 0) ||
+         new Set(flowchart.nodes.map((n) => `${n.x},${n.y}`)).size < flowchart.nodes.length / 2)
 
       if (needsLayout) {
         flowchart = autoLayoutFlowchart(flowchart)
       }
 
       // Open workflow in a new tab
+      // Cast back to Workflow for compatibility
+      const workflow = workflowData as Workflow
       addTab(workflow.metadata.name, workflow, flowchart)
       closeModal()
     } catch (err) {
