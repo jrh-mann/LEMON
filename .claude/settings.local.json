@@ -19,7 +19,8 @@
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
       "Bash(git restore:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(echo:*)"
     ]
   }
 }

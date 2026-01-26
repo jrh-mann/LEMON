@@ -84,7 +84,7 @@ class ListWorkflowsInLibrary(Tool):
             return {
                 "success": False,
                 "error": "No session state provided",
-                "message": "Unable to access workflow library - no session context",
+                "message": "Unable to access workflow library - no session context. This tool requires direct mode (MCP mode not supported).",
             }
 
         workflow_store = session_state.get("workflow_store")
@@ -94,14 +94,14 @@ class ListWorkflowsInLibrary(Tool):
             return {
                 "success": False,
                 "error": "No workflow_store in session",
-                "message": "Unable to access workflow library - storage not available",
+                "message": "Unable to access workflow library - storage not available. This tool requires direct mode (not MCP mode).",
             }
 
         if not user_id:
             return {
                 "success": False,
                 "error": "No user_id in session",
-                "message": "Unable to access workflow library - user not authenticated",
+                "message": "Unable to access workflow library - user not authenticated. Please ensure user is logged in.",
             }
 
         # Clamp limit to valid range

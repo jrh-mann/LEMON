@@ -45,7 +45,8 @@ class Orchestrator:
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
-        self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() not in {"0", "false", "no"}
+        # MCP mode is opt-in (must explicitly enable it)
+        self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() in {"1", "true", "yes", "on"}
 
         # Session context for tools (workflow_store, user_id)
         self.workflow_store: Optional[Any] = None
@@ -191,25 +192,30 @@ class Orchestrator:
             json.dumps(args, ensure_ascii=True),
         )
 
-        # Build session_state with workflow context and user context
-        session_state = {
-            "current_workflow": self.current_workflow,
-            "workflow_analysis": self.workflow_analysis,
-        }
-        # Add workflow_store and user_id if available
-        if self.workflow_store is not None:
-            session_state["workflow_store"] = self.workflow_store
-        if self.user_id is not None:
-            session_state["user_id"] = self.user_id
-
         if self._use_mcp:
-            # Pass session_state through MCP as a regular argument
+            # MCP mode: Only pass serializable data (workflow_store can't be serialized)
+            # The MCP server should have its own workflow_store instance
             mcp_args = {
                 **args,
-                "session_state": session_state,
+                "session_state": {
+                    "current_workflow": self.current_workflow,
+                    "workflow_analysis": self.workflow_analysis,
+                    "user_id": self.user_id,  # Serialize user_id (string)
+                },
             }
             data = call_mcp_tool(tool_name, mcp_args)
         else:
+            # Direct mode: Pass workflow_store object reference
+            session_state = {
+                "current_workflow": self.current_workflow,
+                "workflow_analysis": self.workflow_analysis,
+            }
+            # Add workflow_store and user_id if available
+            if self.workflow_store is not None:
+                session_state["workflow_store"] = self.workflow_store
+            if self.user_id is not None:
+                session_state["user_id"] = self.user_id
+
             data = self.tools.execute(
                 tool_name,
                 args,
