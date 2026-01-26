@@ -3,6 +3,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
+import { createWorkflow } from '../api/workflows'
 import WorkflowBrowser from './WorkflowBrowser'
 
 export default function Modals() {
@@ -18,6 +19,11 @@ export default function Modals() {
       {/* Validation Modal */}
       <Modal isOpen={modalOpen === 'validation'} onClose={closeModal} title="Validate Workflow">
         <ValidationFlow />
+      </Modal>
+
+      {/* Save Modal */}
+      <Modal isOpen={modalOpen === 'save'} onClose={closeModal} title="Save Workflow">
+        <SaveWorkflowForm />
       </Modal>
     </>
   )
@@ -264,6 +270,166 @@ function ValidationFlow() {
           Current score: {score.score.toFixed(0)}% ({score.matches}/{score.total})
         </div>
       )}
+    </div>
+  )
+}
+
+// Save workflow form component
+function SaveWorkflowForm() {
+  const { closeModal, setError } = useUIStore()
+  const { flowchart, workflowAnalysis } = useWorkflowStore()
+
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [domain, setDomain] = useState('')
+  const [tags, setTags] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const handleSave = useCallback(async () => {
+    if (!name.trim()) {
+      setSaveError('Workflow name is required')
+      return
+    }
+
+    if (flowchart.nodes.length === 0) {
+      setSaveError('Cannot save empty workflow')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveError(null)
+
+    try {
+      // Parse tags from comma-separated string
+      const tagArray = tags
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0)
+
+      // Create workflow payload
+      const payload = {
+        name: name.trim(),
+        description: description.trim(),
+        domain: domain.trim() || undefined,
+        tags: tagArray,
+        nodes: flowchart.nodes,
+        edges: flowchart.edges,
+        inputs: workflowAnalysis.inputs || [],
+        outputs: workflowAnalysis.outputs || [],
+        tree: workflowAnalysis.tree || {},
+        doubts: workflowAnalysis.doubts || [],
+        validation_score: 0,
+        validation_count: 0,
+        is_validated: false,
+      }
+
+      await createWorkflow(payload)
+
+      setSaveSuccess(true)
+
+      // Close modal after short delay to show success message
+      setTimeout(() => {
+        closeModal()
+        setSaveSuccess(false)
+        setName('')
+        setDescription('')
+        setDomain('')
+        setTags('')
+      }, 1500)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
+      setIsSaving(false)
+    }
+  }, [name, description, domain, tags, flowchart, workflowAnalysis, closeModal])
+
+  if (flowchart.nodes.length === 0) {
+    return (
+      <div className="save-empty">
+        <p className="muted">No workflow to save.</p>
+        <p className="muted small">Create a workflow first by chatting with the assistant.</p>
+      </div>
+    )
+  }
+
+  if (saveSuccess) {
+    return (
+      <div className="save-success">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+        <h3>Workflow Saved!</h3>
+        <p className="muted">Your workflow has been saved to your library.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="save-form">
+      <div className="form-group">
+        <label htmlFor="workflow-name">
+          Workflow Name <span className="required">*</span>
+        </label>
+        <input
+          id="workflow-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Enter workflow name"
+          disabled={isSaving}
+          autoFocus
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="workflow-description">Description</label>
+        <textarea
+          id="workflow-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Describe what this workflow does"
+          disabled={isSaving}
+          rows={3}
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="workflow-domain">Domain</label>
+        <input
+          id="workflow-domain"
+          type="text"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          placeholder="e.g., Healthcare, Finance, Education"
+          disabled={isSaving}
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="workflow-tags">Tags</label>
+        <input
+          id="workflow-tags"
+          type="text"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+          placeholder="Comma-separated tags (e.g., diabetes, triage, urgent)"
+          disabled={isSaving}
+        />
+        <small className="muted">Separate tags with commas</small>
+      </div>
+
+      {saveError && <p className="error-text">{saveError}</p>}
+
+      <div className="form-actions">
+        <button className="ghost" onClick={closeModal} disabled={isSaving}>
+          Cancel
+        </button>
+        <button className="primary" onClick={handleSave} disabled={isSaving}>
+          {isSaving ? 'Saving...' : 'Save Workflow'}
+        </button>
+      </div>
     </div>
   )
 }

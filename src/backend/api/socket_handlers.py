@@ -12,6 +12,7 @@ from flask_socketio import SocketIO
 from .conversations import ConversationStore
 from .auth import get_session_from_request
 from ..storage.auth import AuthStore
+from ..storage.workflows import WorkflowStore
 from .socket_chat import handle_cancel_task, handle_socket_chat, handle_sync_workflow
 
 logger = logging.getLogger("backend.api")
@@ -23,6 +24,7 @@ def register_socket_handlers(
     conversation_store: ConversationStore,
     repo_root: Path,
     auth_store: AuthStore,
+    workflow_store: WorkflowStore,
 ) -> None:
     @socketio.on("connect")
     def socket_connect(auth: Any = None) -> None:

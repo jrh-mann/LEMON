@@ -3712,3 +3712,98 @@ details summary {
     transform: none;
   }
 }
+
+/* ============================================ */
+/* Save Workflow Form Styles */
+/* ============================================ */
+
+.save-form {
+  padding: 20px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.form-group .required {
+  color: var(--rose);
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+  background: white;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.form-group input:disabled,
+.form-group textarea:disabled {
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--edge);
+}
+
+.save-empty {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.save-empty p {
+  margin-bottom: 8px;
+}
+
+.save-success {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.save-success svg {
+  color: var(--green);
+  margin-bottom: 16px;
+}
+
+.save-success h3 {
+  color: var(--green);
+  margin-bottom: 8px;
+}

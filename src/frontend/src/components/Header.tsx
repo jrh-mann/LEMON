@@ -124,6 +124,15 @@ export default function Header() {
         <button
           className="primary"
           disabled={!canExport}
+          onClick={() => openModal('save')}
+          title={canExport ? 'Save workflow to library' : 'No workflow to save'}
+        >
+          Save
+        </button>
+
+        <button
+          className="ghost"
+          disabled={!canExport}
           onClick={handleExport}
           title={canExport ? 'Export workflow as JSON' : 'No workflow to export'}
         >

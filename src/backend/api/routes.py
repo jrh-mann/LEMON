@@ -31,6 +31,7 @@ from .conversations import ConversationStore
 from ..utils.uploads import save_uploaded_image
 from .response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ..storage.auth import AuthStore, AuthUser
+from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
 
@@ -41,6 +42,7 @@ def register_routes(
     conversation_store: ConversationStore,
     repo_root: Path,
     auth_store: AuthStore,
+    workflow_store: WorkflowStore,
 ) -> None:
     auth_config = get_auth_config()
     dummy_password_hash = hash_password("dummy-password", config=auth_config)
@@ -78,6 +80,19 @@ def register_routes(
             "email": user.email,
             "name": user.name,
         }
+
+    def _calculate_confidence(score: int, count: int) -> str:
+        """Calculate validation confidence level based on score and count."""
+        if count == 0:
+            return "none"
+        accuracy = score / count if count > 0 else 0
+        if count < 3:
+            return "low"
+        if accuracy >= 0.9 and count >= 10:
+            return "high"
+        if accuracy >= 0.8:
+            return "medium"
+        return "low"
 
     @app.get("/api/info")
     def api_info() -> Any:
@@ -269,41 +284,219 @@ def register_routes(
 
     @app.get("/api/workflows")
     def list_workflows() -> Any:
-        return jsonify({"workflows": [], "count": 0})
+        """List all workflows for the authenticated user."""
+        user_id = g.auth_user.id
+        limit = min(int(request.args.get("limit", 100)), 500)
+        offset = max(int(request.args.get("offset", 0)), 0)
+
+        workflows, total_count = workflow_store.list_workflows(
+            user_id,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Convert to WorkflowSummary format for frontend
+        summaries = []
+        for wf in workflows:
+            # Extract input names and output values
+            input_names = [inp.get("name", "") for inp in wf.inputs if isinstance(inp, dict)]
+            output_values = [out.get("value", "") or out.get("name", "") for out in wf.outputs if isinstance(out, dict)]
+
+            summaries.append({
+                "id": wf.id,
+                "name": wf.name,
+                "description": wf.description,
+                "domain": wf.domain,
+                "tags": wf.tags,
+                "validation_score": wf.validation_score,
+                "validation_count": wf.validation_count,
+                "confidence": _calculate_confidence(wf.validation_score, wf.validation_count),
+                "is_validated": wf.is_validated,
+                "input_names": input_names,
+                "output_values": output_values,
+                "created_at": wf.created_at,
+                "updated_at": wf.updated_at,
+            })
+
+        return jsonify({"workflows": summaries, "count": total_count})
 
     @app.post("/api/workflows")
     def create_workflow() -> Any:
+        """Save a new workflow for the authenticated user."""
+        user_id = g.auth_user.id
         payload = request.get_json(force=True, silent=True) or {}
-        workflow_id = f"wf_{uuid4().hex}"
+
+        # Extract workflow data from payload
+        workflow_id = payload.get("id") or f"wf_{uuid4().hex}"
         name = payload.get("name") or "Untitled Workflow"
         description = payload.get("description") or ""
+        domain = payload.get("domain")
+        tags = payload.get("tags") or []
+
+        # Extract workflow structure (nodes, edges, inputs, outputs, tree, doubts)
+        nodes = payload.get("nodes") or []
+        edges = payload.get("edges") or []
+        inputs = payload.get("inputs") or []
+        outputs = payload.get("outputs") or []
+        tree = payload.get("tree") or {}
+        doubts = payload.get("doubts") or []
+
+        # Extract validation metadata
+        validation_score = payload.get("validation_score") or 0
+        validation_count = payload.get("validation_count") or 0
+        is_validated = payload.get("is_validated") or False
+
+        try:
+            workflow_store.create_workflow(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                name=name,
+                description=description,
+                domain=domain,
+                tags=tags,
+                nodes=nodes,
+                edges=edges,
+                inputs=inputs,
+                outputs=outputs,
+                tree=tree,
+                doubts=doubts,
+                validation_score=validation_score,
+                validation_count=validation_count,
+                is_validated=is_validated,
+            )
+        except sqlite3.IntegrityError:
+            # Workflow ID already exists, try updating instead
+            success = workflow_store.update_workflow(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                name=name,
+                description=description,
+                domain=domain,
+                tags=tags,
+                nodes=nodes,
+                edges=edges,
+                inputs=inputs,
+                outputs=outputs,
+                tree=tree,
+                doubts=doubts,
+                validation_score=validation_score,
+                validation_count=validation_count,
+                is_validated=is_validated,
+            )
+            if not success:
+                return jsonify({"error": "Failed to save workflow"}), 500
+
         response = {
             "workflow_id": workflow_id,
             "name": name,
             "description": description,
-            "domain": payload.get("domain"),
-            "tags": payload.get("tags") or [],
-            "nodes": [],
-            "edges": [],
-            "message": "Workflow created (placeholder).",
+            "domain": domain,
+            "tags": tags,
+            "nodes": nodes,
+            "edges": edges,
+            "message": "Workflow saved successfully.",
         }
-        return jsonify(response)
+        return jsonify(response), 201
 
     @app.get("/api/workflows/<workflow_id>")
     def get_workflow(workflow_id: str) -> Any:
-        return jsonify({"error": "workflow storage not implemented"}), 404
+        """Get a specific workflow by ID."""
+        user_id = g.auth_user.id
+        workflow = workflow_store.get_workflow(workflow_id, user_id)
+
+        if not workflow:
+            return jsonify({"error": "Workflow not found"}), 404
+
+        # Convert to full Workflow format with metadata
+        response = {
+            "id": workflow.id,
+            "metadata": {
+                "name": workflow.name,
+                "description": workflow.description,
+                "domain": workflow.domain,
+                "tags": workflow.tags,
+                "creator_id": workflow.user_id,
+                "created_at": workflow.created_at,
+                "updated_at": workflow.updated_at,
+                "validation_score": workflow.validation_score,
+                "validation_count": workflow.validation_count,
+                "confidence": _calculate_confidence(workflow.validation_score, workflow.validation_count),
+                "is_validated": workflow.is_validated,
+            },
+            "nodes": workflow.nodes,
+            "edges": workflow.edges,
+            "inputs": workflow.inputs,
+            "outputs": workflow.outputs,
+            "tree": workflow.tree,
+            "doubts": workflow.doubts,
+        }
+        return jsonify(response)
 
     @app.delete("/api/workflows/<workflow_id>")
     def delete_workflow(workflow_id: str) -> Any:
-        return jsonify({})
+        """Delete a workflow."""
+        user_id = g.auth_user.id
+        success = workflow_store.delete_workflow(workflow_id, user_id)
+
+        if not success:
+            return jsonify({"error": "Workflow not found or unauthorized"}), 404
+
+        return jsonify({"message": "Workflow deleted successfully"}), 200
 
     @app.get("/api/search")
     def search_workflows() -> Any:
-        return jsonify({"workflows": []})
+        """Search workflows with filters."""
+        user_id = g.auth_user.id
+        query = request.args.get("q")
+        domain = request.args.get("domain")
+        validated = request.args.get("validated")
+        limit = min(int(request.args.get("limit", 100)), 500)
+        offset = max(int(request.args.get("offset", 0)), 0)
+
+        # Convert validated string to bool if provided
+        validated_bool = None
+        if validated is not None:
+            validated_bool = validated.lower() in ("true", "1", "yes")
+
+        workflows, total_count = workflow_store.search_workflows(
+            user_id,
+            query=query,
+            domain=domain,
+            validated=validated_bool,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Convert to WorkflowSummary format
+        summaries = []
+        for wf in workflows:
+            input_names = [inp.get("name", "") for inp in wf.inputs if isinstance(inp, dict)]
+            output_values = [out.get("value", "") or out.get("name", "") for out in wf.outputs if isinstance(out, dict)]
+
+            summaries.append({
+                "id": wf.id,
+                "name": wf.name,
+                "description": wf.description,
+                "domain": wf.domain,
+                "tags": wf.tags,
+                "validation_score": wf.validation_score,
+                "validation_count": wf.validation_count,
+                "confidence": _calculate_confidence(wf.validation_score, wf.validation_count),
+                "is_validated": wf.is_validated,
+                "input_names": input_names,
+                "output_values": output_values,
+                "created_at": wf.created_at,
+                "updated_at": wf.updated_at,
+            })
+
+        return jsonify({"workflows": summaries, "count": total_count})
 
     @app.get("/api/domains")
     def list_domains() -> Any:
-        return jsonify({"domains": []})
+        """Get list of unique domains used in user's workflows."""
+        user_id = g.auth_user.id
+        domains = workflow_store.get_domains(user_id)
+        return jsonify({"domains": domains})
 
     @app.post("/api/execute/<workflow_id>")
     def execute_workflow(workflow_id: str) -> Any:
