@@ -4,7 +4,14 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
 import { createWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
+import {
+  startWorkflowExecution,
+  pauseWorkflowExecution,
+  resumeWorkflowExecution,
+  stopWorkflowExecution,
+} from '../api/socket'
 import WorkflowBrowser from './WorkflowBrowser'
+import type { WorkflowInput } from '../types'
 
 export default function Modals() {
   const { modalOpen, closeModal } = useUIStore()
@@ -24,6 +31,11 @@ export default function Modals() {
       {/* Save Modal */}
       <Modal isOpen={modalOpen === 'save'} onClose={closeModal} title="Save Workflow">
         <SaveWorkflowForm />
+      </Modal>
+
+      {/* Execute Modal */}
+      <Modal isOpen={modalOpen === 'execute'} onClose={closeModal} title="Run Workflow">
+        <ExecuteWorkflowForm />
       </Modal>
     </>
   )
@@ -488,6 +500,344 @@ function SaveWorkflowForm() {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Execute workflow form component - similar to SaveWorkflowForm
+// Allows user to provide input values and run the workflow with visual execution
+function ExecuteWorkflowForm() {
+  const { closeModal } = useUIStore()
+  const {
+    flowchart,
+    currentAnalysis,
+    execution,
+    setExecutionSpeed,
+    clearExecution,
+  } = useWorkflowStore()
+
+  // Initialize input values from workflow inputs
+  const workflowInputs = currentAnalysis?.inputs ?? []
+  const [inputValues, setInputValues] = useState<Record<string, unknown>>(() => {
+    const initial: Record<string, unknown> = {}
+    for (const input of workflowInputs) {
+      switch (input.type) {
+        case 'bool':
+          initial[input.id] = false
+          break
+        case 'int':
+        case 'float':
+          initial[input.id] = input.range?.min ?? 0
+          break
+        case 'enum':
+          const enumVals = input.enum_values ?? input.enum ?? []
+          initial[input.id] = enumVals[0] ?? ''
+          break
+        case 'date':
+          initial[input.id] = new Date().toISOString().split('T')[0]
+          break
+        case 'string':
+        default:
+          initial[input.id] = ''
+          break
+      }
+    }
+    return initial
+  })
+
+  // Handle input value change
+  const handleInputChange = useCallback((inputId: string, value: unknown) => {
+    setInputValues((prev) => ({ ...prev, [inputId]: value }))
+  }, [])
+
+  // Handle speed slider change
+  const handleSpeedChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = parseInt(e.target.value, 10)
+      setExecutionSpeed(value)
+    },
+    [setExecutionSpeed]
+  )
+
+  // Start execution
+  const handleRun = useCallback(() => {
+    startWorkflowExecution(inputValues, execution.executionSpeed)
+  }, [inputValues, execution.executionSpeed])
+
+  // Render input field based on type
+  const renderInputField = (input: WorkflowInput) => {
+    const inputId = `exec-input-${input.id}`
+    const value = inputValues[input.id]
+
+    switch (input.type) {
+      case 'bool':
+        return (
+          <div className="form-group checkbox-group">
+            <label>
+              <input
+                id={inputId}
+                type="checkbox"
+                checked={Boolean(value)}
+                onChange={(e) => handleInputChange(input.id, e.target.checked)}
+                disabled={execution.isExecuting}
+              />
+              {input.name}
+            </label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+          </div>
+        )
+
+      case 'int':
+        return (
+          <div className="form-group">
+            <label htmlFor={inputId}>{input.name}</label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+            <input
+              id={inputId}
+              type="number"
+              step="1"
+              min={input.range?.min}
+              max={input.range?.max}
+              value={Number(value)}
+              onChange={(e) => handleInputChange(input.id, parseInt(e.target.value, 10))}
+              disabled={execution.isExecuting}
+            />
+          </div>
+        )
+
+      case 'float':
+        return (
+          <div className="form-group">
+            <label htmlFor={inputId}>{input.name}</label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+            <input
+              id={inputId}
+              type="number"
+              step="0.01"
+              min={input.range?.min}
+              max={input.range?.max}
+              value={Number(value)}
+              onChange={(e) => handleInputChange(input.id, parseFloat(e.target.value))}
+              disabled={execution.isExecuting}
+            />
+          </div>
+        )
+
+      case 'enum':
+        const enumValues = input.enum_values ?? input.enum ?? []
+        return (
+          <div className="form-group">
+            <label htmlFor={inputId}>{input.name}</label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+            <select
+              id={inputId}
+              value={String(value)}
+              onChange={(e) => handleInputChange(input.id, e.target.value)}
+              disabled={execution.isExecuting}
+            >
+              {enumValues.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+        )
+
+      case 'date':
+        return (
+          <div className="form-group">
+            <label htmlFor={inputId}>{input.name}</label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+            <input
+              id={inputId}
+              type="date"
+              value={String(value)}
+              onChange={(e) => handleInputChange(input.id, e.target.value)}
+              disabled={execution.isExecuting}
+            />
+          </div>
+        )
+
+      case 'string':
+      default:
+        return (
+          <div className="form-group">
+            <label htmlFor={inputId}>{input.name}</label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+            <input
+              id={inputId}
+              type="text"
+              value={String(value)}
+              onChange={(e) => handleInputChange(input.id, e.target.value)}
+              placeholder={`Enter ${input.name}`}
+              disabled={execution.isExecuting}
+            />
+          </div>
+        )
+    }
+  }
+
+  // No workflow to execute
+  if (flowchart.nodes.length === 0) {
+    return (
+      <div className="execute-empty">
+        <p className="muted">No workflow to run.</p>
+        <p className="muted small">Create a workflow first by chatting with the assistant.</p>
+      </div>
+    )
+  }
+
+  // Execution complete - show results
+  if (!execution.isExecuting && (execution.executionOutput !== null || execution.executionError)) {
+    return (
+      <div className="execute-complete">
+        {execution.executionError ? (
+          <>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+            <h3>Execution Failed</h3>
+            <p className="error-text">{execution.executionError}</p>
+          </>
+        ) : (
+          <>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <h3>Execution Complete</h3>
+            <div className="execution-result">
+              <span className="result-label">Output:</span>
+              <code className="result-value">
+                {typeof execution.executionOutput === 'object'
+                  ? JSON.stringify(execution.executionOutput, null, 2)
+                  : String(execution.executionOutput)}
+              </code>
+            </div>
+          </>
+        )}
+        <div className="execution-path">
+          <span className="path-label">Execution path:</span>
+          <span className="path-value">{execution.executionPath.length} nodes</span>
+        </div>
+        <div className="form-actions">
+          <button className="ghost" onClick={closeModal}>
+            Close
+          </button>
+          <button className="primary" onClick={clearExecution}>
+            Run Again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="execute-form">
+      {/* Input fields section */}
+      {workflowInputs.length > 0 ? (
+        <div className="inputs-section">
+          <h4>Workflow Inputs</h4>
+          <p className="muted small">Provide values for the workflow inputs</p>
+          {workflowInputs.map((input) => (
+            <div key={input.id}>{renderInputField(input)}</div>
+          ))}
+        </div>
+      ) : (
+        <div className="no-inputs-notice">
+          <p className="muted">This workflow has no defined inputs.</p>
+        </div>
+      )}
+
+      {/* Speed control */}
+      <div className="form-group speed-control-group">
+        <label htmlFor="exec-speed">
+          Execution Speed: {execution.executionSpeed}ms
+        </label>
+        <input
+          id="exec-speed"
+          type="range"
+          min="100"
+          max="2000"
+          step="100"
+          value={execution.executionSpeed}
+          onChange={handleSpeedChange}
+          disabled={execution.isExecuting}
+        />
+        <div className="speed-labels">
+          <span className="muted small">Fast (100ms)</span>
+          <span className="muted small">Slow (2000ms)</span>
+        </div>
+      </div>
+
+      {/* Execution status */}
+      {execution.isExecuting && (
+        <div className="execution-status-bar">
+          <div className={`status-indicator ${execution.isPaused ? 'paused' : 'running'}`} />
+          <span>{execution.isPaused ? 'Paused' : 'Running...'}</span>
+          {execution.executingNodeId && (
+            <span className="current-node">
+              Current: {flowchart.nodes.find(n => n.id === execution.executingNodeId)?.label || execution.executingNodeId}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="form-actions">
+        {!execution.isExecuting ? (
+          <>
+            <button className="ghost" onClick={closeModal}>
+              Cancel
+            </button>
+            <button className="primary run-btn" onClick={handleRun}>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Run Workflow
+            </button>
+          </>
+        ) : (
+          <>
+            {execution.isPaused ? (
+              <button className="primary" onClick={resumeWorkflowExecution}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Resume
+              </button>
+            ) : (
+              <button className="ghost" onClick={pauseWorkflowExecution}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                  <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                </svg>
+                Pause
+              </button>
+            )}
+            <button className="ghost warning" onClick={stopWorkflowExecution}>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <rect x="6" y="6" width="12" height="12" />
+              </svg>
+              Stop
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

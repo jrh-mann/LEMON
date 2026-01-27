@@ -1,13 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
+import { useUIStore } from '../stores/uiStore'
 import { generateNodeId } from '../utils/canvas'
-import {
-  startWorkflowExecution,
-  pauseWorkflowExecution,
-  resumeWorkflowExecution,
-  stopWorkflowExecution,
-} from '../api/socket'
-import ExecutionInputModal from './ExecutionInputModal'
 import type { FlowNodeType, Flowchart } from '../types'
 
 interface BlockConfig {
@@ -61,20 +55,12 @@ const BLOCKS: BlockConfig[] = [
 ]
 
 export default function Palette() {
-  const {
-    addNode,
-    flowchart,
-    setFlowchart,
-    execution,
-    currentAnalysis,
-    setExecutionSpeed,
-    clearExecution,
-  } = useWorkflowStore()
+  const { addNode, flowchart, setFlowchart } = useWorkflowStore()
+  const { openModal } = useUIStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
   const [showJsonInput, setShowJsonInput] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
-  const [showInputModal, setShowInputModal] = useState(false)
 
   // Handle JSON import
   const handleJsonImport = useCallback(() => {
@@ -149,33 +135,10 @@ export default function Palette() {
     [addNode, flowchart.nodes]
   )
 
-  // Handle Run button click - check for inputs and either show modal or execute immediately
+  // Handle Run button click - opens the execute modal
   const handleRunClick = useCallback(() => {
-    // Check if workflow has defined inputs that need values
-    const workflowInputs = currentAnalysis?.inputs ?? []
-    if (workflowInputs.length > 0) {
-      // Show modal to collect input values
-      setShowInputModal(true)
-    } else {
-      // No inputs needed, execute immediately with empty inputs
-      startWorkflowExecution({}, execution.executionSpeed)
-    }
-  }, [currentAnalysis, execution.executionSpeed])
-
-  // Handle execution with collected inputs from modal
-  const handleExecuteWithInputs = useCallback((inputs: Record<string, unknown>) => {
-    setShowInputModal(false)
-    startWorkflowExecution(inputs, execution.executionSpeed)
-  }, [execution.executionSpeed])
-
-  // Handle speed slider change
-  const handleSpeedChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = parseInt(e.target.value, 10)
-      setExecutionSpeed(value)
-    },
-    [setExecutionSpeed]
-  )
+    openModal('execute')
+  }, [openModal])
 
   return (
     <aside className="sidebar palette-sidebar">
@@ -200,121 +163,20 @@ export default function Palette() {
         </div>
       </div>
 
-      {/* Execution Controls Section */}
-      <div className="sidebar-section execution-panel">
+      {/* Run Workflow Button */}
+      <div className="sidebar-section">
         <p className="eyebrow">EXECUTE</p>
-
-        {/* Run / Pause / Resume / Stop buttons */}
-        <div className="execution-controls">
-          {!execution.isExecuting ? (
-            // Not executing: show Run button
-            <button
-              className="run-btn"
-              onClick={handleRunClick}
-              disabled={flowchart.nodes.length === 0}
-              title="Run workflow"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              Run
-            </button>
-          ) : (
-            // Executing: show Pause/Resume and Stop buttons
-            <>
-              {execution.isPaused ? (
-                <button
-                  className="control-btn resume-btn"
-                  onClick={resumeWorkflowExecution}
-                  title="Resume execution"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  Resume
-                </button>
-              ) : (
-                <button
-                  className="control-btn pause-btn"
-                  onClick={pauseWorkflowExecution}
-                  title="Pause execution"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                    <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-                  </svg>
-                  Pause
-                </button>
-              )}
-              <button
-                className="control-btn stop-btn"
-                onClick={stopWorkflowExecution}
-                title="Stop execution"
-              >
-                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                  <rect x="6" y="6" width="12" height="12" />
-                </svg>
-                Stop
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Execution Status */}
-        {execution.isExecuting && (
-          <div className="execution-status">
-            <span className={`status-indicator ${execution.isPaused ? 'paused' : 'running'}`} />
-            {execution.isPaused ? 'Paused' : 'Running...'}
-          </div>
-        )}
-
-        {/* Execution Error */}
-        {execution.executionError && (
-          <div className="execution-error">
-            {execution.executionError}
-          </div>
-        )}
-
-        {/* Execution Output */}
-        {execution.executionOutput && !execution.isExecuting && (
-          <div className="execution-output">
-            <span className="output-label">Output:</span>
-            <code>{JSON.stringify(execution.executionOutput, null, 2)}</code>
-          </div>
-        )}
-
-        {/* Speed Control */}
-        <div className="speed-control">
-          <label htmlFor="exec-speed">
-            Speed: {execution.executionSpeed}ms
-          </label>
-          <input
-            id="exec-speed"
-            type="range"
-            min="100"
-            max="2000"
-            step="100"
-            value={execution.executionSpeed}
-            onChange={handleSpeedChange}
-            disabled={execution.isExecuting}
-            title="Delay between execution steps"
-          />
-          <div className="speed-labels">
-            <span>Fast</span>
-            <span>Slow</span>
-          </div>
-        </div>
-
-        {/* Clear Execution Trail */}
-        {(execution.executedNodeIds.length > 0 || execution.executionError || execution.executionOutput) && (
-          <button
-            className="ghost full-width clear-btn"
-            onClick={clearExecution}
-            disabled={execution.isExecuting}
-            title="Clear execution highlighting"
-          >
-            Clear Trail
-          </button>
-        )}
+        <button
+          className="run-btn full-width"
+          onClick={handleRunClick}
+          disabled={flowchart.nodes.length === 0}
+          title="Run workflow with visual execution"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          Run Workflow
+        </button>
       </div>
 
       <div className="sidebar-section">
@@ -396,15 +258,6 @@ export default function Palette() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Execution Input Modal - collects input values before running workflow */}
-      {showInputModal && currentAnalysis && (
-        <ExecutionInputModal
-          inputs={currentAnalysis.inputs}
-          onCancel={() => setShowInputModal(false)}
-          onSubmit={handleExecuteWithInputs}
-        />
       )}
     </aside>
   )

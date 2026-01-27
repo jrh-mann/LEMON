@@ -400,6 +400,6 @@ export interface SocketAgentError {
 
 export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running' | 'code_refining' | 'done'
 
-export type ModalType = 'library' | 'validation' | 'save' | 'none'
+export type ModalType = 'library' | 'validation' | 'save' | 'execute' | 'none'
 
 export type SidebarTab = 'library' | 'inputs' | 'properties'
