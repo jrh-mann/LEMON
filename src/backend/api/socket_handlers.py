@@ -14,6 +14,12 @@ from .auth import get_session_from_request
 from ..storage.auth import AuthStore
 from ..storage.workflows import WorkflowStore
 from .socket_chat import handle_cancel_task, handle_socket_chat, handle_sync_workflow
+from .socket_execution import (
+    handle_execute_workflow,
+    handle_pause_execution,
+    handle_resume_execution,
+    handle_stop_execution,
+)
 
 logger = logging.getLogger("backend.api")
 
@@ -80,3 +86,39 @@ def register_socket_handlers(
     @socketio.on("cancel_task")
     def socket_cancel_task(payload: Dict[str, Any]) -> None:
         handle_cancel_task(socketio, payload=payload)
+
+    # Visual workflow execution handlers
+    @socketio.on("execute_workflow")
+    def socket_execute_workflow(payload: Dict[str, Any]) -> None:
+        """Execute workflow with visual step-by-step feedback.
+        
+        Requires authentication. Emits execution_step events for each node
+        visited, enabling frontend to highlight nodes in real-time.
+        """
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("execution_error", {"error": "Authentication required"}, to=request.sid)
+            return
+        _, user = session
+
+        handle_execute_workflow(
+            socketio,
+            workflow_store=workflow_store,
+            user_id=user.id,
+            payload=payload,
+        )
+
+    @socketio.on("pause_execution")
+    def socket_pause_execution(payload: Dict[str, Any]) -> None:
+        """Pause a running workflow execution."""
+        handle_pause_execution(socketio, payload=payload)
+
+    @socketio.on("resume_execution")
+    def socket_resume_execution(payload: Dict[str, Any]) -> None:
+        """Resume a paused workflow execution."""
+        handle_resume_execution(socketio, payload=payload)
+
+    @socketio.on("stop_execution")
+    def socket_stop_execution(payload: Dict[str, Any]) -> None:
+        """Stop a running workflow execution."""
+        handle_stop_execution(socketio, payload=payload)
