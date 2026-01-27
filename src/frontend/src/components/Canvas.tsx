@@ -72,6 +72,7 @@ export default function Canvas() {
     pendingImage,
     pendingImageName,
     clearPendingImage,
+    execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
 
   const { zoom, setZoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab, canvasMode, toggleCanvasMode, setCanvasMode } = useUIStore()
@@ -702,13 +703,27 @@ export default function Canvas() {
     const isSelected = selectedNodeIds.includes(node.id)
     const isConnectSource = node.id === connectFromId
 
+    // Execution state classes
+    const isExecuting = execution.executingNodeId === node.id
+    const isExecuted = execution.executedNodeIds.includes(node.id)
+
     const halfW = size.w / 2
     const halfH = size.h / 2
+
+    // Build class name with execution state
+    const classNames = [
+      'flow-node',
+      node.type,
+      isSelected ? 'selected' : '',
+      isConnectSource ? 'connect-source' : '',
+      isExecuting ? 'executing' : '',
+      isExecuted && !isExecuting ? 'executed' : '',  // Don't show executed while currently executing
+    ].filter(Boolean).join(' ')
 
     return (
       <g
         key={node.id}
-        className={`flow-node ${node.type} ${isSelected ? 'selected' : ''} ${isConnectSource ? 'connect-source' : ''}`}
+        className={classNames}
         transform={`translate(${node.x}, ${node.y})`}
         onPointerDown={(e) => handleNodePointerDown(e, node)}
         onDoubleClick={(e) => handleNodeDoubleClick(e, node)}
@@ -844,8 +859,24 @@ export default function Canvas() {
       labelY = fromNode.y + (toNode.y - fromNode.y) * 0.3 - 8
     }
 
+    // Check if this edge is part of the execution path
+    // An edge is "executed" if both its source and target have been executed (or target is currently executing)
+    const fromExecuted = execution.executedNodeIds.includes(edge.from) || execution.executingNodeId === edge.from
+
+    // Edge is "executing" if the source is executed/executing and target is currently executing
+    const isEdgeExecuting = fromExecuted && execution.executingNodeId === edge.to
+
+    // Edge is "executed" if both ends have been executed (not just executing)
+    const isEdgeExecuted = execution.executedNodeIds.includes(edge.from) && execution.executedNodeIds.includes(edge.to)
+
+    const edgeClassNames = [
+      'flow-edge',
+      isEdgeExecuting ? 'executing' : '',
+      isEdgeExecuted && !isEdgeExecuting ? 'executed' : '',
+    ].filter(Boolean).join(' ')
+
     return (
-      <g key={`${edge.from}-${edge.to}`} className="flow-edge">
+      <g key={`${edge.from}-${edge.to}`} className={edgeClassNames}>
         <path
           d={path}
           fill="none"

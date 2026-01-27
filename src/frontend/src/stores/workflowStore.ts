@@ -1,6 +1,19 @@
 import { create } from 'zustand'
 import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis } from '../types'
 
+// Execution state for visual workflow execution
+export interface ExecutionState {
+  isExecuting: boolean
+  isPaused: boolean
+  executionId: string | null
+  executingNodeId: string | null
+  executedNodeIds: string[]  // Nodes that have been executed (for trail effect)
+  executionPath: string[]    // Full path of executed nodes
+  executionSpeed: number     // Delay between steps in ms (100-2000)
+  executionError: string | null
+  executionOutput: any       // Final output of execution
+}
+
 // Tab interface
 export interface WorkflowTab {
   id: string
@@ -33,6 +46,9 @@ interface WorkflowState {
   selectedNodeIds: string[]
   connectMode: boolean
   connectFromId: string | null
+
+  // Execution state for visual workflow execution
+  execution: ExecutionState
 
   // History for undo/redo (derived from active tab)
   history: Flowchart[]
@@ -88,9 +104,34 @@ interface WorkflowState {
 
   // Reset
   reset: () => void
+
+  // Execution actions
+  startExecution: (executionId: string) => void
+  pauseExecution: () => void
+  resumeExecution: () => void
+  stopExecution: () => void
+  setExecutingNode: (nodeId: string | null) => void
+  markNodeExecuted: (nodeId: string) => void
+  setExecutionSpeed: (speed: number) => void
+  setExecutionError: (error: string | null) => void
+  setExecutionOutput: (output: any) => void
+  clearExecution: () => void
 }
 
 const emptyFlowchart: Flowchart = { nodes: [], edges: [] }
+
+// Default execution state
+const initialExecutionState: ExecutionState = {
+  isExecuting: false,
+  isPaused: false,
+  executionId: null,
+  executingNodeId: null,
+  executedNodeIds: [],
+  executionPath: [],
+  executionSpeed: 500,  // Default 500ms between steps
+  executionError: null,
+  executionOutput: null,
+}
 
 // Generate unique tab ID
 const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
@@ -131,6 +172,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   historyIndex: -1,
   pendingImage: null,
   pendingImageName: null,
+
+  // Execution state
+  execution: { ...initialExecutionState },
 
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
@@ -499,5 +543,97 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      execution: { ...initialExecutionState },
     }),
+
+  // Execution actions
+  // Starts a new execution session with the given ID
+  startExecution: (executionId: string) => set((state) => ({
+    execution: {
+      ...state.execution,
+      isExecuting: true,
+      isPaused: false,
+      executionId,
+      executingNodeId: null,
+      executedNodeIds: [],
+      executionPath: [],
+      executionError: null,
+      executionOutput: null,
+    },
+  })),
+
+  // Pauses the current execution
+  pauseExecution: () => set((state) => ({
+    execution: {
+      ...state.execution,
+      isPaused: true,
+    },
+  })),
+
+  // Resumes a paused execution
+  resumeExecution: () => set((state) => ({
+    execution: {
+      ...state.execution,
+      isPaused: false,
+    },
+  })),
+
+  // Stops the current execution and clears executing state (keeps executed trail)
+  stopExecution: () => set((state) => ({
+    execution: {
+      ...state.execution,
+      isExecuting: false,
+      isPaused: false,
+      executingNodeId: null,
+    },
+  })),
+
+  // Sets the currently executing node (highlights it)
+  setExecutingNode: (nodeId: string | null) => set((state) => ({
+    execution: {
+      ...state.execution,
+      executingNodeId: nodeId,
+    },
+  })),
+
+  // Marks a node as executed (adds to trail)
+  markNodeExecuted: (nodeId: string) => set((state) => ({
+    execution: {
+      ...state.execution,
+      executedNodeIds: state.execution.executedNodeIds.includes(nodeId)
+        ? state.execution.executedNodeIds
+        : [...state.execution.executedNodeIds, nodeId],
+      executionPath: [...state.execution.executionPath, nodeId],
+    },
+  })),
+
+  // Sets the execution speed (delay between steps in ms)
+  setExecutionSpeed: (speed: number) => set((state) => ({
+    execution: {
+      ...state.execution,
+      executionSpeed: Math.max(100, Math.min(2000, speed)),  // Clamp to 100-2000ms
+    },
+  })),
+
+  // Sets an execution error
+  setExecutionError: (error: string | null) => set((state) => ({
+    execution: {
+      ...state.execution,
+      executionError: error,
+      isExecuting: error ? false : state.execution.isExecuting,
+    },
+  })),
+
+  // Sets the final execution output
+  setExecutionOutput: (output: any) => set((state) => ({
+    execution: {
+      ...state.execution,
+      executionOutput: output,
+    },
+  })),
+
+  // Clears all execution state (resets to initial)
+  clearExecution: () => set({
+    execution: { ...initialExecutionState },
+  }),
 }))

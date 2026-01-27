@@ -432,6 +432,107 @@ export function connectSocket(): Socket {
     console.log('[Socket] Updated analysis with', data.inputs.length, 'inputs and', data.outputs.length, 'outputs')
   })
 
+  // ===== Execution Events =====
+  // These events handle visual workflow execution (highlighting nodes as they execute)
+
+  // Execution started - marks the beginning of a workflow execution session
+  socket.on('execution_started', (data: { execution_id: string }) => {
+    console.log('[Socket] execution_started:', data)
+    const workflowStore = useWorkflowStore.getState()
+    workflowStore.startExecution(data.execution_id)
+  })
+
+  // Execution step - fires when a node begins executing (highlight it)
+  socket.on('execution_step', (data: {
+    execution_id: string
+    node_id: string
+    node_type: string
+    node_label: string
+    step_index: number
+  }) => {
+    console.log('[Socket] execution_step:', data)
+    const workflowStore = useWorkflowStore.getState()
+    const execution = workflowStore.execution
+
+    // Only process if this is our current execution
+    if (execution.executionId !== data.execution_id) {
+      console.warn('[Socket] Ignoring step from different execution')
+      return
+    }
+
+    // Mark the previous executing node as executed (trail effect)
+    if (execution.executingNodeId) {
+      workflowStore.markNodeExecuted(execution.executingNodeId)
+    }
+
+    // Set the new executing node
+    workflowStore.setExecutingNode(data.node_id)
+  })
+
+  // Execution paused - user requested pause
+  socket.on('execution_paused', (data: { execution_id: string; current_node_id: string }) => {
+    console.log('[Socket] execution_paused:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    if (workflowStore.execution.executionId === data.execution_id) {
+      workflowStore.pauseExecution()
+    }
+  })
+
+  // Execution resumed - user requested resume
+  socket.on('execution_resumed', (data: { execution_id: string }) => {
+    console.log('[Socket] execution_resumed:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    if (workflowStore.execution.executionId === data.execution_id) {
+      workflowStore.resumeExecution()
+    }
+  })
+
+  // Execution complete - workflow finished executing (success or failure)
+  socket.on('execution_complete', (data: {
+    execution_id: string
+    success: boolean
+    output?: unknown
+    path?: string[]
+    error?: string
+  }) => {
+    console.log('[Socket] execution_complete:', data)
+    const workflowStore = useWorkflowStore.getState()
+    const execution = workflowStore.execution
+
+    if (execution.executionId !== data.execution_id) {
+      console.warn('[Socket] Ignoring completion from different execution')
+      return
+    }
+
+    // Mark the last executing node as executed
+    if (execution.executingNodeId) {
+      workflowStore.markNodeExecuted(execution.executingNodeId)
+    }
+
+    // Clear executing node and set output
+    workflowStore.setExecutingNode(null)
+    workflowStore.stopExecution()
+
+    if (data.success) {
+      workflowStore.setExecutionOutput(data.output)
+    } else {
+      workflowStore.setExecutionError(data.error || 'Execution failed')
+    }
+  })
+
+  // Execution error - something went wrong during execution
+  socket.on('execution_error', (data: { execution_id: string; error: string }) => {
+    console.error('[Socket] execution_error:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    if (workflowStore.execution.executionId === data.execution_id) {
+      workflowStore.setExecutionError(data.error)
+      workflowStore.stopExecution()
+    }
+  })
+
   return socket
 }
 
@@ -539,4 +640,139 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
 export function reconnectSocket(): void {
   disconnectSocket()
   connectSocket()
+}
+
+// ===== Execution Control Functions =====
+// These functions emit socket events to control workflow execution on the backend
+
+/**
+ * Start executing the current workflow with visual step-through
+ * @param inputs - Key-value pairs for workflow inputs
+ * @param speedMs - Delay between steps in milliseconds (100-2000)
+ * @returns The execution ID
+ */
+export function startWorkflowExecution(
+  inputs: Record<string, unknown>,
+  speedMs?: number
+): string | null {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.error('[Socket] Cannot execute workflow: not connected')
+    useUIStore.getState().setError('Not connected to server')
+    return null
+  }
+
+  const workflowStore = useWorkflowStore.getState()
+  const execution = workflowStore.execution
+
+  // Don't start if already executing
+  if (execution.isExecuting) {
+    console.warn('[Socket] Workflow is already executing')
+    return execution.executionId
+  }
+
+  // Generate execution ID
+  const executionId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+
+  // Get workflow data
+  const workflow = {
+    nodes: workflowStore.flowchart.nodes,
+    edges: workflowStore.flowchart.edges,
+  }
+
+  console.log('[Socket] Executing workflow:', {
+    executionId,
+    inputs,
+    speedMs: speedMs ?? execution.executionSpeed,
+    nodes: workflow.nodes.length,
+    edges: workflow.edges.length,
+  })
+
+  // Start execution in store (optimistic update)
+  workflowStore.startExecution(executionId)
+
+  // Emit to backend
+  sock.emit('execute_workflow', {
+    execution_id: executionId,
+    workflow,
+    inputs,
+    speed_ms: speedMs ?? execution.executionSpeed,
+  })
+
+  return executionId
+}
+
+/**
+ * Pause the currently executing workflow
+ */
+export function pauseWorkflowExecution(): void {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.warn('[Socket] Cannot pause: not connected')
+    return
+  }
+
+  const workflowStore = useWorkflowStore.getState()
+  const execution = workflowStore.execution
+
+  if (!execution.isExecuting || !execution.executionId) {
+    console.warn('[Socket] No active execution to pause')
+    return
+  }
+
+  console.log('[Socket] Pausing execution:', execution.executionId)
+  sock.emit('pause_execution', { execution_id: execution.executionId })
+
+  // Optimistic update
+  workflowStore.pauseExecution()
+}
+
+/**
+ * Resume a paused workflow execution
+ */
+export function resumeWorkflowExecution(): void {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.warn('[Socket] Cannot resume: not connected')
+    return
+  }
+
+  const workflowStore = useWorkflowStore.getState()
+  const execution = workflowStore.execution
+
+  if (!execution.isPaused || !execution.executionId) {
+    console.warn('[Socket] No paused execution to resume')
+    return
+  }
+
+  console.log('[Socket] Resuming execution:', execution.executionId)
+  sock.emit('resume_execution', { execution_id: execution.executionId })
+
+  // Optimistic update
+  workflowStore.resumeExecution()
+}
+
+/**
+ * Stop the currently executing workflow
+ */
+export function stopWorkflowExecution(): void {
+  const sock = getSocket()
+  if (!sock?.connected) {
+    console.warn('[Socket] Cannot stop: not connected')
+    return
+  }
+
+  const workflowStore = useWorkflowStore.getState()
+  const execution = workflowStore.execution
+
+  if (!execution.executionId) {
+    console.warn('[Socket] No execution to stop')
+    return
+  }
+
+  console.log('[Socket] Stopping execution:', execution.executionId)
+  sock.emit('stop_execution', { execution_id: execution.executionId })
+
+  // Optimistic update
+  workflowStore.stopExecution()
 }
