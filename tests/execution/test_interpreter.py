@@ -442,3 +442,169 @@ class TestExecutionResult:
         assert result.success is False
         assert hasattr(result, 'error')
         assert result.error is not None
+
+
+class TestOnStepCallback:
+    """Test on_step callback for stepped execution (visual workflow execution feature).
+    
+    The on_step callback enables real-time visualization of workflow execution
+    by being called before each node is processed.
+    """
+
+    def test_on_step_callback_called_for_each_node(self):
+        """Test that on_step callback is called once per node visited"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        steps = []
+        def on_step(step_info):
+            steps.append(step_info)
+        
+        result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
+        
+        assert result.success is True
+        # Should have 3 steps: start, age_check, out_adult
+        assert len(steps) == 3
+        assert steps[0]["node_id"] == "start"
+        assert steps[1]["node_id"] == "age_check"
+        assert steps[2]["node_id"] == "out_adult"
+
+    def test_on_step_callback_receives_step_info(self):
+        """Test that on_step callback receives correct step info structure"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        steps = []
+        def on_step(step_info):
+            steps.append(step_info)
+        
+        result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
+        
+        assert result.success is True
+        # Check first step has required fields
+        step = steps[0]
+        assert "node_id" in step
+        assert "node_type" in step
+        assert "node_label" in step
+        assert "step_index" in step
+        assert "context" in step
+
+    def test_on_step_callback_step_index_increments(self):
+        """Test that step_index increments correctly"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        steps = []
+        def on_step(step_info):
+            steps.append(step_info)
+        
+        result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
+        
+        assert result.success is True
+        assert steps[0]["step_index"] == 0
+        assert steps[1]["step_index"] == 1
+        assert steps[2]["step_index"] == 2
+
+    def test_on_step_callback_receives_node_type(self):
+        """Test that on_step callback receives correct node types"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        steps = []
+        def on_step(step_info):
+            steps.append(step_info)
+        
+        result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
+        
+        assert result.success is True
+        assert steps[0]["node_type"] == "start"
+        assert steps[1]["node_type"] == "decision"
+        assert steps[2]["node_type"] == "output"
+
+    def test_on_step_callback_none_is_valid(self):
+        """Test that on_step=None (default) works without errors"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        # Should work without callback
+        result = interpreter.execute({"input_age_int": 25})
+        assert result.success is True
+        assert result.output == "Adult"
+
+    def test_on_step_callback_with_nested_workflow(self):
+        """Test on_step callback with deeper nested workflow"""
+        interpreter = TreeInterpreter(
+            tree=CHOLESTEROL_RISK_WORKFLOW["tree"],
+            inputs=CHOLESTEROL_RISK_WORKFLOW["inputs"],
+            outputs=CHOLESTEROL_RISK_WORKFLOW["outputs"]
+        )
+        
+        steps = []
+        def on_step(step_info):
+            steps.append(step_info)
+        
+        result = interpreter.execute({
+            "input_age_int": 50,
+            "input_cholesterol_float": 240.0,
+            "input_hdl_float": 35.0,
+            "input_smoker_bool": True
+        }, on_step=on_step)
+        
+        assert result.success is True
+        # Should have 5 steps for this deep path
+        assert len(steps) == 5
+        # Verify step indices
+        for i, step in enumerate(steps):
+            assert step["step_index"] == i
+
+    def test_on_step_callback_error_does_not_break_execution(self):
+        """Test that callback exceptions are logged but don't break execution"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        def failing_callback(step_info):
+            raise ValueError("Callback error")
+        
+        # Should complete execution despite callback error
+        result = interpreter.execute({"input_age_int": 25}, on_step=failing_callback)
+        assert result.success is True
+        assert result.output == "Adult"
+
+    def test_on_step_callback_receives_context(self):
+        """Test that callback receives current execution context"""
+        interpreter = TreeInterpreter(
+            tree=SIMPLE_AGE_WORKFLOW["tree"],
+            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            outputs=SIMPLE_AGE_WORKFLOW["outputs"]
+        )
+        
+        steps = []
+        def on_step(step_info):
+            steps.append(step_info)
+        
+        input_values = {"input_age_int": 25}
+        result = interpreter.execute(input_values, on_step=on_step)
+        
+        assert result.success is True
+        # Each step should have context with input values
+        for step in steps:
+            assert "context" in step
+            assert step["context"]["input_age_int"] == 25

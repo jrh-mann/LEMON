@@ -16,11 +16,14 @@ Subflow Execution:
 """
 
 import json
+import logging
 import re
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
 from .parser import parse_condition
 from .evaluator import evaluate
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..storage.workflows import WorkflowStore
@@ -107,11 +110,19 @@ class TreeInterpreter:
         # Track subflow execution results
         self.subflow_results: List[Dict[str, Any]] = []
 
-    def execute(self, input_values: Dict[str, Any]) -> ExecutionResult:
+    def execute(
+        self,
+        input_values: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> ExecutionResult:
         """Execute workflow with given inputs
         
         Args:
             input_values: Dictionary mapping input IDs to values
+            on_step: Optional callback called before each node is processed.
+                     Receives dict with: node_id, node_type, node_label, step_index, context.
+                     Used for visual execution feedback in the UI.
+                     Callback exceptions are logged but do not stop execution.
             
         Returns:
             ExecutionResult with output, path, and context
@@ -122,6 +133,10 @@ class TreeInterpreter:
             True
             >>> result.output
             'Adult'
+            
+            # With step callback for visualization:
+            >>> def on_step(info): print(f"Executing: {info['node_label']}")
+            >>> result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         """
         # Validate inputs
         try:
@@ -145,14 +160,31 @@ class TreeInterpreter:
         # Execute tree walk
         path = []
         context = input_values.copy()
+        step_index = 0  # Track step number for on_step callback
 
         try:
             current = start_node
             while current:
                 node_id = current.get('id', 'unknown')
-                path.append(node_id)
-
                 node_type = current.get('type')
+                node_label = current.get('label', node_id)
+                
+                # Call on_step callback before processing this node (for visual execution)
+                if on_step is not None:
+                    try:
+                        on_step({
+                            "node_id": node_id,
+                            "node_type": node_type,
+                            "node_label": node_label,
+                            "step_index": step_index,
+                            "context": context.copy(),  # Copy to prevent mutation
+                        })
+                    except Exception as e:
+                        # Log callback errors but don't stop execution
+                        logger.warning(f"on_step callback error at node '{node_id}': {e}")
+                
+                step_index += 1
+                path.append(node_id)
 
                 if node_type == 'output':
                     # Reached output node - success!
