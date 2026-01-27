@@ -490,6 +490,7 @@ export function connectSocket(): Socket {
   })
 
   // Execution complete - workflow finished executing (success or failure)
+  // Reopens the execute modal to show results to user
   socket.on('execution_complete', (data: {
     execution_id: string
     success: boolean
@@ -499,6 +500,7 @@ export function connectSocket(): Socket {
   }) => {
     console.log('[Socket] execution_complete:', data)
     const workflowStore = useWorkflowStore.getState()
+    const uiStore = useUIStore.getState()
     const execution = workflowStore.execution
 
     if (execution.executionId !== data.execution_id) {
@@ -520,16 +522,23 @@ export function connectSocket(): Socket {
     } else {
       workflowStore.setExecutionError(data.error || 'Execution failed')
     }
+
+    // Reopen the execute modal to show results/error to user
+    uiStore.openModal('execute')
   })
 
   // Execution error - something went wrong during execution
+  // Reopens the execute modal to show error to user
   socket.on('execution_error', (data: { execution_id: string; error: string }) => {
     console.error('[Socket] execution_error:', data)
     const workflowStore = useWorkflowStore.getState()
+    const uiStore = useUIStore.getState()
 
     if (workflowStore.execution.executionId === data.execution_id) {
       workflowStore.setExecutionError(data.error)
       workflowStore.stopExecution()
+      // Reopen the execute modal to show error to user
+      uiStore.openModal('execute')
     }
   })
 

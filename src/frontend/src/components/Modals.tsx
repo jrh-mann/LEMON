@@ -559,10 +559,12 @@ function ExecuteWorkflowForm() {
     [setExecutionSpeed]
   )
 
-  // Start execution
+  // Start execution - closes modal immediately so user can watch canvas
+  // Modal will reopen when execution completes or errors (handled by socket.ts)
   const handleRun = useCallback(() => {
     startWorkflowExecution(inputValues, execution.executionSpeed)
-  }, [inputValues, execution.executionSpeed])
+    closeModal()  // Close modal so user can see the canvas with execution highlighting
+  }, [inputValues, execution.executionSpeed, closeModal])
 
   // Render input field based on type
   const renderInputField = (input: WorkflowInput) => {
