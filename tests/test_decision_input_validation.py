@@ -157,48 +157,63 @@ class TestDecisionInputValidation:
         input_errors = [err for err in errors if err.code == "INVALID_INPUT_REF"]
         assert any("height" in err.message for err in input_errors)
 
-    def test_empty_inputs_array_invalid_strict(self):
-        """Decision node with empty inputs array should be invalid in strict mode."""
+    def test_structured_condition_with_unknown_input_id_fails(self):
+        """Decision node with structured condition referencing non-existent input should fail."""
         workflow = {
             "nodes": [
                 {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
-                {"id": "decision", "type": "decision", "label": "age > 18", "x": 100, "y": 0},
-                {"id": "end", "type": "end", "label": "End", "x": 200, "y": 0},
+                {
+                    "id": "decision", 
+                    "type": "decision", 
+                    "label": "age > 18", 
+                    "x": 100, 
+                    "y": 0,
+                    "condition": {
+                        "input_id": "input_age_int",  # References non-existent input
+                        "comparator": "gt",
+                        "value": 18
+                    }
+                },
+                {"id": "yes", "type": "end", "label": "Adult", "x": 200, "y": 0},
+                {"id": "no", "type": "end", "label": "Minor", "x": 200, "y": 100},
             ],
             "edges": [
                 {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
-                {"id": "decision->end", "from": "decision", "to": "end", "label": "true"},
+                {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
+                {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
-            "inputs": []  # Empty array
+            # Has an input but NOT the one the condition references
+            "inputs": [{"id": "input_bmi_float", "name": "BMI", "type": "float"}]
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)
         assert not is_valid
-        assert any(err.code == "INVALID_INPUT_REF" for err in errors)
+        assert any(err.code == "INVALID_CONDITION_INPUT_ID" for err in errors)
 
-    def test_decision_invalid_syntax_always_invalid(self):
-        """Decision with invalid syntax should be invalid in both modes."""
+    def test_decision_without_condition_descriptive_label_allowed(self):
+        """Decision without structured condition can have descriptive label (backwards compat)."""
         workflow = {
             "nodes": [
                 {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
-                {"id": "decision", "type": "decision", "label": "age >>>>>> 18", "x": 100, "y": 0},
-                {"id": "end", "type": "end", "label": "End", "x": 200, "y": 0},
+                # No condition field - label is treated as descriptive, not parsed
+                {"id": "decision", "type": "decision", "label": "Check if customer is eligible", "x": 100, "y": 0},
+                {"id": "yes", "type": "end", "label": "Eligible", "x": 200, "y": 0},
+                {"id": "no", "type": "end", "label": "Not Eligible", "x": 200, "y": 100},
             ],
             "edges": [
                 {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
-                {"id": "decision->end", "from": "decision", "to": "end", "label": "true"},
+                {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
+                {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
         }
 
-        # Invalid in lenient mode
+        # Allowed in lenient mode - descriptive labels are ok when no condition
         is_valid_lenient, errors_lenient = self.validator.validate(workflow, strict=False)
-        assert not is_valid_lenient
-        assert any(err.code == "INVALID_CONDITION_SYNTAX" for err in errors_lenient)
+        assert is_valid_lenient
 
-        # Invalid in strict mode
+        # Strict mode still allows it (no variables to check without structured condition)
         is_valid_strict, errors_strict = self.validator.validate(workflow, strict=True)
-        assert not is_valid_strict
-        assert any(err.code == "INVALID_CONDITION_SYNTAX" for err in errors_strict)
+        assert is_valid_strict
 
     def test_error_message_is_informative(self):
         """Error message should clearly indicate missing input."""

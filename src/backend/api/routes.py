@@ -32,8 +32,12 @@ from ..utils.uploads import save_uploaded_image
 from .response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ..storage.auth import AuthStore, AuthUser
 from ..storage.workflows import WorkflowStore
+from ..validation.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger("backend.api")
+
+# Workflow validator instance for save/update validation
+_workflow_validator = WorkflowValidator()
 
 
 def register_routes(
@@ -345,6 +349,26 @@ def register_routes(
         validation_score = payload.get("validation_score") or 0
         validation_count = payload.get("validation_count") or 0
         is_validated = payload.get("is_validated") or False
+
+        # Validate workflow structure before saving
+        workflow_to_validate = {
+            "nodes": nodes,
+            "edges": edges,
+            "inputs": inputs,
+        }
+        is_valid, validation_errors = _workflow_validator.validate(
+            workflow_to_validate, strict=True
+        )
+        if not is_valid:
+            error_message = _workflow_validator.format_errors(validation_errors)
+            return jsonify({
+                "error": "Workflow validation failed",
+                "message": error_message,
+                "validation_errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors
+                ],
+            }), 400
 
         try:
             workflow_store.create_workflow(

@@ -10,11 +10,91 @@ from ..core import Tool, ToolParameter
 from .helpers import get_node_color, input_ref_error, validate_subprocess_node
 
 
+# Valid comparators by input type - mirrors frontend COMPARATORS_BY_TYPE
+COMPARATORS_BY_TYPE = {
+    "int": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
+    "float": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
+    "bool": ["is_true", "is_false"],
+    "string": ["str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"],
+    "date": ["date_eq", "date_before", "date_after", "date_between"],
+    "enum": ["enum_eq", "enum_neq"],
+}
+
+ALL_COMPARATORS = [
+    "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
+    "is_true", "is_false",
+    "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
+    "date_eq", "date_before", "date_after", "date_between",
+    "enum_eq", "enum_neq",
+]
+
+
+def validate_decision_condition(condition: Dict[str, Any], inputs: list) -> str | None:
+    """Validate a decision condition object.
+    
+    Args:
+        condition: The condition dict with input_id, comparator, value, value2
+        inputs: List of workflow input definitions
+        
+    Returns:
+        Error message if invalid, None if valid.
+    """
+    if not isinstance(condition, dict):
+        return "condition must be an object with input_id, comparator, and value"
+    
+    input_id = condition.get("input_id")
+    comparator = condition.get("comparator")
+    value = condition.get("value")
+    
+    if not input_id:
+        return "condition.input_id is required"
+    if not comparator:
+        return "condition.comparator is required"
+    if value is None and comparator not in ("is_true", "is_false"):
+        return f"condition.value is required for comparator '{comparator}'"
+    
+    # Validate comparator is known
+    if comparator not in ALL_COMPARATORS:
+        return f"Unknown comparator '{comparator}'. Valid: {ALL_COMPARATORS}"
+    
+    # Find the input to check type compatibility
+    input_def = None
+    for inp in inputs:
+        if inp.get("id") == input_id:
+            input_def = inp
+            break
+    
+    if not input_def:
+        return f"condition.input_id '{input_id}' not found in workflow inputs"
+    
+    # Check comparator is valid for this input type
+    input_type = input_def.get("type", "string")
+    valid_comparators = COMPARATORS_BY_TYPE.get(input_type, [])
+    if comparator not in valid_comparators:
+        return (
+            f"Comparator '{comparator}' is not valid for input type '{input_type}'. "
+            f"Valid comparators: {valid_comparators}"
+        )
+    
+    # Check value2 is provided for range comparators
+    if comparator in ("within_range", "date_between"):
+        if condition.get("value2") is None:
+            return f"condition.value2 is required for comparator '{comparator}'"
+    
+    return None
+
+
 class AddNodeTool(Tool):
     """Add a new node to the workflow.
     
     Supports all node types including subprocess nodes that reference
     other workflows (subflows).
+    
+    For decision nodes, a 'condition' object is REQUIRED with:
+    - input_id: The workflow input to compare (e.g., "input_age_int")
+    - comparator: The comparison operator (e.g., "gte", "eq", "str_contains")
+    - value: The value to compare against
+    - value2: (optional) Second value for range comparisons
     """
 
     name = "add_node"
@@ -43,6 +123,22 @@ class AddNodeTool(Tool):
             "input_ref",
             "string",
             "Optional: name of workflow input this node checks (case-insensitive)",
+            required=False,
+        ),
+        # Decision node condition (REQUIRED for decision nodes)
+        ToolParameter(
+            "condition",
+            "object",
+            (
+                "REQUIRED for decision nodes: Structured condition to evaluate. "
+                "Object with: input_id (string), comparator (string), value (any), value2 (optional for ranges). "
+                "Comparators by type: "
+                "int/float: eq,neq,lt,lte,gt,gte,within_range | "
+                "bool: is_true,is_false | "
+                "string: str_eq,str_neq,str_contains,str_starts_with,str_ends_with | "
+                "date: date_eq,date_before,date_after,date_between | "
+                "enum: enum_eq,enum_neq"
+            ),
             required=False,
         ),
         ToolParameter(
@@ -101,21 +197,51 @@ class AddNodeTool(Tool):
                 "error_code": "INPUT_NOT_FOUND",
             }
 
+        # Get workflow inputs for condition validation
+        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
+
+        # Validate condition for decision nodes
+        node_type = args["type"]
+        condition = args.get("condition")
+        
+        if node_type == "decision":
+            if not condition:
+                return {
+                    "success": False,
+                    "error": (
+                        "Decision nodes require a 'condition' parameter. "
+                        "Provide: {input_id: '<input_id>', comparator: '<comparator>', value: <value>}"
+                    ),
+                    "error_code": "MISSING_CONDITION",
+                }
+            
+            condition_error = validate_decision_condition(condition, inputs)
+            if condition_error:
+                return {
+                    "success": False,
+                    "error": condition_error,
+                    "error_code": "INVALID_CONDITION",
+                }
+
         node_id = f"node_{uuid.uuid4().hex[:8]}"
         new_node = {
             "id": node_id,
-            "type": args["type"],
+            "type": node_type,
             "label": args["label"],
             "x": args.get("x", 0),
             "y": args.get("y", 0),
-            "color": get_node_color(args["type"]),
+            "color": get_node_color(node_type),
         }
 
         if input_ref:
             new_node["input_ref"] = input_ref
         
+        # Add condition for decision nodes
+        if condition:
+            new_node["condition"] = condition
+        
         # Add output configuration for 'end' nodes
-        if args["type"] == "end":
+        if node_type == "end":
             new_node["output_type"] = args.get("output_type", "string")
             new_node["output_template"] = args.get("output_template", "")
             new_node["output_value"] = args.get("output_value", None)
@@ -129,7 +255,7 @@ class AddNodeTool(Tool):
                 new_node["output_value"] = args["output_value"]
 
         # Add subprocess-specific fields
-        if args["type"] == "subprocess":
+        if node_type == "subprocess":
             # These are required for subprocess nodes
             subworkflow_id = args.get("subworkflow_id")
             input_mapping = args.get("input_mapping")
@@ -184,7 +310,6 @@ class AddNodeTool(Tool):
             if "output_variable" in args:
                 new_node["output_variable"] = args["output_variable"]
 
-        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {
             "nodes": [*current_workflow.get("nodes", []), new_node],
             "edges": current_workflow.get("edges", []),
@@ -203,5 +328,5 @@ class AddNodeTool(Tool):
             "success": True,
             "action": "add_node",
             "node": new_node,
-            "message": f"Added {args['type']} node '{args['label']}'",
+            "message": f"Added {node_type} node '{args['label']}'",
         }

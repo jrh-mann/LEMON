@@ -69,24 +69,46 @@ class TestModifyNodeValidation:
         assert "VALIDATION_FAILED" in result.get("error_code", "")
         assert "Height" in result.get("error", "")
 
-    def test_modify_decision_label_syntax_error(self):
-        """Should reject modification with invalid syntax"""
+    def test_modify_decision_with_invalid_condition_input_fails(self):
+        """Modifying a decision node with invalid condition input_id should fail."""
         existing_workflow = {
             "nodes": [
-                {"id": "d1", "type": "decision", "label": "Age > 10", "x": 0, "y": 0, "color": "amber"},
+                {
+                    "id": "d1", 
+                    "type": "decision", 
+                    "label": "Age > 10", 
+                    "x": 0, 
+                    "y": 0, 
+                    "color": "amber",
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "gt",
+                        "value": 10
+                    }
+                },
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0, "color": "green"},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100, "color": "green"},
             ],
             "edges": [
                 {"from": "d1", "to": "y", "label": "true"},
                 {"from": "d1", "to": "n", "label": "false"},
-            ]
+            ],
+            "inputs": [{"name": "Age", "type": "int", "id": "input_age_int"}]
         }
         workflow_analysis = {
-            "inputs": [{"name": "Age", "type": "int", "id": "input_age"}]
+            "inputs": [{"name": "Age", "type": "int", "id": "input_age_int"}]
         }
         
-        args = {"node_id": "d1", "label": "Age >> 18"}
+        # Try to modify with condition referencing non-existent input
+        args = {
+            "node_id": "d1", 
+            "label": "BMI > 18",
+            "condition": {
+                "input_id": "input_bmi_float",  # This doesn't exist!
+                "comparator": "gt",
+                "value": 18
+            }
+        }
         session_state = {
             "current_workflow": existing_workflow,
             "workflow_analysis": workflow_analysis
@@ -95,5 +117,4 @@ class TestModifyNodeValidation:
         result = self.tool.execute(args, session_state=session_state)
         
         assert result["success"] is False
-        assert "VALIDATION_FAILED" in result.get("error_code", "")
-        assert "syntax" in result.get("error", "").lower()
+        assert "input_bmi_float" in result.get("error", "") or "not found" in result.get("error", "").lower()

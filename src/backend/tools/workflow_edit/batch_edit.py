@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
 from .helpers import get_node_color, input_ref_error, validate_subprocess_node
+from .add_node import validate_decision_condition
 
 
 class BatchEditWorkflowTool(Tool):
@@ -23,14 +24,23 @@ class BatchEditWorkflowTool(Tool):
     - Add node + connections together
     - Complex multi-step changes
 
-    Example: Add decision with both branches
+    For decision nodes, include a 'condition' object with: input_id, comparator, value, value2 (optional).
+    Comparators by type:
+    - int/float: eq, neq, lt, lte, gt, gte, within_range
+    - bool: is_true, is_false
+    - string: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
+    - date: date_eq, date_before, date_after, date_between
+    - enum: enum_eq, enum_neq
+
+    Example: Add decision with condition and both branches
     {
       "operations": [
-        {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_decision", "x": 100, "y": 100},
+        {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_decision", "x": 100, "y": 100,
+         "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
         {"op": "add_node", "type": "end", "label": "Child", "id": "temp_child", "x": 50, "y": 200},
         {"op": "add_node", "type": "end", "label": "Adult", "id": "temp_adult", "x": 150, "y": 200},
-        {"op": "add_connection", "from": "temp_decision", "to": "temp_child", "label": "true"},
-        {"op": "add_connection", "from": "temp_decision", "to": "temp_adult", "label": "false"}
+        {"op": "add_connection", "from": "temp_decision", "to": "temp_child", "label": "false"},
+        {"op": "add_connection", "from": "temp_decision", "to": "temp_adult", "label": "true"}
       ]
     }
     """
@@ -50,7 +60,8 @@ class BatchEditWorkflowTool(Tool):
         """
         Operations format:
         [
-            {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_1"},
+            {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_1",
+             "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
             {"op": "add_connection", "from": "input_age", "to": "temp_1", "label": ""},
             {"op": "add_connection", "from": "temp_1", "to": "output_1", "label": "true"},
             {"op": "modify_node", "node_id": "node_abc", "label": "Updated label"},
@@ -92,20 +103,37 @@ class BatchEditWorkflowTool(Tool):
                     if temp_id:
                         temp_id_map[temp_id] = real_id
 
+                    node_type = op["type"]
                     new_node = {
                         "id": real_id,
-                        "type": op["type"],
+                        "type": node_type,
                         "label": op["label"],
                         "x": op.get("x", 0),
                         "y": op.get("y", 0),
-                        "color": get_node_color(op["type"]),
+                        "color": get_node_color(node_type),
                     }
 
                     if input_ref:
                         new_node["input_ref"] = input_ref
                     
+                    # Handle decision node condition
+                    condition = op.get("condition")
+                    if node_type == "decision":
+                        if not condition:
+                            raise ValueError(
+                                f"Decision node '{op['label']}' requires a 'condition' object. "
+                                f"Provide: {{input_id: '<input_id>', comparator: '<comparator>', value: <value>}}"
+                            )
+                        condition_error = validate_decision_condition(condition, new_workflow.get("inputs", []))
+                        if condition_error:
+                            raise ValueError(f"Invalid condition for decision node '{op['label']}': {condition_error}")
+                        new_node["condition"] = condition
+                    elif condition:
+                        # Allow condition on other node types for future proofing / type changes
+                        new_node["condition"] = condition
+                    
                     # Add output configuration for 'end' nodes
-                    if op["type"] == "end":
+                    if node_type == "end":
                         new_node["output_type"] = op.get("output_type", "string")
                         new_node["output_template"] = op.get("output_template", "")
                         new_node["output_value"] = op.get("output_value", None)
@@ -118,7 +146,7 @@ class BatchEditWorkflowTool(Tool):
                             new_node["output_value"] = op["output_value"]
 
                     # Handle subprocess-specific fields
-                    if op["type"] == "subprocess":
+                    if node_type == "subprocess":
                         subworkflow_id = op.get("subworkflow_id")
                         input_mapping = op.get("input_mapping")
                         output_variable = op.get("output_variable")
@@ -184,6 +212,16 @@ class BatchEditWorkflowTool(Tool):
 
                     updates = {k: v for k, v in op.items() if k not in ["op", "node_id"]}
                     new_workflow["nodes"][node_idx].update(updates)
+                    
+                    # Validate condition if node is/becomes decision type
+                    updated_node = new_workflow["nodes"][node_idx]
+                    if updated_node.get("type") == "decision":
+                        condition = updated_node.get("condition")
+                        if condition:
+                            condition_error = validate_decision_condition(condition, new_workflow.get("inputs", []))
+                            if condition_error:
+                                raise ValueError(f"Invalid condition for decision node: {condition_error}")
+                    
                     applied_operations.append(
                         {"op": "modify_node", "node_id": node_id, "updates": updates}
                     )

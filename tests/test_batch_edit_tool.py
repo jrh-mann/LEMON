@@ -52,8 +52,18 @@ class TestBatchEditWorkflowTool:
         }
         args = {
             "operations": [
-                # Add decision node
-                {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_decision"},
+                # Add decision node with condition
+                {
+                    "op": "add_node",
+                    "type": "decision",
+                    "label": "Age >= 18?",
+                    "id": "temp_decision",
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "gte",
+                        "value": 18
+                    }
+                },
                 # Add two end nodes for branches
                 {"op": "add_node", "type": "end", "label": "Adult", "id": "temp_adult"},
                 {"op": "add_node", "type": "end", "label": "Minor", "id": "temp_minor"},
@@ -64,7 +74,10 @@ class TestBatchEditWorkflowTool:
                 {"op": "add_connection", "from": "temp_decision", "to": "temp_minor", "label": "false"},
             ]
         }
-        session_state = {"current_workflow": existing_workflow}
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
+        }
 
         result = self.tool.execute(args, session_state=session_state)
 
@@ -236,8 +249,20 @@ class TestBatchEditWorkflowTool:
             "operations": [
                 # Create input
                 {"op": "add_node", "type": "start", "label": "Age", "id": "temp_input", "x": 0, "y": 100},
-                # Create decision
-                {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_dec", "x": 200, "y": 100},
+                # Create decision with condition
+                {
+                    "op": "add_node",
+                    "type": "decision",
+                    "label": "Age >= 18?",
+                    "id": "temp_dec",
+                    "x": 200,
+                    "y": 100,
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "gte",
+                        "value": 18
+                    }
+                },
                 # Create process for adults
                 {"op": "add_node", "type": "process", "label": "Verify ID", "id": "temp_proc", "x": 400, "y": 50},
                 # Create outputs
@@ -250,7 +275,10 @@ class TestBatchEditWorkflowTool:
                 {"op": "add_connection", "from": "temp_proc", "to": "temp_yes", "label": ""},
             ]
         }
-        session_state = {"current_workflow": existing_workflow}
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
+        }
 
         result = self.tool.execute(args, session_state=session_state)
 
@@ -483,6 +511,12 @@ class TestBatchEditSubprocessNodes:
                     "input_ref": "BMI_Result",  # Should work because subprocess registered it
                     "x": 100,
                     "y": 200,
+                    "condition": {
+                        # input_id matches auto-generated format: input_{output_variable.lower()}
+                        "input_id": "input_bmi_result",
+                        "comparator": "str_eq",
+                        "value": "Normal"
+                    }
                 },
             ]
         }
@@ -551,6 +585,12 @@ class TestBatchEditSubprocessNodes:
                     "input_ref": "result",
                     "x": 100,
                     "y": 250,
+                    "condition": {
+                        # input_id matches auto-generated format: input_{output_variable.lower()}
+                        "input_id": "input_result",
+                        "comparator": "str_eq",
+                        "value": "Normal"
+                    }
                 },
                 {"op": "add_node", "type": "end", "label": "Healthy", "id": "temp_end1", "x": 50, "y": 350},
                 {"op": "add_node", "type": "end", "label": "Unhealthy", "id": "temp_end2", "x": 150, "y": 350},

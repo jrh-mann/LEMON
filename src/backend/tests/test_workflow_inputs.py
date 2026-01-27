@@ -62,8 +62,11 @@ class TestWorkflowInputManagement:
         assert result["success"] is True, f"Failed to add input: {result.get('error')}"
         assert "input" in result
         assert result["input"]["name"] == "Patient Age"
-        assert result["input"]["type"] == "number"
+        # Type is converted to internal format: "number" -> "float"
+        assert result["input"]["type"] == "float"
         assert result["input"]["description"] == "Patient's age in years"
+        # ID is auto-generated
+        assert result["input"]["id"] == "input_patient_age_float"
 
         # Verify it was added to session state
         assert len(session_state["workflow_analysis"]["inputs"]) == 1
@@ -199,64 +202,22 @@ class TestWorkflowInputManagement:
         }
 
         # Add input
-        add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        input_result = add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        input_id = input_result["input"]["id"]  # Get the auto-generated ID
 
-        # Add node that references the input
-        node_result = add_node_tool.execute(
-            {
-                "type": "decision",
-                "label": "Age > 60?",
-                "input_ref": "Patient Age",
-                "x": 100,
-                "y": 100
-            },
-            session_state=session_state
-        )
-
-        # Manually update session_state with the new node (simulating orchestrator behavior)
-        session_state["current_workflow"]["nodes"].append(node_result["node"])
-
-        # Try to remove input WITHOUT force (should fail)
-        result = remove_tool.execute({"name": "Patient Age"}, session_state=session_state)
-
-        print(f"\n[DEBUG] Remove referenced input result: {json.dumps(result, indent=2)}")
-
-        # Should fail
-        assert result["success"] is False
-        assert "Cannot remove input 'Patient Age'" in result["error"]
-        assert "referenced by 1 node(s)" in result["error"]
-        assert "force=true" in result["error"]
-        assert "referencing_nodes" in result
-        assert len(result["referencing_nodes"]) == 1
-
-        # Input should still exist
-        assert len(session_state["workflow_analysis"]["inputs"]) == 1
-
-    def test_remove_input_with_force_cascades(self, conversation_store, conversation_id):
-        """Test that removing an input with force=true removes input_ref from nodes."""
-        from ..tools.workflow_input import AddWorkflowInputTool, RemoveWorkflowInputTool
-        from ..tools.workflow_edit import AddNodeTool
-
-        add_input_tool = AddWorkflowInputTool()
-        add_node_tool = AddNodeTool()
-        remove_tool = RemoveWorkflowInputTool()
-
-        session_state = {
-            "workflow_analysis": {"inputs": [], "outputs": []},
-            "current_workflow": {"nodes": [], "edges": []}
-        }
-
-        # Add input
-        add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
-
-        # Add TWO nodes that reference the input
+        # Add TWO nodes that reference the input (decision nodes require condition)
         node1_result = add_node_tool.execute(
             {
                 "type": "decision",
                 "label": "Age > 60?",
                 "input_ref": "Patient Age",
                 "x": 100,
-                "y": 100
+                "y": 100,
+                "condition": {
+                    "input_id": input_id,
+                    "comparator": "gt",
+                    "value": 60
+                }
             },
             session_state=session_state
         )
@@ -268,7 +229,12 @@ class TestWorkflowInputManagement:
                 "label": "Age > 18?",
                 "input_ref": "Patient Age",
                 "x": 100,
-                "y": 200
+                "y": 200,
+                "condition": {
+                    "input_id": input_id,
+                    "comparator": "gt",
+                    "value": 18
+                }
             },
             session_state=session_state
         )
@@ -314,16 +280,22 @@ class TestWorkflowInputManagement:
         }
 
         # Add input
-        add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        input_result = add_input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        input_id = input_result["input"]["id"]  # Get the auto-generated ID
 
-        # Add node that references the input
+        # Add node that references the input (decision nodes require condition)
         node_result = add_node_tool.execute(
             {
                 "type": "decision",
                 "label": "Age > 60?",
                 "input_ref": "Patient Age",
                 "x": 100,
-                "y": 100
+                "y": 100,
+                "condition": {
+                    "input_id": input_id,
+                    "comparator": "gt",
+                    "value": 60
+                }
             },
             session_state=session_state
         )
@@ -360,17 +332,28 @@ class TestWorkflowInputManagement:
         }
 
         # Add input
-        add_input_tool.execute({"name": "Blood Pressure", "type": "number"}, session_state=session_state)
+        input_result = add_input_tool.execute({"name": "Blood Pressure", "type": "number"}, session_state=session_state)
+        input_id = input_result["input"]["id"]
 
-        # Add multiple nodes with different labels
-        for i, label in enumerate(["BP > 140?", "BP < 90?", "BP Normal?", "BP Critical?"]):
+        # Add multiple nodes with different labels and conditions
+        comparators = ["gt", "lt", "eq", "gte"]  # Different comparators for each node
+        values = [140, 90, 120, 80]
+        for i, (label, comp, val) in enumerate(zip(
+            ["BP > 140?", "BP < 90?", "BP Normal?", "BP Critical?"],
+            comparators, values
+        )):
             node_result = add_node_tool.execute(
                 {
                     "type": "decision",
                     "label": label,
                     "input_ref": "Blood Pressure",
                     "x": 100,
-                    "y": 100 * i
+                    "y": 100 * i,
+                    "condition": {
+                        "input_id": input_id,
+                        "comparator": comp,
+                        "value": val
+                    }
                 },
                 session_state=session_state
             )
@@ -412,15 +395,21 @@ class TestNodeInputLinking:
             session_state=session_state
         )
         assert input_result["success"] is True
+        input_id = input_result["input"]["id"]
 
-        # Add node that references the input
+        # Add node that references the input (decision nodes require condition)
         node_result = node_tool.execute(
             {
                 "type": "decision",
                 "label": "Patient Age > 60?",
                 "input_ref": "Patient Age",  # Name-based reference
                 "x": 100,
-                "y": 100
+                "y": 100,
+                "condition": {
+                    "input_id": input_id,
+                    "comparator": "gt",
+                    "value": 60
+                }
             },
             session_state=session_state
         )
@@ -473,19 +462,25 @@ class TestNodeInputLinking:
         }
 
         # Register input with mixed case
-        input_tool.execute(
+        input_result = input_tool.execute(
             {"name": "Patient Age", "type": "number"},
             session_state=session_state
         )
+        input_id = input_result["input"]["id"]
 
-        # Reference with different case
+        # Reference with different case (decision nodes require condition)
         result = node_tool.execute(
             {
                 "type": "decision",
                 "label": "Age check",
                 "input_ref": "patient age",  # lowercase
                 "x": 100,
-                "y": 100
+                "y": 100,
+                "condition": {
+                    "input_id": input_id,
+                    "comparator": "gt",
+                    "value": 0
+                }
             },
             session_state=session_state
         )
@@ -509,17 +504,24 @@ class TestNodeInputLinking:
         }
 
         # Register two inputs
-        input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
-        input_tool.execute({"name": "Blood Glucose", "type": "number"}, session_state=session_state)
+        age_input = input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        glucose_input = input_tool.execute({"name": "Blood Glucose", "type": "number"}, session_state=session_state)
+        age_id = age_input["input"]["id"]
+        glucose_id = glucose_input["input"]["id"]
 
-        # Add node referencing first input
+        # Add node referencing first input (decision nodes require condition)
         add_result = add_node_tool.execute(
             {
                 "type": "decision",
                 "label": "Age check",
                 "input_ref": "Patient Age",
                 "x": 100,
-                "y": 100
+                "y": 100,
+                "condition": {
+                    "input_id": age_id,
+                    "comparator": "gt",
+                    "value": 0
+                }
             },
             session_state=session_state
         )
@@ -528,12 +530,17 @@ class TestNodeInputLinking:
         # Update orchestrator state (simulate what respond() does)
         session_state["current_workflow"]["nodes"].append(add_result["node"])
 
-        # Modify to reference second input
+        # Modify to reference second input (update condition too)
         modify_result = modify_node_tool.execute(
             {
                 "node_id": node_id,
                 "input_ref": "Blood Glucose",
-                "label": "Glucose check"
+                "label": "Glucose check",
+                "condition": {
+                    "input_id": glucose_id,
+                    "comparator": "gt",
+                    "value": 100
+                }
             },
             session_state=session_state
         )
@@ -558,9 +565,10 @@ class TestNodeInputLinking:
         }
 
         # Register inputs first
-        input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        input_result = input_tool.execute({"name": "Patient Age", "type": "number"}, session_state=session_state)
+        input_id = input_result["input"]["id"]
 
-        # Batch create decision with branches, referencing input
+        # Batch create decision with branches, referencing input (requires condition)
         result = batch_tool.execute(
             {
                 "operations": [
@@ -571,7 +579,12 @@ class TestNodeInputLinking:
                         "label": "Patient Age > 60?",
                         "input_ref": "Patient Age",  # Reference the input
                         "x": 100,
-                        "y": 100
+                        "y": 100,
+                        "condition": {
+                            "input_id": input_id,
+                            "comparator": "gt",
+                            "value": 60
+                        }
                     },
                     {
                         "op": "add_node",

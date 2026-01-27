@@ -201,8 +201,8 @@ class TestExecutionPath:
             "input_hdl_float": 35.0,
             "input_smoker_bool": True
         })
-        # Should visit: start, age_check, cholesterol_check, risk_check, out_high_risk
-        assert len(result.path) == 5
+        # Should visit: start, age_check, cholesterol_check, hdl_check, smoker_check, out_high_risk
+        assert len(result.path) == 6
 
 
 class TestContextHandling:
@@ -566,8 +566,8 @@ class TestOnStepCallback:
         }, on_step=on_step)
         
         assert result.success is True
-        # Should have 5 steps for this deep path
-        assert len(steps) == 5
+        # Should have 6 steps for this deep path (start, age_check, cholesterol_check, hdl_check, smoker_check, out_high_risk)
+        assert len(steps) == 6
         # Verify step indices
         for i, step in enumerate(steps):
             assert step["step_index"] == i

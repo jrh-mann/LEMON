@@ -60,6 +60,11 @@ SIMPLE_SUBWORKFLOW = MockWorkflow(
                     "id": "check",
                     "type": "decision",
                     "label": "X >= 50",
+                    "condition": {
+                        "input_id": "input_x_int",
+                        "comparator": "gte",
+                        "value": 50
+                    },
                     "children": [
                         {
                             "id": "out_high",
@@ -379,6 +384,11 @@ class TestSubflowExecutionIntegration:
                                 "id": "check_result",
                                 "type": "decision",
                                 "label": "SubResult == 'High'",
+                                "condition": {
+                                    "input_id": "input_subresult_string",
+                                    "comparator": "str_eq",
+                                    "value": "High"
+                                },
                                 "children": [
                                     {
                                         "id": "out_approved",

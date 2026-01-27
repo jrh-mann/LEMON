@@ -73,12 +73,22 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
                     "id": "income_check",
                     "type": "decision",
                     "label": "Income >= 50000",
+                    "condition": {
+                        "input_id": "input_income_int",
+                        "comparator": "gte",
+                        "value": 50000
+                    },
                     "children": [
                         {
                             "id": "age_check_high",
                             "type": "decision",
                             "label": "Age >= 30",
                             "edge_label": "Yes",
+                            "condition": {
+                                "input_id": "input_age_int",
+                                "comparator": "gte",
+                                "value": 30
+                            },
                             "children": [
                                 {
                                     "id": "out_excellent",
@@ -150,12 +160,22 @@ LOAN_APPROVAL_WORKFLOW = {
                             "id": "score_check",
                             "type": "decision",
                             "label": "CreditScore >= 700",
+                            "condition": {
+                                "input_id": "input_creditscore_int",
+                                "comparator": "gte",
+                                "value": 700
+                            },
                             "children": [
                                 {
                                     "id": "amount_check",
                                     "type": "decision",
                                     "label": "LoanAmount <= 100000",
                                     "edge_label": "Yes",
+                                    "condition": {
+                                        "input_id": "input_loan_amount_int",
+                                        "comparator": "lte",
+                                        "value": 100000
+                                    },
                                     "children": [
                                         {
                                             "id": "out_approved",

@@ -4,7 +4,19 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { executeWorkflow } from '../api/execution'
 import { listWorkflows } from '../api/workflows'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { SidebarTab, ExecutionResult, InputBlock, InputType, WorkflowAnalysis, WorkflowInput, FlowNode, WorkflowSummary } from '../types'
+import type { 
+  SidebarTab, 
+  ExecutionResult, 
+  InputBlock, 
+  InputType, 
+  WorkflowAnalysis, 
+  WorkflowInput, 
+  FlowNode, 
+  WorkflowSummary,
+  DecisionCondition,
+  Comparator
+} from '../types'
+import { COMPARATORS_BY_TYPE, COMPARATOR_LABELS } from '../types'
 
 const slugifyInputName = (name: string): string =>
   name
@@ -452,6 +464,14 @@ export default function RightSidebar() {
               <p className="muted small">Display text for the node</p>
             </div>
 
+            {selectedNode.type === 'decision' && (
+              <DecisionConditionEditor
+                node={selectedNode}
+                analysisInputs={analysisInputs}
+                onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+              />
+            )}
+
             {selectedNode.type === 'end' && (
               <>
                 <div className="form-divider" />
@@ -823,4 +843,239 @@ function SubprocessConfig({
       )}
     </>
   )
+}
+
+/**
+ * DecisionConditionEditor - Configuration panel for decision node conditions.
+ * Allows selecting an input, choosing a comparator appropriate for the input type,
+ * and specifying comparison value(s).
+ */
+function DecisionConditionEditor({
+  node,
+  analysisInputs,
+  onUpdate,
+}: {
+  node: FlowNode
+  analysisInputs: WorkflowInput[]
+  onUpdate: (updates: Partial<FlowNode>) => void
+}) {
+  // Get current condition or create empty one
+  const condition = node.condition ?? { input_id: '', comparator: 'eq' as Comparator, value: '' }
+  
+  // Find the selected input to determine available comparators
+  const selectedInput = analysisInputs.find(inp => inp.id === condition.input_id)
+  const inputType = selectedInput?.type ?? 'string'
+  const availableComparators = COMPARATORS_BY_TYPE[inputType] ?? COMPARATORS_BY_TYPE.string
+  
+  // Get enum values if input is enum type
+  const enumValues = selectedInput?.enum ?? selectedInput?.enum_values ?? []
+
+  // Update the condition field on the node
+  const updateCondition = (updates: Partial<DecisionCondition>) => {
+    const newCondition: DecisionCondition = {
+      ...condition,
+      ...updates,
+    }
+    onUpdate({ condition: newCondition })
+  }
+
+  // When input changes, reset comparator to first valid one for the new type
+  const handleInputChange = (inputId: string) => {
+    const newInput = analysisInputs.find(inp => inp.id === inputId)
+    const newType = newInput?.type ?? 'string'
+    const validComparators = COMPARATORS_BY_TYPE[newType] ?? COMPARATORS_BY_TYPE.string
+    
+    // Reset comparator if current one is invalid for new type
+    const newComparator = validComparators.includes(condition.comparator as Comparator) 
+      ? condition.comparator 
+      : validComparators[0]
+
+    updateCondition({ 
+      input_id: inputId, 
+      comparator: newComparator,
+      value: '',
+      value2: undefined 
+    })
+  }
+
+  // Check if comparator requires a second value (for range comparisons)
+  const needsSecondValue = condition.comparator === 'within_range' || condition.comparator === 'date_between'
+  
+  // Check if comparator doesn't need any value (boolean comparators)
+  const noValueNeeded = condition.comparator === 'is_true' || condition.comparator === 'is_false'
+
+  // Render value input based on input type
+  const renderValueInput = (isSecondValue = false) => {
+    const valueKey = isSecondValue ? 'value2' : 'value'
+    const currentValue = isSecondValue ? condition.value2 : condition.value
+    const placeholder = isSecondValue ? 'Max value' : needsSecondValue ? 'Min value' : 'Comparison value'
+
+    // For enum inputs with enum comparators, show a dropdown
+    if (inputType === 'enum' && enumValues.length > 0 && !isSecondValue) {
+      return (
+        <select
+          value={String(currentValue ?? '')}
+          onChange={(e) => updateCondition({ [valueKey]: e.target.value })}
+        >
+          <option value="">Select value...</option>
+          {enumValues.map(val => (
+            <option key={val} value={val}>{val}</option>
+          ))}
+        </select>
+      )
+    }
+
+    // For boolean, no input needed
+    if (noValueNeeded) {
+      return null
+    }
+
+    // For date inputs
+    if (inputType === 'date') {
+      return (
+        <input
+          type="date"
+          value={String(currentValue ?? '')}
+          onChange={(e) => updateCondition({ [valueKey]: e.target.value })}
+        />
+      )
+    }
+
+    // For numeric inputs
+    if (inputType === 'int' || inputType === 'float') {
+      return (
+        <input
+          type="number"
+          value={currentValue !== undefined && currentValue !== '' ? String(currentValue) : ''}
+          step={inputType === 'float' ? '0.1' : '1'}
+          onChange={(e) => {
+            const val = inputType === 'float' 
+              ? parseFloat(e.target.value) 
+              : parseInt(e.target.value, 10)
+            updateCondition({ [valueKey]: isNaN(val) ? '' : val })
+          }}
+          placeholder={placeholder}
+        />
+      )
+    }
+
+    // Default: string input
+    return (
+      <input
+        type="text"
+        value={String(currentValue ?? '')}
+        onChange={(e) => updateCondition({ [valueKey]: e.target.value })}
+        placeholder={placeholder}
+      />
+    )
+  }
+
+  return (
+    <>
+      <div className="form-divider" />
+      <h5>Decision Condition</h5>
+      <p className="muted small">Define when this decision evaluates to true.</p>
+
+      {analysisInputs.length === 0 ? (
+        <div className="condition-warning">
+          <p className="muted small warning">
+            No inputs defined. Add inputs in the Inputs panel before configuring the condition.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Input selector */}
+          <div className="form-group">
+            <label>Input Variable</label>
+            <select
+              value={condition.input_id || ''}
+              onChange={(e) => handleInputChange(e.target.value)}
+            >
+              <option value="">Select an input...</option>
+              {analysisInputs.map(inp => (
+                <option key={inp.id} value={inp.id}>
+                  {inp.name} ({inp.type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Comparator selector (only show if input is selected) */}
+          {condition.input_id && (
+            <div className="form-group">
+              <label>Comparator</label>
+              <select
+                value={condition.comparator}
+                onChange={(e) => updateCondition({ 
+                  comparator: e.target.value as Comparator,
+                  // Reset value2 if switching away from range comparator
+                  value2: (e.target.value === 'within_range' || e.target.value === 'date_between') 
+                    ? condition.value2 
+                    : undefined
+                })}
+              >
+                {availableComparators.map(comp => (
+                  <option key={comp} value={comp}>
+                    {COMPARATOR_LABELS[comp]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Value input(s) */}
+          {condition.input_id && !noValueNeeded && (
+            <div className="form-group">
+              <label>{needsSecondValue ? 'Range Values' : 'Value'}</label>
+              {needsSecondValue ? (
+                <div className="condition-range-inputs">
+                  {renderValueInput(false)}
+                  <span className="condition-range-separator">to</span>
+                  {renderValueInput(true)}
+                </div>
+              ) : (
+                renderValueInput(false)
+              )}
+            </div>
+          )}
+
+          {/* Condition preview */}
+          {condition.input_id && (
+            <div className="condition-preview">
+              <p className="muted small">
+                <strong>Preview:</strong> {formatConditionPreview(condition, analysisInputs)}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
+/**
+ * Format a condition as a human-readable string for preview.
+ */
+function formatConditionPreview(condition: DecisionCondition, inputs: WorkflowInput[]): string {
+  if (!condition.input_id) return '(no condition set)'
+  
+  const input = inputs.find(inp => inp.id === condition.input_id)
+  const inputName = input?.name ?? condition.input_id
+  const compLabel = COMPARATOR_LABELS[condition.comparator] ?? condition.comparator
+  
+  // Boolean comparators don't need a value
+  if (condition.comparator === 'is_true' || condition.comparator === 'is_false') {
+    return `${inputName} ${compLabel}`
+  }
+  
+  // Range comparators
+  if (condition.comparator === 'within_range' || condition.comparator === 'date_between') {
+    return `${inputName} ${compLabel} [${condition.value ?? '?'}, ${condition.value2 ?? '?'}]`
+  }
+  
+  // Standard comparators
+  const valueStr = typeof condition.value === 'string' 
+    ? `"${condition.value}"` 
+    : String(condition.value ?? '?')
+  return `${inputName} ${compLabel} ${valueStr}`
 }

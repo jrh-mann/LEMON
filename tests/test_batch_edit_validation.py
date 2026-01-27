@@ -24,7 +24,12 @@ class TestBatchEditValidation:
                     "label": "Height > 180",  # Height is not registered
                     "id": "temp_1",
                     "x": 0,
-                    "y": 0
+                    "y": 0,
+                    "condition": {
+                        "input_id": "input_height_int",  # Not registered
+                        "comparator": "gt",
+                        "value": 180
+                    }
                 }
             ]
         }
@@ -36,8 +41,8 @@ class TestBatchEditValidation:
         result = self.tool.execute(args, session_state=session_state)
         
         assert result["success"] is False
-        assert "VALIDATION_FAILED" in result.get("error_code", "")
-        assert "Height" in result.get("error", "")
+        # Should mention the invalid input_id
+        assert "input_height_int" in result.get("error", "") or "not found" in result.get("error", "")
 
     def test_batch_modify_decision_with_invalid_input(self):
         """Should reject batch modification referencing unregistered input"""

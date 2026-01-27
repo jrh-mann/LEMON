@@ -20,8 +20,7 @@ import logging
 import re
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
-from .parser import parse_condition
-from .evaluator import evaluate
+from .evaluator import evaluate_condition, EvaluationError
 
 logger = logging.getLogger(__name__)
 
@@ -186,8 +185,8 @@ class TreeInterpreter:
                 step_index += 1
                 path.append(node_id)
 
-                if node_type == 'output':
-                    # Reached output node - success!
+                if node_type in ('output', 'end'):
+                    # Reached terminal node - success!
                     output_val = self._resolve_output_value(current, context)
                     return ExecutionResult(
                         success=True,
@@ -534,18 +533,27 @@ class TreeInterpreter:
         # 1. Template (Dynamic)
         if node.get('output_template'):
             template = node['output_template']
+            # Build user-friendly context (Name -> Value)
+            # Maps input names to their runtime values for template substitution
+            friendly_context: Dict[str, Any] = {}
+            for name, input_id in self.name_to_id.items():
+                if input_id in context:
+                    friendly_context[name] = context[input_id]
+            
+            # Combine with raw ID context (allows both {BMI} and {input_bmi_float})
+            full_context = {**context, **friendly_context}
+            
             try:
-                # Build user-friendly context (Name -> Value)
-                friendly_context = {}
-                for name, input_id in self.name_to_id.items():
-                    if input_id in context:
-                        friendly_context[name] = context[input_id]
-                
-                # Combine with raw ID context
-                full_context = {**context, **friendly_context}
-                
-                # Safe format
+                # Safe format with helpful error on missing variable
                 return template.format(**full_context)
+            except KeyError as e:
+                # Extract missing variable name from KeyError
+                missing_var = str(e).strip("'")
+                available_vars = list(friendly_context.keys())
+                return (
+                    f"Error: Variable '{missing_var}' not found in workflow inputs. "
+                    f"Available variables: {available_vars}"
+                )
             except Exception as e:
                 return f"Error formatting output: {str(e)}"
 
@@ -567,8 +575,28 @@ class TreeInterpreter:
             except Exception as e:
                 return f"Error casting output: {str(e)}"
 
-        # 3. Fallback to label
-        return node.get('label', '')
+        # 3. Fallback to label (also supports template substitution)
+        label = node.get('label', '')
+        if '{' in label and '}' in label:
+            # Label contains template syntax, try to substitute
+            friendly_context: Dict[str, Any] = {}
+            for name, input_id in self.name_to_id.items():
+                if input_id in context:
+                    friendly_context[name] = context[input_id]
+            full_context = {**context, **friendly_context}
+            try:
+                return label.format(**full_context)
+            except KeyError as e:
+                missing_var = str(e).strip("'")
+                available_vars = list(friendly_context.keys())
+                return (
+                    f"Error: Variable '{missing_var}' not found in workflow inputs. "
+                    f"Available variables: {available_vars}"
+                )
+            except Exception:
+                # If template substitution fails, return label as-is
+                return label
+        return label
 
     def _validate_inputs(self, input_values: Dict[str, Any]) -> None:
         """Validate input values against schema
@@ -625,49 +653,66 @@ class TreeInterpreter:
                     )
 
     def _handle_decision_node(self, node: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Handle decision node: evaluate condition and select branch
+        """Handle decision node: evaluate structured condition and select branch.
+
+        Decision nodes MUST have a 'condition' field with structured condition data:
+        {
+            "input_id": "input_age_int",   # The workflow input to compare
+            "comparator": "gte",            # Comparison operator (eq, lt, gt, etc.)
+            "value": 18,                    # Value to compare against
+            "value2": null                  # Optional second value for range comparisons
+        }
 
         Args:
-            node: Decision node
-            context: Current variable context (with input IDs as keys)
+            node: Decision node with 'condition' field
+            context: Current variable context (input_id -> value)
 
         Returns:
-            Next node to visit, or None if no valid branch
+            Next node to visit based on condition result (True/False branch)
 
         Raises:
-            InterpreterError: If condition evaluation fails
+            InterpreterError: If condition is missing or evaluation fails
         """
-        condition_str = node.get('label', '')
         node_id = node.get('id', 'unknown')
+        node_label = node.get('label', node_id)
+        condition = node.get('condition')
 
-        # Create evaluation context with simple names mapped to values
-        # e.g., {"Age": 25, "BMI": 22.0} instead of {"input_age_int": 25, "input_bmi_float": 22.0}
-        eval_context = {}
-        for name, input_id in self.name_to_id.items():
-            if input_id in context:
-                eval_context[name] = context[input_id]
+        # Validate condition exists
+        if not condition:
+            raise InterpreterError(
+                f"Decision node '{node_label}' (id: {node_id}) has no condition. "
+                f"Decision nodes must have a structured 'condition' field."
+            )
 
-        # Parse and evaluate condition
+        # Evaluate the structured condition against execution context
         try:
-            expr = parse_condition(condition_str)
-            result = evaluate(expr, eval_context)
+            result = evaluate_condition(condition, context)
+        except EvaluationError as e:
+            raise InterpreterError(
+                f"Failed to evaluate condition at decision node '{node_label}' "
+                f"(id: {node_id}): {e}"
+            )
         except Exception as e:
-            raise InterpreterError(f"Failed to evaluate condition '{condition_str}' at node '{node_id}': {e}")
+            raise InterpreterError(
+                f"Unexpected error evaluating condition at decision node '{node_label}' "
+                f"(id: {node_id}): {e}"
+            )
 
-        # Convert result to boolean
+        # Convert result to boolean (should already be bool, but ensure)
         condition_result = bool(result)
 
-        # Find matching child based on edge label
+        # Find matching child based on edge label (True/False)
         children = node.get('children', [])
         if not children:
-            raise InterpreterError(f"Decision node '{node_id}' has no children")
+            raise InterpreterError(f"Decision node '{node_label}' (id: {node_id}) has no children")
 
         # Try to match edge label
         next_node = self._find_branch(children, condition_result)
 
         if next_node is None:
             raise InterpreterError(
-                f"No branch found for condition '{condition_str}' = {condition_result} at node '{node_id}'"
+                f"No branch found for condition result {condition_result} "
+                f"at decision node '{node_label}' (id: {node_id})"
             )
 
         return next_node

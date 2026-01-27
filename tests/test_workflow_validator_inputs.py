@@ -104,13 +104,24 @@ class TestWorkflowValidatorInputs:
         assert any(err.code == "INVALID_INPUT_REF" for err in errors)
         assert any("Smoker" in err.message for err in errors)
 
-    def test_decision_invalid_syntax(self):
-        """Decision node with invalid condition syntax should fail"""
+    def test_decision_with_invalid_condition_input_fails(self):
+        """Decision node with structured condition referencing unknown input_id should fail."""
         workflow = {
-            "inputs": [{"name": "Age", "type": "int", "id": "input_age"}],
+            "inputs": [{"name": "Age", "type": "int", "id": "input_age_int"}],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
-                {"id": "d1", "type": "decision", "label": "Age >> 18", "x": 0, "y": 0},
+                {
+                    "id": "d1", 
+                    "type": "decision", 
+                    "label": "BMI Check", 
+                    "x": 0, 
+                    "y": 0,
+                    "condition": {
+                        "input_id": "input_bmi_float",  # Does not exist in inputs
+                        "comparator": "gt",
+                        "value": 25
+                    }
+                },
                 {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
                 {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
             ],
@@ -122,4 +133,25 @@ class TestWorkflowValidatorInputs:
         }
         is_valid, errors = self.validator.validate(workflow)
         assert not is_valid
-        assert any(err.code == "INVALID_CONDITION_SYNTAX" for err in errors)
+        assert any(err.code == "INVALID_CONDITION_INPUT_ID" for err in errors)
+
+    def test_decision_descriptive_label_without_condition_allowed(self):
+        """Decision node without condition can have descriptive label (backwards compat)."""
+        workflow = {
+            "inputs": [{"name": "Age", "type": "int", "id": "input_age_int"}],
+            "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
+                # No condition field - label is descriptive, not a condition expression
+                {"id": "d1", "type": "decision", "label": "Check eligibility criteria", "x": 0, "y": 0},
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ]
+        }
+        # Descriptive labels are allowed when no structured condition exists
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid

@@ -6,6 +6,79 @@
 export type BlockType = 'input' | 'decision' | 'output' | 'workflow_ref'
 export type InputType = 'int' | 'float' | 'bool' | 'string' | 'enum' | 'date'
 export type PortType = 'default' | 'true' | 'false'
+
+// ============ Decision Condition Types ============
+// Comparators for structured decision node conditions
+
+// Numeric comparators (for int, float types)
+export type NumericComparator = 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'within_range'
+
+// Boolean comparators
+export type BooleanComparator = 'is_true' | 'is_false'
+
+// String comparators (case-insensitive)
+export type StringComparator = 'str_eq' | 'str_neq' | 'str_contains' | 'str_starts_with' | 'str_ends_with'
+
+// Date comparators (ISO format: "YYYY-MM-DD")
+export type DateComparator = 'date_eq' | 'date_before' | 'date_after' | 'date_between'
+
+// Enum comparators (same as string but uses dropdown in UI)
+export type EnumComparator = 'enum_eq' | 'enum_neq'
+
+// Union of all comparators
+export type Comparator =
+  | NumericComparator
+  | BooleanComparator
+  | StringComparator
+  | DateComparator
+  | EnumComparator
+
+// Structured decision condition - replaces label-based condition parsing
+export interface DecisionCondition {
+  input_id: string       // Which workflow input to compare (e.g., "input_age_int")
+  comparator: Comparator // The comparison operator to use
+  value: unknown         // The value to compare against
+  value2?: unknown       // Second value for range comparisons (within_range, date_between)
+}
+
+// Helper: Map input types to their valid comparators
+export const COMPARATORS_BY_TYPE: Record<InputType, Comparator[]> = {
+  int: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],
+  float: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],
+  bool: ['is_true', 'is_false'],
+  string: ['str_eq', 'str_neq', 'str_contains', 'str_starts_with', 'str_ends_with'],
+  date: ['date_eq', 'date_before', 'date_after', 'date_between'],
+  enum: ['enum_eq', 'enum_neq'],
+}
+
+// Helper: Human-readable labels for comparators
+export const COMPARATOR_LABELS: Record<Comparator, string> = {
+  // Numeric
+  eq: 'equals (=)',
+  neq: 'not equals (≠)',
+  lt: 'less than (<)',
+  lte: 'less than or equal (≤)',
+  gt: 'greater than (>)',
+  gte: 'greater than or equal (≥)',
+  within_range: 'within range',
+  // Boolean
+  is_true: 'is true',
+  is_false: 'is false',
+  // String
+  str_eq: 'equals',
+  str_neq: 'not equals',
+  str_contains: 'contains',
+  str_starts_with: 'starts with',
+  str_ends_with: 'ends with',
+  // Date
+  date_eq: 'equals',
+  date_before: 'before',
+  date_after: 'after',
+  date_between: 'between',
+  // Enum
+  enum_eq: 'equals',
+  enum_neq: 'not equals',
+}
 export type ValidationConfidence = 'none' | 'low' | 'medium' | 'high'
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
@@ -139,6 +212,9 @@ export interface FlowNode {
   output_type?: string
   output_template?: string
   output_value?: unknown
+  // Decision node condition (for type='decision')
+  // Structured condition that replaces label-based condition parsing
+  condition?: DecisionCondition
   // Subprocess-specific fields (for type='subprocess')
   subworkflow_id?: string
   input_mapping?: Record<string, string>

@@ -115,6 +115,31 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "For 'end' nodes: Static value (or JSON string).",
                         },
+                        "condition": {
+                            "type": "object",
+                            "description": (
+                                "REQUIRED for 'decision' nodes: Structured condition to evaluate. "
+                                "Must include input_id (e.g., 'input_age_int'), comparator, and value. "
+                                "See system prompt for valid comparators by input type."
+                            ),
+                            "properties": {
+                                "input_id": {"type": "string", "description": "ID of the workflow input to check"},
+                                "comparator": {
+                                    "type": "string",
+                                    "enum": [
+                                        "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
+                                        "is_true", "is_false",
+                                        "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
+                                        "date_eq", "date_before", "date_after", "date_between",
+                                        "enum_eq", "enum_neq"
+                                    ],
+                                    "description": "Comparison operator"
+                                },
+                                "value": {"description": "Value to compare against"},
+                                "value2": {"description": "Second value for range comparators (within_range, date_between)"}
+                            },
+                            "required": ["input_id", "comparator", "value"]
+                        },
                         "subworkflow_id": {
                             "type": "string",
                             "description": "For 'subprocess' nodes: ID of the workflow to call as a subflow.",
@@ -140,7 +165,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "description": (
                     "Update an existing node's properties (label, type, position). "
                     "You must know the node_id first - call get_current_workflow to find it.\n\n"
-                    "For SUBPROCESS nodes: You can update subworkflow_id, input_mapping, and output_variable."
+                    "For SUBPROCESS nodes: You can update subworkflow_id, input_mapping, and output_variable.\n"
+                    "For DECISION nodes: You can update the condition."
                 ),
                 "parameters": {
                     "type": "object",
@@ -176,6 +202,20 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "output_value": {
                             "type": "string",
                             "description": "For 'end' nodes: Static value (or JSON string).",
+                        },
+                        "condition": {
+                            "type": "object",
+                            "description": (
+                                "For 'decision' nodes: Structured condition to evaluate. "
+                                "See add_node for full schema details."
+                            ),
+                            "properties": {
+                                "input_id": {"type": "string"},
+                                "comparator": {"type": "string"},
+                                "value": {},
+                                "value2": {}
+                            },
+                            "required": ["input_id", "comparator", "value"]
                         },
                         "subworkflow_id": {
                             "type": "string",
@@ -293,8 +333,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "array",
                             "description": (
                                 "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
-                                "add_node: {op, type, label, id (temp ID for referencing), x, y, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
-                                "modify_node: {op, node_id, label?, type?, x?, y?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
+                                "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
+                                "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
                                 "delete_node: {op, node_id}\n"
                                 "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
                                 "delete_connection: {op, from (node_id), to (node_id)}"
@@ -318,6 +358,16 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
                                     "input_ref": {"type": "string", "description": "Optional: name of workflow input (case-insensitive)"},
+                                    "condition": {
+                                        "type": "object",
+                                        "description": "For decision nodes: {input_id, comparator, value, value2?}",
+                                        "properties": {
+                                            "input_id": {"type": "string"},
+                                            "comparator": {"type": "string"},
+                                            "value": {},
+                                            "value2": {}
+                                        }
+                                    },
                                     "output_type": {"type": "string", "enum": ["string", "int", "float", "bool", "json"]},
                                     "output_template": {"type": "string"},
                                     "output_value": {"type": "string"},
@@ -539,8 +589,10 @@ def build_system_prompt(
         "Common scenarios where batch_edit is recommended:\n\n"
         "1. Decision nodes with branches (most common):\n"
         "```\n"
+        "// First: add_workflow_input(name='Age', type='number') → returns input with id 'input_age_int'\n"
         "operations=[\n"
-        "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\", \"x\": 100, \"y\": 100},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\",\n"
+        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"input_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_true\", \"type\": \"end\", \"label\": \"Adult\", \"x\": 50, \"y\": 200},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_false\", \"type\": \"end\", \"label\": \"Minor\", \"x\": 150, \"y\": 200},\n"
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_true\", \"label\": \"true\"},\n"
@@ -568,30 +620,107 @@ def build_system_prompt(
         "WHENEVER you see a decision node that checks a condition on data, you MUST register that data as a workflow input:\n"
         "1. Identify what data the decision checks (e.g., 'Patient Age', 'Order Amount', 'Email Valid')\n"
         "2. Call add_workflow_input to register it with appropriate type (string/number/boolean/enum)\n"
-        "3. Then add the decision node with input_ref parameter pointing to that input name\n\n"
+        "3. Note the input ID from the response (e.g., 'input_patient_age_int')\n"
+        "4. Then add the decision node with input_ref AND condition parameters\n\n"
         "Examples:\n"
         "- User: 'Add decision: is patient over 60?'\n"
-        "  → Call add_workflow_input(name='Patient Age', type='number')\n"
-        "  → Then add_node(type='decision', label='Patient over 60?', input_ref='Patient Age')\n\n"
+        "  → Call add_workflow_input(name='Patient Age', type='number') → returns id='input_patient_age_int'\n"
+        "  → Then add_node(type='decision', label='Patient over 60?', input_ref='Patient Age',\n"
+        "      condition={\"input_id\": \"input_patient_age_int\", \"comparator\": \"gt\", \"value\": 60})\n\n"
         "- User: 'Create workflow for processing orders based on amount'\n"
-        "  → Call add_workflow_input(name='Order Amount', type='number')\n"
-        "  → Then create decision nodes with input_ref='Order Amount'\n\n"
-        "- User: 'Check if email is valid'\n"
-        "  → Call add_workflow_input(name='Email Address', type='string')\n"
-        "  → Then add_node(type='decision', label='Email valid?', input_ref='Email Address')\n\n"
+        "  → Call add_workflow_input(name='Order Amount', type='number') → returns id='input_order_amount_float'\n"
+        "  → Then create decision nodes with input_ref='Order Amount' and appropriate condition\n\n"
+        "- User: 'Check if email is from gmail'\n"
+        "  → Call add_workflow_input(name='Email Address', type='string') → returns id='input_email_address_string'\n"
+        "  → Then add_node(type='decision', label='Gmail address?', input_ref='Email Address',\n"
+        "      condition={\"input_id\": \"input_email_address_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"})\n\n"
         "ALWAYS register inputs BEFORE creating nodes that reference them.\n"
-        "Use list_workflow_inputs to see what inputs already exist.\n"
+        "Use list_workflow_inputs to see what inputs already exist AND to get their IDs.\n"
         "Input names are case-insensitive when referencing (e.g., 'patient age' matches 'Patient Age').\n\n"
-        "## Decision Node Input Requirement (CRITICAL)\n"
-        "EVERY decision node MUST have its referenced variables registered as workflow inputs:\n"
-        "- Decision with condition 'age > 18' → MUST have 'age' registered as input\n"
-        "- Decision with condition 'price > 100 and discount > 0.2' → MUST have both 'price' and 'discount' registered\n"
-        "- This is REQUIRED for workflow validation and execution\n"
-        "- Without registered inputs, the decision cannot be evaluated at runtime\n\n"
-        "If you create a decision node, you MUST call add_workflow_input first:\n"
-        "1. Identify ALL variables in the decision condition\n"
-        "2. Call add_workflow_input for each variable (if not already registered)\n"
-        "3. Then create the decision node\n\n"
+        "## Decision Node Conditions (CRITICAL)\n"
+        "EVERY decision node MUST have a structured `condition` that defines the logic.\n\n"
+        "### Condition Structure\n"
+        "A condition is an object with these fields:\n"
+        "- `input_id`: ID of the workflow input to check (e.g., 'input_patient_age_int')\n"
+        "- `comparator`: The comparison operator (see table below)\n"
+        "- `value`: Value to compare against\n"
+        "- `value2`: (Optional) Second value for range comparators\n\n"
+        "### Comparators by Input Type\n"
+        "| Input Type | Valid Comparators |\n"
+        "|------------|-------------------|\n"
+        "| int, float | eq, neq, lt, lte, gt, gte, within_range |\n"
+        "| bool       | is_true, is_false |\n"
+        "| string     | str_eq, str_neq, str_contains, str_starts_with, str_ends_with |\n"
+        "| date       | date_eq, date_before, date_after, date_between |\n"
+        "| enum       | enum_eq, enum_neq |\n\n"
+        "### Creating Decision Nodes - WORKFLOW\n"
+        "1. FIRST: Call list_workflow_inputs to see available inputs and get their IDs\n"
+        "2. Register any missing inputs with add_workflow_input\n"
+        "3. Create the decision node with the `condition` parameter\n\n"
+        "### Examples\n"
+        "**Numeric comparison (age >= 18):**\n"
+        "```\n"
+        "// After registering: add_workflow_input(name='Age', type='number')\n"
+        "// The input will have an ID like 'input_age_int'\n"
+        "add_node(\n"
+        "  type='decision',\n"
+        "  label='Is Adult?',\n"
+        "  input_ref='Age',\n"
+        "  condition={\"input_id\": \"input_age_int\", \"comparator\": \"gte\", \"value\": 18}\n"
+        ")\n"
+        "```\n\n"
+        "**Range check (price between 100 and 500):**\n"
+        "```\n"
+        "add_node(\n"
+        "  type='decision',\n"
+        "  label='Medium Price?',\n"
+        "  input_ref='Price',\n"
+        "  condition={\"input_id\": \"input_price_float\", \"comparator\": \"within_range\", \"value\": 100, \"value2\": 500}\n"
+        ")\n"
+        "```\n\n"
+        "**Boolean check:**\n"
+        "```\n"
+        "add_node(\n"
+        "  type='decision',\n"
+        "  label='Is Active?',\n"
+        "  input_ref='Active',\n"
+        "  condition={\"input_id\": \"input_active_bool\", \"comparator\": \"is_true\", \"value\": true}\n"
+        ")\n"
+        "```\n\n"
+        "**String contains:**\n"
+        "```\n"
+        "add_node(\n"
+        "  type='decision',\n"
+        "  label='Email from Gmail?',\n"
+        "  input_ref='Email',\n"
+        "  condition={\"input_id\": \"input_email_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"}\n"
+        ")\n"
+        "```\n\n"
+        "**Enum equality:**\n"
+        "```\n"
+        "add_node(\n"
+        "  type='decision',\n"
+        "  label='Is Premium?',\n"
+        "  input_ref='Tier',\n"
+        "  condition={\"input_id\": \"input_tier_enum\", \"comparator\": \"enum_eq\", \"value\": \"Premium\"}\n"
+        ")\n"
+        "```\n\n"
+        "**In batch_edit_workflow:**\n"
+        "```\n"
+        "operations=[\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Age Check\",\n"
+        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"input_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_adult\", \"type\": \"end\", \"label\": \"Adult Path\"},\n"
+        "  {\"op\": \"add_node\", \"id\": \"temp_minor\", \"type\": \"end\", \"label\": \"Minor Path\"},\n"
+        "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_adult\", \"label\": \"true\"},\n"
+        "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_minor\", \"label\": \"false\"}\n"
+        "]\n"
+        "```\n\n"
+        "CRITICAL:\n"
+        "- Decision nodes WITHOUT a condition will FAIL at execution time\n"
+        "- The input_id MUST match an existing workflow input's ID (get from list_workflow_inputs)\n"
+        "- The comparator MUST be valid for the input's type\n"
+        "- For within_range/date_between, you MUST provide both value and value2\n\n"
         "## Removing Workflow Inputs (CRITICAL)\n"
         "When removing workflow inputs with remove_workflow_input:\n"
         "1. By default, deletion FAILS if nodes still reference the input\n"

@@ -147,8 +147,19 @@ class TestAddNodeTool:
             ],
             "edges": [],
         }
-        args = {"type": "decision", "label": "Check?"}
-        session_state = {"current_workflow": existing_workflow}
+        args = {
+            "type": "decision",
+            "label": "Check?",
+            "condition": {
+                "input_id": "input_age_int",
+                "comparator": "gte",
+                "value": 18
+            }
+        }
+        session_state = {
+            "current_workflow": existing_workflow,
+            "workflow_analysis": {"inputs": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
+        }
 
         result = self.tool.execute(args, session_state=session_state)
 

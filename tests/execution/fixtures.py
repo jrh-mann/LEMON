@@ -32,6 +32,11 @@ SIMPLE_AGE_WORKFLOW = {
                     "type": "decision",
                     "label": "Age >= 18",
                     "input_ids": ["input_age_int"],
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "gte",
+                        "value": 18
+                    },
                     "children": [
                         {
                             "id": "out_adult",
@@ -111,6 +116,11 @@ CHOLESTEROL_RISK_WORKFLOW = {
                     "type": "decision",
                     "label": "Age >= 40",
                     "input_ids": ["input_age_int"],
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "gte",
+                        "value": 40
+                    },
                     "children": [
                         {
                             "id": "cholesterol_check",
@@ -118,23 +128,54 @@ CHOLESTEROL_RISK_WORKFLOW = {
                             "label": "Cholesterol >= 200",
                             "input_ids": ["input_cholesterol_float"],
                             "edge_label": "Yes",
+                            "condition": {
+                                "input_id": "input_cholesterol_float",
+                                "comparator": "gte",
+                                "value": 200
+                            },
                             "children": [
                                 {
-                                    "id": "risk_check",
+                                    "id": "hdl_check",
                                     "type": "decision",
-                                    "label": "HDL < 40 AND Smoker == True",
-                                    "input_ids": ["input_hdl_float", "input_smoker_bool"],
+                                    "label": "HDL < 40",
+                                    "input_ids": ["input_hdl_float"],
                                     "edge_label": "Yes",
+                                    "condition": {
+                                        "input_id": "input_hdl_float",
+                                        "comparator": "lt",
+                                        "value": 40
+                                    },
                                     "children": [
                                         {
-                                            "id": "out_high_risk",
-                                            "type": "output",
-                                            "label": "High Risk",
+                                            "id": "smoker_check",
+                                            "type": "decision",
+                                            "label": "Smoker == True",
+                                            "input_ids": ["input_smoker_bool"],
                                             "edge_label": "Yes",
-                                            "children": []
+                                            "condition": {
+                                                "input_id": "input_smoker_bool",
+                                                "comparator": "is_true",
+                                                "value": None
+                                            },
+                                            "children": [
+                                                {
+                                                    "id": "out_high_risk",
+                                                    "type": "output",
+                                                    "label": "High Risk",
+                                                    "edge_label": "Yes",
+                                                    "children": []
+                                                },
+                                                {
+                                                    "id": "out_moderate_risk",
+                                                    "type": "output",
+                                                    "label": "Moderate Risk",
+                                                    "edge_label": "No",
+                                                    "children": []
+                                                }
+                                            ]
                                         },
                                         {
-                                            "id": "out_moderate_risk",
+                                            "id": "out_moderate_risk_hdl_no_smoke",
                                             "type": "output",
                                             "label": "Moderate Risk",
                                             "edge_label": "No",
@@ -289,6 +330,11 @@ MEDICATION_WORKFLOW = {
                     "type": "decision",
                     "label": "Pregnant == True",
                     "input_ids": ["input_pregnant_bool"],
+                    "condition": {
+                        "input_id": "input_pregnant_bool",
+                        "comparator": "is_true",
+                        "value": None
+                    },
                     "children": [
                         {
                             "id": "out_contraindicated",
@@ -298,18 +344,28 @@ MEDICATION_WORKFLOW = {
                             "children": []
                         },
                         {
-                            "id": "condition_check",
+                            "id": "hypertension_check",
                             "type": "decision",
-                            "label": "Condition == 'Hypertension' OR Condition == 'Heart Disease'",
+                            "label": "Condition == Hypertension",
                             "input_ids": ["input_condition_enum"],
                             "edge_label": "No",
+                            "condition": {
+                                "input_id": "input_condition_enum",
+                                "comparator": "enum_eq",
+                                "value": "Hypertension"
+                            },
                             "children": [
                                 {
-                                    "id": "age_check",
+                                    "id": "age_check_hypertension",
                                     "type": "decision",
                                     "label": "Age >= 65",
                                     "input_ids": ["input_age_int"],
                                     "edge_label": "Yes",
+                                    "condition": {
+                                        "input_id": "input_age_int",
+                                        "comparator": "gte",
+                                        "value": 65
+                                    },
                                     "children": [
                                         {
                                             "id": "out_beta_blocker",
@@ -328,11 +384,53 @@ MEDICATION_WORKFLOW = {
                                     ]
                                 },
                                 {
-                                    "id": "out_lifestyle",
-                                    "type": "output",
-                                    "label": "Lifestyle Changes Only",
+                                    "id": "heart_disease_check",
+                                    "type": "decision",
+                                    "label": "Condition == Heart Disease",
+                                    "input_ids": ["input_condition_enum"],
                                     "edge_label": "No",
-                                    "children": []
+                                    "condition": {
+                                        "input_id": "input_condition_enum",
+                                        "comparator": "enum_eq",
+                                        "value": "Heart Disease"
+                                    },
+                                    "children": [
+                                        {
+                                            "id": "age_check_heart",
+                                            "type": "decision",
+                                            "label": "Age >= 65",
+                                            "input_ids": ["input_age_int"],
+                                            "edge_label": "Yes",
+                                            "condition": {
+                                                "input_id": "input_age_int",
+                                                "comparator": "gte",
+                                                "value": 65
+                                            },
+                                            "children": [
+                                                {
+                                                    "id": "out_beta_blocker_heart",
+                                                    "type": "output",
+                                                    "label": "Beta Blocker",
+                                                    "edge_label": "Yes",
+                                                    "children": []
+                                                },
+                                                {
+                                                    "id": "out_ace_inhibitor_heart",
+                                                    "type": "output",
+                                                    "label": "ACE Inhibitor",
+                                                    "edge_label": "No",
+                                                    "children": []
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "id": "out_lifestyle",
+                                            "type": "output",
+                                            "label": "Lifestyle Changes Only",
+                                            "edge_label": "No",
+                                            "children": []
+                                        }
+                                    ]
                                 }
                             ]
                         }
@@ -453,6 +551,11 @@ BMI_CLASSIFICATION_WORKFLOW = {
                     "type": "decision",
                     "label": "BMI < 18.5",
                     "input_ids": ["input_bmi_float"],
+                    "condition": {
+                        "input_id": "input_bmi_float",
+                        "comparator": "lt",
+                        "value": 18.5
+                    },
                     "children": [
                         {
                             "id": "out_underweight",
@@ -464,9 +567,14 @@ BMI_CLASSIFICATION_WORKFLOW = {
                         {
                             "id": "normal_check",
                             "type": "decision",
-                            "label": "BMI >= 18.5 AND BMI < 25",
+                            "label": "BMI < 25",
                             "input_ids": ["input_bmi_float"],
                             "edge_label": "No",
+                            "condition": {
+                                "input_id": "input_bmi_float",
+                                "comparator": "lt",
+                                "value": 25
+                            },
                             "children": [
                                 {
                                     "id": "out_normal",
@@ -478,9 +586,14 @@ BMI_CLASSIFICATION_WORKFLOW = {
                                 {
                                     "id": "overweight_check",
                                     "type": "decision",
-                                    "label": "BMI >= 25 AND BMI < 30",
+                                    "label": "BMI < 30",
                                     "input_ids": ["input_bmi_float"],
                                     "edge_label": "No",
+                                    "condition": {
+                                        "input_id": "input_bmi_float",
+                                        "comparator": "lt",
+                                        "value": 30
+                                    },
                                     "children": [
                                         {
                                             "id": "athlete_check",
@@ -488,6 +601,11 @@ BMI_CLASSIFICATION_WORKFLOW = {
                                             "label": "Athlete == True",
                                             "input_ids": ["input_athlete_bool"],
                                             "edge_label": "Yes",
+                                            "condition": {
+                                                "input_id": "input_athlete_bool",
+                                                "comparator": "is_true",
+                                                "value": None
+                                            },
                                             "children": [
                                                 {
                                                     "id": "out_athletic",
@@ -631,6 +749,12 @@ ELIGIBILITY_WORKFLOW = {
                     "type": "decision",
                     "label": "Age >= 18 AND Age <= 65",
                     "input_ids": ["input_age_int"],
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "within_range",
+                        "value": 18,
+                        "value2": 65
+                    },
                     "children": [
                         {
                             "id": "citizenship_check",
@@ -638,13 +762,23 @@ ELIGIBILITY_WORKFLOW = {
                             "label": "Citizen == True",
                             "input_ids": ["input_citizen_bool"],
                             "edge_label": "Yes",
+                            "condition": {
+                                "input_id": "input_citizen_bool",
+                                "comparator": "is_true",
+                                "value": None
+                            },
                             "children": [
                                 {
                                     "id": "criminal_check",
                                     "type": "decision",
-                                    "label": "NOT Convicted == True",
+                                    "label": "Convicted == False",
                                     "input_ids": ["input_convicted_bool"],
                                     "edge_label": "Yes",
+                                    "condition": {
+                                        "input_id": "input_convicted_bool",
+                                        "comparator": "is_false",
+                                        "value": None
+                                    },
                                     "children": [
                                         {
                                             "id": "out_eligible",

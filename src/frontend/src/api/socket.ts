@@ -683,10 +683,12 @@ export function startWorkflowExecution(
   // Generate execution ID
   const executionId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 
-  // Get workflow data
+  // Get workflow data including inputs from analysis
   const workflow = {
     nodes: workflowStore.flowchart.nodes,
     edges: workflowStore.flowchart.edges,
+    inputs: workflowStore.currentAnalysis?.inputs ?? [],
+    outputs: workflowStore.currentAnalysis?.outputs ?? [],
   }
 
   console.log('[Socket] Executing workflow:', {

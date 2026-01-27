@@ -109,8 +109,9 @@ def tree_from_flowchart(
             "children": [],
         }
         # Preserve additional fields
+        # NOTE: condition is critical for decision nodes - must be preserved
         for key in ("input_ids", "subworkflow_id", "input_mapping", "output_variable",
-                    "output_type", "output_value", "output_template"):
+                    "output_type", "output_value", "output_template", "condition"):
             if key in node:
                 node_map[node_id][key] = node[key]
     

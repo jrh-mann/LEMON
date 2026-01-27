@@ -1,4 +1,4 @@
-import type { FlowNode, FlowNodeColor, Flowchart } from '../../types'
+import type { FlowNode, FlowNodeColor, Flowchart, DecisionCondition } from '../../types'
 import { BLOCK_TYPE_MAP, BLOCK_TYPE_COLORS, NODE_SIZES } from './constants'
 import { autoLayoutFlowchart } from './layout'
 
@@ -41,6 +41,11 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
   // Preserve input_ref if present
   if (rawNode.input_ref) {
     node.input_ref = rawNode.input_ref as string
+  }
+
+  // Preserve decision condition if present (for decision nodes)
+  if (rawNode.condition) {
+    node.condition = rawNode.condition as DecisionCondition
   }
 
   // Preserve output configuration if present

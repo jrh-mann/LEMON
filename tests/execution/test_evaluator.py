@@ -1,330 +1,396 @@
-"""Tests for expression evaluator (expression tree → boolean result)"""
+"""Tests for structured condition evaluator (DecisionCondition → boolean result)
+
+Tests the new structured condition evaluator that uses comparators like:
+- Numeric: eq, neq, lt, lte, gt, gte, within_range
+- Boolean: is_true, is_false
+- String: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
+- Date: date_eq, date_before, date_after, date_between
+- Enum: enum_eq, enum_neq
+"""
 
 import pytest
-from src.backend.execution.parser import parse_condition
-from src.backend.execution.evaluator import evaluate, EvaluationError
+from datetime import date
+from src.backend.execution.evaluator import evaluate_condition, EvaluationError
 
 
-class TestExpressionEvaluator:
-    """Test evaluation of parsed expressions with context"""
+class TestNumericComparators:
+    """Test numeric comparators (eq, neq, lt, lte, gt, gte, within_range)"""
 
-    def test_simple_gte_true(self):
-        """Test: Age >= 18 with Age=25 → True"""
-        expr = parse_condition("Age >= 18")
-        result = evaluate(expr, {"Age": 25})
+    def test_eq_true(self):
+        """Test: input_age_int == 25 with value 25 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "eq", "value": 25}
+        result = evaluate_condition(condition, {"input_age_int": 25})
         assert result is True
 
-    def test_simple_gte_false(self):
-        """Test: Age >= 18 with Age=17 → False"""
-        expr = parse_condition("Age >= 18")
-        result = evaluate(expr, {"Age": 17})
+    def test_eq_false(self):
+        """Test: input_age_int == 25 with value 30 → False"""
+        condition = {"input_id": "input_age_int", "comparator": "eq", "value": 25}
+        result = evaluate_condition(condition, {"input_age_int": 30})
         assert result is False
 
-    def test_simple_gte_boundary(self):
-        """Test: Age >= 18 with Age=18 → True"""
-        expr = parse_condition("Age >= 18")
-        result = evaluate(expr, {"Age": 18})
+    def test_neq_true(self):
+        """Test: input_age_int != 25 with value 30 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "neq", "value": 25}
+        result = evaluate_condition(condition, {"input_age_int": 30})
         assert result is True
 
-    def test_simple_lt_true(self):
-        """Test: BMI < 18.5 with BMI=17.0 → True"""
-        expr = parse_condition("BMI < 18.5")
-        result = evaluate(expr, {"BMI": 17.0})
-        assert result is True
-
-    def test_simple_lt_false(self):
-        """Test: BMI < 18.5 with BMI=20.0 → False"""
-        expr = parse_condition("BMI < 18.5")
-        result = evaluate(expr, {"BMI": 20.0})
+    def test_neq_false(self):
+        """Test: input_age_int != 25 with value 25 → False"""
+        condition = {"input_id": "input_age_int", "comparator": "neq", "value": 25}
+        result = evaluate_condition(condition, {"input_age_int": 25})
         assert result is False
 
-    def test_equality_bool_true(self):
-        """Test: Smoker == True with Smoker=True → True"""
-        expr = parse_condition("Smoker == True")
-        result = evaluate(expr, {"Smoker": True})
+    def test_lt_true(self):
+        """Test: input_bmi_float < 18.5 with value 17.0 → True"""
+        condition = {"input_id": "input_bmi_float", "comparator": "lt", "value": 18.5}
+        result = evaluate_condition(condition, {"input_bmi_float": 17.0})
         assert result is True
 
-    def test_equality_bool_false(self):
-        """Test: Smoker == True with Smoker=False → False"""
-        expr = parse_condition("Smoker == True")
-        result = evaluate(expr, {"Smoker": False})
+    def test_lt_false(self):
+        """Test: input_bmi_float < 18.5 with value 20.0 → False"""
+        condition = {"input_id": "input_bmi_float", "comparator": "lt", "value": 18.5}
+        result = evaluate_condition(condition, {"input_bmi_float": 20.0})
         assert result is False
 
-    def test_equality_string_true(self):
-        """Test: Condition == 'Hypertension' with Condition='Hypertension' → True"""
-        expr = parse_condition("Condition == 'Hypertension'")
-        result = evaluate(expr, {"Condition": "Hypertension"})
-        assert result is True
-
-    def test_equality_string_false(self):
-        """Test: Condition == 'Hypertension' with Condition='Diabetes' → False"""
-        expr = parse_condition("Condition == 'Hypertension'")
-        result = evaluate(expr, {"Condition": "Diabetes"})
+    def test_lt_boundary(self):
+        """Test: input_bmi_float < 18.5 with value 18.5 → False"""
+        condition = {"input_id": "input_bmi_float", "comparator": "lt", "value": 18.5}
+        result = evaluate_condition(condition, {"input_bmi_float": 18.5})
         assert result is False
 
-    def test_and_both_true(self):
-        """Test: Age >= 18 AND Citizen == True with both true → True"""
-        expr = parse_condition("Age >= 18 AND Citizen == True")
-        result = evaluate(expr, {"Age": 25, "Citizen": True})
+    def test_lte_true_less(self):
+        """Test: input_age_int <= 65 with value 60 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "lte", "value": 65}
+        result = evaluate_condition(condition, {"input_age_int": 60})
         assert result is True
 
-    def test_and_one_false(self):
-        """Test: Age >= 18 AND Citizen == True with Age=17 → False"""
-        expr = parse_condition("Age >= 18 AND Citizen == True")
-        result = evaluate(expr, {"Age": 17, "Citizen": True})
+    def test_lte_true_equal(self):
+        """Test: input_age_int <= 65 with value 65 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "lte", "value": 65}
+        result = evaluate_condition(condition, {"input_age_int": 65})
+        assert result is True
+
+    def test_lte_false(self):
+        """Test: input_age_int <= 65 with value 70 → False"""
+        condition = {"input_id": "input_age_int", "comparator": "lte", "value": 65}
+        result = evaluate_condition(condition, {"input_age_int": 70})
         assert result is False
 
-    def test_and_both_false(self):
-        """Test: Age >= 18 AND Citizen == True with both false → False"""
-        expr = parse_condition("Age >= 18 AND Citizen == True")
-        result = evaluate(expr, {"Age": 17, "Citizen": False})
+    def test_gt_true(self):
+        """Test: input_age_int > 18 with value 25 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "gt", "value": 18}
+        result = evaluate_condition(condition, {"input_age_int": 25})
+        assert result is True
+
+    def test_gt_false(self):
+        """Test: input_age_int > 18 with value 17 → False"""
+        condition = {"input_id": "input_age_int", "comparator": "gt", "value": 18}
+        result = evaluate_condition(condition, {"input_age_int": 17})
         assert result is False
 
-    def test_or_both_true(self):
-        """Test: A == 1 OR B == 2 with both true → True"""
-        expr = parse_condition("A == 1 OR B == 2")
-        result = evaluate(expr, {"A": 1, "B": 2})
-        assert result is True
-
-    def test_or_one_true(self):
-        """Test: A == 1 OR B == 2 with A=1, B=3 → True"""
-        expr = parse_condition("A == 1 OR B == 2")
-        result = evaluate(expr, {"A": 1, "B": 3})
-        assert result is True
-
-    def test_or_both_false(self):
-        """Test: A == 1 OR B == 2 with both false → False"""
-        expr = parse_condition("A == 1 OR B == 2")
-        result = evaluate(expr, {"A": 99, "B": 99})
+    def test_gt_boundary(self):
+        """Test: input_age_int > 18 with value 18 → False"""
+        condition = {"input_id": "input_age_int", "comparator": "gt", "value": 18}
+        result = evaluate_condition(condition, {"input_age_int": 18})
         assert result is False
 
-    def test_not_operator_true(self):
-        """Test: NOT Convicted == True with Convicted=False → True"""
-        expr = parse_condition("NOT Convicted == True")
-        result = evaluate(expr, {"Convicted": False})
+    def test_gte_true_greater(self):
+        """Test: input_age_int >= 18 with value 25 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "gte", "value": 18}
+        result = evaluate_condition(condition, {"input_age_int": 25})
         assert result is True
 
-    def test_not_operator_false(self):
-        """Test: NOT Convicted == True with Convicted=True → False"""
-        expr = parse_condition("NOT Convicted == True")
-        result = evaluate(expr, {"Convicted": True})
+    def test_gte_true_equal(self):
+        """Test: input_age_int >= 18 with value 18 → True"""
+        condition = {"input_id": "input_age_int", "comparator": "gte", "value": 18}
+        result = evaluate_condition(condition, {"input_age_int": 18})
+        assert result is True
+
+    def test_gte_false(self):
+        """Test: input_age_int >= 18 with value 17 → False"""
+        condition = {"input_id": "input_age_int", "comparator": "gte", "value": 18}
+        result = evaluate_condition(condition, {"input_age_int": 17})
         assert result is False
 
-    def test_compound_and_expression(self):
-        """Test: HDL < 40 AND Smoker == True"""
-        expr = parse_condition("HDL < 40 AND Smoker == True")
-
-        # Both true
-        result = evaluate(expr, {"HDL": 35.0, "Smoker": True})
+    def test_within_range_inside(self):
+        """Test: input_bmi_float within [18.5, 25] with value 22 → True"""
+        condition = {"input_id": "input_bmi_float", "comparator": "within_range", "value": 18.5, "value2": 25.0}
+        result = evaluate_condition(condition, {"input_bmi_float": 22.0})
         assert result is True
 
-        # First false
-        result = evaluate(expr, {"HDL": 50.0, "Smoker": True})
+    def test_within_range_lower_boundary(self):
+        """Test: input_bmi_float within [18.5, 25] with value 18.5 → True"""
+        condition = {"input_id": "input_bmi_float", "comparator": "within_range", "value": 18.5, "value2": 25.0}
+        result = evaluate_condition(condition, {"input_bmi_float": 18.5})
+        assert result is True
+
+    def test_within_range_upper_boundary(self):
+        """Test: input_bmi_float within [18.5, 25] with value 25 → True"""
+        condition = {"input_id": "input_bmi_float", "comparator": "within_range", "value": 18.5, "value2": 25.0}
+        result = evaluate_condition(condition, {"input_bmi_float": 25.0})
+        assert result is True
+
+    def test_within_range_below(self):
+        """Test: input_bmi_float within [18.5, 25] with value 17 → False"""
+        condition = {"input_id": "input_bmi_float", "comparator": "within_range", "value": 18.5, "value2": 25.0}
+        result = evaluate_condition(condition, {"input_bmi_float": 17.0})
         assert result is False
 
-        # Second false
-        result = evaluate(expr, {"HDL": 35.0, "Smoker": False})
+    def test_within_range_above(self):
+        """Test: input_bmi_float within [18.5, 25] with value 30 → False"""
+        condition = {"input_id": "input_bmi_float", "comparator": "within_range", "value": 18.5, "value2": 25.0}
+        result = evaluate_condition(condition, {"input_bmi_float": 30.0})
         assert result is False
 
-    def test_compound_or_expression(self):
-        """Test: Condition == 'Hypertension' OR Condition == 'Heart Disease'"""
-        expr = parse_condition("Condition == 'Hypertension' OR Condition == 'Heart Disease'")
-
-        result = evaluate(expr, {"Condition": "Hypertension"})
+    def test_int_float_coercion(self):
+        """Test: float comparator works with int value"""
+        condition = {"input_id": "input_bmi_float", "comparator": "lt", "value": 18.5}
+        result = evaluate_condition(condition, {"input_bmi_float": 18})  # int value
         assert result is True
 
-        result = evaluate(expr, {"Condition": "Heart Disease"})
+
+class TestBooleanComparators:
+    """Test boolean comparators (is_true, is_false)"""
+
+    def test_is_true_with_true(self):
+        """Test: input_active_bool is_true with True → True"""
+        condition = {"input_id": "input_active_bool", "comparator": "is_true", "value": True}
+        result = evaluate_condition(condition, {"input_active_bool": True})
         assert result is True
 
-        result = evaluate(expr, {"Condition": "Diabetes"})
+    def test_is_true_with_false(self):
+        """Test: input_active_bool is_true with False → False"""
+        condition = {"input_id": "input_active_bool", "comparator": "is_true", "value": True}
+        result = evaluate_condition(condition, {"input_active_bool": False})
         assert result is False
 
-    def test_range_check(self):
-        """Test: BMI >= 18.5 AND BMI < 25"""
-        expr = parse_condition("BMI >= 18.5 AND BMI < 25")
-
-        # In range
-        result = evaluate(expr, {"BMI": 22.0})
+    def test_is_false_with_false(self):
+        """Test: input_active_bool is_false with False → True"""
+        condition = {"input_id": "input_active_bool", "comparator": "is_false", "value": False}
+        result = evaluate_condition(condition, {"input_active_bool": False})
         assert result is True
 
-        # Lower boundary (inclusive)
-        result = evaluate(expr, {"BMI": 18.5})
-        assert result is True
-
-        # Upper boundary (exclusive)
-        result = evaluate(expr, {"BMI": 25.0})
+    def test_is_false_with_true(self):
+        """Test: input_active_bool is_false with True → False"""
+        condition = {"input_id": "input_active_bool", "comparator": "is_false", "value": False}
+        result = evaluate_condition(condition, {"input_active_bool": True})
         assert result is False
 
-        # Below range
-        result = evaluate(expr, {"BMI": 17.0})
-        assert result is False
 
-        # Above range
-        result = evaluate(expr, {"BMI": 30.0})
-        assert result is False
+class TestStringComparators:
+    """Test string comparators (str_eq, str_neq, str_contains, str_starts_with, str_ends_with)"""
 
-    def test_float_comparison(self):
-        """Test: Cholesterol >= 200.0 with float values"""
-        expr = parse_condition("Cholesterol >= 200.0")
-
-        result = evaluate(expr, {"Cholesterol": 240.5})
+    def test_str_eq_same_case(self):
+        """Test: input_name_string str_eq 'John' with 'John' → True"""
+        condition = {"input_id": "input_name_string", "comparator": "str_eq", "value": "John"}
+        result = evaluate_condition(condition, {"input_name_string": "John"})
         assert result is True
 
-        result = evaluate(expr, {"Cholesterol": 180.3})
+    def test_str_eq_different_case(self):
+        """Test: input_name_string str_eq 'john' with 'JOHN' → True (case-insensitive)"""
+        condition = {"input_id": "input_name_string", "comparator": "str_eq", "value": "john"}
+        result = evaluate_condition(condition, {"input_name_string": "JOHN"})
+        assert result is True
+
+    def test_str_eq_different_value(self):
+        """Test: input_name_string str_eq 'John' with 'Jane' → False"""
+        condition = {"input_id": "input_name_string", "comparator": "str_eq", "value": "John"}
+        result = evaluate_condition(condition, {"input_name_string": "Jane"})
         assert result is False
 
-        result = evaluate(expr, {"Cholesterol": 200.0})
+    def test_str_neq_different(self):
+        """Test: input_name_string str_neq 'John' with 'Jane' → True"""
+        condition = {"input_id": "input_name_string", "comparator": "str_neq", "value": "John"}
+        result = evaluate_condition(condition, {"input_name_string": "Jane"})
         assert result is True
 
-    def test_not_equals_true(self):
-        """Test: Status != 'inactive' with Status='active' → True"""
-        expr = parse_condition("Status != 'inactive'")
-        result = evaluate(expr, {"Status": "active"})
-        assert result is True
-
-    def test_not_equals_false(self):
-        """Test: Status != 'inactive' with Status='inactive' → False"""
-        expr = parse_condition("Status != 'inactive'")
-        result = evaluate(expr, {"Status": "inactive"})
+    def test_str_neq_same(self):
+        """Test: input_name_string str_neq 'John' with 'john' → False (case-insensitive)"""
+        condition = {"input_id": "input_name_string", "comparator": "str_neq", "value": "John"}
+        result = evaluate_condition(condition, {"input_name_string": "john"})
         assert result is False
 
-    def test_missing_variable_error(self):
-        """Test error when variable not in context"""
-        expr = parse_condition("Age >= 18")
-        with pytest.raises(EvaluationError, match="Variable 'Age' not found"):
-            evaluate(expr, {})
-
-    def test_type_coercion_int_to_float(self):
-        """Test: BMI < 18.5 with BMI=18 (int) should work"""
-        expr = parse_condition("BMI < 18.5")
-        result = evaluate(expr, {"BMI": 18})  # int value
+    def test_str_contains_found(self):
+        """Test: input_email_string str_contains '@gmail.com' with 'user@gmail.com' → True"""
+        condition = {"input_id": "input_email_string", "comparator": "str_contains", "value": "@gmail.com"}
+        result = evaluate_condition(condition, {"input_email_string": "user@gmail.com"})
         assert result is True
 
-    def test_nested_parentheses(self):
-        """Test: (Age >= 18 AND Age <= 65) OR Athlete == True"""
-        expr = parse_condition("(Age >= 18 AND Age <= 65) OR Athlete == True")
-
-        # In age range, not athlete
-        result = evaluate(expr, {"Age": 30, "Athlete": False})
-        assert result is True
-
-        # Out of age range, but athlete
-        result = evaluate(expr, {"Age": 70, "Athlete": True})
-        assert result is True
-
-        # Out of age range, not athlete
-        result = evaluate(expr, {"Age": 70, "Athlete": False})
+    def test_str_contains_not_found(self):
+        """Test: input_email_string str_contains '@gmail.com' with 'user@yahoo.com' → False"""
+        condition = {"input_id": "input_email_string", "comparator": "str_contains", "value": "@gmail.com"}
+        result = evaluate_condition(condition, {"input_email_string": "user@yahoo.com"})
         assert result is False
 
-    def test_operator_precedence(self):
-        """Test: A OR B AND C (AND binds tighter than OR)"""
-        expr = parse_condition("A == 1 OR B == 2 AND C == 3")
-
-        # Should parse as: A == 1 OR (B == 2 AND C == 3)
-        # A true, others don't matter
-        result = evaluate(expr, {"A": 1, "B": 99, "C": 99})
+    def test_str_contains_case_insensitive(self):
+        """Test: input_email_string str_contains '@GMAIL.COM' with 'user@gmail.com' → True"""
+        condition = {"input_id": "input_email_string", "comparator": "str_contains", "value": "@GMAIL.COM"}
+        result = evaluate_condition(condition, {"input_email_string": "user@gmail.com"})
         assert result is True
 
-        # A false, B and C both true
-        result = evaluate(expr, {"A": 99, "B": 2, "C": 3})
+    def test_str_starts_with_true(self):
+        """Test: input_code_string str_starts_with 'PRE' with 'PREFIX123' → True"""
+        condition = {"input_id": "input_code_string", "comparator": "str_starts_with", "value": "PRE"}
+        result = evaluate_condition(condition, {"input_code_string": "PREFIX123"})
         assert result is True
 
-        # A false, B true but C false
-        result = evaluate(expr, {"A": 99, "B": 2, "C": 99})
+    def test_str_starts_with_false(self):
+        """Test: input_code_string str_starts_with 'PRE' with 'NOTPRE123' → False"""
+        condition = {"input_id": "input_code_string", "comparator": "str_starts_with", "value": "PRE"}
+        result = evaluate_condition(condition, {"input_code_string": "NOTPRE123"})
         assert result is False
 
-        # All false
-        result = evaluate(expr, {"A": 99, "B": 99, "C": 99})
-        assert result is False
-
-    def test_short_circuit_and(self):
-        """Test that AND short-circuits (doesn't evaluate right if left is false)"""
-        expr = parse_condition("A == 1 AND B == 2")
-
-        # First condition false - should short-circuit without needing B
-        result = evaluate(expr, {"A": 99})  # B not in context
-        assert result is False
-
-    def test_short_circuit_or(self):
-        """Test that OR short-circuits (doesn't evaluate right if left is true)"""
-        expr = parse_condition("A == 1 OR B == 2")
-
-        # First condition true - should short-circuit without needing B
-        result = evaluate(expr, {"A": 1})  # B not in context
+    def test_str_ends_with_true(self):
+        """Test: input_file_string str_ends_with '.pdf' with 'report.pdf' → True"""
+        condition = {"input_id": "input_file_string", "comparator": "str_ends_with", "value": ".pdf"}
+        result = evaluate_condition(condition, {"input_file_string": "report.pdf"})
         assert result is True
 
-    def test_gt_operator(self):
-        """Test > operator"""
-        expr = parse_condition("Age > 18")
+    def test_str_ends_with_false(self):
+        """Test: input_file_string str_ends_with '.pdf' with 'report.docx' → False"""
+        condition = {"input_id": "input_file_string", "comparator": "str_ends_with", "value": ".pdf"}
+        result = evaluate_condition(condition, {"input_file_string": "report.docx"})
+        assert result is False
 
-        result = evaluate(expr, {"Age": 19})
+
+class TestDateComparators:
+    """Test date comparators (date_eq, date_before, date_after, date_between)"""
+
+    def test_date_eq_same(self):
+        """Test: input_date_date date_eq '2024-01-15' with same date → True"""
+        condition = {"input_id": "input_date_date", "comparator": "date_eq", "value": "2024-01-15"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-01-15"})
         assert result is True
 
-        result = evaluate(expr, {"Age": 18})
+    def test_date_eq_different(self):
+        """Test: input_date_date date_eq '2024-01-15' with different date → False"""
+        condition = {"input_id": "input_date_date", "comparator": "date_eq", "value": "2024-01-15"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-01-16"})
         assert result is False
 
-        result = evaluate(expr, {"Age": 17})
-        assert result is False
-
-    def test_lte_operator(self):
-        """Test <= operator"""
-        expr = parse_condition("Age <= 65")
-
-        result = evaluate(expr, {"Age": 60})
+    def test_date_eq_with_date_object(self):
+        """Test: date_eq works with date object in context"""
+        condition = {"input_id": "input_date_date", "comparator": "date_eq", "value": "2024-01-15"}
+        result = evaluate_condition(condition, {"input_date_date": date(2024, 1, 15)})
         assert result is True
 
-        result = evaluate(expr, {"Age": 65})
+    def test_date_before_true(self):
+        """Test: input_date_date date_before '2024-06-01' with '2024-01-15' → True"""
+        condition = {"input_id": "input_date_date", "comparator": "date_before", "value": "2024-06-01"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-01-15"})
         assert result is True
 
-        result = evaluate(expr, {"Age": 70})
+    def test_date_before_false(self):
+        """Test: input_date_date date_before '2024-01-01' with '2024-06-15' → False"""
+        condition = {"input_id": "input_date_date", "comparator": "date_before", "value": "2024-01-01"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-06-15"})
         assert result is False
 
-    def test_complex_expression(self):
-        """Test complex real-world expression"""
-        expr = parse_condition("Age >= 40 AND Cholesterol >= 200 AND (HDL < 40 OR Smoker == True)")
-
-        # All conditions met via HDL
-        result = evaluate(expr, {"Age": 50, "Cholesterol": 240, "HDL": 35, "Smoker": False})
+    def test_date_after_true(self):
+        """Test: input_date_date date_after '2024-01-01' with '2024-06-15' → True"""
+        condition = {"input_id": "input_date_date", "comparator": "date_after", "value": "2024-01-01"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-06-15"})
         assert result is True
 
-        # All conditions met via Smoker
-        result = evaluate(expr, {"Age": 50, "Cholesterol": 240, "HDL": 50, "Smoker": True})
+    def test_date_after_false(self):
+        """Test: input_date_date date_after '2024-06-01' with '2024-01-15' → False"""
+        condition = {"input_id": "input_date_date", "comparator": "date_after", "value": "2024-06-01"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-01-15"})
+        assert result is False
+
+    def test_date_between_inside(self):
+        """Test: input_date_date date_between ['2024-01-01', '2024-12-31'] with '2024-06-15' → True"""
+        condition = {"input_id": "input_date_date", "comparator": "date_between", "value": "2024-01-01", "value2": "2024-12-31"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-06-15"})
         assert result is True
 
-        # Age too low
-        result = evaluate(expr, {"Age": 35, "Cholesterol": 240, "HDL": 35, "Smoker": False})
-        assert result is False
-
-        # Cholesterol too low
-        result = evaluate(expr, {"Age": 50, "Cholesterol": 180, "HDL": 35, "Smoker": False})
-        assert result is False
-
-        # Neither HDL nor Smoker condition met
-        result = evaluate(expr, {"Age": 50, "Cholesterol": 240, "HDL": 50, "Smoker": False})
-        assert result is False
-
-    def test_string_equality_case_sensitive(self):
-        """Test that string equality is case-sensitive"""
-        expr = parse_condition("Status == 'Active'")
-
-        result = evaluate(expr, {"Status": "Active"})
+    def test_date_between_lower_boundary(self):
+        """Test: input_date_date date_between with date at lower boundary → True"""
+        condition = {"input_id": "input_date_date", "comparator": "date_between", "value": "2024-01-01", "value2": "2024-12-31"}
+        result = evaluate_condition(condition, {"input_date_date": "2024-01-01"})
         assert result is True
 
-        result = evaluate(expr, {"Status": "active"})
+    def test_date_between_outside(self):
+        """Test: input_date_date date_between ['2024-01-01', '2024-12-31'] with '2025-06-15' → False"""
+        condition = {"input_id": "input_date_date", "comparator": "date_between", "value": "2024-01-01", "value2": "2024-12-31"}
+        result = evaluate_condition(condition, {"input_date_date": "2025-06-15"})
         assert result is False
 
-        result = evaluate(expr, {"Status": "ACTIVE"})
-        assert result is False
 
-    def test_numeric_equality(self):
-        """Test numeric equality"""
-        expr = parse_condition("Count == 10")
+class TestEnumComparators:
+    """Test enum comparators (enum_eq, enum_neq)"""
 
-        result = evaluate(expr, {"Count": 10})
+    def test_enum_eq_same_case(self):
+        """Test: input_tier_enum enum_eq 'Premium' with 'Premium' → True"""
+        condition = {"input_id": "input_tier_enum", "comparator": "enum_eq", "value": "Premium"}
+        result = evaluate_condition(condition, {"input_tier_enum": "Premium"})
         assert result is True
 
-        result = evaluate(expr, {"Count": 10.0})
+    def test_enum_eq_different_case(self):
+        """Test: input_tier_enum enum_eq 'Premium' with 'premium' → True (case-insensitive)"""
+        condition = {"input_id": "input_tier_enum", "comparator": "enum_eq", "value": "Premium"}
+        result = evaluate_condition(condition, {"input_tier_enum": "premium"})
         assert result is True
 
-        result = evaluate(expr, {"Count": 9})
+    def test_enum_eq_different_value(self):
+        """Test: input_tier_enum enum_eq 'Premium' with 'Basic' → False"""
+        condition = {"input_id": "input_tier_enum", "comparator": "enum_eq", "value": "Premium"}
+        result = evaluate_condition(condition, {"input_tier_enum": "Basic"})
         assert result is False
+
+    def test_enum_neq_different(self):
+        """Test: input_tier_enum enum_neq 'Premium' with 'Basic' → True"""
+        condition = {"input_id": "input_tier_enum", "comparator": "enum_neq", "value": "Premium"}
+        result = evaluate_condition(condition, {"input_tier_enum": "Basic"})
+        assert result is True
+
+    def test_enum_neq_same(self):
+        """Test: input_tier_enum enum_neq 'Premium' with 'PREMIUM' → False (case-insensitive)"""
+        condition = {"input_id": "input_tier_enum", "comparator": "enum_neq", "value": "Premium"}
+        result = evaluate_condition(condition, {"input_tier_enum": "PREMIUM"})
+        assert result is False
+
+
+class TestErrorHandling:
+    """Test error handling for invalid conditions"""
+
+    def test_missing_input_id(self):
+        """Test error when condition has no input_id"""
+        condition = {"comparator": "eq", "value": 25}
+        with pytest.raises(EvaluationError, match="missing 'input_id'"):
+            evaluate_condition(condition, {"input_age_int": 25})
+
+    def test_missing_comparator(self):
+        """Test error when condition has no comparator"""
+        condition = {"input_id": "input_age_int", "value": 25}
+        with pytest.raises(EvaluationError, match="missing 'comparator'"):
+            evaluate_condition(condition, {"input_age_int": 25})
+
+    def test_unknown_comparator(self):
+        """Test error when comparator is unknown"""
+        condition = {"input_id": "input_age_int", "comparator": "invalid_op", "value": 25}
+        with pytest.raises(EvaluationError, match="Unknown comparator"):
+            evaluate_condition(condition, {"input_age_int": 25})
+
+    def test_input_not_in_context(self):
+        """Test error when input_id not found in context"""
+        condition = {"input_id": "input_age_int", "comparator": "eq", "value": 25}
+        with pytest.raises(EvaluationError, match="not found in execution context"):
+            evaluate_condition(condition, {"input_other": 30})
+
+    def test_invalid_condition_type(self):
+        """Test error when condition is not a dict"""
+        with pytest.raises(EvaluationError, match="must be a dict"):
+            evaluate_condition("invalid", {"input_age_int": 25})
+
+    def test_numeric_comparator_with_boolean(self):
+        """Test error when using numeric comparator with boolean"""
+        condition = {"input_id": "input_active_bool", "comparator": "gt", "value": 0}
+        with pytest.raises(EvaluationError, match="boolean value"):
+            evaluate_condition(condition, {"input_active_bool": True})
+
+    def test_invalid_date_format(self):
+        """Test error when date string is invalid"""
+        condition = {"input_id": "input_date_date", "comparator": "date_eq", "value": "2024-01-15"}
+        with pytest.raises(EvaluationError, match="Cannot parse date"):
+            evaluate_condition(condition, {"input_date_date": "not-a-date"})

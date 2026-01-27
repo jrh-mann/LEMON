@@ -2,10 +2,39 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict
 
 from ..core import Tool, ToolParameter
 from .helpers import ensure_workflow_analysis, normalize_input_name
+
+
+# Map user-friendly types to internal types used by condition validation
+# and the execution interpreter. For 'number', we use 'float' as default
+# since it's more general (accepts both integers and decimals).
+USER_TYPE_TO_INTERNAL = {
+    "string": "string",
+    "number": "float",  # Use float for number type (more general)
+    "boolean": "bool",
+    "enum": "enum",
+}
+
+
+def generate_input_id(name: str, internal_type: str) -> str:
+    """Generate deterministic input ID from name and type.
+    
+    Format: input_{slug}_{type}
+    
+    Args:
+        name: Input name (e.g., "Patient Age")
+        internal_type: Internal type (e.g., "int", "float", "bool", "string")
+        
+    Returns:
+        Input ID (e.g., "input_patient_age_float")
+    """
+    # Slugify: lowercase, replace non-alphanumeric with underscore, strip trailing
+    slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+    return f"input_{slug}_{internal_type}"
 
 
 class AddWorkflowInputTool(Tool):
@@ -88,9 +117,28 @@ class AddWorkflowInputTool(Tool):
                     "error": f"Input '{name}' already exists (case-insensitive check)"
                 }
 
+        # Map user-friendly type to internal type
+        internal_type = USER_TYPE_TO_INTERNAL.get(input_type, "string")
+        
+        # For number type with range constraints, determine if int or float
+        # based on whether min/max values are integers
+        if input_type == "number":
+            range_min = args.get("range_min")
+            range_max = args.get("range_max")
+            # If both range values are provided and both are integers, use int
+            if range_min is not None and range_max is not None:
+                if isinstance(range_min, int) and isinstance(range_max, int):
+                    # Check they're not float-like (e.g., 5.0)
+                    if range_min == int(range_min) and range_max == int(range_max):
+                        internal_type = "int"
+        
+        # Generate deterministic ID
+        input_id = generate_input_id(name.strip(), internal_type)
+
         input_obj = {
+            "id": input_id,
             "name": name.strip(),
-            "type": input_type,
+            "type": internal_type,  # Store internal type for condition validation
         }
 
         if args.get("description"):

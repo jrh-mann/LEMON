@@ -26,8 +26,12 @@ from flask_socketio import SocketIO
 from ..execution.interpreter import TreeInterpreter
 from ..utils.flowchart import tree_from_flowchart
 from ..storage.workflows import WorkflowStore
+from ..validation.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger("backend.api")
+
+# Workflow validator instance for pre-execution validation
+_workflow_validator = WorkflowValidator()
 
 # Global state for execution tasks (pause/resume support)
 _EXECUTION_STATE: Dict[str, Dict[str, Any]] = {}
@@ -330,11 +334,29 @@ def handle_execute_workflow(
     speed_ms = payload.get("speed_ms", 500)
     execution_id = payload.get("execution_id")
 
-    # Validate workflow
+    # Validate workflow format
     if not isinstance(workflow, dict):
         socketio.emit(
             "execution_error",
-            {"error": "Invalid workflow format"},
+            {"error": "Invalid workflow format", "execution_id": execution_id},
+            to=sid,
+        )
+        return
+
+    # Run comprehensive workflow validation before execution
+    is_valid, validation_errors = _workflow_validator.validate(workflow, strict=True)
+    if not is_valid:
+        error_message = _workflow_validator.format_errors(validation_errors)
+        socketio.emit(
+            "execution_error",
+            {
+                "execution_id": execution_id,
+                "error": f"Workflow validation failed:\n{error_message}",
+                "validation_errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors
+                ],
+            },
             to=sid,
         )
         return

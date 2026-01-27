@@ -102,7 +102,16 @@ class TestSteppedExecutionTask:
         return {
             "nodes": [
                 {"id": "start", "type": "start", "label": "Start"},
-                {"id": "decision1", "type": "decision", "label": "Age >= 18"},
+                {
+                    "id": "decision1",
+                    "type": "decision",
+                    "label": "Age >= 18",
+                    "condition": {
+                        "input_id": "input_age_int",
+                        "comparator": "gte",
+                        "value": 18
+                    }
+                },
                 {"id": "out_adult", "type": "output", "label": "Adult"},
                 {"id": "out_minor", "type": "output", "label": "Minor"},
             ],
