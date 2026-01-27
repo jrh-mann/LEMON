@@ -71,3 +71,8 @@ cookies.txt
 job-logs.zip
 publishprofile.xml
 *.publishsettings
+
+#akel
+.lemon/auth.sqlite
+.lemon/tokens_usage.json
+.lemon/workflows.sqlite
