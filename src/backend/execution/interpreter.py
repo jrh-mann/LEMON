@@ -10,9 +10,14 @@ Interprets workflow trees by:
 
 Subflow Execution:
 - Subprocess nodes reference other workflows by ID
-- Input mapping translates parent inputs to subworkflow inputs
-- Subworkflow output is injected as a new input variable in parent context
+- Input mapping translates parent variables to subworkflow inputs
+- Subworkflow output is injected as a new derived variable in parent context
 - Cycle detection prevents infinite recursion (A->B->A)
+
+Variable System:
+- The unified variable system uses 'variables' instead of 'inputs'
+- Each variable has a 'source' field: 'input' (user-provided), 'subprocess' (derived), etc.
+- For backwards compatibility, the interpreter accepts both 'variables' and legacy 'inputs'
 """
 
 import json
@@ -74,31 +79,42 @@ class TreeInterpreter:
     def __init__(
         self,
         tree: Dict[str, Any],
-        inputs: List[Dict[str, Any]],
-        outputs: List[Dict[str, Any]],
+        inputs: Optional[List[Dict[str, Any]]] = None,
+        outputs: Optional[List[Dict[str, Any]]] = None,
         workflow_id: Optional[str] = None,
         call_stack: Optional[List[str]] = None,
         workflow_store: Optional["WorkflowStore"] = None,
         user_id: Optional[str] = None,
+        variables: Optional[List[Dict[str, Any]]] = None,
     ):
         """Initialize interpreter
         
         Args:
             tree: Workflow tree (must have 'start' key)
-            inputs: List of input definitions with id, name, type, range, enum_values
+            inputs: DEPRECATED - List of input definitions. Use 'variables' instead.
             outputs: List of output definitions with name
             workflow_id: ID of this workflow (for cycle detection in subflows)
             call_stack: Stack of workflow IDs currently being executed (for cycle detection)
             workflow_store: Store for loading subworkflows (required for subprocess nodes)
             user_id: User ID for loading subworkflows (required for subprocess nodes)
+            variables: List of variable definitions (unified system - replaces inputs)
         """
         self.tree = tree
-        self.inputs_schema = {inp['id']: inp for inp in inputs}
-        self.outputs_schema = {out['name']: out for out in outputs}
+        
+        # Unified variable system: prefer 'variables', fallback to 'inputs' for backwards compat
+        # Variables include both user inputs (source='input') and derived values (source='subprocess')
+        var_list = variables if variables is not None else (inputs or [])
+        
+        self.variables_schema = {var['id']: var for var in var_list}
+        # Backwards compat alias
+        self.inputs_schema = self.variables_schema
+        
+        self.outputs_schema = {out['name']: out for out in (outputs or [])}
 
-        # Create mapping from input names to IDs for condition evaluation
-        # e.g., "Age" -> "input_age_int", "BMI" -> "input_bmi_float"
-        self.name_to_id = {inp['name']: inp['id'] for inp in inputs}
+        # Create mapping from variable names to IDs for condition evaluation
+        # e.g., "Age" -> "var_age_int", "BMI" -> "var_bmi_float"
+        # Also supports legacy "input_age_int" format
+        self.name_to_id = {var['name']: var['id'] for var in var_list}
         
         # Subflow support
         self.workflow_id = workflow_id
@@ -327,6 +343,19 @@ class TreeInterpreter:
                 f"Subprocess node '{node_label}': subworkflow '{subworkflow_id}' not found"
             )
         
+        # Get tree from subworkflow, rebuilding from nodes/edges if necessary
+        # This handles workflows saved before tree computation was added to save endpoint
+        sub_tree = subworkflow.tree
+        if not sub_tree or 'start' not in sub_tree:
+            from ..utils.flowchart import tree_from_flowchart
+            sub_tree = tree_from_flowchart(subworkflow.nodes, subworkflow.edges)
+            if not sub_tree or 'start' not in sub_tree:
+                raise InterpreterError(
+                    f"Subprocess node '{node_label}': subworkflow '{subworkflow.name}' "
+                    f"has no start node. Ensure the subworkflow has a valid structure "
+                    f"with a start node connected to other nodes."
+                )
+        
         # Map parent inputs to subworkflow inputs
         sub_input_values = self._map_inputs_to_subworkflow(
             input_mapping,
@@ -342,7 +371,7 @@ class TreeInterpreter:
         
         # Create interpreter for subworkflow
         sub_interpreter = TreeInterpreter(
-            tree=subworkflow.tree,
+            tree=sub_tree,  # Use rebuilt tree (handles empty stored tree)
             inputs=subworkflow.inputs,
             outputs=subworkflow.outputs,
             workflow_id=subworkflow_id,
@@ -450,10 +479,10 @@ class TreeInterpreter:
         output_value: Any,
         context: Dict[str, Any]
     ) -> None:
-        """Inject subflow output as a new input variable in parent context.
+        """Inject subflow output as a new derived variable in parent context.
         
-        Dynamically registers the output as a new input that can be used
-        in subsequent decision nodes.
+        Dynamically registers the output as a new variable with source='subprocess'
+        that can be used in subsequent decision nodes.
         
         Args:
             output_variable: Name of the variable (e.g., "CreditScore")
@@ -463,21 +492,22 @@ class TreeInterpreter:
         # Infer type from output value
         output_type = self._infer_type(output_value)
         
-        # Generate deterministic input ID
-        input_id = self._generate_input_id(output_variable, output_type)
+        # Generate deterministic variable ID with subprocess prefix
+        # Format: var_sub_{slug}_{type}
+        variable_id = self._generate_variable_id(output_variable, output_type, "subprocess")
         
         # Add to name->id mapping for future condition evaluation
-        self.name_to_id[output_variable] = input_id
+        self.name_to_id[output_variable] = variable_id
         
         # Add to context
-        context[input_id] = output_value
+        context[variable_id] = output_value
         
-        # Track in inputs_schema for potential validation
-        self.inputs_schema[input_id] = {
-            "id": input_id,
+        # Track in variables_schema for potential validation
+        self.variables_schema[variable_id] = {
+            "id": variable_id,
             "name": output_variable,
             "type": output_type,
-            "source": "subflow",  # Mark as dynamically injected
+            "source": "subprocess",  # Derived from subprocess node
         }
 
     def _infer_type(self, value: Any) -> str:
@@ -502,18 +532,48 @@ class TreeInterpreter:
         else:
             return "string"  # Fallback
 
-    def _generate_input_id(self, name: str, input_type: str) -> str:
-        """Generate deterministic input ID from name and type.
+    def _generate_variable_id(self, name: str, var_type: str, source: str = "input") -> str:
+        """Generate deterministic variable ID from name, type, and source.
         
-        Follows the same pattern as deterministic_input_id in utils/analysis.py:
-        input_{slug}_{type}
+        Follows the unified variable ID format:
+        - Input variables: var_{slug}_{type}
+        - Subprocess derived: var_sub_{slug}_{type}
+        - Calculated: var_calc_{slug}_{type}
+        - Constants: var_const_{slug}_{type}
+        
+        Args:
+            name: Variable name (e.g., "Credit Score")
+            var_type: Variable type (e.g., "int", "float", "string")
+            source: Variable source ("input", "subprocess", "calculated", "constant")
+            
+        Returns:
+            Variable ID (e.g., "var_credit_score_int", "var_sub_risk_float")
+        """
+        # Slugify: lowercase, replace non-alphanumeric with underscore
+        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+        
+        if source == "input":
+            return f"var_{slug}_{var_type}"
+        else:
+            # For derived variables, include abbreviated source prefix
+            source_prefix = {
+                "subprocess": "sub",
+                "calculated": "calc",
+                "constant": "const",
+            }.get(source, source[:4])
+            return f"var_{source_prefix}_{slug}_{var_type}"
+
+    def _generate_input_id(self, name: str, input_type: str) -> str:
+        """DEPRECATED: Use _generate_variable_id() instead.
+        
+        Kept for backwards compatibility. Generates legacy input_* format IDs.
         
         Args:
             name: Input name (e.g., "Credit Score")
             input_type: Input type (e.g., "int")
             
         Returns:
-            Input ID (e.g., "input_credit_score_int")
+            Legacy input ID (e.g., "input_credit_score_int")
         """
         # Slugify: lowercase, replace non-alphanumeric with underscore
         slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
@@ -599,57 +659,62 @@ class TreeInterpreter:
         return label
 
     def _validate_inputs(self, input_values: Dict[str, Any]) -> None:
-        """Validate input values against schema
+        """Validate input values against variable schema.
 
         Args:
-            input_values: Input values to validate
+            input_values: Input values to validate (variable_id -> value)
 
         Raises:
             InterpreterError: If validation fails
         """
-        # Check all required inputs are present
-        for input_id, schema in self.inputs_schema.items():
-            if input_id not in input_values:
-                raise InterpreterError(f"Missing required input: {input_id}")
+        # Check all required variables are present
+        for var_id, schema in self.variables_schema.items():
+            # Only validate input-source variables (user-provided)
+            # Subprocess-derived variables are injected at runtime
+            if schema.get('source') == 'subprocess':
+                continue
+                
+            if var_id not in input_values:
+                raise InterpreterError(f"Missing required variable: {var_id}")
 
-            value = input_values[input_id]
-            input_type = schema['type']
+            value = input_values[var_id]
+            var_type = schema['type']
 
             # Type validation
-            if input_type == 'int':
+            if var_type == 'int':
                 if not isinstance(value, int) or isinstance(value, bool):
-                    raise InterpreterError(f"{input_id} must be int, got {type(value).__name__}")
+                    raise InterpreterError(f"{var_id} must be int, got {type(value).__name__}")
 
-            elif input_type == 'float':
+            elif var_type == 'float':
                 if not isinstance(value, (int, float)) or isinstance(value, bool):
-                    raise InterpreterError(f"{input_id} must be float, got {type(value).__name__}")
+                    raise InterpreterError(f"{var_id} must be float, got {type(value).__name__}")
 
-            elif input_type == 'bool':
+            elif var_type == 'bool':
                 if not isinstance(value, bool):
-                    raise InterpreterError(f"{input_id} must be bool, got {type(value).__name__}")
+                    raise InterpreterError(f"{var_id} must be bool, got {type(value).__name__}")
 
-            elif input_type in ('string', 'enum'):
+            elif var_type in ('string', 'enum'):
                 if not isinstance(value, str):
-                    raise InterpreterError(f"{input_id} must be string, got {type(value).__name__}")
+                    raise InterpreterError(f"{var_id} must be string, got {type(value).__name__}")
 
             # Range validation for numeric types
-            if input_type in ('int', 'float') and 'range' in schema:
+            if var_type in ('int', 'float') and 'range' in schema:
                 range_spec = schema['range']
                 if 'min' in range_spec and value < range_spec['min']:
                     raise InterpreterError(
-                        f"Value error: {input_id}={value} below minimum {range_spec['min']}"
+                        f"Value error: {var_id}={value} below minimum {range_spec['min']}"
                     )
                 if 'max' in range_spec and value > range_spec['max']:
                     raise InterpreterError(
-                        f"Value error: {input_id}={value} exceeds maximum {range_spec['max']}"
+                        f"Value error: {var_id}={value} exceeds maximum {range_spec['max']}"
                     )
 
             # Enum validation
-            if input_type == 'enum' and 'enum_values' in schema:
+            if var_type == 'enum' and 'enum_values' in schema:
                 allowed = schema['enum_values']
                 if value not in allowed:
                     raise InterpreterError(
-                        f"Value error: {input_id} must be one of {allowed}, got '{value}'"
+                        f"Value error: {var_id} must be one of {allowed}, got '{value}'"
                     )
 
     def _handle_decision_node(self, node: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dict[str, Any]]:

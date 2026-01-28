@@ -49,7 +49,7 @@ SIMPLE_SUBWORKFLOW = MockWorkflow(
     inputs=[
         {"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}
     ],
-    outputs=[{"name": "Result"}],
+    outputs=[{"name": "Result", "type": "string"}],  # Added type field
     tree={
         "start": {
             "id": "start",
@@ -110,8 +110,8 @@ class TestAddSubprocessNodeTool:
         session_state = {
             "current_workflow": {"nodes": [], "edges": []},
             "workflow_analysis": {
-                "inputs": [
-                    {"id": "input_value_int", "name": "Value", "type": "int"}
+                "variables": [
+                    {"id": "var_value_int", "name": "Value", "type": "int", "source": "input"}
                 ]
             },
             "workflow_store": self.workflow_store,
@@ -229,8 +229,8 @@ class TestModifySubprocessNodeTool:
                 "edges": []
             },
             "workflow_analysis": {
-                "inputs": [
-                    {"id": "input_val_int", "name": "Val", "type": "int"}
+                "variables": [
+                    {"id": "var_val_int", "name": "Val", "type": "int", "source": "input"}
                 ]
             },
             "workflow_store": self.workflow_store,
@@ -385,7 +385,7 @@ class TestSubflowExecutionIntegration:
                                 "type": "decision",
                                 "label": "SubResult == 'High'",
                                 "condition": {
-                                    "input_id": "input_subresult_string",
+                                    "input_id": "var_sub_subresult_string",
                                     "comparator": "str_eq",
                                     "value": "High"
                                 },
@@ -560,3 +560,146 @@ class TestSubflowExecutionIntegration:
         # Should have one subflow result from Level 1 (Level 2's result is nested)
         assert len(result.subflow_results) == 1
         assert result.subflow_results[0]["subworkflow_id"] == "wf_level1"
+
+
+class TestSubflowTreeRebuild:
+    """Test subflow execution when stored tree is empty (fallback to nodes/edges)."""
+    
+    def test_subflow_with_empty_tree_rebuilt_from_nodes_edges(self):
+        """Test that subflow execution works when tree is empty but nodes/edges exist.
+        
+        This simulates workflows saved before tree computation was added to the
+        save endpoint. The interpreter should rebuild the tree from nodes/edges.
+        """
+        # Create a MockWorkflow with empty tree but valid nodes/edges
+        class MockWorkflowWithNodesEdges:
+            """Mock workflow with empty tree but valid nodes/edges structure."""
+            def __init__(self):
+                self.name = "Empty Tree Workflow"
+                self.tree = {}  # Empty tree - simulates old saved workflow
+                self.nodes = [
+                    {"id": "start_1", "type": "start", "label": "Start", "x": 0, "y": 0},
+                    {"id": "end_1", "type": "end", "label": "Result", "x": 100, "y": 100,
+                     "output_type": "string", "output_value": "success"},
+                ]
+                self.edges = [
+                    {"from": "start_1", "to": "end_1", "label": ""},
+                ]
+                self.inputs = []
+                self.outputs = [{"name": "Result", "type": "string"}]
+        
+        workflow_store = MockWorkflowStore({
+            "wf_empty_tree": MockWorkflowWithNodesEdges()
+        })
+        
+        # Parent workflow that calls the subworkflow with empty tree
+        parent_tree = {
+            "start": {
+                "id": "start",
+                "type": "start",
+                "label": "Start",
+                "children": [
+                    {
+                        "id": "call_sub",
+                        "type": "subprocess",
+                        "label": "Call Empty Tree Workflow",
+                        "subworkflow_id": "wf_empty_tree",
+                        "input_mapping": {},
+                        "output_variable": "SubResult",
+                        "children": [
+                            {
+                                "id": "out",
+                                "type": "end",
+                                "label": "Done",
+                                "output_type": "string",
+                                "output_template": "Got: {SubResult}",
+                                "children": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        
+        interpreter = TreeInterpreter(
+            tree=parent_tree,
+            inputs=[],
+            outputs=[{"name": "Done", "type": "string"}],
+            workflow_id="wf_parent",
+            workflow_store=workflow_store,
+            user_id="test_user",
+        )
+        
+        result = interpreter.execute({})
+        
+        # Should succeed because interpreter rebuilds tree from nodes/edges
+        assert result.success is True
+        assert result.output is not None
+        assert "success" in str(result.output).lower() or str(result.output) == "Got: success"
+    
+    def test_subflow_with_cyclic_nodes_and_no_start_fails_gracefully(self):
+        """Test that subflow with invalid structure (cycle, no start) gives a helpful error."""
+        class MockWorkflowCyclic:
+            """Mock workflow with cyclic nodes - no valid start can be determined."""
+            def __init__(self):
+                self.name = "Cyclic Workflow"
+                self.tree = {}
+                # Create a cycle: A -> B -> A (both have incoming edges, so no start)
+                self.nodes = [
+                    {"id": "node_a", "type": "process", "label": "Node A", "x": 0, "y": 0},
+                    {"id": "node_b", "type": "process", "label": "Node B", "x": 100, "y": 100},
+                ]
+                self.edges = [
+                    {"from": "node_a", "to": "node_b", "label": ""},
+                    {"from": "node_b", "to": "node_a", "label": ""},  # Creates cycle
+                ]
+                self.inputs = []
+                self.outputs = []
+        
+        workflow_store = MockWorkflowStore({
+            "wf_cyclic": MockWorkflowCyclic()
+        })
+        
+        parent_tree = {
+            "start": {
+                "id": "start",
+                "type": "start",
+                "label": "Start",
+                "children": [
+                    {
+                        "id": "call_sub",
+                        "type": "subprocess",
+                        "label": "Call Cyclic Workflow",
+                        "subworkflow_id": "wf_cyclic",
+                        "input_mapping": {},
+                        "output_variable": "SubResult",
+                        "children": [
+                            {
+                                "id": "out",
+                                "type": "end",
+                                "label": "Done",
+                                "children": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        
+        interpreter = TreeInterpreter(
+            tree=parent_tree,
+            inputs=[],
+            outputs=[{"name": "Done"}],
+            workflow_id="wf_parent",
+            workflow_store=workflow_store,
+            user_id="test_user",
+        )
+        
+        # Should return a failed result with a helpful error message
+        result = interpreter.execute({})
+        
+        assert result.success is False
+        assert result.error is not None
+        assert "no start node" in result.error.lower()
+        assert "Cyclic Workflow" in result.error
+

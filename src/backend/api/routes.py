@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from flask import Flask, jsonify, request, make_response, g
@@ -29,6 +29,7 @@ from .auth import (
 )
 from .conversations import ConversationStore
 from ..utils.uploads import save_uploaded_image
+from ..utils.flowchart import tree_from_flowchart
 from .response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ..storage.auth import AuthStore, AuthUser
 from ..storage.workflows import WorkflowStore
@@ -38,6 +39,36 @@ logger = logging.getLogger("backend.api")
 
 # Workflow validator instance for save/update validation
 _workflow_validator = WorkflowValidator()
+
+
+def _infer_outputs_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Infer workflow outputs from end nodes that have output_type defined.
+    
+    When saving a workflow, we can automatically determine outputs by looking
+    at end nodes. If an end node has output_type (and optionally output_value
+    or output_template), we create an output definition from it.
+    
+    This allows subprocesses to properly determine the output type without
+    requiring users to explicitly define outputs via a separate UI.
+    
+    Args:
+        nodes: List of workflow nodes
+        
+    Returns:
+        List of output definitions [{name, type, description?}]
+    """
+    outputs = []
+    for node in nodes:
+        if node.get("type") == "end" and node.get("output_type"):
+            output_def = {
+                "name": node.get("label", "output"),
+                "type": node.get("output_type"),
+            }
+            # Include description from template if present
+            if node.get("output_template"):
+                output_def["description"] = node.get("output_template")
+            outputs.append(output_def)
+    return outputs
 
 
 def register_routes(
@@ -337,13 +368,21 @@ def register_routes(
         domain = payload.get("domain")
         tags = payload.get("tags") or []
 
-        # Extract workflow structure (nodes, edges, inputs, outputs, tree, doubts)
+        # Extract workflow structure (nodes, edges, inputs, doubts)
         nodes = payload.get("nodes") or []
         edges = payload.get("edges") or []
         inputs = payload.get("inputs") or []
-        outputs = payload.get("outputs") or []
-        tree = payload.get("tree") or {}
         doubts = payload.get("doubts") or []
+
+        # ALWAYS compute tree from nodes/edges - don't rely on frontend
+        # This ensures the tree structure is always valid and up-to-date
+        tree = tree_from_flowchart(nodes, edges)
+        
+        # Infer outputs from end nodes if not explicitly provided
+        # This allows subprocesses to properly determine output types
+        outputs = payload.get("outputs") or []
+        if not outputs:
+            outputs = _infer_outputs_from_nodes(nodes)
 
         # Extract validation metadata
         validation_score = payload.get("validation_score") or 0
