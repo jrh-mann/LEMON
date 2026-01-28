@@ -28,6 +28,7 @@ from ..tools import (
     ListWorkflowInputsTool,
     ModifyWorkflowInputTool,
     RemoveWorkflowInputTool,
+    SetWorkflowOutputTool,
     ValidateWorkflowTool,
 )
 from ..utils.uploads import save_uploaded_image
@@ -151,6 +152,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     list_inputs_tool = ListWorkflowInputsTool()
     modify_input_tool = ModifyWorkflowInputTool()
     remove_input_tool = RemoveWorkflowInputTool()
+    set_output_tool = SetWorkflowOutputTool()
     validate_tool = ValidateWorkflowTool()
 
     @server.tool(
@@ -333,6 +335,18 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         if range_max is not None:
             args["range_max"] = range_max
         return modify_input_tool.execute(args, session_state=session_state or {})
+
+    @server.tool(name="set_workflow_output")
+    def set_workflow_output(
+        name: str,
+        type: str,
+        description: str | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args: dict[str, Any] = {"name": name, "type": type}
+        if description is not None:
+            args["description"] = description
+        return set_output_tool.execute(args, session_state=session_state or {})
 
     @server.tool(name="validate_workflow")
     def validate_workflow(

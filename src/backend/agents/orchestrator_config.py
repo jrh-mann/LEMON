@@ -572,6 +572,37 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "set_workflow_output",
+                "description": (
+                    "Declare the workflow's output with a name and REQUIRED type. "
+                    "The output type is critical for subprocess variable inference - when this workflow "
+                    "is used as a subprocess, the calling workflow uses this type for the derived variable. "
+                    "Use this to ensure proper type inference when workflows are called as subprocesses."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the output (e.g., 'BMI Result', 'Credit Score', 'Risk Level')",
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": ["string", "int", "float", "bool", "enum", "date"],
+                            "description": "Output type - determines derived variable type in calling workflows",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional description of what this output represents",
+                        },
+                    },
+                    "required": ["name", "type"],
+                },
+            },
+        },
     ]
 
 
@@ -871,7 +902,23 @@ def build_system_prompt(
         "- Subprocess output has wrong type (most common: 'string' should be 'int' or 'float')\n"
         "- User wants to change a variable's constraints (range, enum values)\n"
         "- User wants to rename a variable\n"
-        "- User reports type mismatch errors during execution"
+        "- User reports type mismatch errors during execution\n\n"
+        "## Setting Workflow Output Type (For Subworkflow Authors)\n"
+        "When creating a workflow that will be used as a subprocess, use set_workflow_output to declare "
+        "the output with its correct type. This ensures calling workflows get the right type inference.\n\n"
+        "```\n"
+        "// In the BMI Calculator subworkflow:\n"
+        "set_workflow_output(\n"
+        "  name='BMI',\n"
+        "  type='float',  // BMI is a float value like 24.5\n"
+        "  description='Calculated Body Mass Index'\n"
+        ")\n"
+        "```\n\n"
+        "WHY THIS MATTERS:\n"
+        "- When another workflow adds a subprocess node calling this workflow\n"
+        "- The derived variable type is inferred from the output definition\n"
+        "- Without proper output type, the default is 'string' which causes type mismatches\n"
+        "- With proper output type (float), the derived variable is var_sub_bmi_float"
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."
