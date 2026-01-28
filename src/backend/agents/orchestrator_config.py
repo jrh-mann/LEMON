@@ -493,6 +493,55 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "modify_workflow_variable",
+                "description": (
+                    "Modify an existing workflow variable's properties (type, name, description, range, enum values). "
+                    "CRITICAL USE CASE: Correct auto-inferred types for subprocess outputs. "
+                    "When a subprocess node is added, the output variable type is inferred from the subworkflow. "
+                    "If this is wrong (e.g., 'string' instead of 'int'), use this tool to fix it. "
+                    "WARNING: Changing the type also changes the variable ID, so decision nodes using the old ID must be updated."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the variable to modify (case-insensitive match)",
+                        },
+                        "new_type": {
+                            "type": "string",
+                            "enum": ["string", "number", "integer", "boolean", "enum", "date"],
+                            "description": "New type for the variable. 'number' = float, 'integer' = int.",
+                        },
+                        "new_name": {
+                            "type": "string",
+                            "description": "New name for the variable (optional)",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "New description (optional)",
+                        },
+                        "enum_values": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "For enum type: array of allowed values",
+                        },
+                        "range_min": {
+                            "type": "number",
+                            "description": "For number/integer types: minimum allowed value",
+                        },
+                        "range_max": {
+                            "type": "number",
+                            "description": "For number/integer types: maximum allowed value",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "list_workflows_in_library",
                 "description": (
                     "List all workflows saved in the user's library. "
@@ -793,7 +842,36 @@ def build_system_prompt(
         "3. Register any needed parent workflow inputs with add_workflow_variable\n"
         "4. Create the subprocess node with proper mapping\n"
         "5. Connect subprocess to other nodes\n"
-        "6. Use the derived variable (var_sub_{name}_{type}) in subsequent decision conditions"
+        "6. Use the derived variable (var_sub_{name}_{type}) in subsequent decision conditions\n\n"
+        "## Modifying Variable Types (CRITICAL for Subprocess Outputs)\n"
+        "When a subprocess node is added, the output variable type is auto-inferred from the subworkflow's output.\n"
+        "However, if the subworkflow's output type wasn't defined correctly, the derived variable may have the WRONG type.\n\n"
+        "COMMON PROBLEM:\n"
+        "- Subworkflow's end node outputs an integer (output_type='int')\n"
+        "- But the subworkflow's outputs array doesn't have type defined, or was saved before type was required\n"
+        "- The derived variable gets created as 'string' (the default) instead of 'int'\n"
+        "- Decision nodes then fail because comparators don't match\n\n"
+        "SOLUTION - Use modify_workflow_variable:\n"
+        "```\n"
+        "// Check current type\n"
+        "list_workflow_variables()  // Shows: BMI (var_sub_bmi_string)\n"
+        "\n"
+        "// Fix the type from string to integer\n"
+        "modify_workflow_variable(\n"
+        "  name='BMI',\n"
+        "  new_type='integer'  // Changes to 'int' internally\n"
+        ")\n"
+        "// Now it's: BMI (var_sub_bmi_int)\n"
+        "```\n\n"
+        "IMPORTANT:\n"
+        "- Changing type also changes the variable ID (var_sub_bmi_string -> var_sub_bmi_int)\n"
+        "- Any decision nodes using the old ID must be updated with modify_node\n"
+        "- The tool warns you about this when the ID changes\n\n"
+        "WHEN TO USE modify_workflow_variable:\n"
+        "- Subprocess output has wrong type (most common: 'string' should be 'int' or 'float')\n"
+        "- User wants to change a variable's constraints (range, enum values)\n"
+        "- User wants to rename a variable\n"
+        "- User reports type mismatch errors during execution"
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."

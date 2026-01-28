@@ -15,10 +15,12 @@ from .workflow_edit import (
 from .workflow_input import (
     AddWorkflowVariableTool,
     ListWorkflowVariablesTool,
+    ModifyWorkflowVariableTool,
     RemoveWorkflowVariableTool,
     # Backwards compatibility aliases
     AddWorkflowInputTool,
     ListWorkflowInputsTool,
+    ModifyWorkflowInputTool,
     RemoveWorkflowInputTool,
 )
 from .validate_workflow import ValidateWorkflowTool
@@ -42,10 +44,12 @@ __all__ = [
     # New variable tool names
     "AddWorkflowVariableTool",
     "ListWorkflowVariablesTool",
+    "ModifyWorkflowVariableTool",
     "RemoveWorkflowVariableTool",
     # Backwards compatibility aliases
     "AddWorkflowInputTool",
     "ListWorkflowInputsTool",
+    "ModifyWorkflowInputTool",
     "RemoveWorkflowInputTool",
     "ValidateWorkflowTool",
     "ListWorkflowsInLibrary",

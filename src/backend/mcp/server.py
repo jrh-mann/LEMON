@@ -26,6 +26,7 @@ from ..tools import (
     BatchEditWorkflowTool,
     AddWorkflowInputTool,
     ListWorkflowInputsTool,
+    ModifyWorkflowInputTool,
     RemoveWorkflowInputTool,
     ValidateWorkflowTool,
 )
@@ -148,6 +149,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     # Workflow input management tools
     add_input_tool = AddWorkflowInputTool()
     list_inputs_tool = ListWorkflowInputsTool()
+    modify_input_tool = ModifyWorkflowInputTool()
     remove_input_tool = RemoveWorkflowInputTool()
     validate_tool = ValidateWorkflowTool()
 
@@ -298,9 +300,39 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     @server.tool(name="remove_workflow_input")
     def remove_workflow_input(
         name: str,
+        force: bool = False,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return remove_input_tool.execute({"name": name}, session_state=session_state or {})
+        args: dict[str, Any] = {"name": name}
+        if force:
+            args["force"] = force
+        return remove_input_tool.execute(args, session_state=session_state or {})
+
+    @server.tool(name="modify_workflow_variable")
+    def modify_workflow_variable(
+        name: str,
+        new_type: str | None = None,
+        new_name: str | None = None,
+        description: str | None = None,
+        enum_values: list[str] | None = None,
+        range_min: float | None = None,
+        range_max: float | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args: dict[str, Any] = {"name": name}
+        if new_type is not None:
+            args["new_type"] = new_type
+        if new_name is not None:
+            args["new_name"] = new_name
+        if description is not None:
+            args["description"] = description
+        if enum_values is not None:
+            args["enum_values"] = enum_values
+        if range_min is not None:
+            args["range_min"] = range_min
+        if range_max is not None:
+            args["range_max"] = range_max
+        return modify_input_tool.execute(args, session_state=session_state or {})
 
     @server.tool(name="validate_workflow")
     def validate_workflow(
