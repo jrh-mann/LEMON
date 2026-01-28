@@ -13,6 +13,10 @@ from .workflow_edit import (
     BatchEditWorkflowTool,
 )
 from .workflow_input import (
+    AddWorkflowVariableTool,
+    ListWorkflowVariablesTool,
+    RemoveWorkflowVariableTool,
+    # Backwards compatibility aliases
     AddWorkflowInputTool,
     ListWorkflowInputsTool,
     RemoveWorkflowInputTool,
@@ -35,6 +39,11 @@ __all__ = [
     "AddConnectionTool",
     "DeleteConnectionTool",
     "BatchEditWorkflowTool",
+    # New variable tool names
+    "AddWorkflowVariableTool",
+    "ListWorkflowVariablesTool",
+    "RemoveWorkflowVariableTool",
+    # Backwards compatibility aliases
     "AddWorkflowInputTool",
     "ListWorkflowInputsTool",
     "RemoveWorkflowInputTool",

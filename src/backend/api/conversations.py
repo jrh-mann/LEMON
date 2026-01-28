@@ -40,9 +40,13 @@ class Conversation:
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata (inputs/outputs/tree/doubts) for backward compatibility."""
+        """View of workflow metadata for tools.
+        
+        Exposes 'variables' key (unified variable system) instead of legacy 'inputs'.
+        Storage layer still uses 'inputs' key for backwards compatibility.
+        """
         return {
-            "inputs": self.workflow.get("inputs", []),
+            "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
             "outputs": self.workflow.get("outputs", []),
             "tree": self.workflow.get("tree", {}),
             "doubts": self.workflow.get("doubts", [])
@@ -63,16 +67,19 @@ class Conversation:
         self.updated_at = utc_now()
 
     def update_workflow_analysis(self, analysis: Dict[str, Any]) -> None:
-        """Update workflow metadata (inputs/outputs/tree/doubts).
+        """Update workflow metadata (variables/outputs/tree/doubts).
 
         Args:
-            analysis: Workflow analysis with inputs and outputs
+            analysis: Workflow analysis with variables and outputs.
+                     Accepts both 'variables' (new) and 'inputs' (legacy) keys.
         """
         if not isinstance(analysis, dict):
             return
 
-        # Update inputs/outputs/tree/doubts in the unified workflow dict
-        self.workflow["inputs"] = analysis.get("inputs", [])
+        # Accept both 'variables' (new) and 'inputs' (legacy) keys
+        # Store as 'inputs' internally for backwards compatibility
+        variables = analysis.get("variables", analysis.get("inputs", []))
+        self.workflow["inputs"] = variables
         self.workflow["outputs"] = analysis.get("outputs", [])
         if "tree" in analysis:
             self.workflow["tree"] = analysis.get("tree", {})

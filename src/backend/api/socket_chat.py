@@ -199,10 +199,13 @@ class SocketChatTask:
                 )
 
             if tool in WORKFLOW_INPUT_TOOLS and self.convo:
+                # Emit variables (unified variable system) - includes inputs, subprocess, calculated
+                # Frontend should receive under 'variables' key for display in Variables tab
                 self.socketio.emit(
                     "analysis_updated",
                     {
-                        "inputs": self.convo.orchestrator.workflow_analysis.get("inputs", []),
+                        "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
+                        "inputs": self.convo.orchestrator.workflow_analysis.get("variables", []),  # Backwards compat
                         "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
                     },
                     to=self.sid,

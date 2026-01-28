@@ -1,27 +1,32 @@
-"""Remove workflow input tool."""
+"""Remove workflow variable tool."""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
 from ..core import Tool, ToolParameter
-from .helpers import ensure_workflow_analysis, normalize_input_name
+from .helpers import ensure_workflow_analysis, normalize_variable_name
 
 
-class RemoveWorkflowInputTool(Tool):
-    """Remove a registered workflow input."""
+class RemoveWorkflowVariableTool(Tool):
+    """Remove a registered workflow input variable.
+    
+    Only removes variables with source='input'. Subprocess/calculated variables
+    should be removed by modifying or deleting the nodes that create them.
+    """
 
-    name = "remove_workflow_input"
+    name = "remove_workflow_variable"
+    aliases = ["remove_workflow_input"]  # Backwards compatibility
     description = (
-        "Remove a registered workflow input by name (case-insensitive). "
-        "If the input is referenced by nodes, deletion will fail by default. "
+        "Remove a registered workflow input variable by name (case-insensitive). "
+        "If the variable is referenced by nodes, deletion will fail by default. "
         "Use force=true to cascade delete (automatically removes input_ref from all nodes)."
     )
     parameters = [
         ToolParameter(
             "name",
             "string",
-            "Name of the input to remove (case-insensitive)",
+            "Name of the input variable to remove (case-insensitive)",
             required=True,
         ),
         ToolParameter(
@@ -36,7 +41,10 @@ class RemoveWorkflowInputTool(Tool):
         session_state = kwargs.get("session_state", {})
         workflow_analysis = ensure_workflow_analysis(session_state)
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
-        inputs = workflow_analysis.get("inputs", [])
+        
+        # Get all variables and filter for input variables
+        variables = workflow_analysis.get("variables", [])
+        input_variables = [v for v in variables if v.get("source") == "input"]
 
         name = args.get("name")
 
@@ -48,21 +56,27 @@ class RemoveWorkflowInputTool(Tool):
             force = bool(force_raw)
 
         if not name or not isinstance(name, str):
-            return {"success": False, "error": "Input 'name' is required"}
+            return {"success": False, "error": "Variable 'name' is required"}
 
-        normalized_name = normalize_input_name(name)
+        normalized_name = normalize_variable_name(name)
 
-        # Check if input exists
-        if not any(normalize_input_name(inp.get("name", "")) == normalized_name for inp in inputs):
+        # Check if input variable exists (only check source='input' variables)
+        found_var = None
+        for var in input_variables:
+            if normalize_variable_name(var.get("name", "")) == normalized_name:
+                found_var = var
+                break
+        
+        if not found_var:
             return {
                 "success": False,
-                "error": f"Input '{name}' not found"
+                "error": f"Input variable '{name}' not found"
             }
 
         # Check for nodes that reference this input
         referencing_nodes = [
             node for node in current_workflow.get("nodes", [])
-            if normalize_input_name(node.get("input_ref", "")) == normalized_name
+            if normalize_variable_name(node.get("input_ref", "")) == normalized_name
         ]
 
         # If references exist and force is not enabled, reject deletion
@@ -74,7 +88,7 @@ class RemoveWorkflowInputTool(Tool):
             more_count = len(referencing_nodes) - 3
 
             error_msg = (
-                f"Cannot remove input '{name}': it is referenced by {len(referencing_nodes)} node(s): "
+                f"Cannot remove variable '{name}': it is referenced by {len(referencing_nodes)} node(s): "
                 f"{', '.join(node_labels)}"
             )
             if more_count > 0:
@@ -95,14 +109,14 @@ class RemoveWorkflowInputTool(Tool):
                     del node["input_ref"]
                     affected_node_labels.append(node.get("label", node.get("id", "unknown")))
 
-        # Remove the input from the inputs list
-        workflow_analysis["inputs"] = [
-            inp for inp in inputs
-            if normalize_input_name(inp.get("name", "")) != normalized_name
+        # Remove the variable from the variables list (match by ID for precision)
+        workflow_analysis["variables"] = [
+            var for var in variables
+            if var.get("id") != found_var.get("id")
         ]
 
         # Build success message
-        message = f"Removed input '{name}'"
+        message = f"Removed variable '{name}'"
         if affected_node_labels:
             message += f" and cleared references from {len(affected_node_labels)} node(s): {', '.join(affected_node_labels[:3])}"
             if len(affected_node_labels) > 3:
@@ -115,3 +129,7 @@ class RemoveWorkflowInputTool(Tool):
             "current_workflow": current_workflow,  # Return updated workflow
             "affected_nodes": len(affected_node_labels),
         }
+
+
+# Backwards compatibility alias
+RemoveWorkflowInputTool = RemoveWorkflowVariableTool

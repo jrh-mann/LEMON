@@ -405,27 +405,30 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "add_workflow_input",
+                "name": "add_workflow_variable",
                 "description": (
-                    "Register an input parameter for the workflow. This input will appear in the Inputs tab "
-                    "where users can provide values. Use this when the workflow needs data from users (e.g., "
-                    "'Patient Age', 'Email Address', 'Order Amount')."
+                    "Register a user-input variable for the workflow. This variable will appear in the Variables tab "
+                    "under 'Inputs' where users provide values at execution time. Use this when the workflow needs "
+                    "data from users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
+                    "Returns the variable with its ID (format: var_{name}_{type}, e.g., 'var_patient_age_int'). "
+                    "NOTE: For subprocess outputs, use the output_variable parameter when adding a subprocess node - "
+                    "those are automatically registered as derived variables."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Human-readable input name (e.g., 'Patient Age', 'Email Address')",
+                            "description": "Human-readable variable name (e.g., 'Patient Age', 'Email Address')",
                         },
                         "type": {
                             "type": "string",
                             "enum": ["string", "number", "boolean", "enum"],
-                            "description": "Input type: 'string', 'number', 'boolean', or 'enum'",
+                            "description": "Variable type: 'string', 'number', 'boolean', or 'enum'",
                         },
                         "description": {
                             "type": "string",
-                            "description": "Optional description of what this input represents",
+                            "description": "Optional description of what this variable represents",
                         },
                         "enum_values": {
                             "type": "array",
@@ -448,11 +451,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "list_workflow_inputs",
+                "name": "list_workflow_variables",
                 "description": (
-                    "Get all registered workflow inputs. Returns the list of inputs that have been "
-                    "registered with add_workflow_input. Use this to see what inputs are available "
-                    "before referencing them in nodes."
+                    "Get all registered workflow variables. Returns both user-input variables (source='input') "
+                    "and derived variables (e.g., subprocess outputs with source='subprocess'). "
+                    "Variable IDs use the format var_{name}_{type} for inputs, var_sub_{name}_{type} for subprocess outputs. "
+                    "Use this to see what variables are available before referencing them in decision nodes."
                 ),
                 "parameters": {
                     "type": "object",
@@ -464,10 +468,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "remove_workflow_input",
+                "name": "remove_workflow_variable",
                 "description": (
-                    "Remove a registered workflow input by name (case-insensitive). "
-                    "If the input is referenced by nodes, deletion will fail by default. "
+                    "Remove a registered workflow input variable by name (case-insensitive). "
+                    "If the variable is referenced by nodes, deletion will fail by default. "
                     "Use force=true to cascade delete (automatically removes input_ref from all nodes)."
                 ),
                 "parameters": {
@@ -475,11 +479,11 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Name of the input to remove (case-insensitive)",
+                            "description": "Name of the variable to remove (case-insensitive)",
                         },
                         "force": {
                             "type": "boolean",
-                            "description": "If true, removes input even if referenced by nodes (cascade delete). Default: false",
+                            "description": "If true, removes variable even if referenced by nodes (cascade delete). Default: false",
                         },
                     },
                     "required": ["name"],
@@ -589,10 +593,10 @@ def build_system_prompt(
         "Common scenarios where batch_edit is recommended:\n\n"
         "1. Decision nodes with branches (most common):\n"
         "```\n"
-        "// First: add_workflow_input(name='Age', type='number') → returns input with id 'input_age_int'\n"
+        "// First: add_workflow_variable(name='Age', type='number') -> returns variable with id 'var_age_int'\n"
         "operations=[\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\",\n"
-        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"input_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
+        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_true\", \"type\": \"end\", \"label\": \"Adult\", \"x\": 50, \"y\": 200},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_false\", \"type\": \"end\", \"label\": \"Minor\", \"x\": 150, \"y\": 200},\n"
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_true\", \"label\": \"true\"},\n"
@@ -616,57 +620,63 @@ def build_system_prompt(
         "Keep responses SHORT. Don't show raw JSON to the user.\n\n"
         "## Reading Workflow State\n"
         "When the user asks 'what's on the canvas?' or 'what nodes do we have?', call get_current_workflow and describe the nodes/edges you see.\n\n"
-        "## Workflow Inputs (CRITICAL)\n"
-        "WHENEVER you see a decision node that checks a condition on data, you MUST register that data as a workflow input:\n"
+        "## Workflow Variables (CRITICAL)\n"
+        "The workflow uses a UNIFIED VARIABLE SYSTEM. There are two types of variables:\n"
+        "- Input variables (source='input'): User-provided values, registered with add_workflow_variable\n"
+        "- Derived variables (source='subprocess'): Automatically created when subprocess nodes execute\n\n"
+        "### Variable ID Format\n"
+        "- Input variables: var_{slug}_{type} (e.g., 'var_patient_age_int', 'var_email_string')\n"
+        "- Subprocess outputs: var_sub_{slug}_{type} (e.g., 'var_sub_creditscore_float')\n\n"
+        "WHENEVER you see a decision node that checks a condition on data, you MUST register that data as a workflow variable:\n"
         "1. Identify what data the decision checks (e.g., 'Patient Age', 'Order Amount', 'Email Valid')\n"
-        "2. Call add_workflow_input to register it with appropriate type (string/number/boolean/enum)\n"
-        "3. Note the input ID from the response (e.g., 'input_patient_age_int')\n"
+        "2. Call add_workflow_variable to register it with appropriate type (string/number/boolean/enum)\n"
+        "3. Note the variable ID from the response (e.g., 'var_patient_age_int')\n"
         "4. Then add the decision node with input_ref AND condition parameters\n\n"
         "Examples:\n"
         "- User: 'Add decision: is patient over 60?'\n"
-        "  → Call add_workflow_input(name='Patient Age', type='number') → returns id='input_patient_age_int'\n"
+        "  → Call add_workflow_variable(name='Patient Age', type='number') → returns id='var_patient_age_int'\n"
         "  → Then add_node(type='decision', label='Patient over 60?', input_ref='Patient Age',\n"
-        "      condition={\"input_id\": \"input_patient_age_int\", \"comparator\": \"gt\", \"value\": 60})\n\n"
+        "      condition={\"input_id\": \"var_patient_age_int\", \"comparator\": \"gt\", \"value\": 60})\n\n"
         "- User: 'Create workflow for processing orders based on amount'\n"
-        "  → Call add_workflow_input(name='Order Amount', type='number') → returns id='input_order_amount_float'\n"
+        "  → Call add_workflow_variable(name='Order Amount', type='number') → returns id='var_order_amount_float'\n"
         "  → Then create decision nodes with input_ref='Order Amount' and appropriate condition\n\n"
         "- User: 'Check if email is from gmail'\n"
-        "  → Call add_workflow_input(name='Email Address', type='string') → returns id='input_email_address_string'\n"
+        "  → Call add_workflow_variable(name='Email Address', type='string') → returns id='var_email_address_string'\n"
         "  → Then add_node(type='decision', label='Gmail address?', input_ref='Email Address',\n"
-        "      condition={\"input_id\": \"input_email_address_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"})\n\n"
-        "ALWAYS register inputs BEFORE creating nodes that reference them.\n"
-        "Use list_workflow_inputs to see what inputs already exist AND to get their IDs.\n"
-        "Input names are case-insensitive when referencing (e.g., 'patient age' matches 'Patient Age').\n\n"
+        "      condition={\"input_id\": \"var_email_address_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"})\n\n"
+        "ALWAYS register input variables BEFORE creating nodes that reference them.\n"
+        "Use list_workflow_variables to see what variables already exist AND to get their IDs.\n"
+        "Variable names are case-insensitive when referencing (e.g., 'patient age' matches 'Patient Age').\n\n"
         "## Decision Node Conditions (CRITICAL)\n"
         "EVERY decision node MUST have a structured `condition` that defines the logic.\n\n"
         "### Condition Structure\n"
         "A condition is an object with these fields:\n"
-        "- `input_id`: ID of the workflow input to check (e.g., 'input_patient_age_int')\n"
+        "- `input_id`: ID of the workflow variable to check (e.g., 'var_patient_age_int' or 'var_sub_creditscore_float')\n"
         "- `comparator`: The comparison operator (see table below)\n"
         "- `value`: Value to compare against\n"
         "- `value2`: (Optional) Second value for range comparators\n\n"
-        "### Comparators by Input Type\n"
-        "| Input Type | Valid Comparators |\n"
-        "|------------|-------------------|\n"
-        "| int, float | eq, neq, lt, lte, gt, gte, within_range |\n"
-        "| bool       | is_true, is_false |\n"
-        "| string     | str_eq, str_neq, str_contains, str_starts_with, str_ends_with |\n"
-        "| date       | date_eq, date_before, date_after, date_between |\n"
-        "| enum       | enum_eq, enum_neq |\n\n"
+        "### Comparators by Variable Type\n"
+        "| Variable Type | Valid Comparators |\n"
+        "|---------------|-------------------|\n"
+        "| int, float    | eq, neq, lt, lte, gt, gte, within_range |\n"
+        "| bool          | is_true, is_false |\n"
+        "| string        | str_eq, str_neq, str_contains, str_starts_with, str_ends_with |\n"
+        "| date          | date_eq, date_before, date_after, date_between |\n"
+        "| enum          | enum_eq, enum_neq |\n\n"
         "### Creating Decision Nodes - WORKFLOW\n"
-        "1. FIRST: Call list_workflow_inputs to see available inputs and get their IDs\n"
-        "2. Register any missing inputs with add_workflow_input\n"
+        "1. FIRST: Call list_workflow_variables to see available variables and get their IDs\n"
+        "2. Register any missing input variables with add_workflow_variable\n"
         "3. Create the decision node with the `condition` parameter\n\n"
         "### Examples\n"
         "**Numeric comparison (age >= 18):**\n"
         "```\n"
-        "// After registering: add_workflow_input(name='Age', type='number')\n"
-        "// The input will have an ID like 'input_age_int'\n"
+        "// After registering: add_workflow_variable(name='Age', type='number')\n"
+        "// The variable will have an ID like 'var_age_int'\n"
         "add_node(\n"
         "  type='decision',\n"
         "  label='Is Adult?',\n"
         "  input_ref='Age',\n"
-        "  condition={\"input_id\": \"input_age_int\", \"comparator\": \"gte\", \"value\": 18}\n"
+        "  condition={\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}\n"
         ")\n"
         "```\n\n"
         "**Range check (price between 100 and 500):**\n"
@@ -675,7 +685,7 @@ def build_system_prompt(
         "  type='decision',\n"
         "  label='Medium Price?',\n"
         "  input_ref='Price',\n"
-        "  condition={\"input_id\": \"input_price_float\", \"comparator\": \"within_range\", \"value\": 100, \"value2\": 500}\n"
+        "  condition={\"input_id\": \"var_price_float\", \"comparator\": \"within_range\", \"value\": 100, \"value2\": 500}\n"
         ")\n"
         "```\n\n"
         "**Boolean check:**\n"
@@ -684,7 +694,7 @@ def build_system_prompt(
         "  type='decision',\n"
         "  label='Is Active?',\n"
         "  input_ref='Active',\n"
-        "  condition={\"input_id\": \"input_active_bool\", \"comparator\": \"is_true\", \"value\": true}\n"
+        "  condition={\"input_id\": \"var_active_bool\", \"comparator\": \"is_true\", \"value\": true}\n"
         ")\n"
         "```\n\n"
         "**String contains:**\n"
@@ -693,7 +703,7 @@ def build_system_prompt(
         "  type='decision',\n"
         "  label='Email from Gmail?',\n"
         "  input_ref='Email',\n"
-        "  condition={\"input_id\": \"input_email_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"}\n"
+        "  condition={\"input_id\": \"var_email_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"}\n"
         ")\n"
         "```\n\n"
         "**Enum equality:**\n"
@@ -702,14 +712,25 @@ def build_system_prompt(
         "  type='decision',\n"
         "  label='Is Premium?',\n"
         "  input_ref='Tier',\n"
-        "  condition={\"input_id\": \"input_tier_enum\", \"comparator\": \"enum_eq\", \"value\": \"Premium\"}\n"
+        "  condition={\"input_id\": \"var_tier_enum\", \"comparator\": \"enum_eq\", \"value\": \"Premium\"}\n"
+        ")\n"
+        "```\n\n"
+        "**Using subprocess output in condition:**\n"
+        "```\n"
+        "// After a subprocess node creates output_variable='CreditScore'\n"
+        "// That becomes 'var_sub_creditscore_float'\n"
+        "add_node(\n"
+        "  type='decision',\n"
+        "  label='Good Credit?',\n"
+        "  input_ref='CreditScore',\n"
+        "  condition={\"input_id\": \"var_sub_creditscore_float\", \"comparator\": \"gte\", \"value\": 700}\n"
         ")\n"
         "```\n\n"
         "**In batch_edit_workflow:**\n"
         "```\n"
         "operations=[\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Age Check\",\n"
-        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"input_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
+        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_adult\", \"type\": \"end\", \"label\": \"Adult Path\"},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_minor\", \"type\": \"end\", \"label\": \"Minor Path\"},\n"
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_adult\", \"label\": \"true\"},\n"
@@ -718,23 +739,25 @@ def build_system_prompt(
         "```\n\n"
         "CRITICAL:\n"
         "- Decision nodes WITHOUT a condition will FAIL at execution time\n"
-        "- The input_id MUST match an existing workflow input's ID (get from list_workflow_inputs)\n"
-        "- The comparator MUST be valid for the input's type\n"
+        "- The input_id MUST match an existing variable's ID (get from list_workflow_variables)\n"
+        "- For input variables: var_{slug}_{type}\n"
+        "- For subprocess outputs: var_sub_{slug}_{type}\n"
+        "- The comparator MUST be valid for the variable's type\n"
         "- For within_range/date_between, you MUST provide both value and value2\n\n"
-        "## Removing Workflow Inputs (CRITICAL)\n"
-        "When removing workflow inputs with remove_workflow_input:\n"
-        "1. By default, deletion FAILS if nodes still reference the input\n"
-        "2. If deletion fails, ask the user: 'This input is referenced by N node(s). Should I:\n"
+        "## Removing Workflow Variables (CRITICAL)\n"
+        "When removing workflow input variables with remove_workflow_variable:\n"
+        "1. By default, deletion FAILS if nodes still reference the variable\n"
+        "2. If deletion fails, ask the user: 'This variable is referenced by N node(s). Should I:\n"
         "   a) Remove references manually (you'll need to update/delete those nodes), or\n"
         "   b) Force delete (automatically removes input_ref from all nodes)?'\n"
         "3. ONLY use force=true if the user explicitly approves cascade deletion\n"
         "4. NEVER use force=true without asking the user first\n\n"
         "Example:\n"
-        "- Tool fails: 'Cannot remove input 'Patient Age': referenced by 3 nodes'\n"
-        "- You respond: 'This input is used by 3 nodes (Age Check, Eligibility, Treatment). "
+        "- Tool fails: 'Cannot remove variable 'Patient Age': referenced by 3 nodes'\n"
+        "- You respond: 'This variable is used by 3 nodes (Age Check, Eligibility, Treatment). "
         "Would you like me to force delete it (which will remove the references from these nodes)?'\n"
         "- User: 'Yes, force delete it'\n"
-        "- You call: remove_workflow_input(name='Patient Age', force=true)\n\n"
+        "- You call: remove_workflow_variable(name='Patient Age', force=true)\n\n"
         "## Subprocess Nodes (Subflows)\n"
         "Use subprocess nodes to call other workflows as reusable components.\n\n"
         "WHEN TO USE SUBPROCESS:\n"
@@ -743,11 +766,12 @@ def build_system_prompt(
         "- When breaking down large workflows into modular pieces\n\n"
         "REQUIRED FIELDS FOR SUBPROCESS NODES:\n"
         "1. subworkflow_id: The ID of the workflow to call (use list_workflows_in_library to find it)\n"
-        "2. input_mapping: Maps parent workflow inputs to subworkflow inputs\n"
+        "2. input_mapping: Maps parent workflow variable names to subworkflow input names\n"
         "   Example: {\"ApplicantAge\": \"Age\", \"AnnualIncome\": \"Income\"}\n"
-        "   This maps parent's 'ApplicantAge' to subworkflow's 'Age' input\n"
+        "   This maps parent's 'ApplicantAge' variable to subworkflow's 'Age' input\n"
         "3. output_variable: Name for the output (e.g., 'CreditScore')\n"
-        "   This becomes available as a NEW INPUT for subsequent decision nodes\n\n"
+        "   This automatically creates a DERIVED VARIABLE with ID 'var_sub_creditscore_float'\n"
+        "   that can be used in subsequent decision nodes\n\n"
         "EXAMPLE - Creating a subprocess node:\n"
         "```\n"
         "add_node(\n"
@@ -758,17 +782,18 @@ def build_system_prompt(
         "  output_variable='CreditScore'\n"
         ")\n"
         "```\n\n"
-        "After this subprocess executes:\n"
-        "- The subworkflow runs with the mapped inputs\n"
-        "- Its output is stored as 'CreditScore'\n"
-        "- Subsequent decisions can check 'CreditScore >= 700'\n\n"
+        "After this subprocess is added:\n"
+        "- A derived variable 'var_sub_creditscore_float' (or similar) is automatically created\n"
+        "- At execution, the subworkflow runs with the mapped inputs\n"
+        "- Its output is stored in the derived variable\n"
+        "- Subsequent decisions can check: condition={\"input_id\": \"var_sub_creditscore_float\", ...}\n\n"
         "WORKFLOW:\n"
         "1. Call list_workflows_in_library to find available workflows\n"
         "2. Note the workflow ID and its input requirements\n"
-        "3. Register any needed parent workflow inputs with add_workflow_input\n"
+        "3. Register any needed parent workflow inputs with add_workflow_variable\n"
         "4. Create the subprocess node with proper mapping\n"
         "5. Connect subprocess to other nodes\n"
-        "6. Use output_variable in subsequent decision conditions"
+        "6. Use the derived variable (var_sub_{name}_{type}) in subsequent decision conditions"
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."

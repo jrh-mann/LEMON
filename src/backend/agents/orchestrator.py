@@ -74,9 +74,13 @@ class Orchestrator:
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata (inputs/outputs/tree/doubts) for backward compatibility."""
+        """View of workflow metadata for tools.
+        
+        Exposes 'variables' key (unified variable system) instead of 'inputs'.
+        Storage layer still uses 'inputs' key for backwards compatibility.
+        """
         return {
-            "inputs": self.workflow.get("inputs", []),
+            "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
             "outputs": self.workflow.get("outputs", []),
             "tree": self.workflow.get("tree", {}),
             "doubts": self.workflow.get("doubts", [])
@@ -84,12 +88,18 @@ class Orchestrator:
 
     @workflow_analysis.setter
     def workflow_analysis(self, value: Dict[str, Any]) -> None:
+        """Set workflow metadata from dict.
+        
+        Accepts both 'variables' key (new format) and 'inputs' key (legacy).
+        Data is stored under 'inputs' key internally for backwards compatibility.
+        """
         if not isinstance(value, dict):
             return
-        inputs = value.get("inputs", [])
+        # Accept both 'variables' (new) and 'inputs' (legacy) keys
+        variables = value.get("variables", value.get("inputs", []))
         outputs = value.get("outputs", [])
-        if isinstance(inputs, list):
-            self.workflow["inputs"] = inputs
+        if isinstance(variables, list):
+            self.workflow["inputs"] = variables  # Store as 'inputs' internally
         if isinstance(outputs, list):
             self.workflow["outputs"] = outputs
         if "tree" in value and isinstance(value.get("tree"), dict):
@@ -139,14 +149,15 @@ class Orchestrator:
         self,
         analysis_provider: Optional[Callable[[], Dict[str, Any]]] = None
     ) -> None:
-        """Sync workflow metadata (inputs/outputs/tree/doubts) from external source.
+        """Sync workflow metadata (variables/outputs/tree/doubts) from external source.
 
         Args:
-            analysis_provider: Callable that returns workflow analysis (inputs/outputs).
+            analysis_provider: Callable that returns workflow analysis.
                               None = use existing memory state (no-op).
 
         Design: Uses dependency injection to decouple from storage.
                 Caller controls WHERE state comes from.
+                Accepts both 'variables' (new) and 'inputs' (legacy) keys.
         """
         if analysis_provider is None:
             return  # No sync needed
@@ -160,20 +171,21 @@ class Orchestrator:
         if not isinstance(analysis_data, dict):
             return
 
-        inputs = analysis_data.get("inputs", [])
+        # Accept both 'variables' (new) and 'inputs' (legacy) keys
+        variables = analysis_data.get("variables", analysis_data.get("inputs", []))
         outputs = analysis_data.get("outputs", [])
 
-        if isinstance(inputs, list) and isinstance(outputs, list):
-            # Update the unified workflow dict
-            self.workflow["inputs"] = inputs
+        if isinstance(variables, list) and isinstance(outputs, list):
+            # Update the unified workflow dict (stored as 'inputs' internally)
+            self.workflow["inputs"] = variables
             self.workflow["outputs"] = outputs
             if "tree" in analysis_data:
                 self.workflow["tree"] = analysis_data.get("tree", {})
             if "doubts" in analysis_data:
                 self.workflow["doubts"] = analysis_data.get("doubts", [])
             self._logger.info(
-                "Synced workflow analysis: %d inputs, %d outputs",
-                len(inputs),
+                "Synced workflow analysis: %d variables, %d outputs",
+                len(variables),
                 len(outputs)
             )
 
@@ -331,25 +343,31 @@ class Orchestrator:
 
         For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
         For MCP calls: Tools return workflow_analysis in response, we must sync it back.
+        
+        Tools use 'variables' key (unified format), but storage uses 'inputs' key
+        for backwards compatibility.
         """
         if tool_name in WORKFLOW_INPUT_TOOLS:
             # MCP mode: Extract workflow_analysis from response and sync
             if "workflow_analysis" in result:
                 returned_analysis = result["workflow_analysis"]
                 if isinstance(returned_analysis, dict):
-                    # Update inputs and outputs in the unified workflow dict
-                    if "inputs" in returned_analysis:
+                    # Tools return 'variables' key - sync to internal 'inputs' storage
+                    if "variables" in returned_analysis:
+                        self.workflow["inputs"] = returned_analysis["variables"]
+                    # Also accept legacy 'inputs' key for backwards compatibility
+                    elif "inputs" in returned_analysis:
                         self.workflow["inputs"] = returned_analysis["inputs"]
                     if "outputs" in returned_analysis:
                         self.workflow["outputs"] = returned_analysis["outputs"]
                     self._logger.debug(
-                        "Synced workflow_analysis from tool result: %d inputs, %d outputs",
+                        "Synced workflow_analysis from tool result: %d variables, %d outputs",
                         len(self.workflow.get("inputs", [])),
                         len(self.workflow.get("outputs", [])),
                     )
 
             # CRITICAL: Also sync current_workflow if tool modified nodes/edges
-            # (e.g., remove_workflow_input with force=true removes input_ref from nodes)
+            # (e.g., remove_workflow_variable with force=true removes input_ref from nodes)
             if "current_workflow" in result:
                 returned_workflow = result["current_workflow"]
                 if isinstance(returned_workflow, dict):

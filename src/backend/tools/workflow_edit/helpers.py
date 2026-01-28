@@ -25,28 +25,80 @@ def get_node_color(node_type: str) -> str:
     return NODE_COLOR_BY_TYPE.get(node_type, "slate")
 
 
-def input_ref_error(input_ref: Optional[str], session_state: Dict[str, Any]) -> Optional[str]:
-    """Check if an input reference is valid.
+def variable_ref_error(var_ref: Optional[str], session_state: Dict[str, Any]) -> Optional[str]:
+    """Check if a variable reference is valid.
     
     Args:
-        input_ref: Name of the input being referenced
+        var_ref: Name of the variable being referenced
         session_state: Current session state with workflow_analysis
         
     Returns:
-        Error message if input not found, None if valid
+        Error message if variable not found, None if valid
     """
-    if not input_ref:
+    if not var_ref:
         return None
     workflow_analysis = session_state.get("workflow_analysis", {})
-    inputs = workflow_analysis.get("inputs", [])
-    normalized_ref = input_ref.strip().lower()
-    input_exists = any(
-        inp.get("name", "").strip().lower() == normalized_ref
-        for inp in inputs
+    variables = workflow_analysis.get("variables", [])
+    normalized_ref = var_ref.strip().lower()
+    var_exists = any(
+        var.get("name", "").strip().lower() == normalized_ref
+        for var in variables
     )
-    if input_exists:
+    if var_exists:
         return None
-    return f"Input '{input_ref}' not found. Register it first with add_workflow_input."
+    return f"Variable '{var_ref}' not found. Register it first with add_workflow_variable."
+
+
+# Backwards compatibility alias
+def input_ref_error(input_ref: Optional[str], session_state: Dict[str, Any]) -> Optional[str]:
+    """Check if an input reference is valid (alias for variable_ref_error)."""
+    return variable_ref_error(input_ref, session_state)
+
+
+def get_subworkflow_output_type(
+    subworkflow_id: str,
+    session_state: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Get the output definition from a subworkflow.
+    
+    Used to infer the type of subprocess output variables.
+    
+    Args:
+        subworkflow_id: ID of the subworkflow to query
+        session_state: Current session state with workflow_store and user_id
+        
+    Returns:
+        Output definition dict with 'name' and 'type', or None if not found
+    """
+    workflow_store = session_state.get("workflow_store")
+    user_id = session_state.get("user_id")
+    
+    if not workflow_store or not user_id or not subworkflow_id:
+        return None
+    
+    try:
+        subworkflow = workflow_store.get_workflow(subworkflow_id, user_id)
+        if subworkflow is None:
+            return None
+        
+        # Get the first output (workflows typically have one primary output)
+        outputs = subworkflow.outputs
+        if outputs and len(outputs) > 0:
+            output = outputs[0]
+            return {
+                "name": output.get("name", "output"),
+                "type": output.get("type", "string"),  # Default to string if no type
+                "description": output.get("description"),
+            }
+        
+        # No outputs defined - return default
+        return {
+            "name": "output",
+            "type": "string",
+            "description": None,
+        }
+    except Exception:
+        return None
 
 
 def validate_subprocess_node(
@@ -58,7 +110,7 @@ def validate_subprocess_node(
     
     Subprocess nodes reference other workflows (subflows) and must have:
     - subworkflow_id: ID of the workflow to execute
-    - input_mapping: Dict mapping parent inputs to subworkflow inputs
+    - input_mapping: Dict mapping parent variables to subworkflow inputs
     - output_variable: Name of variable to store subflow output
     
     Args:
@@ -93,17 +145,18 @@ def validate_subprocess_node(
                 f"with underscores, got '{output_var}'"
             )
     
-    # Validate input_mapping references existing parent inputs
+    # Validate input_mapping references existing parent variables
     if isinstance(input_mapping, dict):
         workflow_analysis = session_state.get("workflow_analysis", {})
-        parent_inputs = workflow_analysis.get("inputs", [])
-        parent_input_names = {inp.get("name", "").strip().lower() for inp in parent_inputs}
+        # Use unified variables list
+        parent_variables = workflow_analysis.get("variables", [])
+        parent_var_names = {var.get("name", "").strip().lower() for var in parent_variables}
         
-        for parent_input_name in input_mapping.keys():
-            if parent_input_name.strip().lower() not in parent_input_names:
+        for parent_var_name in input_mapping.keys():
+            if parent_var_name.strip().lower() not in parent_var_names:
                 errors.append(
                     f"Subprocess node '{node_id}': input_mapping references "
-                    f"non-existent parent input '{parent_input_name}'"
+                    f"non-existent parent variable '{parent_var_name}'"
                 )
     
     # Optionally validate subworkflow exists in database
@@ -121,6 +174,17 @@ def validate_subprocess_node(
                             f"Subprocess node '{node_id}': subworkflow_id '{subworkflow_id}' "
                             f"not found in user's workflow library"
                         )
+                    else:
+                        # Validate subworkflow has output type defined
+                        outputs = subworkflow.outputs
+                        if outputs and len(outputs) > 0:
+                            first_output = outputs[0]
+                            if not first_output.get("type"):
+                                errors.append(
+                                    f"Subprocess node '{node_id}': subworkflow '{subworkflow.name}' "
+                                    f"does not have an output type defined. "
+                                    f"Please update the subworkflow to specify output type."
+                                )
                 except Exception as e:
                     errors.append(
                         f"Subprocess node '{node_id}': failed to verify subworkflow_id "
@@ -133,7 +197,7 @@ def validate_subprocess_node(
 def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Get list of workflows available to use as subflows.
     
-    Returns workflow summaries with id, name, inputs, and outputs
+    Returns workflow summaries with id, name, variables (inputs), and outputs
     that can be used when configuring subprocess nodes.
     
     Args:
@@ -150,16 +214,25 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
     
     try:
         workflows, _ = workflow_store.list_workflows(user_id, limit=100, offset=0)
-        return [
-            {
+        result = []
+        for wf in workflows:
+            # Get input variables from the workflow
+            # The storage still uses 'inputs' field but we expose as 'variables'
+            variables = wf.inputs if hasattr(wf, 'inputs') else []
+            # Filter to only input-type variables for subflow mapping
+            input_variables = [
+                v for v in variables 
+                if v.get("source", "input") == "input"
+            ]
+            
+            result.append({
                 "id": wf.id,
                 "name": wf.name,
                 "description": wf.description,
-                "inputs": wf.inputs,
+                "inputs": input_variables,  # For backwards compat in input_mapping
+                "variables": variables,     # Full variable list
                 "outputs": wf.outputs,
-            }
-            for wf in workflows
-        ]
+            })
+        return result
     except Exception:
         return []
-

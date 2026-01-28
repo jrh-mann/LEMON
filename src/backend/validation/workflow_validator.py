@@ -13,7 +13,7 @@ from src.backend.execution.types import Variable, BinaryOp, UnaryOp
 # Required fields for subprocess nodes
 SUBPROCESS_REQUIRED_FIELDS = ["subworkflow_id", "input_mapping", "output_variable"]
 
-# Valid comparators by input type for structured conditions
+# Valid comparators by variable type for structured conditions
 VALID_COMPARATORS_BY_TYPE = {
     "int": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
     "float": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
@@ -71,7 +71,7 @@ class WorkflowValidator:
         10. Decision nodes must have at least 2 outgoing edges (true/false paths)
         11. Start nodes should have at least 1 outgoing edge
         12. End nodes should have 0 outgoing edges
-        13. Decision nodes must have all referenced variables registered as workflow inputs
+        13. Decision nodes must have all referenced variables registered as workflow variables
         """
         errors: List[ValidationError] = []
         nodes = workflow.get("nodes", [])
@@ -80,11 +80,16 @@ class WorkflowValidator:
         # Collect node IDs for validation
         node_ids: Set[str] = set()
 
-        # Collect registered input names (if available)
-        valid_input_names: Optional[Set[str]] = None
-        workflow_inputs = workflow.get("inputs", [])
-        if workflow_inputs:
-            valid_input_names = {inp.get("name") for inp in workflow_inputs if inp.get("name")}
+        # Collect registered variable names (if available)
+        # Support both new 'variables' field and legacy 'inputs' field
+        valid_var_names: Optional[Set[str]] = None
+        workflow_variables = workflow.get("variables", []) or workflow.get("inputs", [])
+        if workflow_variables:
+            valid_var_names = {v.get("name") for v in workflow_variables if v.get("name")}
+        
+        # Backwards compat alias
+        valid_input_names = valid_var_names
+        workflow_inputs = workflow_variables
 
         # Rule 1 & 2: Validate node structure
         for node in nodes:
@@ -145,33 +150,33 @@ class WorkflowValidator:
                                 node_id=node_id,
                             )
                         )
-                    elif workflow_inputs:
-                        # Check if input_id matches any registered input's id
-                        input_ids = [inp.get("id") for inp in workflow_inputs if inp.get("id")]
-                        if input_id not in input_ids:
+                    elif workflow_variables:
+                        # Check if input_id matches any registered variable's id
+                        var_ids = [v.get("id") for v in workflow_variables if v.get("id")]
+                        if input_id not in var_ids:
                             errors.append(
                                 ValidationError(
                                     code="INVALID_CONDITION_INPUT_ID",
-                                    message=f"Decision node '{node.get('label', node_id)}' references unknown input_id '{input_id}'",
+                                    message=f"Decision node '{node.get('label', node_id)}' references unknown variable id '{input_id}'",
                                     node_id=node_id,
                                 )
                             )
                         else:
-                            # Validate comparator is valid for the input's type
-                            matching_input = next(
-                                (inp for inp in workflow_inputs if inp.get("id") == input_id),
+                            # Validate comparator is valid for the variable's type
+                            matching_var = next(
+                                (v for v in workflow_variables if v.get("id") == input_id),
                                 None
                             )
-                            if matching_input and comparator:
-                                input_type = matching_input.get("type", "string")
-                                valid_comparators = VALID_COMPARATORS_BY_TYPE.get(input_type, set())
+                            if matching_var and comparator:
+                                var_type = matching_var.get("type", "string")
+                                valid_comparators = VALID_COMPARATORS_BY_TYPE.get(var_type, set())
                                 if comparator not in valid_comparators:
                                     errors.append(
                                         ValidationError(
                                             code="INVALID_COMPARATOR_FOR_TYPE",
                                             message=(
                                                 f"Decision node '{node.get('label', node_id)}': "
-                                                f"comparator '{comparator}' is not valid for input type '{input_type}'. "
+                                                f"comparator '{comparator}' is not valid for variable type '{var_type}'. "
                                                 f"Valid comparators: {sorted(valid_comparators)}"
                                             ),
                                             node_id=node_id,
@@ -194,25 +199,25 @@ class WorkflowValidator:
                         expr = parse_condition(condition_str)
                         referenced_vars = self._get_variables(expr)
 
-                        # Check if inputs are registered (always enforced when inputs exist)
-                        if valid_input_names is not None:
+                        # Check if variables are registered (always enforced when variables exist)
+                        if valid_var_names is not None:
                             for var in referenced_vars:
-                                if var not in valid_input_names:
+                                if var not in valid_var_names:
                                     errors.append(
                                         ValidationError(
                                             code="INVALID_INPUT_REF",
-                                            message=f"Decision references unregistered input: '{var}'",
+                                            message=f"Decision references unregistered variable: '{var}'",
                                             node_id=node_id,
                                         )
                                     )
                         # In strict mode, require all decision variables to be registered
                         elif strict and referenced_vars:
-                            # No inputs registered but decision uses variables
+                            # No variables registered but decision uses variables
                             var_list = ", ".join(f"'{v}'" for v in sorted(referenced_vars))
                             errors.append(
                                 ValidationError(
                                     code="DECISION_MISSING_INPUT",
-                                    message=f"Decision node '{node.get('label', node_id)}' references variables {var_list} but no workflow inputs are registered. Register inputs using add_workflow_input tool.",
+                                    message=f"Decision node '{node.get('label', node_id)}' references variables {var_list} but no workflow variables are registered. Register variables using add_workflow_variable tool.",
                                     node_id=node_id,
                                 )
                             )
@@ -553,18 +558,18 @@ class WorkflowValidator:
     def _validate_subprocess_node(
         self,
         node: Dict[str, Any],
-        valid_input_names: Optional[Set[str]],
+        valid_var_names: Optional[Set[str]],
     ) -> List[ValidationError]:
         """Validate subprocess node has required fields and valid references.
         
         Subprocess nodes reference other workflows (subflows) and must have:
         - subworkflow_id: ID of the workflow to execute
-        - input_mapping: Dict mapping parent inputs to subworkflow inputs  
+        - input_mapping: Dict mapping parent variables to subworkflow inputs  
         - output_variable: Name of variable to store subflow output
         
         Args:
             node: The subprocess node to validate
-            valid_input_names: Set of valid input names from parent workflow
+            valid_var_names: Set of valid variable names from parent workflow
             
         Returns:
             List of ValidationError objects for any issues found
@@ -618,16 +623,16 @@ class WorkflowValidator:
                     )
                 )
         
-        # Validate input_mapping references existing parent inputs
-        if isinstance(input_mapping, dict) and valid_input_names is not None:
-            for parent_input_name in input_mapping.keys():
-                if parent_input_name not in valid_input_names:
+        # Validate input_mapping references existing parent variables
+        if isinstance(input_mapping, dict) and valid_var_names is not None:
+            for parent_var_name in input_mapping.keys():
+                if parent_var_name not in valid_var_names:
                     errors.append(
                         ValidationError(
                             code="SUBPROCESS_INVALID_INPUT_REF",
                             message=(
                                 f"Subprocess node '{node_label}': input_mapping references "
-                                f"non-existent parent input '{parent_input_name}'"
+                                f"non-existent parent variable '{parent_var_name}'"
                             ),
                             node_id=node_id,
                         )
@@ -638,18 +643,18 @@ class WorkflowValidator:
     def _validate_output_template(
         self,
         node: Dict[str, Any],
-        workflow_inputs: List[Dict[str, Any]],
-        valid_input_names: Optional[Set[str]],
+        workflow_variables: List[Dict[str, Any]],
+        valid_var_names: Optional[Set[str]],
     ) -> List[ValidationError]:
-        """Validate output/end node templates reference valid input variables.
+        """Validate output/end node templates reference valid variables.
         
         Checks both output_template field and label field for {variable} syntax
-        and ensures all referenced variables are registered workflow inputs.
+        and ensures all referenced variables are registered workflow variables.
         
         Args:
             node: The end/output node to validate
-            workflow_inputs: List of workflow input definitions
-            valid_input_names: Set of valid input names
+            workflow_variables: List of workflow variable definitions
+            valid_var_names: Set of valid variable names
             
         Returns:
             List of ValidationError objects for any issues found
@@ -658,14 +663,14 @@ class WorkflowValidator:
         node_id = node.get("id", "unknown")
         node_label = node.get("label", node_id)
         
-        # Build set of valid variable names (input names and input IDs)
+        # Build set of valid variable names (variable names and variable IDs)
         valid_vars: Set[str] = set()
-        if valid_input_names:
-            valid_vars.update(valid_input_names)
-        # Also allow referencing by input ID (e.g., input_bmi_float)
-        for inp in workflow_inputs:
-            if inp.get("id"):
-                valid_vars.add(inp["id"])
+        if valid_var_names:
+            valid_vars.update(valid_var_names)
+        # Also allow referencing by variable ID (e.g., var_bmi_float)
+        for var in workflow_variables:
+            if var.get("id"):
+                valid_vars.add(var["id"])
         
         # Check output_template field
         template = node.get("output_template", "")
@@ -678,7 +683,7 @@ class WorkflowValidator:
                             code="INVALID_TEMPLATE_VARIABLE",
                             message=(
                                 f"End node '{node_label}': template references unknown variable '{{{var}}}'. "
-                                f"Available variables: {sorted(valid_input_names or [])}"
+                                f"Available variables: {sorted(valid_var_names or [])}"
                             ),
                             node_id=node_id,
                         )
@@ -695,7 +700,7 @@ class WorkflowValidator:
                             code="INVALID_LABEL_VARIABLE",
                             message=(
                                 f"End node '{node_label}': label references unknown variable '{{{var}}}'. "
-                                f"Available variables: {sorted(valid_input_names or [])}"
+                                f"Available variables: {sorted(valid_var_names or [])}"
                             ),
                             node_id=node_id,
                         )
