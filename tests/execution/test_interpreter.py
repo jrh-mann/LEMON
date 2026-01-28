@@ -111,7 +111,7 @@ class TestErrorHandling:
         )
         result = interpreter.execute({})
         assert result.success is False
-        assert "Missing required input" in result.error
+        assert "Missing required variable" in result.error
 
     def test_invalid_input_type(self):
         """Test error when input has wrong type"""

@@ -425,18 +425,10 @@ class TestBatchEditSubprocessNodes:
                 }
             ]
         }
-        # Provide workflow_store so validation passes
+        # Provide workflow_store so validation passes (skipped without user_id)
         session_state = {
             "current_workflow": existing_workflow,
-            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
-            "workflow_store": {
-                "wf_test123": {
-                    "id": "wf_test123",
-                    "metadata": {"name": "BMI Calculator"},
-                    "nodes": [],
-                    "edges": [],
-                }
-            },
+            "workflow_analysis": {"variables": [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]},
         }
 
         result = self.tool.execute(args, session_state=session_state)
@@ -448,7 +440,7 @@ class TestBatchEditSubprocessNodes:
         assert node["output_variable"] == "BMI_Result"
 
     def test_subprocess_auto_registers_output_variable_as_input(self):
-        """Should automatically register output_variable as a workflow input."""
+        """Should automatically register output_variable as a workflow variable."""
         existing_workflow = {"nodes": [], "edges": []}
         args = {
             "operations": [
@@ -465,32 +457,25 @@ class TestBatchEditSubprocessNodes:
         }
         session_state = {
             "current_workflow": existing_workflow,
-            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
-            "workflow_store": {
-                "wf_test123": {
-                    "id": "wf_test123",
-                    "metadata": {"name": "BMI Calculator"},
-                    "nodes": [],
-                    "edges": [],
-                }
-            },
+            "workflow_analysis": {"variables": [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]},
         }
 
         result = self.tool.execute(args, session_state=session_state)
 
         assert result["success"] is True
-        # Check that BMI_Result was added to workflow inputs
+        # Check that BMI_Result was added to workflow inputs (stored under 'inputs' for backwards compat)
         inputs = result["workflow"]["inputs"]
         output_var_input = next((inp for inp in inputs if inp["name"] == "BMI_Result"), None)
         assert output_var_input is not None
         assert output_var_input["type"] == "string"
+        assert output_var_input["source"] == "subprocess"  # New: subprocess-derived variables have source
 
     def test_subprocess_output_variable_allows_subsequent_decision_reference(self):
         """Should allow decision nodes to reference subprocess output_variable."""
         existing_workflow = {"nodes": [], "edges": []}
         args = {
             "operations": [
-                # Add subprocess first - this should register BMI_Result as input
+                # Add subprocess first - this should register BMI_Result as variable
                 {
                     "op": "add_node",
                     "type": "subprocess",
@@ -512,8 +497,8 @@ class TestBatchEditSubprocessNodes:
                     "x": 100,
                     "y": 200,
                     "condition": {
-                        # input_id matches auto-generated format: input_{output_variable.lower()}
-                        "input_id": "input_bmi_result",
+                        # input_id matches auto-generated format: var_sub_{slug}_{type}
+                        "input_id": "var_sub_bmi_result_string",
                         "comparator": "str_eq",
                         "value": "Normal"
                     }
@@ -522,15 +507,7 @@ class TestBatchEditSubprocessNodes:
         }
         session_state = {
             "current_workflow": existing_workflow,
-            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
-            "workflow_store": {
-                "wf_test123": {
-                    "id": "wf_test123",
-                    "metadata": {"name": "BMI Calculator"},
-                    "nodes": [],
-                    "edges": [],
-                }
-            },
+            "workflow_analysis": {"variables": [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]},
         }
 
         result = self.tool.execute(args, session_state=session_state)
@@ -586,8 +563,8 @@ class TestBatchEditSubprocessNodes:
                     "x": 100,
                     "y": 250,
                     "condition": {
-                        # input_id matches auto-generated format: input_{output_variable.lower()}
-                        "input_id": "input_result",
+                        # input_id matches auto-generated format: var_sub_{slug}_{type}
+                        "input_id": "var_sub_result_string",
                         "comparator": "str_eq",
                         "value": "Normal"
                     }
@@ -602,15 +579,7 @@ class TestBatchEditSubprocessNodes:
         }
         session_state = {
             "current_workflow": existing_workflow,
-            "workflow_analysis": {"inputs": [{"id": "input_bmi", "name": "BMI", "type": "float"}]},
-            "workflow_store": {
-                "wf_bmi": {
-                    "id": "wf_bmi",
-                    "metadata": {"name": "BMI Calculator"},
-                    "nodes": [],
-                    "edges": [],
-                }
-            },
+            "workflow_analysis": {"variables": [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]},
         }
 
         result = self.tool.execute(args, session_state=session_state)

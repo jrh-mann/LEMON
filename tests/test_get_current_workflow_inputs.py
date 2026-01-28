@@ -53,4 +53,4 @@ class TestGetCurrentWorkflowInputs:
         assert "inputs" not in result["workflow"]
         
         summary = result["summary"]
-        assert "No inputs" in summary["input_descriptions"]
+        assert "No variables" in summary["input_descriptions"]

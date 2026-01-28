@@ -38,12 +38,12 @@ COMPARATOR_LABELS = {
 }
 
 
-def format_condition(condition: Dict[str, Any], inputs: List[Dict[str, Any]]) -> str:
+def format_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
     """Format a decision condition as a human-readable string.
     
     Args:
         condition: The condition dict with input_id, comparator, value, value2
-        inputs: List of workflow input definitions (to get input name)
+        variables: List of workflow variable definitions (to get variable name)
         
     Returns:
         Human-readable string like "Age >= 18" or "Name contains 'John'"
@@ -56,11 +56,11 @@ def format_condition(condition: Dict[str, Any], inputs: List[Dict[str, Any]]) ->
     value = condition.get("value")
     value2 = condition.get("value2")
     
-    # Try to get human-readable input name
-    input_name = input_id
-    for inp in inputs:
-        if inp.get("id") == input_id:
-            input_name = inp.get("name", input_id)
+    # Try to get human-readable variable name
+    var_name = input_id
+    for var in variables:
+        if var.get("id") == input_id:
+            var_name = var.get("name", input_id)
             break
     
     # Get comparator symbol/label
@@ -68,24 +68,61 @@ def format_condition(condition: Dict[str, Any], inputs: List[Dict[str, Any]]) ->
     
     # Format based on comparator type
     if comparator in ("is_true", "is_false"):
-        return f"{input_name} {comp_label}"
+        return f"{var_name} {comp_label}"
     elif comparator in ("within_range", "date_between"):
-        return f"{input_name} {comp_label} [{value}, {value2}]"
+        return f"{var_name} {comp_label} [{value}, {value2}]"
     else:
         # Format value for display
         if isinstance(value, str):
             value_str = f"'{value}'"
         else:
             value_str = str(value)
-        return f"{input_name} {comp_label} {value_str}"
+        return f"{var_name} {comp_label} {value_str}"
+
+
+def format_variable_description(var: Dict[str, Any]) -> str:
+    """Format a single variable for human-readable display.
+    
+    Args:
+        var: Variable definition dict
+        
+    Returns:
+        Formatted string like "- var_age_int: Age (int [0-120])"
+    """
+    type_info = var.get('type', 'unknown')
+    
+    # Add range info for numeric types
+    if var.get('range'):
+        range_info = var['range']
+        if range_info.get('min') is not None and range_info.get('max') is not None:
+            type_info += f" [{range_info['min']}-{range_info['max']}]"
+        elif range_info.get('min') is not None:
+            type_info += f" [min={range_info['min']}]"
+        elif range_info.get('max') is not None:
+            type_info += f" [max={range_info['max']}]"
+    
+    # Add enum values
+    if var.get('enum_values'):
+        type_info += f" [{', '.join(var['enum_values'])}]"
+    
+    # Add source info for derived variables
+    source = var.get('source', 'input')
+    source_info = ""
+    if source != 'input':
+        source_info = f" (source: {source})"
+        if source == 'subprocess' and var.get('source_node_id'):
+            source_info = f" (from: {var['source_node_id']})"
+    
+    return f"- {var['id']}: {var.get('name', '?')} ({type_info}){source_info}"
 
 
 class GetCurrentWorkflowTool(Tool):
     """Get the current workflow displayed on the canvas.
     
-    Returns workflow structure including nodes, edges, and inputs.
+    Returns workflow structure including nodes, edges, and variables.
     For decision nodes, includes structured condition information.
     For subprocess nodes, includes subworkflow reference information.
+    Variables are organized by source (inputs, subprocess outputs, etc).
     """
 
     name = "get_current_workflow"
@@ -102,10 +139,13 @@ class GetCurrentWorkflowTool(Tool):
             "edges": [copy.deepcopy(e) for e in raw_workflow.get("edges", [])]
         }
         
-        # Merge inputs into workflow if available
-        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
-        if inputs:
-            workflow["inputs"] = inputs
+        # Get unified variables list (with fallback to legacy 'inputs' for backwards compat)
+        workflow_analysis = session_state.get("workflow_analysis", {})
+        variables = workflow_analysis.get("variables", workflow_analysis.get("inputs", []))
+        if variables:
+            workflow["variables"] = variables
+            # Also include as 'inputs' for backwards compatibility
+            workflow["inputs"] = variables
 
         # Ensure output fields are present in the JSON data for 'end' nodes
         for node in workflow["nodes"]:
@@ -131,7 +171,7 @@ class GetCurrentWorkflowTool(Tool):
             if node.get("type") == "decision":
                 condition = node.get("condition")
                 if condition:
-                    condition_str = format_condition(condition, inputs)
+                    condition_str = format_condition(condition, variables)
                     condition_part = f" [Condition: {condition_str}]"
                 else:
                     condition_part = " [Condition: NOT SET - node will fail at execution!]"
@@ -180,18 +220,25 @@ class GetCurrentWorkflowTool(Tool):
             label_part = f" [{edge.get('label', '')}]" if edge.get("label") else ""
             desc = f"- {edge['from']} -> {edge['to']}: \"{from_label}\"{label_part} -> \"{to_label}\""
             edge_descriptions.append(desc)
-            
+        
+        # Organize variables by source for clearer display
+        input_vars = [v for v in variables if v.get('source', 'input') == 'input']
+        derived_vars = [v for v in variables if v.get('source', 'input') != 'input']
+        
+        # Format input variables
         input_descriptions = []
-        for inp in inputs:
-            type_info = inp['type']
-            if inp.get('range'):
-                range_info = inp['range']
-                if range_info.get('min') is not None and range_info.get('max') is not None:
-                    type_info += f" [{range_info['min']}-{range_info['max']}]"
-            if inp.get('enum_values'):
-                type_info += f" [{', '.join(inp['enum_values'])}]"
-            desc = f"- {inp['id']}: {inp['name']} ({type_info})"
-            input_descriptions.append(desc)
+        if input_vars:
+            input_descriptions.append("User Inputs:")
+            for var in input_vars:
+                input_descriptions.append("  " + format_variable_description(var))
+        
+        # Format derived variables (subprocess outputs, calculated, etc)
+        if derived_vars:
+            if input_descriptions:
+                input_descriptions.append("")  # Blank line separator
+            input_descriptions.append("Derived Variables:")
+            for var in derived_vars:
+                input_descriptions.append("  " + format_variable_description(var))
 
         return {
             "success": True,
@@ -207,8 +254,12 @@ class GetCurrentWorkflowTool(Tool):
                 "edge_descriptions": (
                     "\n".join(edge_descriptions) if edge_descriptions else "No connections"
                 ),
+                "variable_descriptions": (
+                    "\n".join(input_descriptions) if input_descriptions else "No variables"
+                ),
+                # Backwards compatibility alias
                 "input_descriptions": (
-                    "\n".join(input_descriptions) if input_descriptions else "No inputs"
+                    "\n".join(input_descriptions) if input_descriptions else "No variables"
                 ),
             },
         }

@@ -1,4 +1,9 @@
-"""Add node tool."""
+"""Add node tool.
+
+This tool adds nodes to the workflow flowchart. For subprocess nodes,
+it automatically registers the output as a derived variable with the
+correct type inferred from the subworkflow's output definition.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,9 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import get_node_color, input_ref_error, validate_subprocess_node
+from ..workflow_input.add import generate_variable_id
+from ..workflow_input.helpers import ensure_workflow_analysis, normalize_variable_name
+from .helpers import get_node_color, input_ref_error, validate_subprocess_node, get_subworkflow_output_type
 
 
 # Valid comparators by input type - mirrors frontend COMPARATORS_BY_TYPE
@@ -29,12 +36,12 @@ ALL_COMPARATORS = [
 ]
 
 
-def validate_decision_condition(condition: Dict[str, Any], inputs: list) -> str | None:
+def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
     """Validate a decision condition object.
     
     Args:
         condition: The condition dict with input_id, comparator, value, value2
-        inputs: List of workflow input definitions
+        variables: List of workflow variable definitions
         
     Returns:
         Error message if invalid, None if valid.
@@ -57,22 +64,22 @@ def validate_decision_condition(condition: Dict[str, Any], inputs: list) -> str 
     if comparator not in ALL_COMPARATORS:
         return f"Unknown comparator '{comparator}'. Valid: {ALL_COMPARATORS}"
     
-    # Find the input to check type compatibility
-    input_def = None
-    for inp in inputs:
-        if inp.get("id") == input_id:
-            input_def = inp
+    # Find the variable to check type compatibility
+    var_def = None
+    for var in variables:
+        if var.get("id") == input_id:
+            var_def = var
             break
     
-    if not input_def:
-        return f"condition.input_id '{input_id}' not found in workflow inputs"
+    if not var_def:
+        return f"condition.input_id '{input_id}' not found in workflow variables"
     
-    # Check comparator is valid for this input type
-    input_type = input_def.get("type", "string")
-    valid_comparators = COMPARATORS_BY_TYPE.get(input_type, [])
+    # Check comparator is valid for this variable type
+    var_type = var_def.get("type", "string")
+    valid_comparators = COMPARATORS_BY_TYPE.get(var_type, [])
     if comparator not in valid_comparators:
         return (
-            f"Comparator '{comparator}' is not valid for input type '{input_type}'. "
+            f"Comparator '{comparator}' is not valid for variable type '{var_type}'. "
             f"Valid comparators: {valid_comparators}"
         )
     
@@ -91,10 +98,13 @@ class AddNodeTool(Tool):
     other workflows (subflows).
     
     For decision nodes, a 'condition' object is REQUIRED with:
-    - input_id: The workflow input to compare (e.g., "input_age_int")
+    - input_id: The workflow variable to compare (e.g., "var_age_int")
     - comparator: The comparison operator (e.g., "gte", "eq", "str_contains")
     - value: The value to compare against
     - value2: (optional) Second value for range comparisons
+    
+    For subprocess nodes, the output_variable is automatically registered
+    as a derived variable with type inferred from the subworkflow's output.
     """
 
     name = "add_node"
@@ -122,7 +132,7 @@ class AddNodeTool(Tool):
         ToolParameter(
             "input_ref",
             "string",
-            "Optional: name of workflow input this node checks (case-insensitive)",
+            "Optional: name of workflow variable this node checks (case-insensitive)",
             required=False,
         ),
         # Decision node condition (REQUIRED for decision nodes)
@@ -169,7 +179,7 @@ class AddNodeTool(Tool):
         ToolParameter(
             "input_mapping",
             "object",
-            "For subprocess: dict mapping parent input names to subworkflow input names",
+            "For subprocess: dict mapping parent variable names to subworkflow input names",
             required=False,
         ),
         ToolParameter(
@@ -187,6 +197,9 @@ class AddNodeTool(Tool):
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
 
+        # Ensure workflow_analysis exists with unified variable structure
+        workflow_analysis = ensure_workflow_analysis(session_state)
+
         # Validate input_ref if provided
         input_ref = args.get("input_ref")
         error = input_ref_error(input_ref, session_state)
@@ -194,11 +207,11 @@ class AddNodeTool(Tool):
             return {
                 "success": False,
                 "error": error,
-                "error_code": "INPUT_NOT_FOUND",
+                "error_code": "VARIABLE_NOT_FOUND",
             }
 
-        # Get workflow inputs for condition validation
-        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
+        # Get workflow variables for condition validation
+        variables = workflow_analysis.get("variables", [])
 
         # Validate condition for decision nodes
         node_type = args["type"]
@@ -210,12 +223,12 @@ class AddNodeTool(Tool):
                     "success": False,
                     "error": (
                         "Decision nodes require a 'condition' parameter. "
-                        "Provide: {input_id: '<input_id>', comparator: '<comparator>', value: <value>}"
+                        "Provide: {input_id: '<var_id>', comparator: '<comparator>', value: <value>}"
                     ),
                     "error_code": "MISSING_CONDITION",
                 }
             
-            condition_error = validate_decision_condition(condition, inputs)
+            condition_error = validate_decision_condition(condition, variables)
             if condition_error:
                 return {
                     "success": False,
@@ -256,7 +269,6 @@ class AddNodeTool(Tool):
 
         # Add subprocess-specific fields
         if node_type == "subprocess":
-            # These are required for subprocess nodes
             subworkflow_id = args.get("subworkflow_id")
             input_mapping = args.get("input_mapping")
             output_variable = args.get("output_variable")
@@ -268,32 +280,42 @@ class AddNodeTool(Tool):
             if output_variable:
                 new_node["output_variable"] = output_variable
                 
-                # Auto-register output_variable as a workflow input
-                # This allows subsequent decision nodes to reference it
-                workflow_analysis = session_state.get("workflow_analysis", {})
-                existing_inputs = workflow_analysis.get("inputs", [])
-                existing_input_names = [inp.get("name", "").lower() for inp in existing_inputs]
+                # Auto-register output_variable as a DERIVED variable (source='subprocess')
+                # with type inferred from the subworkflow's output definition
+                existing_var_names = [
+                    normalize_variable_name(v.get("name", ""))
+                    for v in variables
+                ]
                 
-                if output_variable.lower() not in existing_input_names:
-                    new_input = {
-                        "id": f"input_{output_variable.lower().replace(' ', '_')}",
+                if normalize_variable_name(output_variable) not in existing_var_names:
+                    # Get output type from subworkflow
+                    output_info = get_subworkflow_output_type(subworkflow_id or "", session_state)
+                    output_type = output_info.get("type", "string") if output_info else "string"
+                    output_desc = output_info.get("description") if output_info else None
+                    
+                    # Generate variable ID with subprocess source
+                    var_id = generate_variable_id(output_variable, output_type, "subprocess")
+                    
+                    # Create derived variable with source='subprocess'
+                    new_variable: Dict[str, Any] = {
+                        "id": var_id,
                         "name": output_variable,
-                        "type": "string",  # Subflow outputs are strings
-                        "description": f"Output from subprocess '{args['label']}'",
+                        "type": output_type,
+                        "source": "subprocess",  # Derived from subprocess execution
+                        "source_node_id": node_id,  # Which node produces this
+                        "subworkflow_id": subworkflow_id,  # Which subworkflow it comes from
+                        "description": output_desc or f"Output from subprocess '{args['label']}'",
                     }
-                    # Update session_state so validation and subsequent tools see it
-                    if "workflow_analysis" not in session_state:
-                        session_state["workflow_analysis"] = {"inputs": []}
-                    if "inputs" not in session_state["workflow_analysis"]:
-                        session_state["workflow_analysis"]["inputs"] = []
-                    session_state["workflow_analysis"]["inputs"].append(new_input)
-                    inputs = session_state["workflow_analysis"]["inputs"]
+                    
+                    # Add to unified variables list
+                    workflow_analysis["variables"].append(new_variable)
+                    variables = workflow_analysis["variables"]
             
             # Validate subprocess node configuration
             subprocess_errors = validate_subprocess_node(
                 new_node,
                 session_state,
-                check_workflow_exists=True,  # Validate at creation time
+                check_workflow_exists=True,
             )
             if subprocess_errors:
                 return {
@@ -313,7 +335,7 @@ class AddNodeTool(Tool):
         new_workflow = {
             "nodes": [*current_workflow.get("nodes", []), new_node],
             "edges": current_workflow.get("edges", []),
-            "inputs": inputs,
+            "variables": variables,  # Use unified variables instead of inputs
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
@@ -329,4 +351,5 @@ class AddNodeTool(Tool):
             "action": "add_node",
             "node": new_node,
             "message": f"Added {node_type} node '{args['label']}'",
+            "workflow_analysis": workflow_analysis,  # Return updated analysis for state sync
         }

@@ -62,7 +62,7 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
         {"id": "input_income_int", "name": "Income", "type": "int", "range": {"min": 0, "max": 1000000}},
         {"id": "input_age_int", "name": "Age", "type": "int", "range": {"min": 18, "max": 120}},
     ],
-    outputs=[{"name": "CreditScore"}],
+    outputs=[{"name": "CreditScore", "type": "int"}],
     tree={
         "start": {
             "id": "start",
@@ -161,7 +161,7 @@ LOAN_APPROVAL_WORKFLOW = {
                             "type": "decision",
                             "label": "CreditScore >= 700",
                             "condition": {
-                                "input_id": "input_creditscore_int",
+                                "input_id": "var_sub_creditscore_int",
                                 "comparator": "gte",
                                 "value": 700
                             },
@@ -776,8 +776,8 @@ class TestOutputVariableInjection:
         })
         
         # The CreditScore should be in context as a dynamically added input
-        assert "input_creditscore_int" in result.context
-        assert result.context["input_creditscore_int"] == 800
+        assert "var_sub_creditscore_int" in result.context
+        assert result.context["var_sub_creditscore_int"] == 800
     
     def test_output_variable_used_in_decision(self):
         """Test that injected output variable can be used in subsequent decision."""
@@ -831,8 +831,8 @@ class TestSubflowTypeInference:
         })
         
         # Check that CreditScore was registered with int type
-        assert "input_creditscore_int" in interpreter.inputs_schema
-        assert interpreter.inputs_schema["input_creditscore_int"]["type"] == "int"
+        assert "var_sub_creditscore_int" in interpreter.inputs_schema
+        assert interpreter.inputs_schema["var_sub_creditscore_int"]["type"] == "int"
 
 
 class TestSubflowWithNoChildren:

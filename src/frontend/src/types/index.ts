@@ -33,9 +33,9 @@ export type Comparator =
   | DateComparator
   | EnumComparator
 
-// Structured decision condition - replaces label-based condition parsing
+// Structured decision condition - references variables by ID
 export interface DecisionCondition {
-  input_id: string       // Which workflow input to compare (e.g., "input_age_int")
+  input_id: string       // Which workflow variable to compare (e.g., "var_age_int")
   comparator: Comparator // The comparison operator to use
   value: unknown         // The value to compare against
   value2?: unknown       // Second value for range comparisons (within_range, date_between)
@@ -179,19 +179,50 @@ export interface WorkflowSummary {
   updated_at: string
 }
 
-export interface WorkflowInput {
-  id: string
-  name: string
-  type: InputType
-  description?: string
-  enum?: string[]
-  enum_values?: string[]
-  range?: Range
+// ============ Unified Variable System ============
+// All workflow variables (user inputs, subprocess outputs, calculated values) are stored
+// in a single list with a 'source' field indicating their origin.
+
+// Variable source types - indicates where the variable value comes from
+export type VariableSource = 'input' | 'subprocess' | 'calculated' | 'constant'
+
+// Unified variable type - replaces the old WorkflowInput
+export interface WorkflowVariable {
+  id: string                          // e.g., "var_patient_age_int", "var_creditscore_float"
+  name: string                        // Human-readable name, e.g., "Patient Age"
+  type: InputType                     // "int", "float", "bool", "string", "enum", "date"
+  source: VariableSource              // Where this variable comes from
+  description?: string                // Optional description
+
+  // For source='input' - user provides value at execution time
+  enum_values?: string[]              // For enum type: allowed values
+  range?: Range                       // For numeric types: min/max constraints
+
+  // For source='subprocess' - value comes from executing another workflow
+  source_node_id?: string             // Which subprocess node produces this variable
+  subworkflow_id?: string             // Which subworkflow it comes from
+
+  // For source='calculated' (future) - computed from other variables
+  expression?: string                 // e.g., "Weight / (Height * Height)"
+  depends_on?: string[]               // Variable IDs this depends on
+
+  // For source='constant' (future) - fixed value
+  value?: unknown                     // The constant value
+}
+
+// Legacy type alias for backwards compatibility during transition
+export type WorkflowInput = WorkflowVariable
+
+// Workflow output definition - now with required type for subprocess variable inference
+export interface WorkflowOutput {
+  name: string                        // Output name
+  description?: string                // Optional description
+  type: InputType                     // Output type (required for subprocess variable inference)
 }
 
 export interface WorkflowAnalysis {
-  inputs: WorkflowInput[]
-  outputs: Array<{ name: string; description?: string }>
+  variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
+  outputs: WorkflowOutput[]           // Outputs with required type
   tree: Record<string, unknown>
   doubts: string[]
 }
@@ -357,8 +388,8 @@ export interface CreateWorkflowRequest {
   tags?: string[]
   nodes: FlowNode[]
   edges: FlowEdge[]
-  inputs: WorkflowInput[]
-  outputs: Array<{ name: string; description?: string }>
+  variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
+  outputs: WorkflowOutput[]           // Outputs with required type
   tree: Record<string, unknown>
   doubts: string[]
   validation_score?: number
@@ -478,4 +509,4 @@ export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running'
 
 export type ModalType = 'library' | 'validation' | 'save' | 'execute' | 'none'
 
-export type SidebarTab = 'library' | 'inputs' | 'properties'
+export type SidebarTab = 'library' | 'variables' | 'properties'

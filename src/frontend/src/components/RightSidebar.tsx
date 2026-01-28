@@ -26,10 +26,17 @@ const slugifyInputName = (name: string): string =>
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
 
-const buildInputId = (name: string, type: InputType): string => {
-  const slug = slugifyInputName(name) || 'input'
-  return `input_${slug}_${type}`
+/**
+ * Build a variable ID using the unified variable naming convention.
+ * Format: var_{slug}_{type} for input variables
+ */
+const buildVariableId = (name: string, type: InputType): string => {
+  const slug = slugifyInputName(name) || 'var'
+  return `var_${slug}_${type}`
 }
+
+// Backwards compatibility alias
+const buildInputId = buildVariableId
 
 export default function RightSidebar() {
   const { activeTab, setActiveTab, openModal } = useUIStore()
@@ -225,8 +232,8 @@ export default function RightSidebar() {
           <span>Library</span>
         </button>
         <button
-          className={`sidebar-tab ${activeTab === 'inputs' ? 'active' : ''}`}
-          onClick={() => handleTabClick('inputs')}
+          className={`sidebar-tab ${activeTab === 'variables' ? 'active' : ''}`}
+          onClick={() => handleTabClick('variables')}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -234,7 +241,7 @@ export default function RightSidebar() {
             <line x1="12" y1="18" x2="12" y2="12" />
             <line x1="9" y1="15" x2="15" y2="15" />
           </svg>
-          <span>Inputs</span>
+          <span>Variables</span>
         </button>
         <button
           className={`sidebar-tab ${activeTab === 'properties' ? 'active' : ''}`}
@@ -256,15 +263,15 @@ export default function RightSidebar() {
         <WorkflowBrowser />
       </div>
 
-      {/* Inputs panel */}
+      {/* Variables panel */}
       <div
-        className={`sidebar-panel ${activeTab === 'inputs' ? '' : 'hidden'}`}
-        data-panel="inputs"
+        className={`sidebar-panel ${activeTab === 'variables' ? '' : 'hidden'}`}
+        data-panel="variables"
       >
-        {/* ... Inputs content ... */}
+        {/* ... Variables content ... */}
         <div className="inputs-header">
           <div>
-            <h4>Inputs</h4>
+            <h4>Variables</h4>
             <p className="muted small">Canonical list for this workflow.</p>
           </div>
           <button
@@ -367,8 +374,8 @@ export default function RightSidebar() {
 
             {analysisInputs.length === 0 ? (
               <div className="inputs-empty">
-                <p className="muted">No inputs listed yet.</p>
-                <p className="muted small">Run analysis or add an input to start the list.</p>
+                <p className="muted">No variables listed yet.</p>
+                <p className="muted small">Run analysis or add a variable to start the list.</p>
               </div>
             ) : (
               <div className="inputs-list">
@@ -378,8 +385,8 @@ export default function RightSidebar() {
           </>
         ) : !currentWorkflow ? (
           <div className="inputs-empty">
-            <p className="muted">No inputs defined.</p>
-            <p className="muted small">Create or load a workflow to see its inputs.</p>
+            <p className="muted">No variables defined.</p>
+            <p className="muted small">Create or load a workflow to see its variables.</p>
           </div>
         ) : inputBlocks.length === 0 ? (
           <div className="inputs-empty">
@@ -816,7 +823,7 @@ function SubprocessConfig({
 
           {analysisInputs.length === 0 && (
             <p className="muted small warning">
-              No inputs defined for this workflow. Add inputs in the Inputs panel.
+              No variables defined for this workflow. Add variables in the Variables panel.
             </p>
           )}
         </>
@@ -979,7 +986,7 @@ function DecisionConditionEditor({
       {analysisInputs.length === 0 ? (
         <div className="condition-warning">
           <p className="muted small warning">
-            No inputs defined. Add inputs in the Inputs panel before configuring the condition.
+            No variables defined. Add variables in the Variables panel before configuring the condition.
           </p>
         </div>
       ) : (

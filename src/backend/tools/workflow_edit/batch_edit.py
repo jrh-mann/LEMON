@@ -78,11 +78,14 @@ class BatchEditWorkflowTool(Tool):
         if not isinstance(operations, list):
             return {"success": False, "error": "operations must be an array"}
 
-        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
+        # Get unified variables list (with fallback to legacy inputs)
+        variables = session_state.get("workflow_analysis", {}).get("variables", [])
+        if not variables:
+            variables = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {
             "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
             "edges": [dict(e) for e in current_workflow.get("edges", [])],
-            "inputs": inputs,
+            "inputs": variables,  # Keep 'inputs' key for backwards compat in workflow dict
         }
 
         temp_id_map: Dict[str, str] = {}
@@ -158,23 +161,29 @@ class BatchEditWorkflowTool(Tool):
                         if output_variable:
                             new_node["output_variable"] = output_variable
                             
-                            # Auto-register output_variable as a workflow input
+                            # Auto-register output_variable as a workflow variable
                             # This allows subsequent decision nodes to reference it
-                            existing_input_names = [inp.get("name", "").lower() for inp in new_workflow.get("inputs", [])]
-                            if output_variable.lower() not in existing_input_names:
-                                new_input = {
-                                    "id": f"input_{output_variable.lower().replace(' ', '_')}",
+                            existing_var_names = [v.get("name", "").lower() for v in new_workflow.get("inputs", [])]
+                            if output_variable.lower() not in existing_var_names:
+                                # Generate variable ID with subprocess source (var_sub_{slug}_{type})
+                                var_slug = output_variable.lower().replace(' ', '_')
+                                var_id = f"var_sub_{var_slug}_string"
+                                new_variable = {
+                                    "id": var_id,
                                     "name": output_variable,
-                                    "type": "string",  # Subflow outputs are strings
+                                    "type": "string",  # Default - ideally inferred from subworkflow
+                                    "source": "subprocess",  # Mark as subprocess-derived
                                     "description": f"Output from subprocess '{op['label']}'",
                                 }
                                 if "inputs" not in new_workflow:
                                     new_workflow["inputs"] = []
-                                new_workflow["inputs"].append(new_input)
+                                new_workflow["inputs"].append(new_variable)
                                 # Also update session_state so subsequent ops can reference it
                                 if "workflow_analysis" not in session_state:
-                                    session_state["workflow_analysis"] = {"inputs": []}
-                                session_state["workflow_analysis"]["inputs"].append(new_input)
+                                    session_state["workflow_analysis"] = {"variables": []}
+                                if "variables" not in session_state["workflow_analysis"]:
+                                    session_state["workflow_analysis"]["variables"] = []
+                                session_state["workflow_analysis"]["variables"].append(new_variable)
                         
                         # Validate subprocess node configuration
                         subprocess_errors = validate_subprocess_node(
