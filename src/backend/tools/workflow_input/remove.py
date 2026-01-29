@@ -19,8 +19,8 @@ class RemoveWorkflowVariableTool(Tool):
     aliases = ["remove_workflow_input"]  # Backwards compatibility
     description = (
         "Remove a registered workflow input variable by name (case-insensitive). "
-        "If the variable is referenced by nodes, deletion will fail by default. "
-        "Use force=true to cascade delete (automatically removes input_ref from all nodes)."
+        "If the variable is used in decision node conditions, deletion will fail by default. "
+        "Use force=true to cascade delete (automatically clears condition from affected nodes)."
     )
     parameters = [
         ToolParameter(
@@ -73,11 +73,12 @@ class RemoveWorkflowVariableTool(Tool):
                 "error": f"Input variable '{name}' not found"
             }
 
-        # Check for nodes that reference this input
-        referencing_nodes = [
-            node for node in current_workflow.get("nodes", [])
-            if normalize_variable_name(node.get("input_ref", "")) == normalized_name
-        ]
+        # Check for nodes that reference this input in their condition
+        referencing_nodes = []
+        for node in current_workflow.get("nodes", []):
+            condition = node.get("condition")
+            if condition and condition.get("input_id") == found_var.get("id"):
+                referencing_nodes.append(node)
 
         # If references exist and force is not enabled, reject deletion
         if referencing_nodes and not force:
@@ -101,12 +102,12 @@ class RemoveWorkflowVariableTool(Tool):
                 "referencing_nodes": [node.get("id") for node in referencing_nodes],
             }
 
-        # If force=true, remove input_ref from all referencing nodes
+        # If force=true, clear condition from all referencing nodes
         affected_node_labels = []
         if referencing_nodes:
             for node in referencing_nodes:
-                if "input_ref" in node:
-                    del node["input_ref"]
+                if "condition" in node:
+                    del node["condition"]
                     affected_node_labels.append(node.get("label", node.get("id", "unknown")))
 
         # Remove the variable from the variables list (match by ID for precision)

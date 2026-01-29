@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import input_ref_error, validate_subprocess_node
+from .helpers import validate_subprocess_node
 from .add_node import validate_decision_condition
 
 
@@ -25,12 +25,6 @@ class ModifyNodeTool(Tool):
         ToolParameter("type", "string", "New node type", required=False),
         ToolParameter("x", "number", "New X coordinate", required=False),
         ToolParameter("y", "number", "New Y coordinate", required=False),
-        ToolParameter(
-            "input_ref",
-            "string",
-            "Optional: name of workflow input this node checks (case-insensitive)",
-            required=False,
-        ),
         # Decision node condition
         ToolParameter(
             "condition",
@@ -92,15 +86,6 @@ class ModifyNodeTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
-
-        input_ref = args.get("input_ref")
-        error = input_ref_error(input_ref, session_state)
-        if error:
-            return {
-                "success": False,
-                "error": error,
-                "error_code": "INPUT_NOT_FOUND",
-            }
 
         node_id = args.get("node_id")
         updates = {k: v for k, v in args.items() if k != "node_id" and v is not None}

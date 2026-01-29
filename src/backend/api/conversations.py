@@ -71,14 +71,13 @@ class Conversation:
 
         Args:
             analysis: Workflow analysis with variables and outputs.
-                     Accepts both 'variables' (new) and 'inputs' (legacy) keys.
         """
         if not isinstance(analysis, dict):
             return
 
-        # Accept both 'variables' (new) and 'inputs' (legacy) keys
-        # Store as 'inputs' internally for backwards compatibility
-        variables = analysis.get("variables", analysis.get("inputs", []))
+        # Accept 'variables' key (standard format)
+        # Store as 'inputs' internally for database backwards compatibility
+        variables = analysis.get("variables", [])
         self.workflow["inputs"] = variables
         self.workflow["outputs"] = analysis.get("outputs", [])
         if "tree" in analysis:

@@ -14,7 +14,7 @@ from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
 from ..workflow_input.add import generate_variable_id
 from ..workflow_input.helpers import ensure_workflow_analysis, normalize_variable_name
-from .helpers import get_node_color, input_ref_error, validate_subprocess_node, get_subworkflow_output_type
+from .helpers import get_node_color, validate_subprocess_node, get_subworkflow_output_type
 
 
 # Valid comparators by input type - mirrors frontend COMPARATORS_BY_TYPE
@@ -129,12 +129,6 @@ class AddNodeTool(Tool):
             "Y coordinate (optional, auto-positions if omitted)",
             required=False,
         ),
-        ToolParameter(
-            "input_ref",
-            "string",
-            "Optional: name of workflow variable this node checks (case-insensitive)",
-            required=False,
-        ),
         # Decision node condition (REQUIRED for decision nodes)
         ToolParameter(
             "condition",
@@ -200,16 +194,6 @@ class AddNodeTool(Tool):
         # Ensure workflow_analysis exists with unified variable structure
         workflow_analysis = ensure_workflow_analysis(session_state)
 
-        # Validate input_ref if provided
-        input_ref = args.get("input_ref")
-        error = input_ref_error(input_ref, session_state)
-        if error:
-            return {
-                "success": False,
-                "error": error,
-                "error_code": "VARIABLE_NOT_FOUND",
-            }
-
         # Get workflow variables for condition validation
         variables = workflow_analysis.get("variables", [])
 
@@ -246,9 +230,6 @@ class AddNodeTool(Tool):
             "color": get_node_color(node_type),
         }
 
-        if input_ref:
-            new_node["input_ref"] = input_ref
-        
         # Add condition for decision nodes
         if condition:
             new_node["condition"] = condition

@@ -239,7 +239,6 @@ export interface FlowNode {
   x: number
   y: number
   color: FlowNodeColor
-  input_ref?: string
   output_type?: string
   output_template?: string
   output_value?: unknown

@@ -1,9 +1,9 @@
-"""Integration tests for workflow input management.
+"""Integration tests for workflow variable management.
 
 Tests the complete flow from tool call to orchestrator state update.
 Focuses on potential bugs:
-1. Double-append bug (inputs added twice)
-2. Multiple inputs handling
+1. Double-append bug (variables added twice)
+2. Multiple variables handling
 3. State synchronization between tool and orchestrator
 """
 
@@ -44,18 +44,18 @@ def conversation_id():
     return str(uuid4())
 
 
-class TestInputDoubleAppendBug:
-    """Test for the double-append bug where inputs are added twice."""
+class TestVariableDoubleAppendBug:
+    """Test for the double-append bug where variables are added twice."""
 
-    def test_add_input_not_duplicated_in_orchestrator(self, conversation_store, conversation_id):
-        """Test that adding an input doesn't create duplicates in orchestrator state."""
+    def test_add_variable_not_duplicated_in_orchestrator(self, conversation_store, conversation_id):
+        """Test that adding a variable doesn't create duplicates in orchestrator state."""
         from ..tools.workflow_input import AddWorkflowInputTool
 
         convo = conversation_store.get_or_create(conversation_id)
         orchestrator = convo.orchestrator
 
         # Ensure workflow_analysis is initialized
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
 
         tool = AddWorkflowInputTool()
 
@@ -69,35 +69,36 @@ class TestInputDoubleAppendBug:
         )
 
         print(f"\n[DEBUG] Tool result: {json.dumps(result, indent=2)}")
-        print(f"[DEBUG] Orchestrator inputs BEFORE update: {orchestrator.workflow_analysis['inputs']}")
+        print(f"[DEBUG] Orchestrator variables BEFORE update: {orchestrator.workflow_analysis.get('variables', [])}")
 
         assert result["success"] is True
 
         # Simulate what orchestrator.run_tool does
         if result.get("success"):
-            orchestrator._update_analysis_from_tool_result("add_workflow_input", result)
+            orchestrator._update_analysis_from_tool_result("add_workflow_variable", result)
 
-        print(f"[DEBUG] Orchestrator inputs AFTER update: {orchestrator.workflow_analysis['inputs']}")
+        print(f"[DEBUG] Orchestrator variables AFTER update: {orchestrator.workflow_analysis.get('variables', [])}")
 
         # Check for duplicates - this will fail if double-append bug exists
-        inputs = orchestrator.workflow_analysis["inputs"]
-        assert len(inputs) == 1, f"Expected 1 input, got {len(inputs)}: {inputs}"
-        assert inputs[0]["name"] == "Patient Age"
+        # Note: Storage uses 'inputs' key internally
+        variables = orchestrator.workflow["inputs"]
+        assert len(variables) == 1, f"Expected 1 variable, got {len(variables)}: {variables}"
+        assert variables[0]["name"] == "Patient Age"
 
-    def test_multiple_inputs_no_duplicates(self, conversation_store, conversation_id):
-        """Test that adding multiple inputs doesn't create duplicates."""
+    def test_multiple_variables_no_duplicates(self, conversation_store, conversation_id):
+        """Test that adding multiple variables doesn't create duplicates."""
         from ..tools.workflow_input import AddWorkflowInputTool
 
         convo = conversation_store.get_or_create(conversation_id)
         orchestrator = convo.orchestrator
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
 
         tool = AddWorkflowInputTool()
 
-        # Add 3 inputs
-        input_names = ["Patient Age", "Blood Glucose", "Patient Gender"]
+        # Add 3 variables
+        var_names = ["Patient Age", "Blood Glucose", "Patient Gender"]
 
-        for name in input_names:
+        for name in var_names:
             result = tool.execute(
                 {"name": name, "type": "number"},
                 session_state={
@@ -108,19 +109,19 @@ class TestInputDoubleAppendBug:
             assert result["success"] is True
 
             # Simulate orchestrator update
-            orchestrator._update_analysis_from_tool_result("add_workflow_input", result)
+            orchestrator._update_analysis_from_tool_result("add_workflow_variable", result)
 
-        print(f"\n[DEBUG] Final inputs: {json.dumps(orchestrator.workflow_analysis['inputs'], indent=2)}")
+        print(f"\n[DEBUG] Final variables: {json.dumps(orchestrator.workflow['inputs'], indent=2)}")
 
-        # Should have exactly 3 inputs, no duplicates
-        inputs = orchestrator.workflow_analysis["inputs"]
-        assert len(inputs) == 3, f"Expected 3 inputs, got {len(inputs)}: {inputs}"
+        # Should have exactly 3 variables, no duplicates
+        variables = orchestrator.workflow["inputs"]
+        assert len(variables) == 3, f"Expected 3 variables, got {len(variables)}: {variables}"
 
-        input_names_result = [inp["name"] for inp in inputs]
-        assert input_names_result == input_names
+        var_names_result = [var["name"] for var in variables]
+        assert var_names_result == var_names
 
 
-class TestInputStateSync:
+class TestVariableStateSync:
     """Test state synchronization between tool and orchestrator."""
 
     def test_tool_modifies_session_state_directly(self, conversation_store, conversation_id):
@@ -152,9 +153,9 @@ class TestInputStateSync:
         # The tool should have modified the session_state dict directly
         # Since session_state["workflow_analysis"] IS orchestrator.workflow_analysis,
         # the orchestrator's state should already be updated
-        assert len(orchestrator.workflow_analysis["inputs"]) == 1, \
+        assert len(orchestrator.workflow["inputs"]) == 1, \
             "Tool should modify session_state dict directly"
-        assert orchestrator.workflow_analysis["inputs"][0]["name"] == "Patient Age"
+        assert orchestrator.workflow["inputs"][0]["name"] == "Patient Age"
 
     def test_orchestrator_run_tool_updates_state(self, conversation_store, conversation_id):
         """Test that orchestrator.run_tool properly updates workflow_analysis."""
@@ -162,163 +163,182 @@ class TestInputStateSync:
         orchestrator = convo.orchestrator
 
         # Clear state
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
 
         # Run tool through orchestrator
         result = orchestrator.run_tool(
-            "add_workflow_input",
+            "add_workflow_variable",
             {"name": "Patient Age", "type": "number"}
         )
 
         print(f"\n[DEBUG] Run tool result: {json.dumps(result.data, indent=2)}")
-        print(f"[DEBUG] Orchestrator inputs: {orchestrator.workflow_analysis['inputs']}")
+        print(f"[DEBUG] Orchestrator variables: {orchestrator.workflow['inputs']}")
 
         assert result.data["success"] is True
 
         # Check orchestrator state was updated
-        inputs = orchestrator.workflow_analysis["inputs"]
+        variables = orchestrator.workflow["inputs"]
 
         # This will fail if there's a double-append bug
-        assert len(inputs) == 1, f"Expected 1 input, got {len(inputs)}: {inputs}"
-        assert inputs[0]["name"] == "Patient Age"
+        assert len(variables) == 1, f"Expected 1 variable, got {len(variables)}: {variables}"
+        assert variables[0]["name"] == "Patient Age"
 
 
-class TestInputToolSequence:
-    """Test calling input tools multiple times in sequence."""
+class TestVariableToolSequence:
+    """Test calling variable tools multiple times in sequence."""
 
-    def test_add_multiple_inputs_via_run_tool(self, conversation_store, conversation_id):
-        """Test adding multiple inputs through orchestrator.run_tool."""
+    def test_add_multiple_variables_via_run_tool(self, conversation_store, conversation_id):
+        """Test adding multiple variables through orchestrator.run_tool."""
         convo = conversation_store.get_or_create(conversation_id)
         orchestrator = convo.orchestrator
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
 
-        # Add first input
+        # Add first variable
         result1 = orchestrator.run_tool(
-            "add_workflow_input",
+            "add_workflow_variable",
             {"name": "Patient Age", "type": "number"}
         )
-        print(f"\n[DEBUG] After input 1: {orchestrator.workflow_analysis['inputs']}")
+        print(f"\n[DEBUG] After variable 1: {orchestrator.workflow['inputs']}")
         assert result1.data["success"] is True
 
-        # Add second input
+        # Add second variable
         result2 = orchestrator.run_tool(
-            "add_workflow_input",
+            "add_workflow_variable",
             {"name": "Blood Glucose", "type": "number"}
         )
-        print(f"[DEBUG] After input 2: {orchestrator.workflow_analysis['inputs']}")
+        print(f"[DEBUG] After variable 2: {orchestrator.workflow['inputs']}")
         assert result2.data["success"] is True
 
-        # Add third input
+        # Add third variable
         result3 = orchestrator.run_tool(
-            "add_workflow_input",
+            "add_workflow_variable",
             {"name": "Patient Gender", "type": "enum", "enum_values": ["Male", "Female", "Other"]}
         )
-        print(f"[DEBUG] After input 3: {orchestrator.workflow_analysis['inputs']}")
+        print(f"[DEBUG] After variable 3: {orchestrator.workflow['inputs']}")
         assert result3.data["success"] is True
 
         # Verify final state
-        inputs = orchestrator.workflow_analysis["inputs"]
-        print(f"\n[DEBUG] Final inputs: {json.dumps(inputs, indent=2)}")
+        variables = orchestrator.workflow["inputs"]
+        print(f"\n[DEBUG] Final variables: {json.dumps(variables, indent=2)}")
 
-        assert len(inputs) == 3, f"Expected 3 inputs, got {len(inputs)}"
+        assert len(variables) == 3, f"Expected 3 variables, got {len(variables)}"
 
-        names = [inp["name"] for inp in inputs]
+        names = [var["name"] for var in variables]
         assert names == ["Patient Age", "Blood Glucose", "Patient Gender"]
 
-    def test_add_then_list_inputs(self, conversation_store, conversation_id):
-        """Test that list_workflow_inputs returns correct data after adds."""
+    def test_add_then_list_variables(self, conversation_store, conversation_id):
+        """Test that list_workflow_variables returns correct data after adds."""
         convo = conversation_store.get_or_create(conversation_id)
         orchestrator = convo.orchestrator
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
 
-        # Add inputs
-        orchestrator.run_tool("add_workflow_input", {"name": "Patient Age", "type": "number"})
-        orchestrator.run_tool("add_workflow_input", {"name": "Blood Glucose", "type": "number"})
+        # Add variables
+        orchestrator.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
+        orchestrator.run_tool("add_workflow_variable", {"name": "Blood Glucose", "type": "number"})
 
-        # List inputs
-        result = orchestrator.run_tool("list_workflow_inputs", {})
+        # List variables
+        result = orchestrator.run_tool("list_workflow_variables", {})
 
         print(f"\n[DEBUG] List result: {json.dumps(result.data, indent=2)}")
 
         assert result.data["success"] is True
         assert result.data["count"] == 2
-        assert len(result.data["inputs"]) == 2
+        assert len(result.data["variables"]) == 2
 
-        names = [inp["name"] for inp in result.data["inputs"]]
+        names = [var["name"] for var in result.data["variables"]]
         assert "Patient Age" in names
         assert "Blood Glucose" in names
 
 
-class TestInputAndNodeLinking:
-    """Test the complete flow of adding inputs and linking nodes."""
+class TestVariableAndNodeLinking:
+    """Test the complete flow of adding variables and creating decision nodes with conditions."""
 
-    def test_add_input_then_node_with_ref(self, conversation_store, conversation_id):
-        """Test adding input then creating node that references it."""
+    def test_add_variable_then_decision_with_condition(self, conversation_store, conversation_id):
+        """Test adding variable then creating decision node that references it."""
         convo = conversation_store.get_or_create(conversation_id)
         orchestrator = convo.orchestrator
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
         orchestrator.current_workflow = {"nodes": [], "edges": []}
 
-        # Add input
+        # Add variable
         input_result = orchestrator.run_tool(
-            "add_workflow_input",
-            {"name": "Patient Age", "type": "number"}
+            "add_workflow_variable",
+            {"name": "Patient Age", "type": "int"}
         )
-        print(f"\n[DEBUG] Input result: {json.dumps(input_result.data, indent=2)}")
+        print(f"\n[DEBUG] Variable result: {json.dumps(input_result.data, indent=2)}")
         assert input_result.data["success"] is True
+        var_id = input_result.data["variable"]["id"]
 
-        # Add node that references the input
+        # Add decision node with condition that references the variable
         node_result = orchestrator.run_tool(
             "add_node",
             {
                 "type": "decision",
                 "label": "Patient over 60?",
-                "input_ref": "Patient Age",
                 "x": 100,
-                "y": 100
+                "y": 100,
+                "condition": {
+                    "input_id": var_id,
+                    "comparator": "gt",
+                    "value": 60
+                }
             }
         )
         print(f"\n[DEBUG] Node result: {json.dumps(node_result.data, indent=2)}")
         assert node_result.data["success"] is True
-        assert node_result.data["node"]["input_ref"] == "Patient Age"
+        assert node_result.data["node"]["condition"]["input_id"] == var_id
 
         # Verify orchestrator state
-        assert len(orchestrator.workflow_analysis["inputs"]) == 1
+        assert len(orchestrator.workflow["inputs"]) == 1
         assert len(orchestrator.current_workflow["nodes"]) == 1
-        assert orchestrator.current_workflow["nodes"][0]["input_ref"] == "Patient Age"
+        assert orchestrator.current_workflow["nodes"][0]["condition"]["input_id"] == var_id
 
-    def test_multiple_inputs_multiple_nodes(self, conversation_store, conversation_id):
-        """Test adding multiple inputs and nodes that reference them."""
+    def test_multiple_variables_multiple_decisions(self, conversation_store, conversation_id):
+        """Test adding multiple variables and decision nodes that reference them."""
         convo = conversation_store.get_or_create(conversation_id)
         orchestrator = convo.orchestrator
-        orchestrator.workflow_analysis = {"inputs": [], "outputs": []}
+        orchestrator.workflow_analysis = {"variables": [], "outputs": []}
         orchestrator.current_workflow = {"nodes": [], "edges": []}
 
-        # Add inputs
-        orchestrator.run_tool("add_workflow_input", {"name": "Patient Age", "type": "number"})
-        orchestrator.run_tool("add_workflow_input", {"name": "Blood Glucose", "type": "number"})
+        # Add variables
+        age_result = orchestrator.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "int"})
+        glucose_result = orchestrator.run_tool("add_workflow_variable", {"name": "Blood Glucose", "type": "int"})
+        age_id = age_result.data["variable"]["id"]
+        glucose_id = glucose_result.data["variable"]["id"]
 
-        # Add nodes
+        # Add decision nodes with conditions
         orchestrator.run_tool(
             "add_node",
-            {"type": "decision", "label": "Age > 60?", "input_ref": "Patient Age", "x": 100, "y": 100}
+            {
+                "type": "decision",
+                "label": "Age > 60?",
+                "x": 100,
+                "y": 100,
+                "condition": {"input_id": age_id, "comparator": "gt", "value": 60}
+            }
         )
         orchestrator.run_tool(
             "add_node",
-            {"type": "decision", "label": "Glucose > 140?", "input_ref": "Blood Glucose", "x": 100, "y": 200}
+            {
+                "type": "decision",
+                "label": "Glucose > 140?",
+                "x": 100,
+                "y": 200,
+                "condition": {"input_id": glucose_id, "comparator": "gt", "value": 140}
+            }
         )
 
-        print(f"\n[DEBUG] Final inputs: {orchestrator.workflow_analysis['inputs']}")
+        print(f"\n[DEBUG] Final variables: {orchestrator.workflow['inputs']}")
         print(f"[DEBUG] Final nodes: {orchestrator.current_workflow['nodes']}")
 
         # Verify no duplicates
-        assert len(orchestrator.workflow_analysis["inputs"]) == 2
+        assert len(orchestrator.workflow["inputs"]) == 2
         assert len(orchestrator.current_workflow["nodes"]) == 2
 
-        # Verify references
+        # Verify conditions reference correct variables
         nodes = orchestrator.current_workflow["nodes"]
-        assert nodes[0]["input_ref"] == "Patient Age"
-        assert nodes[1]["input_ref"] == "Blood Glucose"
+        assert nodes[0]["condition"]["input_id"] == age_id
+        assert nodes[1]["condition"]["input_id"] == glucose_id
 
 
 if __name__ == "__main__":

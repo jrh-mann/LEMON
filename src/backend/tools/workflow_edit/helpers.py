@@ -49,12 +49,6 @@ def variable_ref_error(var_ref: Optional[str], session_state: Dict[str, Any]) ->
     return f"Variable '{var_ref}' not found. Register it first with add_workflow_variable."
 
 
-# Backwards compatibility alias
-def input_ref_error(input_ref: Optional[str], session_state: Dict[str, Any]) -> Optional[str]:
-    """Check if an input reference is valid (alias for variable_ref_error)."""
-    return variable_ref_error(input_ref, session_state)
-
-
 def get_subworkflow_output_type(
     subworkflow_id: str,
     session_state: Dict[str, Any],

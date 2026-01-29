@@ -98,10 +98,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "number",
                             "description": "Y coordinate (optional, auto-positions if omitted)",
                         },
-                        "input_ref": {
-                            "type": "string",
-                            "description": "Optional: name of workflow input this node checks (case-insensitive)",
-                        },
                         "output_type": {
                             "type": "string",
                             "enum": ["string", "int", "float", "bool", "json"],
@@ -186,10 +182,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "x": {"type": "number", "description": "New X coordinate"},
                         "y": {"type": "number", "description": "New Y coordinate"},
-                        "input_ref": {
-                            "type": "string",
-                            "description": "Optional: name of workflow input this node checks (case-insensitive)",
-                        },
                         "output_type": {
                             "type": "string",
                             "enum": ["string", "int", "float", "bool", "json"],
@@ -357,7 +349,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "label": {"type": "string"},
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
-                                    "input_ref": {"type": "string", "description": "Optional: name of workflow input (case-insensitive)"},
                                     "condition": {
                                         "type": "object",
                                         "description": "For decision nodes: {input_id, comparator, value, value2?}",
@@ -471,8 +462,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "remove_workflow_variable",
                 "description": (
                     "Remove a registered workflow input variable by name (case-insensitive). "
-                    "If the variable is referenced by nodes, deletion will fail by default. "
-                    "Use force=true to cascade delete (automatically removes input_ref from all nodes)."
+                    "If the variable is used in decision node conditions, deletion will fail by default. "
+                    "Use force=true to cascade delete (automatically clears conditions from affected nodes)."
                 ),
                 "parameters": {
                     "type": "object",
@@ -676,7 +667,7 @@ def build_system_prompt(
         "// First: add_workflow_variable(name='Age', type='number') -> returns variable with id 'var_age_int'\n"
         "operations=[\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\",\n"
-        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
+        "   \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_true\", \"type\": \"end\", \"label\": \"Adult\", \"x\": 50, \"y\": 200},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_false\", \"type\": \"end\", \"label\": \"Minor\", \"x\": 150, \"y\": 200},\n"
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_true\", \"label\": \"true\"},\n"
@@ -711,18 +702,18 @@ def build_system_prompt(
         "1. Identify what data the decision checks (e.g., 'Patient Age', 'Order Amount', 'Email Valid')\n"
         "2. Call add_workflow_variable to register it with appropriate type (string/number/boolean/enum)\n"
         "3. Note the variable ID from the response (e.g., 'var_patient_age_int')\n"
-        "4. Then add the decision node with input_ref AND condition parameters\n\n"
+        "4. Then add the decision node with a condition parameter\n\n"
         "Examples:\n"
         "- User: 'Add decision: is patient over 60?'\n"
         "  → Call add_workflow_variable(name='Patient Age', type='number') → returns id='var_patient_age_int'\n"
-        "  → Then add_node(type='decision', label='Patient over 60?', input_ref='Patient Age',\n"
+        "  → Then add_node(type='decision', label='Patient over 60?',\n"
         "      condition={\"input_id\": \"var_patient_age_int\", \"comparator\": \"gt\", \"value\": 60})\n\n"
         "- User: 'Create workflow for processing orders based on amount'\n"
         "  → Call add_workflow_variable(name='Order Amount', type='number') → returns id='var_order_amount_float'\n"
-        "  → Then create decision nodes with input_ref='Order Amount' and appropriate condition\n\n"
+        "  → Then create decision nodes with appropriate condition\n\n"
         "- User: 'Check if email is from gmail'\n"
         "  → Call add_workflow_variable(name='Email Address', type='string') → returns id='var_email_address_string'\n"
-        "  → Then add_node(type='decision', label='Gmail address?', input_ref='Email Address',\n"
+        "  → Then add_node(type='decision', label='Gmail address?',\n"
         "      condition={\"input_id\": \"var_email_address_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"})\n\n"
         "ALWAYS register input variables BEFORE creating nodes that reference them.\n"
         "Use list_workflow_variables to see what variables already exist AND to get their IDs.\n"
@@ -755,7 +746,6 @@ def build_system_prompt(
         "add_node(\n"
         "  type='decision',\n"
         "  label='Is Adult?',\n"
-        "  input_ref='Age',\n"
         "  condition={\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}\n"
         ")\n"
         "```\n\n"
@@ -764,7 +754,6 @@ def build_system_prompt(
         "add_node(\n"
         "  type='decision',\n"
         "  label='Medium Price?',\n"
-        "  input_ref='Price',\n"
         "  condition={\"input_id\": \"var_price_float\", \"comparator\": \"within_range\", \"value\": 100, \"value2\": 500}\n"
         ")\n"
         "```\n\n"
@@ -773,7 +762,6 @@ def build_system_prompt(
         "add_node(\n"
         "  type='decision',\n"
         "  label='Is Active?',\n"
-        "  input_ref='Active',\n"
         "  condition={\"input_id\": \"var_active_bool\", \"comparator\": \"is_true\", \"value\": true}\n"
         ")\n"
         "```\n\n"
@@ -782,7 +770,6 @@ def build_system_prompt(
         "add_node(\n"
         "  type='decision',\n"
         "  label='Email from Gmail?',\n"
-        "  input_ref='Email',\n"
         "  condition={\"input_id\": \"var_email_string\", \"comparator\": \"str_contains\", \"value\": \"@gmail.com\"}\n"
         ")\n"
         "```\n\n"
@@ -791,7 +778,6 @@ def build_system_prompt(
         "add_node(\n"
         "  type='decision',\n"
         "  label='Is Premium?',\n"
-        "  input_ref='Tier',\n"
         "  condition={\"input_id\": \"var_tier_enum\", \"comparator\": \"enum_eq\", \"value\": \"Premium\"}\n"
         ")\n"
         "```\n\n"
@@ -802,7 +788,6 @@ def build_system_prompt(
         "add_node(\n"
         "  type='decision',\n"
         "  label='Good Credit?',\n"
-        "  input_ref='CreditScore',\n"
         "  condition={\"input_id\": \"var_sub_creditscore_float\", \"comparator\": \"gte\", \"value\": 700}\n"
         ")\n"
         "```\n\n"
@@ -810,7 +795,7 @@ def build_system_prompt(
         "```\n"
         "operations=[\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Age Check\",\n"
-        "   \"input_ref\": \"Age\", \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
+        "   \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_adult\", \"type\": \"end\", \"label\": \"Adult Path\"},\n"
         "  {\"op\": \"add_node\", \"id\": \"temp_minor\", \"type\": \"end\", \"label\": \"Minor Path\"},\n"
         "  {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_adult\", \"label\": \"true\"},\n"
@@ -826,16 +811,16 @@ def build_system_prompt(
         "- For within_range/date_between, you MUST provide both value and value2\n\n"
         "## Removing Workflow Variables (CRITICAL)\n"
         "When removing workflow input variables with remove_workflow_variable:\n"
-        "1. By default, deletion FAILS if nodes still reference the variable\n"
+        "1. By default, deletion FAILS if nodes still reference the variable in their condition\n"
         "2. If deletion fails, ask the user: 'This variable is referenced by N node(s). Should I:\n"
         "   a) Remove references manually (you'll need to update/delete those nodes), or\n"
-        "   b) Force delete (automatically removes input_ref from all nodes)?'\n"
+        "   b) Force delete (automatically clears conditions from affected nodes)?'\n"
         "3. ONLY use force=true if the user explicitly approves cascade deletion\n"
         "4. NEVER use force=true without asking the user first\n\n"
         "Example:\n"
         "- Tool fails: 'Cannot remove variable 'Patient Age': referenced by 3 nodes'\n"
         "- You respond: 'This variable is used by 3 nodes (Age Check, Eligibility, Treatment). "
-        "Would you like me to force delete it (which will remove the references from these nodes)?'\n"
+        "Would you like me to force delete it (which will clear the conditions from these nodes)?'\n"
         "- User: 'Yes, force delete it'\n"
         "- You call: remove_workflow_variable(name='Patient Age', force=true)\n\n"
         "## Subprocess Nodes (Subflows)\n"

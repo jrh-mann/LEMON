@@ -95,8 +95,8 @@ class Orchestrator:
         """
         if not isinstance(value, dict):
             return
-        # Accept both 'variables' (new) and 'inputs' (legacy) keys
-        variables = value.get("variables", value.get("inputs", []))
+        # Accept 'variables' key (standard format)
+        variables = value.get("variables", [])
         outputs = value.get("outputs", [])
         if isinstance(variables, list):
             self.workflow["inputs"] = variables  # Store as 'inputs' internally
@@ -171,8 +171,8 @@ class Orchestrator:
         if not isinstance(analysis_data, dict):
             return
 
-        # Accept both 'variables' (new) and 'inputs' (legacy) keys
-        variables = analysis_data.get("variables", analysis_data.get("inputs", []))
+        # Accept 'variables' key (standard format)
+        variables = analysis_data.get("variables", [])
         outputs = analysis_data.get("outputs", [])
 
         if isinstance(variables, list) and isinstance(outputs, list):
@@ -367,7 +367,7 @@ class Orchestrator:
                     )
 
             # CRITICAL: Also sync current_workflow if tool modified nodes/edges
-            # (e.g., remove_workflow_variable with force=true removes input_ref from nodes)
+            # (e.g., remove_workflow_variable with force=true clears conditions from nodes)
             if "current_workflow" in result:
                 returned_workflow = result["current_workflow"]
                 if isinstance(returned_workflow, dict):

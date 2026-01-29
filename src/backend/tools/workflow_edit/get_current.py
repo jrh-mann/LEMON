@@ -139,13 +139,11 @@ class GetCurrentWorkflowTool(Tool):
             "edges": [copy.deepcopy(e) for e in raw_workflow.get("edges", [])]
         }
         
-        # Get unified variables list (with fallback to legacy 'inputs' for backwards compat)
+        # Get unified variables list
         workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", workflow_analysis.get("inputs", []))
+        variables = workflow_analysis.get("variables", [])
         if variables:
             workflow["variables"] = variables
-            # Also include as 'inputs' for backwards compatibility
-            workflow["inputs"] = variables
 
         # Ensure output fields are present in the JSON data for 'end' nodes
         for node in workflow["nodes"]:
@@ -164,8 +162,6 @@ class GetCurrentWorkflowTool(Tool):
 
         node_descriptions = []
         for node in workflow.get("nodes", []):
-            input_ref_part = f" (input: {node['input_ref']})" if node.get("input_ref") else ""
-            
             # Show decision condition
             condition_part = ""
             if node.get("type") == "decision":
@@ -204,7 +200,7 @@ class GetCurrentWorkflowTool(Tool):
                 if parts:
                     subprocess_part = f" [Subflow: {', '.join(parts)}]"
             
-            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){input_ref_part}{condition_part}{output_part}{subprocess_part}"
+            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){condition_part}{output_part}{subprocess_part}"
             node_descriptions.append(desc)
 
         edge_descriptions = []

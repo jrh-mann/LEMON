@@ -38,11 +38,6 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
     color: (rawNode.color as FlowNodeColor) || BLOCK_TYPE_COLORS[type] || 'teal',
   }
 
-  // Preserve input_ref if present
-  if (rawNode.input_ref) {
-    node.input_ref = rawNode.input_ref as string
-  }
-
   // Preserve decision condition if present (for decision nodes)
   if (rawNode.condition) {
     node.condition = rawNode.condition as DecisionCondition
