@@ -24,6 +24,13 @@ class DeleteNodeTool(Tool):
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
 
+        # Get unified variables list (with fallback to legacy inputs)
+        # Required for validation of output templates that reference variables
+        workflow_analysis = session_state.get("workflow_analysis", {})
+        variables = workflow_analysis.get("variables", [])
+        if not variables:
+            variables = workflow_analysis.get("inputs", [])
+
         node_id = args.get("node_id")
         nodes = current_workflow.get("nodes", [])
         node_exists = any(n.get("id") == node_id for n in nodes)
@@ -44,6 +51,7 @@ class DeleteNodeTool(Tool):
                 for e in current_workflow.get("edges", [])
                 if e["from"] != node_id and e["to"] != node_id
             ],
+            "variables": variables,  # Pass variables for validation
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)

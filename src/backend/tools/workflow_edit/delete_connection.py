@@ -25,6 +25,13 @@ class DeleteConnectionTool(Tool):
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
 
+        # Get unified variables list (with fallback to legacy inputs)
+        # Required for validation of output templates that reference variables
+        workflow_analysis = session_state.get("workflow_analysis", {})
+        variables = workflow_analysis.get("variables", [])
+        if not variables:
+            variables = workflow_analysis.get("inputs", [])
+
         from_id = args.get("from_node_id")
         to_id = args.get("to_node_id")
         edge_id = f"{from_id}->{to_id}"
@@ -36,6 +43,7 @@ class DeleteConnectionTool(Tool):
                 for e in current_workflow.get("edges", [])
                 if not (e["from"] == from_id and e["to"] == to_id)
             ],
+            "variables": variables,  # Pass variables for validation
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)

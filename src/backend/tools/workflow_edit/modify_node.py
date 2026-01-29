@@ -117,11 +117,16 @@ class ModifyNodeTool(Tool):
                 "error_code": "NODE_NOT_FOUND",
             }
 
-        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
+        # Get unified variables list (with fallback to legacy inputs)
+        workflow_analysis = session_state.get("workflow_analysis", {})
+        inputs = workflow_analysis.get("variables", [])
+        if not inputs:
+            inputs = workflow_analysis.get("inputs", [])
+        
         new_workflow = {
             "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
             "edges": current_workflow.get("edges", []),
-            "inputs": inputs,
+            "variables": inputs,  # Use unified 'variables' key
         }
         new_workflow["nodes"][node_idx].update(updates)
 

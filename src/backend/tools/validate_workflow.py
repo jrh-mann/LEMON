@@ -22,12 +22,18 @@ class ValidateWorkflowTool(Tool):
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
         
-        # Include inputs in validation context
-        inputs = session_state.get("workflow_analysis", {}).get("inputs", [])
+        # Get unified variables list (with fallback to legacy inputs field)
+        # The unified variable system stores all variables in 'variables', but legacy
+        # code may still use 'inputs'. We check both for backwards compatibility.
+        workflow_analysis = session_state.get("workflow_analysis", {})
+        variables = workflow_analysis.get("variables", [])
+        if not variables:
+            variables = workflow_analysis.get("inputs", [])
+        
         workflow_to_validate = {
             "nodes": current_workflow.get("nodes", []),
             "edges": current_workflow.get("edges", []),
-            "inputs": inputs,
+            "variables": variables,  # Pass as 'variables' for unified system
         }
         
         # Use strict=True to check for unreachable nodes and complete structure
