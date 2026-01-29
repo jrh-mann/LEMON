@@ -422,14 +422,15 @@ export function connectSocket(): Socket {
       doubts: [],
     }
 
+    // Map backend 'inputs' field to frontend 'variables' field for unified variable system
     const updatedAnalysis: WorkflowAnalysis = {
       ...currentAnalysis,
-      inputs: data.inputs as WorkflowAnalysis['inputs'],
+      variables: data.inputs as WorkflowAnalysis['variables'],
       outputs: data.outputs as WorkflowAnalysis['outputs'],
     }
 
     workflowStore.setAnalysis(updatedAnalysis)
-    console.log('[Socket] Updated analysis with', data.inputs.length, 'inputs and', data.outputs.length, 'outputs')
+    console.log('[Socket] Updated analysis with', data.inputs.length, 'variables and', data.outputs.length, 'outputs')
   })
 
   // ===== Execution Events =====
@@ -683,11 +684,11 @@ export function startWorkflowExecution(
   // Generate execution ID
   const executionId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 
-  // Get workflow data including inputs from analysis
+  // Get workflow data including variables from analysis
   const workflow = {
     nodes: workflowStore.flowchart.nodes,
     edges: workflowStore.flowchart.edges,
-    inputs: workflowStore.currentAnalysis?.inputs ?? [],
+    inputs: workflowStore.currentAnalysis?.variables ?? [],  // Backend expects 'inputs'
     outputs: workflowStore.currentAnalysis?.outputs ?? [],
   }
 

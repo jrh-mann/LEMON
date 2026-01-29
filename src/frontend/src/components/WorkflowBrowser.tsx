@@ -121,10 +121,10 @@ export default function WorkflowBrowser() {
 
       addTab(workflowData.metadata.name, workflow, flowchart)
 
-      // Set analysis data if available
+      // Set analysis data if available (map backend 'inputs' to frontend 'variables')
       if (workflowData.inputs || workflowData.outputs || workflowData.tree || workflowData.doubts) {
         const analysis: WorkflowAnalysis = {
-          inputs: workflowData.inputs || [],
+          variables: workflowData.inputs || [],  // Backend sends 'inputs', frontend uses 'variables'
           outputs: workflowData.outputs || [],
           tree: workflowData.tree || {},
           doubts: workflowData.doubts || [],

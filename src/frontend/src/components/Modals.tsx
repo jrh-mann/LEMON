@@ -11,7 +11,7 @@ import {
   stopWorkflowExecution,
 } from '../api/socket'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { WorkflowInput } from '../types'
+import type { WorkflowInput, WorkflowVariable } from '../types'
 
 export default function Modals() {
   const { modalOpen, closeModal } = useUIStore()
@@ -322,7 +322,7 @@ function SaveWorkflowForm() {
         const validationResult = await validateWorkflow({
           nodes: flowchart.nodes,
           edges: flowchart.edges,
-          inputs: currentAnalysis?.inputs || [],
+          inputs: currentAnalysis?.variables || [],  // Backend expects 'inputs'
         })
 
         if (!validationResult.valid) {
@@ -348,7 +348,8 @@ function SaveWorkflowForm() {
         tags: tagArray,
         nodes: flowchart.nodes,
         edges: flowchart.edges,
-        inputs: currentAnalysis?.inputs || [],
+        variables: currentAnalysis?.variables || [],  // Unified variable system
+        inputs: currentAnalysis?.variables || [],     // Backend compatibility
         outputs: currentAnalysis?.outputs || [],
         tree: currentAnalysis?.tree || {},
         doubts: currentAnalysis?.doubts || [],
@@ -516,8 +517,8 @@ function ExecuteWorkflowForm() {
     clearExecution,
   } = useWorkflowStore()
 
-  // Initialize input values from workflow inputs
-  const workflowInputs = currentAnalysis?.inputs ?? []
+  // Initialize input values from workflow variables
+  const workflowInputs = currentAnalysis?.variables ?? []
   const [inputValues, setInputValues] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {}
     for (const input of workflowInputs) {
@@ -530,7 +531,7 @@ function ExecuteWorkflowForm() {
           initial[input.id] = input.range?.min ?? 0
           break
         case 'enum':
-          const enumVals = input.enum_values ?? input.enum ?? []
+          const enumVals = input.enum_values ?? []
           initial[input.id] = enumVals[0] ?? ''
           break
         case 'date':
@@ -632,7 +633,7 @@ function ExecuteWorkflowForm() {
         )
 
       case 'enum':
-        const enumValues = input.enum_values ?? input.enum ?? []
+        const enumValues = input.enum_values ?? []
         return (
           <div className="form-group">
             <label htmlFor={inputId}>{input.name}</label>
@@ -645,7 +646,7 @@ function ExecuteWorkflowForm() {
               onChange={(e) => handleInputChange(input.id, e.target.value)}
               disabled={execution.isExecuting}
             >
-              {enumValues.map((opt) => (
+              {enumValues.map((opt: string) => (
                 <option key={opt} value={opt}>
                   {opt}
                 </option>
@@ -756,7 +757,7 @@ function ExecuteWorkflowForm() {
         <div className="inputs-section">
           <h4>Workflow Inputs</h4>
           <p className="muted small">Provide values for the workflow inputs</p>
-          {workflowInputs.map((input) => (
+          {workflowInputs.map((input: WorkflowVariable) => (
             <div key={input.id}>{renderInputField(input)}</div>
           ))}
         </div>

@@ -80,7 +80,7 @@ export default function RightSidebar() {
   const inputBlocks = currentWorkflow?.blocks.filter(
     (b): b is InputBlock => b.type === 'input'
   ) || []
-  const analysisInputs = currentAnalysis?.inputs ?? []
+  const analysisInputs = currentAnalysis?.variables ?? []  // Unified variable system
   const showAnalysisInputs = currentAnalysis !== null
   const showAnalysisView = showAnalysisInputs || showAddInput
 
@@ -113,7 +113,7 @@ export default function RightSidebar() {
       return
     }
     const key = `${slugifyInputName(name)}:${draftType}`
-    const existing = analysisInputs.some((input) => {
+    const existing = analysisInputs.some((input: WorkflowInput) => {
       const existingKey = `${slugifyInputName(input.name)}:${input.type}`
       return existingKey === key
     })
@@ -127,6 +127,7 @@ export default function RightSidebar() {
       id: buildInputId(name, draftType),
       name,
       type: draftType,
+      source: 'input',  // Manual inputs are user-provided values
     }
     if (draftDescription.trim()) {
       nextInput.description = draftDescription.trim()
@@ -137,7 +138,7 @@ export default function RightSidebar() {
         .map((value) => value.trim())
         .filter(Boolean)
       if (values.length > 0) {
-        nextInput.enum = values
+        nextInput.enum_values = values  // Use enum_values, not enum
       }
     }
     if ((draftType === 'int' || draftType === 'float') && (draftRangeMin || draftRangeMax)) {
@@ -157,14 +158,14 @@ export default function RightSidebar() {
 
     nextInputs.push(nextInput)
     const baseAnalysis: WorkflowAnalysis = currentAnalysis ?? {
-      inputs: [],
+      variables: [],
       outputs: [],
       tree: {},
       doubts: [],
     }
     const nextAnalysis: WorkflowAnalysis = {
       ...baseAnalysis,
-      inputs: nextInputs,
+      variables: nextInputs,
     }
     setAnalysis(nextAnalysis)
     resetDraftInput()
@@ -172,7 +173,7 @@ export default function RightSidebar() {
   }
 
   const renderAnalysisInput = (input: WorkflowInput) => {
-    const enumValues = input.enum ?? input.enum_values ?? []
+    const enumValues = input.enum_values ?? []
     const range = input.range
     const hasRange = range && (range.min !== undefined || range.max !== undefined)
     return (
@@ -278,7 +279,7 @@ export default function RightSidebar() {
             className="ghost inputs-add-btn"
             onClick={() => {
               if (!currentAnalysis) {
-                setAnalysis({ inputs: [], outputs: [], tree: {}, doubts: [] })
+                setAnalysis({ variables: [], outputs: [], tree: {}, doubts: [] })
               }
               setInputError(null)
               setShowAddInput(true)
@@ -875,7 +876,7 @@ function DecisionConditionEditor({
   const availableComparators = COMPARATORS_BY_TYPE[inputType] ?? COMPARATORS_BY_TYPE.string
   
   // Get enum values if input is enum type
-  const enumValues = selectedInput?.enum ?? selectedInput?.enum_values ?? []
+  const enumValues = selectedInput?.enum_values ?? []
 
   // Update the condition field on the node
   const updateCondition = (updates: Partial<DecisionCondition>) => {
@@ -925,7 +926,7 @@ function DecisionConditionEditor({
           onChange={(e) => updateCondition({ [valueKey]: e.target.value })}
         >
           <option value="">Select value...</option>
-          {enumValues.map(val => (
+          {enumValues.map((val: string) => (
             <option key={val} value={val}>{val}</option>
           ))}
         </select>

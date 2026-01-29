@@ -56,7 +56,7 @@ export default function Header() {
       const validationResult = await validateWorkflow({
         nodes: flowchart.nodes,
         edges: flowchart.edges,
-        inputs: currentAnalysis?.inputs || [],
+        inputs: currentAnalysis?.variables || [],  // Backend expects 'inputs'
       })
 
       if (!validationResult.valid) {
