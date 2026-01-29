@@ -1,19 +1,13 @@
 """Workflow variable tools."""
 
-from .add import AddWorkflowVariableTool, AddWorkflowInputTool
-from .list import ListWorkflowVariablesTool, ListWorkflowInputsTool
-from .modify import ModifyWorkflowVariableTool, ModifyWorkflowInputTool
-from .remove import RemoveWorkflowVariableTool, RemoveWorkflowInputTool
+from .add import AddWorkflowVariableTool
+from .list import ListWorkflowVariablesTool
+from .modify import ModifyWorkflowVariableTool
+from .remove import RemoveWorkflowVariableTool
 
 __all__ = [
-    # New names
     "AddWorkflowVariableTool",
     "ListWorkflowVariablesTool",
     "ModifyWorkflowVariableTool",
     "RemoveWorkflowVariableTool",
-    # Backwards compatibility aliases
-    "AddWorkflowInputTool",
-    "ListWorkflowInputsTool",
-    "ModifyWorkflowInputTool",
-    "RemoveWorkflowInputTool",
 ]

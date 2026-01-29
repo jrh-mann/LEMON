@@ -130,7 +130,3 @@ class RemoveWorkflowVariableTool(Tool):
             "current_workflow": current_workflow,  # Return updated workflow
             "affected_nodes": len(affected_node_labels),
         }
-
-
-# Backwards compatibility alias
-RemoveWorkflowInputTool = RemoveWorkflowVariableTool

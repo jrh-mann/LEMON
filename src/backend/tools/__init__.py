@@ -17,11 +17,6 @@ from .workflow_input import (
     ListWorkflowVariablesTool,
     ModifyWorkflowVariableTool,
     RemoveWorkflowVariableTool,
-    # Backwards compatibility aliases
-    AddWorkflowInputTool,
-    ListWorkflowInputsTool,
-    ModifyWorkflowInputTool,
-    RemoveWorkflowInputTool,
 )
 from .workflow_output import SetWorkflowOutputTool
 from .validate_workflow import ValidateWorkflowTool
@@ -42,17 +37,10 @@ __all__ = [
     "AddConnectionTool",
     "DeleteConnectionTool",
     "BatchEditWorkflowTool",
-    # New variable tool names
     "AddWorkflowVariableTool",
     "ListWorkflowVariablesTool",
     "ModifyWorkflowVariableTool",
     "RemoveWorkflowVariableTool",
-    # Backwards compatibility aliases
-    "AddWorkflowInputTool",
-    "ListWorkflowInputsTool",
-    "ModifyWorkflowInputTool",
-    "RemoveWorkflowInputTool",
-    # Output tool
     "SetWorkflowOutputTool",
     "ValidateWorkflowTool",
     "ListWorkflowsInLibrary",

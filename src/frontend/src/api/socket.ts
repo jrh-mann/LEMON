@@ -410,27 +410,26 @@ export function connectSocket(): Socket {
   })
 
   // Analysis updates (from input management tools)
-  socket.on('analysis_updated', (data: { inputs: unknown[]; outputs: unknown[] }) => {
+  socket.on('analysis_updated', (data: { variables: unknown[]; outputs: unknown[] }) => {
     console.log('[Socket] analysis_updated:', data)
     const workflowStore = useWorkflowStore.getState()
 
-    // Update the analysis with new inputs/outputs
+    // Update the analysis with new variables/outputs
     const currentAnalysis = workflowStore.currentAnalysis ?? {
-      inputs: [],
+      variables: [],
       outputs: [],
       tree: {},
       doubts: [],
     }
 
-    // Map backend 'inputs' field to frontend 'variables' field for unified variable system
     const updatedAnalysis: WorkflowAnalysis = {
       ...currentAnalysis,
-      variables: data.inputs as WorkflowAnalysis['variables'],
+      variables: data.variables as WorkflowAnalysis['variables'],
       outputs: data.outputs as WorkflowAnalysis['outputs'],
     }
 
     workflowStore.setAnalysis(updatedAnalysis)
-    console.log('[Socket] Updated analysis with', data.inputs.length, 'variables and', data.outputs.length, 'outputs')
+    console.log('[Socket] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
   })
 
   // ===== Execution Events =====

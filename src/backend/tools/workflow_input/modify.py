@@ -251,7 +251,3 @@ class ModifyWorkflowVariableTool(Tool):
             result["warning"] = warning
 
         return result
-
-
-# Backwards compatibility alias
-ModifyWorkflowInputTool = ModifyWorkflowVariableTool

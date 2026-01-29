@@ -198,7 +198,3 @@ class AddWorkflowVariableTool(Tool):
             "variable": variable_obj,
             "workflow_analysis": workflow_analysis,
         }
-
-
-# Backwards compatibility alias
-AddWorkflowInputTool = AddWorkflowVariableTool

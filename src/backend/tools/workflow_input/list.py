@@ -16,7 +16,6 @@ class ListWorkflowVariablesTool(Tool):
     """
 
     name = "list_workflow_variables"
-    aliases = ["list_workflow_inputs"]  # Backwards compatibility
     description = (
         "Get all registered workflow input variables. Returns the list of input variables "
         "that have been registered with add_workflow_variable. These are variables that users "
@@ -34,12 +33,7 @@ class ListWorkflowVariablesTool(Tool):
 
         return {
             "success": True,
-            "inputs": input_variables,  # Backwards-compatible key name in response
-            "variables": input_variables,  # New key name
+            "variables": input_variables,
             "count": len(input_variables),
             "workflow_analysis": workflow_analysis,
         }
-
-
-# Backwards compatibility alias
-ListWorkflowInputsTool = ListWorkflowVariablesTool
