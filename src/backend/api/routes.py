@@ -569,13 +569,13 @@ def register_routes(
         payload = request.get_json(force=True, silent=True) or {}
         nodes = payload.get("nodes", [])
         edges = payload.get("edges", [])
-        inputs = payload.get("inputs", [])
+        variables = payload.get("variables", [])
 
         validator = WorkflowValidator()
         workflow_to_validate = {
             "nodes": nodes,
             "edges": edges,
-            "inputs": inputs,
+            "variables": variables,
         }
 
         # Use strict=True to check for unreachable nodes and complete structure

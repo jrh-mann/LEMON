@@ -322,7 +322,7 @@ function SaveWorkflowForm() {
         const validationResult = await validateWorkflow({
           nodes: flowchart.nodes,
           edges: flowchart.edges,
-          inputs: currentAnalysis?.variables || [],  // Backend expects 'inputs'
+          variables: currentAnalysis?.variables || [],
         })
 
         if (!validationResult.valid) {

@@ -82,7 +82,7 @@ export interface ValidationResponse {
 export async function validateWorkflow(payload: {
   nodes: any[]
   edges: any[]
-  inputs: any[]
+  variables: any[]  // Workflow variables for template validation
 }): Promise<ValidationResponse> {
   return api.post<ValidationResponse>('/api/validate', payload)
 }
