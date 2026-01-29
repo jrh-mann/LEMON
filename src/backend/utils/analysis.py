@@ -58,11 +58,12 @@ def normalize_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
             doubts.append(f"Duplicate input removed: {name}")
         analysis["doubts"] = doubts
 
-    _normalize_input_refs(analysis, {item["id"] for item in normalized})
+    _normalize_input_ids(analysis, {item["id"] for item in normalized})
     return analysis
 
 
-def _normalize_input_refs(analysis: Dict[str, Any], valid_ids: Set[str]) -> None:
+def _normalize_input_ids(analysis: Dict[str, Any], valid_ids: Set[str]) -> None:
+    """Normalize input_ids on tree nodes to only contain valid input IDs."""
     tree = analysis.get("tree")
     if not isinstance(tree, dict):
         return
