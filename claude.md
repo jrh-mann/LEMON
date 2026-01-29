@@ -8,6 +8,17 @@ Fail loudly, do not have errors propagate, we are interested in knowing exactly 
 
 Work within the grand vision of the project, all components should be with reference to that.
 
+## No Backwards Compatibility
+
+This project is in active development with no production users or data. NEVER implement backwards compatibility:
+- Do NOT add fallback code like `payload.get("new_key") or payload.get("old_key")`
+- Do NOT support legacy field names alongside new ones
+- Do NOT write migration code for old data formats
+- When renaming fields, update ALL references to use the new name only
+- Delete legacy code immediately, do not deprecate
+
+If old code breaks, fix it to use the new approach. Clean breaks are better than compatibility debt.
+
 ## Adding New Tools to the Orchestrator
 
 When adding new tools for the LLM to use, you MUST update ALL of these locations:
