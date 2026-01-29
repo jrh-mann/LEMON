@@ -15,14 +15,10 @@ WORKFLOW_EDIT_TOOLS = frozenset(
 
 WORKFLOW_INPUT_TOOLS = frozenset(
     {
-        # New names
         "add_workflow_variable",
         "list_workflow_variables",
+        "modify_workflow_variable",
         "remove_workflow_variable",
-        # Legacy names (for backwards compatibility)
-        "add_workflow_input",
-        "list_workflow_inputs",
-        "remove_workflow_input",
     }
 )
 

@@ -31,7 +31,7 @@ class PublishLatestAnalysisTool(Tool):
             return {
                 "session_id": "",
                 "analysis": {
-                    "inputs": [],
+                    "variables": [],
                     "outputs": [],
                     "tree": {},
                     "doubts": [

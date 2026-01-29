@@ -19,9 +19,14 @@ def deterministic_input_id(name: str, input_type: str) -> str:
 
 
 def normalize_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize analysis data, ensuring variables have IDs and are deduplicated.
+    
+    Reads from 'inputs' key (from AI response) and writes to 'variables' key (unified format).
+    """
     if not isinstance(analysis, dict):
         return analysis
 
+    # Read from 'inputs' (AI response format) 
     inputs = analysis.get("inputs")
     if not isinstance(inputs, list):
         inputs = []
@@ -46,9 +51,14 @@ def normalize_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
         item["name"] = name
         item["type"] = input_type
         item["id"] = deterministic_input_id(name, input_type)
+        item["source"] = "input"  # Mark as user input variable
         normalized.append(item)
 
-    analysis["inputs"] = normalized
+    # Write to 'variables' (unified format)
+    analysis["variables"] = normalized
+    # Remove old 'inputs' key to avoid confusion
+    if "inputs" in analysis:
+        del analysis["inputs"]
 
     if duplicates:
         doubts = analysis.get("doubts")
