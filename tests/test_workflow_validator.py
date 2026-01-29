@@ -166,7 +166,14 @@ class TestWorkflowValidator:
         workflow = {
             "nodes": [
                 {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
-                {"id": "decision", "type": "decision", "label": "Check?", "x": 100, "y": 0},
+                {
+                    "id": "decision", 
+                    "type": "decision", 
+                    "label": "Check?", 
+                    "x": 100, 
+                    "y": 0,
+                    "condition": {"input_id": "var_test", "comparator": "gt", "value": 0}
+                },
                 {"id": "yes", "type": "end", "label": "Yes", "x": 200, "y": 50},
                 {"id": "no", "type": "end", "label": "No", "x": 200, "y": 150},
             ],
@@ -175,6 +182,7 @@ class TestWorkflowValidator:
                 {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
+            "variables": [{"id": "var_test", "name": "test", "type": "int"}]
         }
         is_valid, errors = self.validator.validate(workflow)
         assert is_valid
@@ -260,7 +268,14 @@ class TestWorkflowValidator:
             "nodes": [
                 {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
                 {"id": "n2", "type": "process", "label": "Process", "x": 100, "y": 0},
-                {"id": "n3", "type": "decision", "label": "Decision?", "x": 200, "y": 0},
+                {
+                    "id": "n3", 
+                    "type": "decision", 
+                    "label": "Decision?", 
+                    "x": 200, 
+                    "y": 0,
+                    "condition": {"input_id": "var_test", "comparator": "gt", "value": 0}
+                },
                 {
                     "id": "n4",
                     "type": "subprocess",
@@ -280,6 +295,7 @@ class TestWorkflowValidator:
                 {"id": "n3->n5", "from": "n3", "to": "n5", "label": "false"},
                 {"id": "n4->n6", "from": "n4", "to": "n6", "label": ""},
             ],
+            "variables": [{"id": "var_test", "name": "test", "type": "int"}]
         }
         is_valid, errors = self.validator.validate(workflow)
         assert is_valid

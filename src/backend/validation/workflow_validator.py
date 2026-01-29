@@ -80,16 +80,11 @@ class WorkflowValidator:
         # Collect node IDs for validation
         node_ids: Set[str] = set()
 
-        # Collect registered variable names (if available)
-        # Support both new 'variables' field and legacy 'inputs' field
+        # Collect registered variable names from unified 'variables' field
         valid_var_names: Optional[Set[str]] = None
-        workflow_variables = workflow.get("variables", []) or workflow.get("inputs", [])
+        workflow_variables = workflow.get("variables", [])
         if workflow_variables:
             valid_var_names = {v.get("name") for v in workflow_variables if v.get("name")}
-        
-        # Backwards compat alias
-        valid_input_names = valid_var_names
-        workflow_inputs = workflow_variables
 
         # Rule 1 & 2: Validate node structure
         for node in nodes:
@@ -131,7 +126,7 @@ class WorkflowValidator:
 
             # Validate subprocess nodes have required fields
             if node_type == "subprocess":
-                subprocess_errors = self._validate_subprocess_node(node, valid_input_names)
+                subprocess_errors = self._validate_subprocess_node(node, valid_var_names)
                 errors.extend(subprocess_errors)
 
             # Rule 9: Validate decision nodes have structured conditions
@@ -192,47 +187,19 @@ class WorkflowValidator:
                             )
                         )
                 else:
-                    # No structured condition - check legacy label-based condition
-                    # This is still allowed for backwards compatibility
-                    condition_str = node.get("label", "")
-                    try:
-                        expr = parse_condition(condition_str)
-                        referenced_vars = self._get_variables(expr)
-
-                        # Check if variables are registered (always enforced when variables exist)
-                        if valid_var_names is not None:
-                            for var in referenced_vars:
-                                if var not in valid_var_names:
-                                    errors.append(
-                                        ValidationError(
-                                            code="INVALID_INPUT_REF",
-                                            message=f"Decision references unregistered variable: '{var}'",
-                                            node_id=node_id,
-                                        )
-                                    )
-                        # In strict mode, require all decision variables to be registered
-                        elif strict and referenced_vars:
-                            # No variables registered but decision uses variables
-                            var_list = ", ".join(f"'{v}'" for v in sorted(referenced_vars))
-                            errors.append(
-                                ValidationError(
-                                    code="DECISION_MISSING_INPUT",
-                                    message=f"Decision node '{node.get('label', node_id)}' references variables {var_list} but no workflow variables are registered. Register variables using add_workflow_variable tool.",
-                                    node_id=node_id,
-                                )
-                            )
-                    except ParseError:
-                        # Label is descriptive text, not a condition
-                        # In strict mode, descriptive labels without structured conditions are allowed
-                        # The decision logic is assumed to be handled programmatically
-                        pass
-                    except Exception:
-                        pass
+                    # Decision nodes MUST have a structured condition
+                    errors.append(
+                        ValidationError(
+                            code="MISSING_CONDITION",
+                            message=f"Decision node '{node.get('label', node_id)}' requires a structured condition. Use add_node or modify_node with condition={{input_id, comparator, value}}",
+                            node_id=node_id,
+                        )
+                    )
             
             # Validate end/output nodes have valid templates
             if node_type in ("end", "output"):
                 template_errors = self._validate_output_template(
-                    node, workflow_inputs, valid_input_names
+                    node, workflow_variables, valid_var_names
                 )
                 errors.extend(template_errors)
 

@@ -24,7 +24,7 @@ class TestOutputTemplateValidation:
             "edges": [
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
             ]
         }
@@ -43,7 +43,7 @@ class TestOutputTemplateValidation:
             "edges": [
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
             ]
         }
@@ -72,7 +72,7 @@ class TestOutputTemplateValidation:
             "edges": [
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
                 # "Name" is NOT registered
             ]
@@ -94,7 +94,7 @@ class TestOutputTemplateValidation:
             "edges": [
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
-            "inputs": []  # No inputs registered
+            "variables": []  # No variables registered
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)
@@ -112,7 +112,7 @@ class TestOutputTemplateValidation:
             "edges": [
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
             ]
         }
@@ -131,7 +131,7 @@ class TestOutputTemplateValidation:
             "edges": [
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
-            "inputs": []
+            "variables": []
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)
@@ -171,7 +171,7 @@ class TestComparatorValidation:
                 {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
             ]
         }
@@ -205,7 +205,7 @@ class TestComparatorValidation:
                 {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
             ]
         }
@@ -242,7 +242,7 @@ class TestComparatorValidation:
                 {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_is_active_bool", "name": "Is Active", "type": "bool", "description": "Whether active"}
             ]
         }

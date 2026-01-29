@@ -358,7 +358,15 @@ class TestAddConnectionTool:
         """Should add connection with custom label"""
         existing_workflow = {
             "nodes": [
-                {"id": "n1", "type": "decision", "label": "Check?", "x": 0, "y": 0, "color": "amber"},
+                {
+                    "id": "n1", 
+                    "type": "decision", 
+                    "label": "Check?", 
+                    "x": 0, 
+                    "y": 0, 
+                    "color": "amber",
+                    "condition": {"input_id": "var_test", "comparator": "gt", "value": 0}
+                },
                 {"id": "n2", "type": "end", "label": "Yes", "x": 100, "y": 0, "color": "green"},
                 {"id": "n3", "type": "end", "label": "No", "x": 100, "y": 100, "color": "green"},
             ],
@@ -366,6 +374,7 @@ class TestAddConnectionTool:
             "edges": [
                 {"id": "n1->n3", "from": "n1", "to": "n3", "label": "false"},
             ],
+            "variables": [{"id": "var_test", "name": "test", "type": "int"}]
         }
         args = {"from_node_id": "n1", "to_node_id": "n2", "label": "true"}
         session_state = {"current_workflow": existing_workflow}
@@ -454,7 +463,15 @@ class TestDeleteConnectionTool:
         """Should succeed in lenient mode even if workflow becomes invalid"""
         existing_workflow = {
             "nodes": [
-                {"id": "n1", "type": "decision", "label": "Check?", "x": 0, "y": 0, "color": "amber"},
+                {
+                    "id": "n1", 
+                    "type": "decision", 
+                    "label": "Check?", 
+                    "x": 0, 
+                    "y": 0, 
+                    "color": "amber",
+                    "condition": {"input_id": "var_test", "comparator": "gt", "value": 0}
+                },
                 {"id": "n2", "type": "end", "label": "Yes", "x": 100, "y": 0, "color": "green"},
                 {"id": "n3", "type": "end", "label": "No", "x": 100, "y": 100, "color": "green"},
             ],
@@ -462,6 +479,7 @@ class TestDeleteConnectionTool:
                 {"id": "n1->n2", "from": "n1", "to": "n2", "label": "true"},
                 {"id": "n1->n3", "from": "n1", "to": "n3", "label": "false"},
             ],
+            "variables": [{"id": "var_test", "name": "test", "type": "int"}]
         }
         # Deleting one branch would leave decision with only 1 branch
         args = {"from_node_id": "n1", "to_node_id": "n2"}

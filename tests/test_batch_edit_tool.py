@@ -76,7 +76,7 @@ class TestBatchEditWorkflowTool:
         }
         session_state = {
             "current_workflow": existing_workflow,
-            "workflow_analysis": {"inputs": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
+            "workflow_analysis": {"variables": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
         }
 
         result = self.tool.execute(args, session_state=session_state)
@@ -277,7 +277,7 @@ class TestBatchEditWorkflowTool:
         }
         session_state = {
             "current_workflow": existing_workflow,
-            "workflow_analysis": {"inputs": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
+            "workflow_analysis": {"variables": [{"id": "input_age_int", "name": "Age", "type": "int"}]}
         }
 
         result = self.tool.execute(args, session_state=session_state)
@@ -463,9 +463,9 @@ class TestBatchEditSubprocessNodes:
         result = self.tool.execute(args, session_state=session_state)
 
         assert result["success"] is True
-        # Check that BMI_Result was added to workflow inputs (stored under 'inputs' for backwards compat)
-        inputs = result["workflow"]["inputs"]
-        output_var_input = next((inp for inp in inputs if inp["name"] == "BMI_Result"), None)
+        # Check that BMI_Result was added to workflow variables
+        variables = result["workflow"]["variables"]
+        output_var_input = next((inp for inp in variables if inp["name"] == "BMI_Result"), None)
         assert output_var_input is not None
         assert output_var_input["type"] == "string"
         assert output_var_input["source"] == "subprocess"  # New: subprocess-derived variables have source
@@ -493,7 +493,6 @@ class TestBatchEditSubprocessNodes:
                     "type": "decision",
                     "label": "BMI_Result == 'Normal'",
                     "id": "temp_decision",
-                    "input_ref": "BMI_Result",  # Should work because subprocess registered it
                     "x": 100,
                     "y": 200,
                     "condition": {
@@ -559,7 +558,6 @@ class TestBatchEditSubprocessNodes:
                     "type": "decision",
                     "label": "result == 'Normal'",
                     "id": "temp_decision",
-                    "input_ref": "result",
                     "x": 100,
                     "y": 250,
                     "condition": {

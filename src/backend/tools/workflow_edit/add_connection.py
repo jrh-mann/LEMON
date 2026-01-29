@@ -31,12 +31,9 @@ class AddConnectionTool(Tool):
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
 
-        # Get unified variables list (with fallback to legacy inputs)
-        # Required for validation of output templates that reference variables
+        # Get variables for validation of output templates
         workflow_analysis = session_state.get("workflow_analysis", {})
         variables = workflow_analysis.get("variables", [])
-        if not variables:
-            variables = workflow_analysis.get("inputs", [])
 
         from_id = args.get("from_node_id")
         to_id = args.get("to_node_id")
@@ -53,7 +50,7 @@ class AddConnectionTool(Tool):
         new_workflow = {
             "nodes": current_workflow.get("nodes", []),
             "edges": [*current_workflow.get("edges", []), new_edge],
-            "variables": variables,  # Pass variables for validation
+            "variables": variables,
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)

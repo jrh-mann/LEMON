@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import get_node_color, input_ref_error, validate_subprocess_node
+from .helpers import get_node_color, validate_subprocess_node
 from .add_node import validate_decision_condition
 
 
@@ -78,14 +78,12 @@ class BatchEditWorkflowTool(Tool):
         if not isinstance(operations, list):
             return {"success": False, "error": "operations must be an array"}
 
-        # Get unified variables list (with fallback to legacy inputs)
+        # Get variables from unified 'variables' field
         variables = session_state.get("workflow_analysis", {}).get("variables", [])
-        if not variables:
-            variables = session_state.get("workflow_analysis", {}).get("inputs", [])
         new_workflow = {
             "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
             "edges": [dict(e) for e in current_workflow.get("edges", [])],
-            "inputs": variables,  # Keep 'inputs' key for backwards compat in workflow dict
+            "variables": variables,
         }
 
         temp_id_map: Dict[str, str] = {}
@@ -96,11 +94,6 @@ class BatchEditWorkflowTool(Tool):
                 op_type = op.get("op")
 
                 if op_type == "add_node":
-                    input_ref = op.get("input_ref")
-                    error = input_ref_error(input_ref, session_state)
-                    if error:
-                        raise ValueError(error)
-
                     temp_id = op.get("id")
                     real_id = f"node_{uuid.uuid4().hex[:8]}"
                     if temp_id:
@@ -115,11 +108,8 @@ class BatchEditWorkflowTool(Tool):
                         "y": op.get("y", 0),
                         "color": get_node_color(node_type),
                     }
-
-                    if input_ref:
-                        new_node["input_ref"] = input_ref
                     
-                    # Handle decision node condition
+                    # Handle decision node condition (required for decision nodes)
                     condition = op.get("condition")
                     if node_type == "decision":
                         if not condition:
@@ -127,7 +117,7 @@ class BatchEditWorkflowTool(Tool):
                                 f"Decision node '{op['label']}' requires a 'condition' object. "
                                 f"Provide: {{input_id: '<input_id>', comparator: '<comparator>', value: <value>}}"
                             )
-                        condition_error = validate_decision_condition(condition, new_workflow.get("inputs", []))
+                        condition_error = validate_decision_condition(condition, new_workflow.get("variables", []))
                         if condition_error:
                             raise ValueError(f"Invalid condition for decision node '{op['label']}': {condition_error}")
                         new_node["condition"] = condition
@@ -163,7 +153,7 @@ class BatchEditWorkflowTool(Tool):
                             
                             # Auto-register output_variable as a workflow variable
                             # This allows subsequent decision nodes to reference it
-                            existing_var_names = [v.get("name", "").lower() for v in new_workflow.get("inputs", [])]
+                            existing_var_names = [v.get("name", "").lower() for v in new_workflow.get("variables", [])]
                             if output_variable.lower() not in existing_var_names:
                                 # Generate variable ID with subprocess source (var_sub_{slug}_{type})
                                 var_slug = output_variable.lower().replace(' ', '_')
@@ -172,12 +162,12 @@ class BatchEditWorkflowTool(Tool):
                                     "id": var_id,
                                     "name": output_variable,
                                     "type": "string",  # Default - ideally inferred from subworkflow
-                                    "source": "subprocess",  # Mark as subprocess-derived
+                                    "source": "subprocess",
                                     "description": f"Output from subprocess '{op['label']}'",
                                 }
-                                if "inputs" not in new_workflow:
-                                    new_workflow["inputs"] = []
-                                new_workflow["inputs"].append(new_variable)
+                                if "variables" not in new_workflow:
+                                    new_workflow["variables"] = []
+                                new_workflow["variables"].append(new_variable)
                                 # Also update session_state so subsequent ops can reference it
                                 if "workflow_analysis" not in session_state:
                                     session_state["workflow_analysis"] = {"variables": []}
@@ -206,11 +196,6 @@ class BatchEditWorkflowTool(Tool):
                     applied_operations.append({"op": "add_node", "node": new_node})
 
                 elif op_type == "modify_node":
-                    input_ref = op.get("input_ref")
-                    error = input_ref_error(input_ref, session_state)
-                    if error:
-                        raise ValueError(error)
-
                     node_id = self._resolve_id(op["node_id"], temp_id_map)
                     node_idx = next(
                         (i for i, n in enumerate(new_workflow["nodes"]) if n["id"] == node_id),
@@ -227,7 +212,7 @@ class BatchEditWorkflowTool(Tool):
                     if updated_node.get("type") == "decision":
                         condition = updated_node.get("condition")
                         if condition:
-                            condition_error = validate_decision_condition(condition, new_workflow.get("inputs", []))
+                            condition_error = validate_decision_condition(condition, new_workflow.get("variables", []))
                             if condition_error:
                                 raise ValueError(f"Invalid condition for decision node: {condition_error}")
                     
