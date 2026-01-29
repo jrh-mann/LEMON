@@ -368,10 +368,12 @@ def register_routes(
         domain = payload.get("domain")
         tags = payload.get("tags") or []
 
-        # Extract workflow structure (nodes, edges, inputs, doubts)
+        # Extract workflow structure (nodes, edges, variables, doubts)
         nodes = payload.get("nodes") or []
         edges = payload.get("edges") or []
-        inputs = payload.get("inputs") or []
+        # Frontend sends 'variables' as the unified variable system
+        # Also check 'inputs' for backwards compatibility with older payloads
+        variables = payload.get("variables") or payload.get("inputs") or []
         doubts = payload.get("doubts") or []
 
         # ALWAYS compute tree from nodes/edges - don't rely on frontend
@@ -390,10 +392,11 @@ def register_routes(
         is_validated = payload.get("is_validated") or False
 
         # Validate workflow structure before saving
+        # Use 'variables' key - validator expects this for decision condition validation
         workflow_to_validate = {
             "nodes": nodes,
             "edges": edges,
-            "inputs": inputs,
+            "variables": variables,
         }
         is_valid, validation_errors = _workflow_validator.validate(
             workflow_to_validate, strict=True
@@ -419,7 +422,7 @@ def register_routes(
                 tags=tags,
                 nodes=nodes,
                 edges=edges,
-                inputs=inputs,
+                inputs=variables,  # Storage layer uses 'inputs' parameter name
                 outputs=outputs,
                 tree=tree,
                 doubts=doubts,
@@ -438,7 +441,7 @@ def register_routes(
                 tags=tags,
                 nodes=nodes,
                 edges=edges,
-                inputs=inputs,
+                inputs=variables,  # Storage layer uses 'inputs' parameter name
                 outputs=outputs,
                 tree=tree,
                 doubts=doubts,

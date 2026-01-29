@@ -593,6 +593,8 @@ export function sendChatMessage(
       nodes: workflowStore.flowchart.nodes,
       edges: workflowStore.flowchart.edges,
     },
+    // Include analysis so backend has current variables
+    analysis: workflowStore.currentAnalysis ?? undefined,
   })
 }
 
@@ -631,16 +633,20 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
     edges: workflowStore.flowchart.edges,
   }
 
+  const analysis = workflowStore.currentAnalysis
+
   console.log('[Socket] Syncing workflow to backend:', {
     source,
     conversationId,
     nodes: workflow.nodes.length,
     edges: workflow.edges.length,
+    variables: analysis?.variables?.length ?? 0,
   })
 
   sock.emit('sync_workflow', {
     conversation_id: conversationId,
     workflow,
+    analysis,
     source,
   })
 }

@@ -138,6 +138,76 @@ class TestOutputTemplateValidation:
         template_errors = [e for e in errors if e.code in ("INVALID_TEMPLATE_VARIABLE", "INVALID_LABEL_VARIABLE")]
         assert len(template_errors) == 0
 
+    def test_subprocess_output_variable_valid_in_template(self):
+        """Subprocess output_variable should be recognized as valid in end node templates.
+        
+        When a subprocess node defines output_variable='BMI', that variable is created
+        at runtime and should be valid for use in subsequent end node templates.
+        """
+        workflow = {
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {
+                    "id": "subprocess_calc",
+                    "type": "subprocess",
+                    "label": "Calculate BMI",
+                    "x": 100,
+                    "y": 0,
+                    "subworkflow_id": "wf_bmi_calc",
+                    "input_mapping": {"Height": "height", "Weight": "weight"},
+                    "output_variable": "BMI",  # This creates a derived variable
+                },
+                {"id": "end", "type": "end", "label": "BMI Result: {BMI}", "x": 200, "y": 0},
+            ],
+            "edges": [
+                {"id": "start->subprocess", "from": "start", "to": "subprocess_calc", "label": ""},
+                {"id": "subprocess->end", "from": "subprocess_calc", "to": "end", "label": ""},
+            ],
+            "variables": [
+                {"id": "var_height_float", "name": "Height", "type": "float"},
+                # BMI is NOT in variables list - it's derived from subprocess output_variable
+            ]
+        }
+
+        is_valid, errors = self.validator.validate(workflow, strict=True)
+        template_errors = [e for e in errors if e.code in ("INVALID_TEMPLATE_VARIABLE", "INVALID_LABEL_VARIABLE")]
+        assert len(template_errors) == 0, f"BMI should be valid from subprocess output_variable: {template_errors}"
+
+    def test_subprocess_output_variable_in_output_template_field(self):
+        """Subprocess output_variable should be valid in output_template field too."""
+        workflow = {
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {
+                    "id": "subprocess_calc",
+                    "type": "subprocess",
+                    "label": "Calculate Score",
+                    "x": 100,
+                    "y": 0,
+                    "subworkflow_id": "wf_score_calc",
+                    "input_mapping": {},
+                    "output_variable": "FinalScore",
+                },
+                {
+                    "id": "end",
+                    "type": "end",
+                    "label": "Done",
+                    "output_template": "Your score is {FinalScore}",
+                    "x": 200,
+                    "y": 0,
+                },
+            ],
+            "edges": [
+                {"id": "start->subprocess", "from": "start", "to": "subprocess_calc", "label": ""},
+                {"id": "subprocess->end", "from": "subprocess_calc", "to": "end", "label": ""},
+            ],
+            "variables": []  # No input variables, only derived from subprocess
+        }
+
+        is_valid, errors = self.validator.validate(workflow, strict=True)
+        template_errors = [e for e in errors if e.code in ("INVALID_TEMPLATE_VARIABLE", "INVALID_LABEL_VARIABLE")]
+        assert len(template_errors) == 0, f"FinalScore should be valid: {template_errors}"
+
 
 class TestComparatorValidation:
     """Test that decision conditions validate comparator types."""

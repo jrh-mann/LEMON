@@ -106,6 +106,7 @@ class SocketChatTask:
     conversation_id: Optional[str]
     image_data: Optional[str]
     workflow: Optional[Dict[str, Any]]
+    analysis: Optional[Dict[str, Any]]  # Frontend analysis (variables, outputs, etc)
     done: Event = field(default_factory=Event)
     executed_tools: list[dict[str, Any]] = field(default_factory=list)
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
@@ -222,8 +223,15 @@ class SocketChatTask:
         return True
 
     def _sync_payload_workflow(self) -> None:
-        if self.convo and isinstance(self.workflow, dict):
+        """Sync workflow and analysis from chat payload to conversation."""
+        if not self.convo:
+            return
+        if isinstance(self.workflow, dict):
             self.convo.update_workflow_state(self.workflow)
+        if isinstance(self.analysis, dict):
+            # Merge frontend analysis into conversation's workflow_analysis
+            # This ensures variables added from frontend UI are available to orchestrator
+            self.convo.update_workflow_analysis(self.analysis)
 
     def _sync_orchestrator_from_convo(self) -> None:
         if not self.convo:
@@ -319,6 +327,7 @@ def handle_socket_chat(
         conversation_id=payload.get("conversation_id"),
         image_data=payload.get("image"),
         workflow=payload.get("workflow"),
+        analysis=payload.get("analysis"),
     )
     socketio.start_background_task(task.run)
 
@@ -365,9 +374,14 @@ def handle_sync_workflow(
         logger.warning("sync_workflow invalid workflow format")
         return
 
-    # Store in session
+    # Store workflow and analysis in session
     convo = conversation_store.get_or_create(conversation_id)
     convo.update_workflow_state(workflow)
+
+    # Sync analysis (variables, outputs) from frontend to conversation
+    analysis = payload.get("analysis")
+    if isinstance(analysis, dict):
+        convo.update_workflow_analysis(analysis)
 
     logger.info(
         "Synced workflow conv=%s source=%s nodes=%d edges=%d",

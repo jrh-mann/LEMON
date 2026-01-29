@@ -85,6 +85,20 @@ class WorkflowValidator:
         workflow_variables = workflow.get("variables", [])
         if workflow_variables:
             valid_var_names = {v.get("name") for v in workflow_variables if v.get("name")}
+        
+        # Also collect output_variable names from subprocess nodes as derived variables
+        # These are variables created at runtime by subprocess execution
+        subprocess_output_vars: Set[str] = set()
+        for node in nodes:
+            if node.get("type") == "subprocess" and node.get("output_variable"):
+                subprocess_output_vars.add(node["output_variable"])
+        
+        # Merge subprocess outputs into valid variable names
+        if subprocess_output_vars:
+            if valid_var_names is None:
+                valid_var_names = subprocess_output_vars
+            else:
+                valid_var_names = valid_var_names | subprocess_output_vars
 
         # Rule 1 & 2: Validate node structure
         for node in nodes:
