@@ -687,7 +687,7 @@ export function startWorkflowExecution(
   const workflow = {
     nodes: workflowStore.flowchart.nodes,
     edges: workflowStore.flowchart.edges,
-    inputs: workflowStore.currentAnalysis?.variables ?? [],  // Backend expects 'inputs'
+    variables: workflowStore.currentAnalysis?.variables ?? [],
     outputs: workflowStore.currentAnalysis?.outputs ?? [],
   }
 

@@ -24,10 +24,10 @@ from ..tools import (
     AddConnectionTool,
     DeleteConnectionTool,
     BatchEditWorkflowTool,
-    AddWorkflowInputTool,
-    ListWorkflowInputsTool,
-    ModifyWorkflowInputTool,
-    RemoveWorkflowInputTool,
+    AddWorkflowVariableTool,
+    ListWorkflowVariablesTool,
+    ModifyWorkflowVariableTool,
+    RemoveWorkflowVariableTool,
     SetWorkflowOutputTool,
     ValidateWorkflowTool,
 )
@@ -147,11 +147,11 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     delete_conn_tool = DeleteConnectionTool()
     batch_edit_tool = BatchEditWorkflowTool()
 
-    # Workflow input management tools
-    add_input_tool = AddWorkflowInputTool()
-    list_inputs_tool = ListWorkflowInputsTool()
-    modify_input_tool = ModifyWorkflowInputTool()
-    remove_input_tool = RemoveWorkflowInputTool()
+    # Workflow variable management tools
+    add_variable_tool = AddWorkflowVariableTool()
+    list_variables_tool = ListWorkflowVariablesTool()
+    modify_variable_tool = ModifyWorkflowVariableTool()
+    remove_variable_tool = RemoveWorkflowVariableTool()
     set_output_tool = SetWorkflowOutputTool()
     validate_tool = ValidateWorkflowTool()
 
@@ -291,16 +291,16 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["range_min"] = range_min
         if range_max is not None:
             args["range_max"] = range_max
-        return add_input_tool.execute(args, session_state=session_state or {})
+        return add_variable_tool.execute(args, session_state=session_state or {})
 
-    @server.tool(name="list_workflow_inputs")
-    def list_workflow_inputs(
+    @server.tool(name="list_workflow_variables")
+    def list_workflow_variables(
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return list_inputs_tool.execute({}, session_state=session_state or {})
+        return list_variables_tool.execute({}, session_state=session_state or {})
 
-    @server.tool(name="remove_workflow_input")
-    def remove_workflow_input(
+    @server.tool(name="remove_workflow_variable")
+    def remove_workflow_variable(
         name: str,
         force: bool = False,
         session_state: dict[str, Any] | None = None,
@@ -308,7 +308,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         args: dict[str, Any] = {"name": name}
         if force:
             args["force"] = force
-        return remove_input_tool.execute(args, session_state=session_state or {})
+        return remove_variable_tool.execute(args, session_state=session_state or {})
 
     @server.tool(name="modify_workflow_variable")
     def modify_workflow_variable(
@@ -334,7 +334,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["range_min"] = range_min
         if range_max is not None:
             args["range_max"] = range_max
-        return modify_input_tool.execute(args, session_state=session_state or {})
+        return modify_variable_tool.execute(args, session_state=session_state or {})
 
     @server.tool(name="set_workflow_output")
     def set_workflow_output(

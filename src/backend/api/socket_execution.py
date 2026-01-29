@@ -267,14 +267,14 @@ class SteppedExecutionTask:
                 self.emit_error("Workflow has no start node")
                 return
 
-            # Get inputs/outputs from workflow metadata
-            workflow_inputs = self.workflow.get("inputs", [])
+            # Get variables/outputs from workflow metadata
+            workflow_variables = self.workflow.get("variables", [])
             workflow_outputs = self.workflow.get("outputs", [])
 
             # Create interpreter with on_step callback
             interpreter = TreeInterpreter(
                 tree=tree,
-                inputs=workflow_inputs,
+                inputs=workflow_variables,
                 outputs=workflow_outputs,
                 workflow_store=self.workflow_store,
                 user_id=self.user_id,
