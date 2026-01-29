@@ -55,7 +55,7 @@ Deletions are permanent within a session.
 ### Code Quality
 
 **9. Canvas.tsx size**
-`Canvas.tsx` is 1400+ lines handling rendering, interaction, and state.
+`Canvas.tsx` is 1536 lines handling rendering, interaction, and state.
 - Impact: Difficult to maintain and test.
 - Expected: Split into smaller components (NodeRenderer, EdgeRenderer, SelectionManager, etc.).
 
@@ -70,9 +70,23 @@ Backend uses top-left coordinates; frontend uses center coordinates.
 - Location: `utils/canvas/transform.ts` handles conversion.
 - Expected: Document clearly or unify to single system.
 
+### Architecture & Policy
+
+**12. Backwards compatibility patterns vs CLAUDE.md policy**
+The CLAUDE.md states "NEVER implement backwards compatibility" yet multiple patterns exist:
+- Tool aliases: `add_workflow_input` → `add_workflow_variable` (3 tools)
+- Database column `inputs` exposes as API key `variables`
+- Interpreter accepts both `variables` and `inputs` keys
+- Legacy ID format `input_age_int` still supported alongside `var_age_int`
+- Routes accept both `variables` and `inputs` in payloads
+- Migration helper `ensure_workflow_analysis()` converts legacy to new format
+- Impact: Creates confusion about when backwards compat is acceptable.
+- Expected: Either update CLAUDE.md to document these exceptions, or plan migration to remove all fallbacks.
+- Note: These exceptions exist for valid reasons (database stability, LLM tool naming stability) but conflict with stated policy.
+
 ### Type Safety
 
-**12. LSP type errors (non-blocking)**
+**13. LSP type errors (non-blocking)**
 Several type annotation issues that don't affect runtime:
 - `Flask-SocketIO`'s `request.sid` not recognized by type checker
 - MCP server response types incomplete
@@ -82,28 +96,28 @@ Impact: IDE warnings, no runtime issues. Low priority.
 
 ## Low Priority (Deferred)
 
-**13. Label sanitization**
+**14. Label sanitization**
 Labels accept raw HTML/JS-like content.
 - Impact: Potential XSS if rendered unsafely.
 - Expected: Escape or sanitize on render.
 - Status: React's JSX escaping provides protection, but explicit sanitization recommended.
 
-**14. No label length limits**
+**15. No label length limits**
 Very long labels are accepted.
 - Impact: UI and storage bloat, canvas rendering issues.
 - Expected: Reasonable limits (e.g., 200 chars).
 
-**15. No coordinate bounds**
+**16. No coordinate bounds**
 Nodes can be placed far off-canvas.
 - Impact: Hard to find nodes, poor UX.
 - Expected: Clamp or warn on extreme values.
 
-**16. Empty or whitespace labels**
+**17. Empty or whitespace labels**
 Blank labels are accepted.
 - Impact: Invisible/confusing nodes.
 - Expected: Require non-empty trimmed labels.
 
-**17. Case sensitivity inconsistencies**
+**18. Case sensitivity inconsistencies**
 Variable names are case-insensitive in some places but not others.
 - Impact: Confusing user experience.
 - Expected: Document or normalize behavior.
