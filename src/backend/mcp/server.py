@@ -13,7 +13,9 @@ from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..storage.workflows import WorkflowStore
 from ..utils.logging import setup_logging
+from ..utils.paths import lemon_data_dir
 from ..tools import (
     AnalyzeWorkflowTool,
     PublishLatestAnalysisTool,
@@ -355,7 +357,10 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     ) -> dict[str, Any]:
         return validate_tool.execute({}, session_state=session_state or {})
 
-    # Workflow library tools
+    # Workflow library tools — needs its own WorkflowStore since MCP can't
+    # receive the live object from the orchestrator's session_state.
+    _data_dir = lemon_data_dir(_repo_root())
+    _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
     list_library_tool = ListWorkflowsInLibrary()
 
     @server.tool(name="list_workflows_in_library")
@@ -371,7 +376,10 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         if domain is not None:
             args["domain"] = domain
         args["limit"] = limit
-        return list_library_tool.execute(args, session_state=session_state or {})
+        # Inject workflow_store so the tool can query the DB in MCP mode
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return list_library_tool.execute(args, session_state=state)
 
     return server
 
