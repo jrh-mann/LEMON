@@ -16,4 +16,7 @@ def create_socketio(app: Flask) -> SocketIO:
         engineio_logger=True,
         max_http_buffer_size=10 * 1024 * 1024,
         async_mode="threading",
+        # Longer intervals prevent Azure load balancer from killing idle connections
+        ping_interval=10,  # Send ping every 10s (default 25s)
+        ping_timeout=60,   # Wait 60s for pong (default 20s)
     )
