@@ -30,6 +30,7 @@ from ..tools import (
     RemoveWorkflowVariableTool,
     SetWorkflowOutputTool,
     ValidateWorkflowTool,
+    ListWorkflowsInLibrary,
 )
 from ..utils.uploads import save_uploaded_image
 
@@ -272,8 +273,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     ) -> dict[str, Any]:
         return batch_edit_tool.execute({"operations": operations}, session_state=session_state or {})
 
-    @server.tool(name="add_workflow_input")
-    def add_workflow_input(
+    @server.tool(name="add_workflow_variable")
+    def add_workflow_variable(
         name: str,
         type: str,
         description: str | None = None,
@@ -353,6 +354,24 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return validate_tool.execute({}, session_state=session_state or {})
+
+    # Workflow library tools
+    list_library_tool = ListWorkflowsInLibrary()
+
+    @server.tool(name="list_workflows_in_library")
+    def list_workflows_in_library(
+        search_query: str | None = None,
+        domain: str | None = None,
+        limit: int = 50,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args: dict[str, Any] = {}
+        if search_query is not None:
+            args["search_query"] = search_query
+        if domain is not None:
+            args["domain"] = domain
+        args["limit"] = limit
+        return list_library_tool.execute(args, session_state=session_state or {})
 
     return server
 
