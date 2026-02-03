@@ -21,6 +21,7 @@ export default function WorkflowBrowser() {
   const [publishedWorkflows, setPublishedWorkflows] = useState<WorkflowSummary[]>([])
   const [userVotes, setUserVotes] = useState<Record<string, number>>({})  // workflow_id -> vote (+1/-1)
   const [votingId, setVotingId] = useState<string | null>(null)  // ID of workflow currently being voted on
+  const [publishThreshold, setPublishThreshold] = useState<number>(1)  // Votes needed for "reviewed" status
 
   // Common state
   const [searchQuery, setSearchQuery] = useState('')
@@ -51,8 +52,9 @@ export default function WorkflowBrowser() {
     setError(null)
     try {
       // Load ALL published workflows - voting is allowed on all
-      const workflowsData = await listPublicWorkflows()
+      const { workflows: workflowsData, publishThreshold: threshold } = await listPublicWorkflows()
       setPeerReviewWorkflows(workflowsData)
+      setPublishThreshold(threshold)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflows for review')
     } finally {
@@ -65,8 +67,9 @@ export default function WorkflowBrowser() {
     setIsLoading(true)
     setError(null)
     try {
-      const workflowsData = await listPublicWorkflows('reviewed')
+      const { workflows: workflowsData, publishThreshold: threshold } = await listPublicWorkflows('reviewed')
       setPublishedWorkflows(workflowsData)
+      setPublishThreshold(threshold)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load published workflows')
     } finally {
@@ -345,12 +348,12 @@ export default function WorkflowBrowser() {
         {/* Vote count display for peer review */}
         {showVoting && (
           <div className="workflow-votes">
-            <span className={`vote-count ${(workflow.net_votes ?? 0) > 0 ? 'positive' : (workflow.net_votes ?? 0) < 0 ? 'negative' : ''}`}>
-              {(workflow.net_votes ?? 0) > 0 ? '+' : ''}{workflow.net_votes ?? 0} votes
+            <span className={`vote-count ${(workflow.net_votes ?? 0) >= publishThreshold ? 'positive' : (workflow.net_votes ?? 0) < 0 ? 'negative' : ''}`}>
+              {(workflow.net_votes ?? 0) > 0 ? '+' : ''}{workflow.net_votes ?? 0} / {publishThreshold} votes
             </span>
             {workflow.review_status === 'unreviewed' && (
               <span className="votes-needed">
-                ({1 - (workflow.net_votes ?? 0)} more for review)
+                ({publishThreshold - (workflow.net_votes ?? 0)} more to publish)
               </span>
             )}
           </div>
@@ -441,7 +444,7 @@ export default function WorkflowBrowser() {
       {activeTab === 'peer-review' && (
         <div className="peer-review-info">
           <p>
-            <strong>Help review community workflows!</strong> Workflows with 1+ net upvotes
+            <strong>Help review community workflows!</strong> Workflows with {publishThreshold}+ net upvotes
             appear in Published. Continue voting to adjust their visibility.
           </p>
         </div>

@@ -127,6 +127,7 @@ export async function compileToPython(
 export interface PublicWorkflowsResponse {
   workflows: WorkflowSummary[]
   count: number
+  publish_threshold: number  // Votes needed for "reviewed" status
 }
 
 // Response type for voting
@@ -139,9 +140,10 @@ export interface VoteResponse {
 
 // List published workflows for peer review
 // Can filter by review_status: 'unreviewed', 'reviewed', or all (no filter)
+// Returns workflows and the publish threshold
 export async function listPublicWorkflows(
   reviewStatus?: 'unreviewed' | 'reviewed'
-): Promise<WorkflowSummary[]> {
+): Promise<{ workflows: WorkflowSummary[], publishThreshold: number }> {
   const params = new URLSearchParams()
   if (reviewStatus) {
     params.set('review_status', reviewStatus)
@@ -150,7 +152,10 @@ export async function listPublicWorkflows(
   const endpoint = query ? `/api/workflows/public?${query}` : '/api/workflows/public'
 
   const response = await api.get<PublicWorkflowsResponse>(endpoint)
-  return response.workflows
+  return {
+    workflows: response.workflows,
+    publishThreshold: response.publish_threshold,
+  }
 }
 
 // Get a specific published workflow by ID

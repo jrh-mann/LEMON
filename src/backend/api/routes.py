@@ -32,7 +32,7 @@ from ..utils.uploads import save_uploaded_image
 from ..utils.flowchart import tree_from_flowchart
 from .response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ..storage.auth import AuthStore, AuthUser
-from ..storage.workflows import WorkflowStore
+from ..storage.workflows import WorkflowStore, PUBLISH_VOTE_THRESHOLD
 from ..validation.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger("backend.api")
@@ -731,7 +731,11 @@ def register_routes(
                 "publisher_id": wf.user_id,  # Show who published it
             })
 
-        return jsonify({"workflows": summaries, "count": total_count})
+        return jsonify({
+            "workflows": summaries,
+            "count": total_count,
+            "publish_threshold": PUBLISH_VOTE_THRESHOLD,  # Votes needed for "reviewed" status
+        })
 
     @app.get("/api/workflows/public/<workflow_id>")
     def get_public_workflow(workflow_id: str) -> Any:

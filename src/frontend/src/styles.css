@@ -2959,8 +2959,8 @@ body {
 }
 
 .vote-btn.downvote.active {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--rose);
+  border-color: var(--rose);
   color: white;
 }
 

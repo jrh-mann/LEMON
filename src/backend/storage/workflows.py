@@ -11,6 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+# Minimum net upvotes required for a workflow to be promoted to "reviewed" status
+# and appear in the Published tab. Can be changed here to adjust threshold.
+PUBLISH_VOTE_THRESHOLD = 1
+
 
 @dataclass(frozen=True)
 class WorkflowRecord:
@@ -751,23 +755,23 @@ class WorkflowStore:
             new_net_votes = updated["net_votes"]
             new_status = updated["review_status"]
 
-            # Auto-promote to reviewed if net_votes >= 1
-            if new_net_votes >= 1 and new_status == "unreviewed":
+            # Auto-promote to reviewed if net_votes >= threshold
+            if new_net_votes >= PUBLISH_VOTE_THRESHOLD and new_status == "unreviewed":
                 conn.execute(
                     "UPDATE workflows SET review_status = 'reviewed' WHERE id = ?",
                     (workflow_id,),
                 )
                 new_status = "reviewed"
-                self._logger.info("Workflow %s promoted to reviewed (net_votes=%d)", workflow_id, new_net_votes)
+                self._logger.info("Workflow %s promoted to reviewed (net_votes=%d, threshold=%d)", workflow_id, new_net_votes, PUBLISH_VOTE_THRESHOLD)
 
-            # Auto-demote to unreviewed if net_votes < 1
-            if new_net_votes < 1 and new_status == "reviewed":
+            # Auto-demote to unreviewed if net_votes falls below threshold
+            if new_net_votes < PUBLISH_VOTE_THRESHOLD and new_status == "reviewed":
                 conn.execute(
                     "UPDATE workflows SET review_status = 'unreviewed' WHERE id = ?",
                     (workflow_id,),
                 )
                 new_status = "unreviewed"
-                self._logger.info("Workflow %s demoted to unreviewed (net_votes=%d)", workflow_id, new_net_votes)
+                self._logger.info("Workflow %s demoted to unreviewed (net_votes=%d, threshold=%d)", workflow_id, new_net_votes, PUBLISH_VOTE_THRESHOLD)
 
         return {
             "success": True,
