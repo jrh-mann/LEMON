@@ -130,9 +130,13 @@ export default function Chat() {
 
   // Handle resize drag
   const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()  // Prevent text selection
     isDragging.current = true
     startY.current = e.clientY
     startHeight.current = chatHeight
+    // Disable text selection and set cursor during drag
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
   }
@@ -147,6 +151,9 @@ export default function Chat() {
 
   const handleMouseUp = () => {
     isDragging.current = false
+    // Restore text selection and cursor
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
     document.removeEventListener('mousemove', handleMouseMove)
     document.removeEventListener('mouseup', handleMouseUp)
   }
