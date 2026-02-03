@@ -3,10 +3,10 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
 import { autoLayoutFlowchart } from '../utils/canvas'
-import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis, Workflow, ReviewStatus } from '../types'
+import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 // Tab options for the workflow browser
-type BrowserTab = 'my-workflows' | 'peer-review'
+type BrowserTab = 'my-workflows' | 'peer-review' | 'published'
 
 export default function WorkflowBrowser() {
   // Tab state
@@ -15,9 +15,10 @@ export default function WorkflowBrowser() {
   // My Workflows state
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
 
-  // Peer Review state
-  const [publicWorkflows, setPublicWorkflows] = useState<WorkflowSummary[]>([])
-  const [reviewFilter, setReviewFilter] = useState<ReviewStatus | 'all'>('unreviewed')
+  // Peer Review state (unreviewed workflows)
+  const [unreviewedWorkflows, setUnreviewedWorkflows] = useState<WorkflowSummary[]>([])
+  // Published state (reviewed workflows)
+  const [publishedWorkflows, setPublishedWorkflows] = useState<WorkflowSummary[]>([])
   const [userVotes, setUserVotes] = useState<Record<string, number>>({})  // workflow_id -> vote (+1/-1)
   const [votingId, setVotingId] = useState<string | null>(null)  // ID of workflow currently being voted on
 
@@ -44,29 +45,44 @@ export default function WorkflowBrowser() {
     }
   }, [setGlobalWorkflows])
 
-  // Load public workflows for peer review
-  const loadPublicWorkflows = useCallback(async () => {
+  // Load unreviewed workflows for peer review
+  const loadUnreviewedWorkflows = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const filter = reviewFilter === 'all' ? undefined : reviewFilter
-      const workflowsData = await listPublicWorkflows(filter)
-      setPublicWorkflows(workflowsData)
+      const workflowsData = await listPublicWorkflows('unreviewed')
+      setUnreviewedWorkflows(workflowsData)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load public workflows')
+      setError(err instanceof Error ? err.message : 'Failed to load workflows for review')
     } finally {
       setIsLoading(false)
     }
-  }, [reviewFilter])
+  }, [])
+
+  // Load published (reviewed) workflows
+  const loadPublishedWorkflows = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const workflowsData = await listPublicWorkflows('reviewed')
+      setPublishedWorkflows(workflowsData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load published workflows')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   // Load data based on active tab
   useEffect(() => {
     if (activeTab === 'my-workflows') {
       loadMyWorkflows()
+    } else if (activeTab === 'peer-review') {
+      loadUnreviewedWorkflows()
     } else {
-      loadPublicWorkflows()
+      loadPublishedWorkflows()
     }
-  }, [activeTab, loadMyWorkflows, loadPublicWorkflows])
+  }, [activeTab, loadMyWorkflows, loadUnreviewedWorkflows, loadPublishedWorkflows])
 
   // Handle voting on a public workflow
   const handleVote = useCallback(async (workflowId: string, vote: number, e: React.MouseEvent) => {
@@ -87,11 +103,16 @@ export default function WorkflowBrowser() {
       }))
 
       // Update workflow in list with new vote count and status
-      setPublicWorkflows(prev => prev.map(w =>
-        w.id === workflowId
-          ? { ...w, net_votes: result.net_votes, review_status: result.review_status }
-          : w
-      ))
+      // If it got promoted to reviewed, remove from unreviewed list
+      if (result.review_status === 'reviewed') {
+        setUnreviewedWorkflows(prev => prev.filter(w => w.id !== workflowId))
+      } else {
+        setUnreviewedWorkflows(prev => prev.map(w =>
+          w.id === workflowId
+            ? { ...w, net_votes: result.net_votes, review_status: result.review_status }
+            : w
+        ))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to vote')
     } finally {
@@ -112,7 +133,8 @@ export default function WorkflowBrowser() {
 
   // Filtered lists for each tab
   const filteredMyWorkflows = workflows.filter(filterBySearch)
-  const filteredPublicWorkflows = publicWorkflows.filter(filterBySearch)
+  const filteredUnreviewedWorkflows = unreviewedWorkflows.filter(filterBySearch)
+  const filteredPublishedWorkflows = publishedWorkflows.filter(filterBySearch)
 
   // Handle workflow deletion
   const handleDeleteWorkflow = async (workflowId: string, workflowName: string, e: React.MouseEvent) => {
@@ -377,6 +399,12 @@ export default function WorkflowBrowser() {
         >
           Peer Review
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'published' ? 'active' : ''}`}
+          onClick={() => setActiveTab('published')}
+        >
+          Published
+        </button>
       </div>
 
       {/* Search */}
@@ -388,19 +416,6 @@ export default function WorkflowBrowser() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="search-input"
         />
-
-        {/* Review status filter (only for peer review tab) */}
-        {activeTab === 'peer-review' && (
-          <select
-            value={reviewFilter}
-            onChange={(e) => setReviewFilter(e.target.value as ReviewStatus | 'all')}
-            className="review-filter"
-          >
-            <option value="unreviewed">Needs Review</option>
-            <option value="reviewed">Reviewed</option>
-            <option value="all">All Published</option>
-          </select>
-        )}
       </div>
 
       {/* Peer review info banner */}
@@ -415,19 +430,28 @@ export default function WorkflowBrowser() {
 
       {/* Workflow list */}
       <div className="workflow-list">
-        {activeTab === 'my-workflows' ? (
+        {activeTab === 'my-workflows' && (
           // My Workflows list
           filteredMyWorkflows.length === 0 ? (
             <p className="muted">No workflows found</p>
           ) : (
             filteredMyWorkflows.map((workflow) => renderWorkflowCard(workflow, false))
           )
-        ) : (
-          // Peer Review list
-          filteredPublicWorkflows.length === 0 ? (
+        )}
+        {activeTab === 'peer-review' && (
+          // Peer Review list (unreviewed - with voting)
+          filteredUnreviewedWorkflows.length === 0 ? (
             <p className="muted">No workflows to review</p>
           ) : (
-            filteredPublicWorkflows.map((workflow) => renderWorkflowCard(workflow, true))
+            filteredUnreviewedWorkflows.map((workflow) => renderWorkflowCard(workflow, true))
+          )
+        )}
+        {activeTab === 'published' && (
+          // Published list (reviewed - no voting)
+          filteredPublishedWorkflows.length === 0 ? (
+            <p className="muted">No published workflows yet</p>
+          ) : (
+            filteredPublishedWorkflows.map((workflow) => renderWorkflowCard(workflow, false))
           )
         )}
       </div>
