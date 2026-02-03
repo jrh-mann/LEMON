@@ -1,10 +1,8 @@
 // Admin page for batch workflow execution against clinical CSV data.
 //
-// Flow: Upload CSVs → inspect data → pick workflow → map Code Terms
-//       to variables → preview → execute → download results CSV.
-//
-// Raw clinical data is parsed client-side only. The server receives
-// only structured {emis_number, input_values} dicts for execution.
+// Single-page dashboard layout: data/mapping on the left, results on the right.
+// Raw clinical data is parsed client-side only — the server receives only
+// structured {emis_number, input_values} dicts for execution.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Papa from 'papaparse'
@@ -18,40 +16,33 @@ import type {
   PatientRecord,
   VariableMapping,
   GapAnalysisItem,
-  BatchResultRow,
 } from '../types/admin'
 import type { WorkflowVariable } from '../types'
 
-// Auto-detect header row by looking for "EMIS Number" in first column
-
 // ============================================================================
-// CSV PARSING HELPERS
+// CSV PARSING HELPERS (client-side only)
 // ============================================================================
 
 /** Parse a date string like "24-Mar-17" or "08-Oct-15" into a Date */
 function parseEMISDate(dateStr: string): Date {
   if (!dateStr) return new Date(0)
-  // Try native parsing first (handles ISO and many formats)
   const d = new Date(dateStr)
   if (!isNaN(d.getTime())) return d
-  // Fallback: DD-Mon-YY format
   const parts = dateStr.split('-')
   if (parts.length === 3) {
     const [day, mon, year] = parts
-    // Two-digit year: 00-49 → 2000s, 50-99 → 1900s
     const fullYear = parseInt(year) < 50 ? `20${year}` : `19${year}`
-    const rebuilt = `${day} ${mon} ${fullYear}`
-    const d2 = new Date(rebuilt)
+    const d2 = new Date(`${day} ${mon} ${fullYear}`)
     if (!isNaN(d2.getTime())) return d2
   }
   return new Date(0)
 }
 
-/** Parse CSV text, auto-detecting header row by looking for "EMIS Number" */
+/** Parse CSV text, auto-detecting header row by scanning for "EMIS Number" */
 function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file: UploadedFile } {
   const result = Papa.parse<string[]>(text, { header: false, skipEmptyLines: 'greedy' })
 
-  // Find the header row (contains "EMIS Number" or "EMIS")
+  // Find the header row (contains "EMIS Number")
   let headerIndex = -1
   for (let i = 0; i < Math.min(result.data.length, 20); i++) {
     const firstCol = result.data[i][0]?.toString().toLowerCase().trim()
@@ -60,25 +51,13 @@ function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file
       break
     }
   }
+  if (headerIndex === -1) headerIndex = 9 // fallback for standard EMIS export
 
-  if (headerIndex === -1) {
-    console.warn(`[parseCSVText] Could not find header row in ${fileName}, trying row 9`)
-    headerIndex = 9 // fallback
-  }
-
-  // Data starts after header row
   const dataRows = result.data.slice(headerIndex + 1)
-  console.log(`[parseCSVText] ${fileName}: header at row ${headerIndex}, ${dataRows.length} data rows`)
-
   const rows: ParsedRow[] = []
   for (const cols of dataRows) {
-    // Skip rows without EMIS number or with too few columns
     const emisNum = cols[0]?.toString().trim()
-    if (!emisNum || cols.length < 3) continue
-
-    // Skip if first column looks like metadata (contains letters other than just the number)
-    if (!/^\d+$/.test(emisNum)) continue
-
+    if (!emisNum || cols.length < 3 || !/^\d+$/.test(emisNum)) continue
     rows.push({
       emis_number: emisNum,
       gender: cols[1]?.toString().trim() ?? '',
@@ -91,12 +70,7 @@ function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file
       secondary_unit: cols[8]?.toString().trim() ?? '',
     })
   }
-
-  console.log(`[parseCSVText] ${fileName}: parsed ${rows.length} valid patient rows`)
-  return {
-    rows,
-    file: { name: fileName, rowCount: rows.length },
-  }
+  return { rows, file: { name: fileName, rowCount: rows.length } }
 }
 
 /** Build Code Term summaries from parsed rows */
@@ -125,15 +99,12 @@ function buildCodeTermSummaries(rows: ParsedRow[]): CodeTermSummary[] {
     .sort((a, b) => b.count - a.count)
 }
 
-/** Pivot long-format rows into one record per patient (latest values) */
+/** Pivot long-format rows into one record per patient (latest value per Code Term) */
 function pivotToPatients(rows: ParsedRow[]): PatientRecord[] {
-  // Group by EMIS number
   const patientMap = new Map<string, {
-    age: number
-    gender: string
+    age: number; gender: string
     codeTermLatest: Map<string, { date: Date; value: string }>
   }>()
-
   for (const row of rows) {
     if (!row.emis_number) continue
     let patient = patientMap.get(row.emis_number)
@@ -141,7 +112,6 @@ function pivotToPatients(rows: ParsedRow[]): PatientRecord[] {
       patient = { age: row.age, gender: row.gender, codeTermLatest: new Map() }
       patientMap.set(row.emis_number, patient)
     }
-    // Keep latest value per Code Term (by date)
     if (row.code_term) {
       const date = parseEMISDate(row.date)
       const existing = patient.codeTermLatest.get(row.code_term)
@@ -150,7 +120,6 @@ function pivotToPatients(rows: ParsedRow[]): PatientRecord[] {
       }
     }
   }
-
   return Array.from(patientMap.entries()).map(([emis, data]) => ({
     emis_number: emis,
     age: data.age,
@@ -161,18 +130,31 @@ function pivotToPatients(rows: ParsedRow[]): PatientRecord[] {
   }))
 }
 
-/** Coerce a string value to the appropriate JS type for a workflow variable */
+/** Coerce a string value to the type expected by a workflow variable */
 function coerceValue(value: string, varType: string): unknown {
   switch (varType) {
-    case 'int':
-      return parseInt(value, 10)
-    case 'float':
-      return parseFloat(value)
-    case 'bool':
-      return ['true', 'yes', '1', 'y'].includes(value.toLowerCase())
-    default:
-      return value
+    case 'int': return parseInt(value, 10)
+    case 'float': return parseFloat(value)
+    case 'bool': return ['true', 'yes', '1', 'y'].includes(value.toLowerCase())
+    default: return value
   }
+}
+
+/** Fuzzy match: does `needle` appear as a substring (case-insensitive) in `haystack`? */
+function fuzzyMatch(needle: string, haystack: string): boolean {
+  const a = needle.toLowerCase()
+  const b = haystack.toLowerCase()
+  // Check if all significant words from needle appear in haystack
+  const words = a.split(/\s+/).filter(w => w.length > 2)
+  return words.length > 0 && words.every(w => b.includes(w))
+}
+
+/** Escape a value for CSV output */
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('\n') || value.includes('"')) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
 }
 
 // ============================================================================
@@ -183,7 +165,6 @@ export default function AdminPage() {
   const store = useAdminStore()
   const [error, setError] = useState<string | null>(null)
 
-  // Load workflow list on mount
   useEffect(() => {
     listWorkflows()
       .then((wfs) => store.setWorkflows(wfs))
@@ -192,119 +173,99 @@ export default function AdminPage() {
   }, [])
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      overflowY: 'auto',
-      background: 'var(--bg, #1a1a1a)',
-      zIndex: 10,
-    }}>
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px', paddingBottom: 100 }}>
+    <div className="admin-page">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24, gap: 16 }}>
-        <button
-          onClick={() => { window.location.hash = '' }}
-          style={linkBtnStyle}
-        >
-          ← Back to Workspace
+      <header className="admin-header">
+        <div className="admin-header-left">
+          <div className="logo">
+            <span className="logo-mark">L</span>
+          </div>
+          <span className="admin-title">Batch Execute</span>
+        </div>
+        <button className="admin-back" onClick={() => { window.location.hash = '' }}>
+          ← Back to workspace
         </button>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>LEMON Admin — Batch Execute</h1>
-      </div>
+      </header>
 
       {error && (
-        <div style={errorBannerStyle}>
+        <div className="admin-error">
           {error}
-          <button onClick={() => setError(null)} style={linkBtnStyle}>dismiss</button>
+          <button onClick={() => setError(null)}>dismiss</button>
         </div>
       )}
 
-      <UploadSection />
-      {store.parsedRows.length > 0 && <MapSection onError={setError} />}
-      {store.mappings.length > 0 && store.selectedWorkflowId && <PreviewSection onError={setError} />}
-      {store.results.length > 0 && <ResultsSection />}
-    </div>
+      {/* Two-column body */}
+      <div className="admin-body">
+        <LeftPanel onError={setError} />
+        <RightPanel onError={setError} />
+      </div>
     </div>
   )
 }
 
 // ============================================================================
-// SECTION 1: UPLOAD
+// LEFT PANEL — Upload + Workflow + Mapping
 // ============================================================================
 
-function UploadSection() {
+function LeftPanel({ onError }: { onError: (msg: string) => void }) {
+  const store = useAdminStore()
+
+  return (
+    <div className="admin-left">
+      <UploadCard />
+      {store.patients.length > 0 && <WorkflowCard onError={onError} />}
+    </div>
+  )
+}
+
+// -- Upload Card --
+
+function UploadCard() {
   const store = useAdminStore()
   const [dragOver, setDragOver] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null)
+  const [processing, setProcessing] = useState<string | null>(null)
 
   const handleFiles = useCallback((files: FileList | null) => {
-    console.log('[AdminPage] handleFiles called with', files?.length, 'files')
     if (!files || files.length === 0) return
-
-    // Use getState() to always get fresh state, avoiding stale closure issues
-    const getLatestState = () => useAdminStore.getState()
-
-    // Track parsed results for this batch
     const batchRows: ParsedRow[][] = []
     const batchFiles: UploadedFile[] = []
-    const totalFiles = files.length
     let doneCount = 0
+    const totalFiles = files.length
 
-    setUploadProgress({ total: totalFiles, done: 0 })
+    setProcessing(`0 / ${totalFiles}`)
 
     for (const file of Array.from(files)) {
-      console.log('[AdminPage] Starting to read file:', file.name)
       const reader = new FileReader()
       reader.onload = (e) => {
         try {
           const text = e.target?.result as string
-          console.log('[AdminPage] File loaded:', file.name, 'size:', (text?.length / 1024 / 1024).toFixed(2), 'MB')
           const { rows, file: fileMeta } = parseCSVText(text, file.name)
-          console.log('[AdminPage] Parsed', rows.length, 'rows from', file.name)
           batchRows.push(rows)
           batchFiles.push(fileMeta)
-        } catch (err) {
-          console.error('[AdminPage] Parse error for', file.name, err)
-          // Still count as done but with empty data
+        } catch {
           batchRows.push([])
-          batchFiles.push({ name: file.name + ' (ERROR)', rowCount: 0 })
+          batchFiles.push({ name: file.name + ' (error)', rowCount: 0 })
         }
-
         doneCount++
-        setUploadProgress({ total: totalFiles, done: doneCount })
+        setProcessing(`${doneCount} / ${totalFiles}`)
 
         if (doneCount === totalFiles) {
-          // All files in this batch parsed — merge with current store state
-          try {
-            const currentState = getLatestState()
-            const allRows = [...currentState.parsedRows, ...batchRows.flat()]
-            const allFiles = [...currentState.uploadedFiles, ...batchFiles]
-            console.log('[AdminPage] All files parsed. Total rows:', allRows.length, 'Total files:', allFiles.length)
-
-            const patients = pivotToPatients(allRows)
-            const codeTerms = buildCodeTermSummaries(allRows)
-            console.log('[AdminPage] Pivoted to', patients.length, 'patients,', codeTerms.length, 'code terms')
-
-            store.setParsedRows(allRows)
-            store.setUploadedFiles(allFiles)
-            store.setCodeTerms(codeTerms)
-            store.setPatients(patients)
-            store.setStage('map')
-          } catch (err) {
-            console.error('[AdminPage] Error finalizing upload:', err)
-          }
-          setUploadProgress(null)
+          const current = useAdminStore.getState()
+          const allRows = [...current.parsedRows, ...batchRows.flat()]
+          const allFiles = [...current.uploadedFiles, ...batchFiles]
+          store.setParsedRows(allRows)
+          store.setUploadedFiles(allFiles)
+          store.setCodeTerms(buildCodeTermSummaries(allRows))
+          store.setPatients(pivotToPatients(allRows))
+          store.setStage('map')
+          setProcessing(null)
         }
       }
-      reader.onerror = (err) => {
-        console.error('[AdminPage] FileReader error for', file.name, err)
+      reader.onerror = () => {
         batchRows.push([])
-        batchFiles.push({ name: file.name + ' (ERROR)', rowCount: 0 })
+        batchFiles.push({ name: file.name + ' (error)', rowCount: 0 })
         doneCount++
-        setUploadProgress({ total: totalFiles, done: doneCount })
-
-        if (doneCount === totalFiles) {
-          setUploadProgress(null)
-        }
+        if (doneCount === totalFiles) setProcessing(null)
       }
       reader.readAsText(file)
     }
@@ -317,11 +278,11 @@ function UploadSection() {
   }, [handleFiles])
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={sectionHeadingStyle}>1. Upload Data</h2>
+    <div>
+      <div className="admin-eyebrow">Data</div>
 
-      {/* Drop zone */}
       <div
+        className={`admin-dropzone${dragOver ? ' drag-over' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
@@ -333,86 +294,77 @@ function UploadSection() {
           input.onchange = () => handleFiles(input.files)
           input.click()
         }}
-        style={{
-          ...dropZoneStyle,
-          borderColor: dragOver ? '#3b82f6' : '#555',
-          background: dragOver ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.03)',
-        }}
       >
-        {uploadProgress
-          ? `Processing ${uploadProgress.done}/${uploadProgress.total} files...`
+        <svg className="admin-dropzone-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        {processing
+          ? <><span className="admin-spinner" /> Processing {processing}</>
           : 'Drop CSV files here or click to browse'}
       </div>
 
-      {/* File list */}
       {store.uploadedFiles.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          {store.uploadedFiles.map((f) => (
-            <div key={f.name} style={{ fontSize: 13, color: '#aaa', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>✓ {f.name} — {f.rowCount.toLocaleString()} rows</span>
-            </div>
-          ))}
-          <div style={{ marginTop: 8, fontSize: 14, color: '#ccc', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span>
-              Patients: <strong>{store.patients.length.toLocaleString()}</strong>
-              {' | '}
-              Code Terms: <strong>{store.codeTerms.length}</strong>
-            </span>
-            <button
-              onClick={() => store.clearUploads()}
-              style={{ ...linkBtnStyle, color: '#f87171' }}
-              title="Clear all uploaded files"
-            >
-              Clear All
-            </button>
+        <>
+          <div className="admin-file-list">
+            {store.uploadedFiles.map((f) => (
+              <div key={f.name} className="admin-file-item">
+                <span className="admin-file-check">✓</span>
+                <span>{f.name}</span>
+                <span className="admin-file-rows">{f.rowCount.toLocaleString()} rows</span>
+              </div>
+            ))}
           </div>
-        </div>
+          <div className="admin-stats">
+            <span><span className="admin-stat-value">{store.patients.length.toLocaleString()}</span> patients</span>
+            <span><span className="admin-stat-value">{store.codeTerms.length}</span> code terms</span>
+            <button className="admin-clear-btn" onClick={() => store.clearUploads()}>Clear all</button>
+          </div>
+        </>
       )}
-    </section>
+    </div>
   )
 }
 
-// ============================================================================
-// SECTION 2: SELECT WORKFLOW + MAP
-// ============================================================================
+// -- Workflow + Mapping Card --
 
-function MapSection({ onError }: { onError: (msg: string) => void }) {
+function WorkflowCard({ onError }: { onError: (msg: string) => void }) {
   const store = useAdminStore()
-  const [loadingWorkflow, setLoadingWorkflow] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  // When user picks a workflow, load its full details and build gap analysis
   const handleWorkflowSelect = useCallback(async (workflowId: string) => {
-    setLoadingWorkflow(true)
+    setLoading(true)
     try {
       const wf = await getWorkflow(workflowId)
-      // The full workflow response has 'inputs' as the variable list
       const variables: WorkflowVariable[] = (wf as any).inputs || []
       store.selectWorkflow(workflowId, variables)
 
-      // Build initial mappings — auto-map Age/Gender from direct columns
-      const codeTermNames = new Set(store.codeTerms.map((ct) => ct.codeTerm))
+      // Build mappings with fuzzy auto-mapping
       const mappings: VariableMapping[] = variables
         .filter((v) => v.source !== 'subprocess')
         .map((v) => {
-          // Try exact-match auto-mapping: if a Code Term matches the variable name
-          const autoMatch = store.codeTerms.find(
+          // Try exact match first, then fuzzy substring match
+          const exactMatch = store.codeTerms.find(
             (ct) => ct.codeTerm.toLowerCase() === v.name.toLowerCase()
           )
-          return {
-            variableName: v.name,
-            codeTerm: autoMatch ? autoMatch.codeTerm : null,
-          }
+          if (exactMatch) return { variableName: v.name, codeTerm: exactMatch.codeTerm }
+
+          const fuzzy = store.codeTerms.find((ct) => fuzzyMatch(v.name, ct.codeTerm))
+          if (fuzzy) return { variableName: v.name, codeTerm: fuzzy.codeTerm }
+
+          return { variableName: v.name, codeTerm: null }
         })
       store.setMappings(mappings)
     } catch (err: any) {
       onError(`Failed to load workflow: ${err.message}`)
     } finally {
-      setLoadingWorkflow(false)
+      setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.codeTerms])
 
-  // Build gap analysis items for display
+  // Gap analysis
   const gapAnalysis: GapAnalysisItem[] = useMemo(() => {
     return store.selectedWorkflowVariables
       .filter((v) => v.source !== 'subprocess')
@@ -420,161 +372,115 @@ function MapSection({ onError }: { onError: (msg: string) => void }) {
         const nameLower = variable.name.toLowerCase()
         const mapping = store.mappings.find((m) => m.variableName === variable.name)
 
-        // Age and Gender come from direct CSV columns
         if (nameLower === 'age' || nameLower === 'gender' || nameLower === 'sex') {
           return { variable, status: 'direct_column' as const, mappedCodeTerm: null }
         }
-
         if (mapping?.codeTerm) {
           return { variable, status: 'mapped' as const, mappedCodeTerm: mapping.codeTerm }
         }
-
-        // Check if any Code Term could be mapped
-        const hasCandidate = store.codeTerms.length > 0
-        return {
-          variable,
-          status: hasCandidate ? 'unmapped' as const : 'not_in_data' as const,
-          mappedCodeTerm: null,
-        }
+        return { variable, status: 'unmapped' as const, mappedCodeTerm: null }
       })
-  }, [store.selectedWorkflowVariables, store.mappings, store.codeTerms])
+  }, [store.selectedWorkflowVariables, store.mappings])
 
-  const mappedCount = gapAnalysis.filter((g) => g.status === 'direct_column' || g.status === 'mapped').length
+  const mappedCount = gapAnalysis.filter((g) => g.status !== 'unmapped').length
   const totalVars = gapAnalysis.length
+  const coveragePct = totalVars > 0 ? Math.round(100 * mappedCount / totalVars) : 0
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={sectionHeadingStyle}>2. Select Workflow & Map Variables</h2>
+    <div>
+      <div className="admin-eyebrow">Workflow & Mapping</div>
 
-      {/* Workflow picker */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 13, color: '#999', display: 'block', marginBottom: 4 }}>
-          Workflow:
-        </label>
-        <select
-          value={store.selectedWorkflowId || ''}
-          onChange={(e) => e.target.value && handleWorkflowSelect(e.target.value)}
-          style={selectStyle}
-        >
-          <option value="">Select a workflow...</option>
-          {store.workflows.map((wf) => (
-            <option key={wf.id} value={wf.id}>{wf.name}</option>
-          ))}
-        </select>
-        {loadingWorkflow && <span style={{ marginLeft: 8, color: '#999', fontSize: 13 }}>Loading...</span>}
-      </div>
+      <select
+        className="admin-select"
+        value={store.selectedWorkflowId || ''}
+        onChange={(e) => e.target.value && handleWorkflowSelect(e.target.value)}
+      >
+        <option value="">Select a workflow...</option>
+        {store.workflows.map((wf) => (
+          <option key={wf.id} value={wf.id}>{wf.name}</option>
+        ))}
+      </select>
 
-      {/* Gap analysis */}
+      {loading && <div style={{ marginTop: 8, fontSize: '0.8rem', color: 'var(--muted)' }}><span className="admin-spinner" /> Loading workflow...</div>}
+
       {store.selectedWorkflowId && gapAnalysis.length > 0 && (
-        <div>
-          <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>
-            Coverage: {mappedCount}/{totalVars} variables mappable ({totalVars > 0 ? Math.round(100 * mappedCount / totalVars) : 0}%)
+        <>
+          {/* Coverage bar */}
+          <div className="admin-coverage">
+            <div className="admin-coverage-bar">
+              <div className="admin-coverage-fill" style={{ width: `${coveragePct}%` }} />
+            </div>
+            <span>{mappedCount}/{totalVars} mapped</span>
           </div>
 
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Variable</th>
-                <th style={thStyle}>Type</th>
-                <th style={thStyle}>Source / Mapping</th>
-              </tr>
-            </thead>
-            <tbody>
-              {gapAnalysis.map((item) => (
-                <tr key={item.variable.id}>
-                  <td style={tdStyle}>{statusIcon(item.status)}</td>
-                  <td style={tdStyle}>{item.variable.name}</td>
-                  <td style={{ ...tdStyle, color: '#999', fontSize: 12 }}>{item.variable.type}</td>
-                  <td style={tdStyle}>
-                    {item.status === 'direct_column' ? (
-                      <span style={{ color: '#6ee7b7' }}>← CSV column</span>
-                    ) : (
-                      <select
-                        value={item.mappedCodeTerm || ''}
-                        onChange={(e) => store.updateMapping(
-                          item.variable.name,
-                          e.target.value || null
-                        )}
-                        style={{ ...selectStyle, minWidth: 200 }}
-                      >
-                        <option value="">— not mapped —</option>
-                        {store.codeTerms.map((ct) => (
-                          <option key={ct.codeTerm} value={ct.codeTerm}>
-                            {ct.codeTerm} ({ct.count.toLocaleString()} rows)
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          {/* Mapping rows */}
+          <div className="admin-mapping-list">
+            {gapAnalysis.map((item) => (
+              <div key={item.variable.id} className="admin-mapping-row">
+                <div className={`admin-mapping-status ${item.status === 'unmapped' ? 'unmapped' : item.status === 'direct_column' ? 'mapped' : 'mapped'}`}>
+                  {item.status === 'unmapped' ? '?' : '✓'}
+                </div>
+                <div className="admin-mapping-info">
+                  <span className="admin-mapping-name">{item.variable.name}</span>
+                  <span className="admin-mapping-type">{item.variable.type}</span>
+                </div>
+                {item.status === 'direct_column' ? (
+                  <span className="admin-mapping-source">CSV column</span>
+                ) : (
+                  <select
+                    className="admin-mapping-select"
+                    value={item.mappedCodeTerm || ''}
+                    onChange={(e) => store.updateMapping(item.variable.name, e.target.value || null)}
+                  >
+                    <option value="">— select —</option>
+                    {store.codeTerms.map((ct) => (
+                      <option key={ct.codeTerm} value={ct.codeTerm}>
+                        {ct.codeTerm}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
-    </section>
+    </div>
   )
 }
 
-function statusIcon(status: GapAnalysisItem['status']): string {
-  switch (status) {
-    case 'direct_column': return '✅'
-    case 'mapped': return '✅'
-    case 'unmapped': return '⚠️'
-    case 'not_in_data': return '❌'
-  }
-}
-
 // ============================================================================
-// SECTION 3: PREVIEW & EXECUTE
+// RIGHT PANEL — Preview, Execute, Results
 // ============================================================================
 
-function PreviewSection({ onError }: { onError: (msg: string) => void }) {
+function RightPanel({ onError }: { onError: (msg: string) => void }) {
   const store = useAdminStore()
 
-  // Build mapped patient data for preview and execution
+  // Build mapped patient data for execution
   const mappedPatients = useMemo(() => {
+    if (!store.selectedWorkflowId || store.mappings.length === 0) return []
     return store.patients.map((patient) => {
       const inputValues: Record<string, unknown> = {}
       for (const mapping of store.mappings) {
-        const variable = store.selectedWorkflowVariables.find(
-          (v) => v.name === mapping.variableName
-        )
+        const variable = store.selectedWorkflowVariables.find((v) => v.name === mapping.variableName)
         if (!variable) continue
-
         const nameLower = variable.name.toLowerCase()
-        // Direct column mappings
         if (nameLower === 'age') {
           inputValues[variable.name] = patient.age
         } else if (nameLower === 'gender' || nameLower === 'sex') {
           inputValues[variable.name] = patient.gender
         } else if (mapping.codeTerm && patient.codeTermValues[mapping.codeTerm] !== undefined) {
-          // Coerce the string value to the right type
-          inputValues[variable.name] = coerceValue(
-            patient.codeTermValues[mapping.codeTerm],
-            variable.type
-          )
+          inputValues[variable.name] = coerceValue(patient.codeTermValues[mapping.codeTerm], variable.type)
         }
-        // If no mapping or no value: leave it out (will be SKIPPED on execute)
       }
-      return {
-        emis_number: patient.emis_number,
-        input_values: inputValues,
-      }
+      return { emis_number: patient.emis_number, input_values: inputValues }
     })
-  }, [store.patients, store.mappings, store.selectedWorkflowVariables])
+  }, [store.patients, store.mappings, store.selectedWorkflowVariables, store.selectedWorkflowId])
 
-  // Count patients with complete data
   const requiredVarNames = store.mappings.map((m) => m.variableName)
   const completeCount = mappedPatients.filter((p) =>
     requiredVarNames.every((name) => name in p.input_values)
   ).length
-
-  // Preview table: first 10 patients
-  const previewRows = mappedPatients.slice(0, 10)
-  // Column names for preview
-  const previewColumns = ['EMIS', ...store.mappings.map((m) => m.variableName)]
 
   const handleExecute = useCallback(async () => {
     if (!store.selectedWorkflowId) return
@@ -590,90 +496,13 @@ function PreviewSection({ onError }: { onError: (msg: string) => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.selectedWorkflowId, mappedPatients])
 
-  return (
-    <section style={sectionStyle}>
-      <h2 style={sectionHeadingStyle}>3. Preview & Execute</h2>
-
-      <div style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>
-        Patients with complete data: <strong>{completeCount.toLocaleString()}</strong> / {store.patients.length.toLocaleString()}
-      </div>
-
-      {/* Preview table */}
-      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              {previewColumns.map((col) => (
-                <th key={col} style={thStyle}>{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {previewRows.map((row) => (
-              <tr key={row.emis_number}>
-                <td style={tdStyle}>{row.emis_number}</td>
-                {store.mappings.map((m) => (
-                  <td key={m.variableName} style={tdStyle}>
-                    {row.input_values[m.variableName] !== undefined
-                      ? String(row.input_values[m.variableName])
-                      : <span style={{ color: '#666' }}>—</span>}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-          Showing {previewRows.length} of {store.patients.length.toLocaleString()} patients
-        </div>
-      </div>
-
-      <button
-        onClick={handleExecute}
-        disabled={store.isExecuting}
-        style={{
-          ...primaryBtnStyle,
-          opacity: store.isExecuting ? 0.6 : 1,
-          cursor: store.isExecuting ? 'wait' : 'pointer',
-        }}
-      >
-        {store.isExecuting
-          ? 'Executing...'
-          : `▶ Execute ${store.patients.length.toLocaleString()} patients`}
-      </button>
-    </section>
-  )
-}
-
-// ============================================================================
-// SECTION 4: RESULTS
-// ============================================================================
-
-function ResultsSection() {
-  const { results, summary } = useAdminStore()
-
-  // Outcome distribution
-  const outcomeCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const r of results) {
-      if (r.status === 'SUCCESS' && r.output) {
-        counts.set(r.output, (counts.get(r.output) || 0) + 1)
-      }
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-  }, [results])
-
-  const successCount = summary?.success ?? 0
-
-  // Build CSV for download
   const handleDownload = useCallback(() => {
     const header = 'EMIS Number,Outcome,Path,Status,Error,Missing Variables\n'
-    const rows = results.map((r) =>
+    const rows = store.results.map((r) =>
       [
         r.emis_number,
         csvEscape(r.output ?? ''),
-        csvEscape(r.path?.join(' → ') ?? ''),
+        csvEscape(r.path?.join(' > ') ?? ''),
         r.status,
         csvEscape(r.error ?? ''),
         csvEscape(r.missing_variables.join(', ')),
@@ -687,197 +516,194 @@ function ResultsSection() {
     a.download = `batch-results-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [results])
+  }, [store.results])
 
+  // Outcome distribution for bar chart
+  const outcomeCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const r of store.results) {
+      if (r.status === 'SUCCESS' && r.output) {
+        counts.set(r.output, (counts.get(r.output) || 0) + 1)
+      }
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  }, [store.results])
+
+  const maxOutcome = outcomeCounts.length > 0 ? outcomeCounts[0][1] : 0
+  const successCount = store.summary?.success ?? 0
+
+  // No data yet — empty state
+  if (store.patients.length === 0) {
+    return (
+      <div className="admin-right">
+        <div className="admin-empty">
+          <div className="admin-empty-icon">&#8593;</div>
+          <h3>Upload clinical data</h3>
+          <p>Drop EMIS CSV exports on the left to get started. Files are parsed in your browser — no data is sent to the server.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Data loaded but no workflow selected
+  if (!store.selectedWorkflowId) {
+    return (
+      <div className="admin-right">
+        <div className="admin-empty">
+          <div className="admin-empty-icon">&#8592;</div>
+          <h3>Select a workflow</h3>
+          <p>Pick a workflow from the library to see which variables need mapping and preview the batch execution.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Workflow selected — show preview and/or results
   return (
-    <section style={sectionStyle}>
-      <h2 style={sectionHeadingStyle}>4. Results</h2>
-
-      {/* Summary */}
-      {summary && (
-        <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
-          <SummaryChip label="Total" value={summary.total} color="#ccc" />
-          <SummaryChip label="Success" value={summary.success} color="#6ee7b7" />
-          <SummaryChip label="Skipped" value={summary.skipped} color="#fbbf24" />
-          <SummaryChip label="Error" value={summary.error} color="#f87171" />
-        </div>
-      )}
-
-      {/* Outcome distribution */}
-      {outcomeCounts.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, color: '#999', margin: '0 0 8px' }}>Outcome Distribution:</h3>
-          {outcomeCounts.map(([outcome, count]) => (
-            <div key={outcome} style={{ fontSize: 13, color: '#ccc', marginBottom: 2 }}>
-              {outcome} — {count.toLocaleString()} ({successCount > 0 ? (100 * count / successCount).toFixed(1) : 0}%)
+    <div className="admin-right">
+      {/* Results summary (if executed) */}
+      {store.summary && (
+        <>
+          <div className="admin-eyebrow">Results</div>
+          <div className="admin-summary">
+            <div className="admin-summary-chip">
+              <div className="admin-summary-value">{store.summary.total.toLocaleString()}</div>
+              <div className="admin-summary-label">Total</div>
             </div>
-          ))}
-        </div>
+            <div className="admin-summary-chip">
+              <div className="admin-summary-value success">{store.summary.success.toLocaleString()}</div>
+              <div className="admin-summary-label">Success</div>
+            </div>
+            <div className="admin-summary-chip">
+              <div className="admin-summary-value skipped">{store.summary.skipped.toLocaleString()}</div>
+              <div className="admin-summary-label">Skipped</div>
+            </div>
+            <div className="admin-summary-chip">
+              <div className="admin-summary-value error">{store.summary.error.toLocaleString()}</div>
+              <div className="admin-summary-label">Error</div>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Results table */}
-      <div style={{ overflowX: 'auto', marginBottom: 16, maxHeight: 400, overflowY: 'auto' }}>
-        <table style={tableStyle}>
+      {/* Outcome distribution bar chart */}
+      {outcomeCounts.length > 0 && (
+        <>
+          <div className="admin-eyebrow">Outcome Distribution</div>
+          <div className="admin-outcomes">
+            {outcomeCounts.map(([outcome, count]) => (
+              <div key={outcome} className="admin-outcome-row">
+                <div className="admin-outcome-bar-track">
+                  <div
+                    className="admin-outcome-bar-fill"
+                    style={{ width: `${maxOutcome > 0 ? (count / maxOutcome) * 100 : 0}%` }}
+                  >
+                    <span className="admin-outcome-bar-label">{outcome}</span>
+                  </div>
+                </div>
+                <span className="admin-outcome-pct">
+                  {count.toLocaleString()} ({successCount > 0 ? (100 * count / successCount).toFixed(1) : 0}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Results table or preview */}
+      <div className="admin-eyebrow">
+        {store.results.length > 0 ? 'Patient Results' : 'Preview'}
+      </div>
+
+      <div className="admin-results-scroll">
+        <table className="admin-results-table">
           <thead>
             <tr>
-              <th style={thStyle}>EMIS</th>
-              <th style={thStyle}>Outcome</th>
-              <th style={thStyle}>Path</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Missing</th>
+              <th>EMIS</th>
+              {store.results.length > 0 ? (
+                <>
+                  <th>Outcome</th>
+                  <th>Status</th>
+                  <th>Missing</th>
+                </>
+              ) : (
+                store.mappings.map((m) => <th key={m.variableName}>{m.variableName}</th>)
+              )}
             </tr>
           </thead>
           <tbody>
-            {results.slice(0, 200).map((r, i) => (
-              <tr key={i}>
-                <td style={tdStyle}>{r.emis_number}</td>
-                <td style={tdStyle}>{r.output ?? '—'}</td>
-                <td style={{ ...tdStyle, fontSize: 11, color: '#888' }}>
-                  {r.path?.join(' → ') ?? '—'}
-                </td>
-                <td style={tdStyle}>
-                  <span style={{ color: statusColor(r.status) }}>
-                    {r.status === 'SUCCESS' ? '✓' : r.status}
-                  </span>
-                </td>
-                <td style={{ ...tdStyle, fontSize: 12, color: '#999' }}>
-                  {r.missing_variables.length > 0 ? r.missing_variables.join(', ') : ''}
-                </td>
-              </tr>
-            ))}
+            {store.results.length > 0 ? (
+              // Results mode
+              store.results.slice(0, 500).map((r, i) => (
+                <tr key={i}>
+                  <td>{r.emis_number}</td>
+                  <td>{r.output ?? '—'}</td>
+                  <td>
+                    <span className={`admin-status-badge ${r.status.toLowerCase()}`}>
+                      {r.status === 'SUCCESS' ? '✓' : r.status}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>
+                    {r.missing_variables.length > 0 ? r.missing_variables.join(', ') : ''}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              // Preview mode — first 10 patients
+              mappedPatients.slice(0, 10).map((row) => (
+                <tr key={row.emis_number}>
+                  <td>{row.emis_number}</td>
+                  {store.mappings.map((m) => (
+                    <td key={m.variableName}>
+                      {row.input_values[m.variableName] !== undefined
+                        ? String(row.input_values[m.variableName])
+                        : <span style={{ color: 'var(--muted)' }}>—</span>}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
-        {results.length > 200 && (
-          <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-            Showing 200 of {results.length.toLocaleString()} results. Download CSV for full data.
-          </div>
-        )}
       </div>
 
-      <button onClick={handleDownload} style={primaryBtnStyle}>
-        ⬇ Download Results CSV
-      </button>
-    </section>
-  )
-}
+      {store.results.length === 0 && (
+        <div className="admin-preview-label">
+          Showing 10 of {store.patients.length.toLocaleString()} patients
+          &nbsp;·&nbsp; {completeCount.toLocaleString()} with complete data
+        </div>
+      )}
 
-// ============================================================================
-// SMALL HELPERS
-// ============================================================================
+      {store.results.length > 500 && (
+        <div className="admin-preview-label">
+          Showing 500 of {store.results.length.toLocaleString()} results — download CSV for full data
+        </div>
+      )}
 
-function SummaryChip({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 24, fontWeight: 700, color }}>{value.toLocaleString()}</div>
-      <div style={{ fontSize: 12, color: '#999' }}>{label}</div>
+      {/* Action bar */}
+      <div className="admin-actions">
+        {store.results.length > 0 ? (
+          <button className="primary" onClick={handleDownload}>
+            ⬇ Download Results CSV
+          </button>
+        ) : (
+          <button
+            className="primary"
+            onClick={handleExecute}
+            disabled={store.isExecuting}
+          >
+            {store.isExecuting
+              ? <><span className="admin-spinner" /> Executing...</>
+              : `Execute ${store.patients.length.toLocaleString()} patients`}
+          </button>
+        )}
+
+        {store.results.length > 0 && (
+          <button className="ghost" onClick={() => store.setResults([], { total: 0, success: 0, skipped: 0, error: 0 } as any)}>
+            Run again
+          </button>
+        )}
+      </div>
     </div>
   )
-}
-
-function statusColor(status: BatchResultRow['status']): string {
-  switch (status) {
-    case 'SUCCESS': return '#6ee7b7'
-    case 'SKIPPED': return '#fbbf24'
-    case 'ERROR': return '#f87171'
-  }
-}
-
-/** Escape a value for CSV (wrap in quotes if it contains comma/newline/quote) */
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('\n') || value.includes('"')) {
-    return `"${value.replace(/"/g, '""')}"`
-  }
-  return value
-}
-
-// ============================================================================
-// INLINE STYLES (keeping it self-contained — no separate CSS file)
-// ============================================================================
-
-const sectionStyle: React.CSSProperties = {
-  border: '1px solid #333',
-  borderRadius: 8,
-  padding: 20,
-  marginBottom: 20,
-  background: 'rgba(255,255,255,0.02)',
-}
-
-const sectionHeadingStyle: React.CSSProperties = {
-  margin: '0 0 16px',
-  fontSize: 16,
-  fontWeight: 600,
-  color: '#e2e8f0',
-}
-
-const dropZoneStyle: React.CSSProperties = {
-  border: '2px dashed #555',
-  borderRadius: 8,
-  padding: '32px 16px',
-  textAlign: 'center',
-  cursor: 'pointer',
-  color: '#999',
-  fontSize: 14,
-  transition: 'border-color 0.15s, background 0.15s',
-}
-
-const selectStyle: React.CSSProperties = {
-  background: '#1e1e1e',
-  color: '#e2e8f0',
-  border: '1px solid #444',
-  borderRadius: 4,
-  padding: '6px 8px',
-  fontSize: 13,
-}
-
-const tableStyle: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 13,
-}
-
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '8px 10px',
-  borderBottom: '1px solid #444',
-  color: '#999',
-  fontSize: 12,
-  fontWeight: 600,
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  borderBottom: '1px solid #2a2a2a',
-  color: '#ccc',
-}
-
-const primaryBtnStyle: React.CSSProperties = {
-  background: '#3b82f6',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 6,
-  padding: '10px 20px',
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: 'pointer',
-}
-
-const linkBtnStyle: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  color: '#3b82f6',
-  cursor: 'pointer',
-  fontSize: 14,
-  padding: 0,
-}
-
-const errorBannerStyle: React.CSSProperties = {
-  background: '#7f1d1d',
-  color: '#fca5a5',
-  padding: '10px 16px',
-  borderRadius: 6,
-  marginBottom: 16,
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  fontSize: 13,
 }
