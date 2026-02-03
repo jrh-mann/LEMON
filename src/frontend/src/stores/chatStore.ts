@@ -189,10 +189,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return message
   },
 
-  // Snapshot: returns current chat state for saving into a workflow tab
+  // Snapshot: returns current chat state for saving into a workflow tab.
+  // Deep clones messages to avoid shared references between tabs.
   getSnapshot: () => {
     const state = get()
-    return { conversationId: state.conversationId, messages: state.messages }
+    return { conversationId: state.conversationId, messages: structuredClone(state.messages) }
   },
 
   // Restore: loads chat state from a workflow tab (single atomic update)

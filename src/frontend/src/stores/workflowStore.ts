@@ -289,10 +289,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     const tabIndex = state.tabs.findIndex(t => t.id === tabId)
     const newTabs = state.tabs.filter(t => t.id !== tabId)
+    const closingActiveTab = state.activeTabId
 
     // If closing active tab, switch to adjacent tab
     let newActiveId = state.activeTabId
-    if (tabId === state.activeTabId) {
+    if (tabId === closingActiveTab) {
       const newIndex = Math.min(tabIndex, newTabs.length - 1)
       newActiveId = newTabs[newIndex].id
     }
@@ -312,7 +313,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       pendingImageName: activeTab.pendingImageName,
     })
     // Restore chat state from the tab we're switching to
-    if (tabId === state.activeTabId) {
+    if (tabId === closingActiveTab) {
       useChatStore.getState().restoreState(activeTab.conversationId, activeTab.messages)
     }
   },
