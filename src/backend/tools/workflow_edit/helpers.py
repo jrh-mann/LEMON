@@ -8,6 +8,44 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+def resolve_node_id(
+    identifier: str,
+    nodes: List[Dict[str, Any]],
+) -> str:
+    """Resolve a node identifier that may be a UUID or a label.
+
+    Allows the LLM to reference nodes by human-readable label instead
+    of opaque UUIDs.  If *identifier* already matches an existing node
+    ID it is returned as-is.  Otherwise a case-insensitive label match
+    is attempted.  Raises ValueError on zero or ambiguous matches.
+    """
+    # Direct ID match — fast path
+    if any(n.get("id") == identifier for n in nodes):
+        return identifier
+
+    # Label match — case-insensitive
+    normalised = identifier.strip().lower()
+    matches = [
+        n for n in nodes
+        if n.get("label", "").strip().lower() == normalised
+    ]
+    if len(matches) == 1:
+        return matches[0]["id"]
+    if len(matches) > 1:
+        ids = ", ".join(m["id"] for m in matches)
+        raise ValueError(
+            f"Ambiguous label '{identifier}' matches {len(matches)} nodes ({ids}). "
+            f"Use the node ID to be specific."
+        )
+    # No match at all
+    available = ", ".join(
+        f"{n.get('id')}: {n.get('label')}" for n in nodes
+    ) or "none"
+    raise ValueError(
+        f"Node not found: '{identifier}'. Available: {available}"
+    )
+
+
 NODE_COLOR_BY_TYPE = {
     "start": "teal",
     "decision": "amber",

@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import validate_subprocess_node
+from .helpers import resolve_node_id, validate_subprocess_node
 from .add_node import validate_decision_condition
 
 
@@ -87,11 +87,17 @@ class ModifyNodeTool(Tool):
         session_state = kwargs.get("session_state", {})
         current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
 
-        node_id = args.get("node_id")
+        raw_id = args.get("node_id")
+        nodes = current_workflow.get("nodes", [])
+        try:
+            node_id = resolve_node_id(raw_id, nodes)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
+
         updates = {k: v for k, v in args.items() if k != "node_id" and v is not None}
 
         node_idx = next(
-            (i for i, n in enumerate(current_workflow.get("nodes", [])) if n["id"] == node_id),
+            (i for i, n in enumerate(nodes) if n["id"] == node_id),
             None,
         )
 

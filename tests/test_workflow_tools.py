@@ -385,7 +385,7 @@ class TestAddConnectionTool:
         assert result["edge"]["label"] == "true"
 
     def test_add_connection_to_nonexistent_node_fails(self):
-        """Should fail validation when connecting to non-existent node"""
+        """Should fail when connecting to non-existent node"""
         existing_workflow = {
             "nodes": [
                 {"id": "n1", "type": "start", "label": "Input", "x": 0, "y": 0, "color": "teal"},
@@ -399,7 +399,7 @@ class TestAddConnectionTool:
 
         assert result["success"] is False
         assert "error" in result
-        assert "VALIDATION_FAILED" in result.get("error_code", "")
+        assert result.get("error_code", "") in ("VALIDATION_FAILED", "NODE_NOT_FOUND")
 
     def test_add_connection_creating_invalid_end_node_fails(self):
         """Should succeed in lenient mode even if end node has outgoing edges"""
@@ -427,24 +427,25 @@ class TestDeleteConnectionTool:
 
     def test_delete_existing_connection(self):
         """Should delete connection successfully if result is valid"""
-        # Use a workflow where deleting connection leaves valid state
         existing_workflow = {
             "nodes": [
                 {"id": "n1", "type": "start", "label": "Input", "x": 0, "y": 0, "color": "teal"},
+                {"id": "n2", "type": "end", "label": "Output", "x": 100, "y": 0, "color": "green"},
             ],
-            "edges": [],
+            "edges": [
+                {"id": "n1->n2", "from": "n1", "to": "n2", "label": ""},
+            ],
         }
         args = {"from_node_id": "n1", "to_node_id": "n2"}
         session_state = {"current_workflow": existing_workflow}
 
         result = self.tool.execute(args, session_state=session_state)
 
-        # Should succeed - no edge to delete, idempotent
         assert result["success"] is True
         assert result["action"] == "delete_connection"
 
     def test_delete_nonexistent_connection(self):
-        """Should handle deletion of non-existent connection gracefully"""
+        """Should fail when referencing non-existent node"""
         existing_workflow = {
             "nodes": [
                 {"id": "n1", "type": "start", "label": "Input", "x": 0, "y": 0, "color": "teal"},
@@ -456,8 +457,9 @@ class TestDeleteConnectionTool:
 
         result = self.tool.execute(args, session_state=session_state)
 
-        # Should succeed (idempotent operation)
-        assert result["success"] is True
+        # n2 doesn't exist — should fail with NODE_NOT_FOUND
+        assert result["success"] is False
+        assert result.get("error_code") == "NODE_NOT_FOUND"
 
     def test_delete_connection_creating_invalid_workflow_fails(self):
         """Should succeed in lenient mode even if workflow becomes invalid"""
