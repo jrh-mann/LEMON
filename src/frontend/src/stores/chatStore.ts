@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import type { Message, ToolCall } from '../types'
+import { useWorkflowStore } from './workflowStore'
 
 interface ChatState {
-  // Conversation
+  // Conversation - NOTE: conversationId is now per-tab, stored in workflowStore
+  // This field is kept for backwards compatibility but delegates to workflowStore
   messages: Message[]
-  conversationId: string | null
+  conversationId: string | null  // Mirrors active tab's conversationId
 
   // Streaming state
   isStreaming: boolean
@@ -103,14 +105,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { messages }
     }),
 
-  setConversationId: (id) => set({ conversationId: id }),
+  setConversationId: (id) => {
+    set({ conversationId: id })
+    // Also update the active tab's conversationId in workflowStore
+    if (id) {
+      useWorkflowStore.getState().setActiveTabConversationId(id)
+    }
+  },
 
   // Ensure conversationId exists before sync operations
+  // Uses per-tab conversation ID from workflowStore
   ensureConversationId: () => {
-    const state = get()
-    if (!state.conversationId) {
-      set({ conversationId: crypto.randomUUID() })
+    const workflowStore = useWorkflowStore.getState()
+    let conversationId = workflowStore.getActiveTabConversationId()
+    if (!conversationId) {
+      conversationId = crypto.randomUUID()
+      workflowStore.setActiveTabConversationId(conversationId)
     }
+    // Sync to chatStore's local state for backwards compatibility
+    set({ conversationId })
   },
 
   setMessages: (messages) => set({ messages }),

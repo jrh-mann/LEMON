@@ -25,6 +25,7 @@ export interface WorkflowTab {
   pendingImage: string | null
   pendingImageName: string | null
   analysis: WorkflowAnalysis | null
+  conversationId: string | null  // Per-tab conversation ID for isolated chat history
 }
 
 interface WorkflowState {
@@ -71,6 +72,8 @@ interface WorkflowState {
   closeTab: (tabId: string) => void
   switchTab: (tabId: string) => void
   updateTabTitle: (tabId: string, title: string) => void
+  getActiveTabConversationId: () => string | null
+  setActiveTabConversationId: (conversationId: string) => void
 
   // Node operations
   selectNode: (nodeId: string | null) => void
@@ -148,6 +151,7 @@ const createInitialTab = (): WorkflowTab => ({
   pendingImage: null,
   pendingImageName: null,
   analysis: null,
+  conversationId: null,  // Will be generated on first message
 })
 
 const initialTab = createInitialTab()
@@ -236,6 +240,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       pendingImage: null,
       pendingImageName: null,
       analysis: null,
+      conversationId: null,  // New tab starts with no conversation
     }
     // Save current tab's pending image before switching
     const state = get()
@@ -359,6 +364,24 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         tab.id === tabId ? { ...tab, title } : tab
       ),
     }))
+  },
+
+  // Get the conversation ID for the active tab (used by socket.ts for per-tab chat)
+  getActiveTabConversationId: () => {
+    const state = get()
+    const activeTab = state.tabs.find(t => t.id === state.activeTabId)
+    return activeTab?.conversationId ?? null
+  },
+
+  // Set the conversation ID for the active tab (called when first message is sent)
+  setActiveTabConversationId: (conversationId) => {
+    const state = get()
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, conversationId }
+        : tab
+    )
+    set({ tabs })
   },
 
   // Node operations

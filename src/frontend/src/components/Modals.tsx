@@ -1,9 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
-import { createWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
+import { createWorkflow, updateWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
 import {
   startWorkflowExecution,
   pauseWorkflowExecution,
@@ -287,10 +287,16 @@ function ValidationFlow() {
 }
 
 // Save workflow form component
+// Handles both creating new workflows and updating existing ones
 function SaveWorkflowForm() {
   const { closeModal } = useUIStore()
-  const { flowchart, currentAnalysis } = useWorkflowStore()
+  const { flowchart, currentAnalysis, currentWorkflow } = useWorkflowStore()
 
+  // Check if this is an existing workflow (has ID from LLM creation or previous load)
+  const existingWorkflowId = currentWorkflow?.id
+  const isUpdate = Boolean(existingWorkflowId)
+
+  // Pre-populate form with existing workflow metadata if updating
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [domain, setDomain] = useState('')
@@ -300,6 +306,16 @@ function SaveWorkflowForm() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[] | null>(null)
   const [showValidationWarning, setShowValidationWarning] = useState(false)
+
+  // Initialize form with existing workflow data when modal opens
+  useEffect(() => {
+    if (currentWorkflow?.metadata) {
+      setName(currentWorkflow.metadata.name || '')
+      setDescription(currentWorkflow.metadata.description || '')
+      setDomain(currentWorkflow.metadata.domain || '')
+      setTags((currentWorkflow.metadata.tags || []).join(', '))
+    }
+  }, [currentWorkflow])
 
   const handleSave = useCallback(async (skipValidation = false) => {
     if (!name.trim()) {
@@ -358,7 +374,12 @@ function SaveWorkflowForm() {
         is_validated: false,
       }
 
-      await createWorkflow(payload)
+      // Use update if workflow already has an ID (from LLM creation), otherwise create
+      if (existingWorkflowId) {
+        await updateWorkflow(existingWorkflowId, payload)
+      } else {
+        await createWorkflow(payload)
+      }
 
       setSaveSuccess(true)
       setShowValidationWarning(false)
@@ -377,7 +398,7 @@ function SaveWorkflowForm() {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal])
+  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate])
 
   if (flowchart.nodes.length === 0) {
     return (
@@ -395,8 +416,8 @@ function SaveWorkflowForm() {
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
-        <h3>Workflow Saved!</h3>
-        <p className="muted">Your workflow has been saved to your library.</p>
+        <h3>Workflow {isUpdate ? 'Updated' : 'Saved'}!</h3>
+        <p className="muted">Your workflow has been {isUpdate ? 'updated in' : 'saved to'} your library.</p>
       </div>
     )
   }
@@ -497,7 +518,7 @@ function SaveWorkflowForm() {
             Cancel
           </button>
           <button className="primary" onClick={() => handleSave(false)} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save Workflow'}
+            {isSaving ? 'Saving...' : isUpdate ? 'Update Workflow' : 'Save Workflow'}
           </button>
         </div>
       )}

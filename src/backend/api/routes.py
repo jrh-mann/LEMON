@@ -319,15 +319,23 @@ def register_routes(
 
     @app.get("/api/workflows")
     def list_workflows() -> Any:
-        """List all workflows for the authenticated user."""
+        """List all workflows for the authenticated user.
+        
+        By default, only shows saved (non-draft) workflows.
+        Drafts are workflows created by the LLM that haven't been explicitly saved.
+        """
         user_id = g.auth_user.id
         limit = min(int(request.args.get("limit", 100)), 500)
         offset = max(int(request.args.get("offset", 0)), 0)
+        # By default, only show saved (non-draft) workflows in the browse library
+        # Drafts are LLM-created workflows that haven't been saved yet
+        include_drafts = request.args.get("include_drafts", "false").lower() in ("true", "1", "yes")
 
         workflows, total_count = workflow_store.list_workflows(
             user_id,
             limit=limit,
             offset=offset,
+            include_drafts=include_drafts,
         )
 
         # Convert to WorkflowSummary format for frontend
@@ -509,15 +517,115 @@ def register_routes(
 
         return jsonify({"message": "Workflow deleted successfully"}), 200
 
+    @app.put("/api/workflows/<workflow_id>")
+    def update_workflow(workflow_id: str) -> Any:
+        """Update an existing workflow.
+        
+        This also marks the workflow as non-draft (is_draft=False) since
+        the user is explicitly saving it.
+        """
+        user_id = g.auth_user.id
+        payload = request.get_json(force=True, silent=True) or {}
+
+        # Check workflow exists and belongs to user
+        existing = workflow_store.get_workflow(workflow_id, user_id)
+        if not existing:
+            return jsonify({"error": "Workflow not found or unauthorized"}), 404
+
+        # Extract workflow data from payload
+        name = payload.get("name") or existing.name
+        description = payload.get("description") or existing.description
+        domain = payload.get("domain") or existing.domain
+        tags = payload.get("tags") or existing.tags
+
+        # Extract workflow structure
+        nodes = payload.get("nodes") or existing.nodes
+        edges = payload.get("edges") or existing.edges
+        variables = payload.get("variables") or payload.get("inputs") or existing.inputs
+        doubts = payload.get("doubts") or existing.doubts
+
+        # ALWAYS compute tree from nodes/edges
+        tree = tree_from_flowchart(nodes, edges)
+        
+        # Infer outputs from end nodes
+        outputs = payload.get("outputs") or []
+        if not outputs:
+            outputs = _infer_outputs_from_nodes(nodes)
+
+        # Extract validation metadata (preserve existing if not provided)
+        validation_score = payload.get("validation_score", existing.validation_score)
+        validation_count = payload.get("validation_count", existing.validation_count)
+        is_validated = payload.get("is_validated", existing.is_validated)
+
+        # Validate workflow structure before saving
+        workflow_to_validate = {
+            "nodes": nodes,
+            "edges": edges,
+            "variables": variables,
+        }
+        is_valid, validation_errors = _workflow_validator.validate(
+            workflow_to_validate, strict=True
+        )
+        if not is_valid:
+            error_message = _workflow_validator.format_errors(validation_errors)
+            return jsonify({
+                "error": "Workflow validation failed",
+                "message": error_message,
+                "validation_errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors
+                ],
+            }), 400
+
+        # Update workflow - also marks as non-draft (saved)
+        success = workflow_store.update_workflow(
+            workflow_id=workflow_id,
+            user_id=user_id,
+            name=name,
+            description=description,
+            domain=domain,
+            tags=tags,
+            nodes=nodes,
+            edges=edges,
+            inputs=variables,
+            outputs=outputs,
+            tree=tree,
+            doubts=doubts,
+            validation_score=validation_score,
+            validation_count=validation_count,
+            is_validated=is_validated,
+            is_draft=False,  # Explicitly saving marks it as non-draft
+        )
+
+        if not success:
+            return jsonify({"error": "Failed to update workflow"}), 500
+
+        response = {
+            "workflow_id": workflow_id,
+            "name": name,
+            "description": description,
+            "domain": domain,
+            "tags": tags,
+            "nodes": nodes,
+            "edges": edges,
+            "message": "Workflow updated successfully.",
+        }
+        return jsonify(response), 200
+
     @app.get("/api/search")
     def search_workflows() -> Any:
-        """Search workflows with filters."""
+        """Search workflows with filters.
+        
+        By default, only searches saved (non-draft) workflows.
+        """
         user_id = g.auth_user.id
         query = request.args.get("q")
         domain = request.args.get("domain")
         validated = request.args.get("validated")
         limit = min(int(request.args.get("limit", 100)), 500)
         offset = max(int(request.args.get("offset", 0)), 0)
+        # By default, only search saved (non-draft) workflows
+        include_drafts = request.args.get("include_drafts", "false").lower() in ("true", "1", "yes")
 
         # Convert validated string to bool if provided
         validated_bool = None
@@ -531,6 +639,7 @@ def register_routes(
             validated=validated_bool,
             limit=limit,
             offset=offset,
+            include_drafts=include_drafts,
         )
 
         # Convert to WorkflowSummary format

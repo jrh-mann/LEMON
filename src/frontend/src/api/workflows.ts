@@ -26,6 +26,15 @@ export async function createWorkflow(
   return api.post<CreateWorkflowResponse>('/api/workflows', data)
 }
 
+// Update existing workflow
+// Uses PUT to update an existing workflow by ID
+export async function updateWorkflow(
+  workflowId: string,
+  data: CreateWorkflowRequest
+): Promise<CreateWorkflowResponse> {
+  return api.put<CreateWorkflowResponse>(`/api/workflows/${workflowId}`, data)
+}
+
 // Delete workflow
 export async function deleteWorkflow(workflowId: string): Promise<void> {
   await api.delete(`/api/workflows/${workflowId}`)
