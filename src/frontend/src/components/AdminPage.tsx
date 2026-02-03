@@ -149,6 +149,61 @@ function fuzzyMatch(needle: string, haystack: string): boolean {
   return words.length > 0 && words.every(w => b.includes(w))
 }
 
+/** Check if a Code Term looks like it has numeric data */
+function hasNumericData(ct: CodeTermSummary): boolean {
+  return ct.minValue !== undefined && ct.maxValue !== undefined
+}
+
+/** Check if a Code Term looks boolean (small set of distinct values, text-like) */
+function looksBoolish(ct: CodeTermSummary): boolean {
+  if (ct.sampleValues.length === 0) return false
+  const boolWords = ['yes', 'no', 'true', 'false', 'y', 'n', '1', '0']
+  return ct.sampleValues.every(v => boolWords.includes(v.toLowerCase().trim()))
+}
+
+/**
+ * Filter and rank Code Terms for a given workflow variable type.
+ * Prevents the dropdown from showing hundreds of irrelevant items.
+ * - numeric variables → only Code Terms with numeric values
+ * - bool variables → only Code Terms with boolean-like values
+ * - string variables → all Code Terms, but deprioritise purely numeric ones
+ * Fuzzy matches are always sorted to the top.
+ */
+function relevantCodeTerms(
+  allTerms: CodeTermSummary[],
+  variableName: string,
+  variableType: string
+): CodeTermSummary[] {
+  let filtered: CodeTermSummary[]
+
+  switch (variableType) {
+    case 'int':
+    case 'float':
+      // Only show Code Terms that contain numeric values
+      filtered = allTerms.filter(hasNumericData)
+      break
+    case 'bool':
+      // Only show Code Terms that look boolean, plus any numeric ones as fallback
+      filtered = allTerms.filter(ct => looksBoolish(ct) || hasNumericData(ct))
+      break
+    default:
+      // String — show all, but cap at a reasonable number
+      filtered = allTerms
+      break
+  }
+
+  // Sort: fuzzy matches first, then by observation count descending
+  filtered.sort((a, b) => {
+    const aMatch = fuzzyMatch(variableName, a.codeTerm) ? 1 : 0
+    const bMatch = fuzzyMatch(variableName, b.codeTerm) ? 1 : 0
+    if (aMatch !== bMatch) return bMatch - aMatch
+    return b.count - a.count
+  })
+
+  // Cap at 30 to keep the dropdown usable
+  return filtered.slice(0, 30)
+}
+
 /** Escape a value for CSV output */
 function csvEscape(value: string): string {
   if (value.includes(',') || value.includes('\n') || value.includes('"')) {
@@ -327,6 +382,37 @@ function UploadCard() {
   )
 }
 
+// -- Mapping Dropdown (filtered + ranked by variable type) --
+
+function MappingDropdown({
+  allTerms, variableName, variableType, value, onChange,
+}: {
+  allTerms: CodeTermSummary[]
+  variableName: string
+  variableType: string
+  value: string | null
+  onChange: (ct: string | null) => void
+}) {
+  const options = useMemo(
+    () => relevantCodeTerms(allTerms, variableName, variableType),
+    [allTerms, variableName, variableType]
+  )
+  return (
+    <select
+      className="admin-mapping-select"
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value || null)}
+    >
+      <option value="">— select —</option>
+      {options.map((ct) => (
+        <option key={ct.codeTerm} value={ct.codeTerm}>
+          {ct.codeTerm} ({ct.count.toLocaleString()})
+        </option>
+      ))}
+    </select>
+  )
+}
+
 // -- Workflow + Mapping Card --
 
 function WorkflowCard({ onError }: { onError: (msg: string) => void }) {
@@ -427,18 +513,13 @@ function WorkflowCard({ onError }: { onError: (msg: string) => void }) {
                 {item.status === 'direct_column' ? (
                   <span className="admin-mapping-source">CSV column</span>
                 ) : (
-                  <select
-                    className="admin-mapping-select"
-                    value={item.mappedCodeTerm || ''}
-                    onChange={(e) => store.updateMapping(item.variable.name, e.target.value || null)}
-                  >
-                    <option value="">— select —</option>
-                    {store.codeTerms.map((ct) => (
-                      <option key={ct.codeTerm} value={ct.codeTerm}>
-                        {ct.codeTerm}
-                      </option>
-                    ))}
-                  </select>
+                  <MappingDropdown
+                    allTerms={store.codeTerms}
+                    variableName={item.variable.name}
+                    variableType={item.variable.type}
+                    value={item.mappedCodeTerm}
+                    onChange={(ct) => store.updateMapping(item.variable.name, ct)}
+                  />
                 )}
               </div>
             ))}
