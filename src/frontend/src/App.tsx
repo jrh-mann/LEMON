@@ -8,12 +8,14 @@ import RightSidebar from './components/RightSidebar'
 import Chat from './components/Chat'
 import Modals from './components/Modals'
 import AuthPage from './components/AuthPage'
+import AdminPage from './components/AdminPage'
 import { ApiError } from './api/client'
 import { getCurrentUser } from './api/auth'
 import { useSession } from './hooks/useSession'
 import { useUIStore } from './stores/uiStore'
 
 const isAuthHash = () => window.location.hash === '#/auth' || window.location.hash === '#auth'
+const isAdminHash = () => window.location.hash === '#/admin'
 
 function WorkspaceApp() {
   const [authReady, setAuthReady] = useState(false)
@@ -81,9 +83,13 @@ function WorkspaceApp() {
 
 function App() {
   const [isAuthRoute, setIsAuthRoute] = useState(() => isAuthHash())
+  const [isAdminRoute, setIsAdminRoute] = useState(() => isAdminHash())
 
   useEffect(() => {
-    const handleHashChange = () => setIsAuthRoute(isAuthHash())
+    const handleHashChange = () => {
+      setIsAuthRoute(isAuthHash())
+      setIsAdminRoute(isAdminHash())
+    }
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
@@ -91,7 +97,7 @@ function App() {
   return (
     <>
       <div className="backdrop"></div>
-      {isAuthRoute ? <AuthPage /> : <WorkspaceApp />}
+      {isAdminRoute ? <AdminPage /> : isAuthRoute ? <AuthPage /> : <WorkspaceApp />}
     </>
   )
 }
