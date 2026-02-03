@@ -300,7 +300,7 @@ body {
 /* Workspace */
 .workspace {
   display: grid;
-  grid-template-columns: 200px 1fr 240px;
+  grid-template-columns: 200px 1fr auto;
   gap: 0;
   overflow: hidden;
 }
@@ -2696,7 +2696,7 @@ body {
 /* Responsive */
 @media (max-width: 1024px) {
   .workspace {
-    grid-template-columns: 180px 1fr 200px;
+    grid-template-columns: 180px 1fr auto;
   }
 }
 
