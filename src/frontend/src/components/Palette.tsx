@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, type ChangeEvent } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { generateNodeId } from '../utils/canvas'
-import type { FlowNodeType, Flowchart } from '../types'
+import type { FlowNodeType, FlowNode } from '../types'
 
 interface BlockConfig {
   type: FlowNodeType
@@ -55,44 +55,135 @@ const BLOCKS: BlockConfig[] = [
 ]
 
 export default function Palette() {
-  const { addNode, flowchart, setFlowchart } = useWorkflowStore()
+  const { addNode, flowchart, setFlowchart, setAnalysis } = useWorkflowStore()
   const { openModal } = useUIStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [showJsonInput, setShowJsonInput] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
 
-  // Handle JSON import
+  // Parse and validate workflow JSON - handles both old and new formats
+  const parseWorkflowJson = useCallback((jsonString: string) => {
+    const parsed = JSON.parse(jsonString)
+
+    // Detect format: new format has flowchart.nodes, old format has nodes at root
+    let nodes: unknown[]
+    let edges: unknown[]
+    let variables: unknown[] | undefined
+    let outputs: unknown[] | undefined
+
+    if (parsed.flowchart && Array.isArray(parsed.flowchart.nodes)) {
+      // New export format: { id, metadata, flowchart: { nodes, edges }, variables, outputs }
+      nodes = parsed.flowchart.nodes
+      edges = parsed.flowchart.edges || []
+      // Extract analysis data - check multiple possible keys for backwards compatibility
+      variables = parsed.variables || parsed.inputs || parsed.flowchart.variables || parsed.flowchart.inputs
+      outputs = parsed.outputs || parsed.flowchart.outputs
+    } else if (Array.isArray(parsed.nodes)) {
+      // Old format: { nodes, edges } at root level
+      nodes = parsed.nodes
+      edges = parsed.edges || []
+      // Check both 'variables' and 'inputs' for backwards compatibility
+      variables = parsed.variables || parsed.inputs
+      outputs = parsed.outputs
+    } else {
+      throw new Error('Invalid format: JSON must have "nodes" array (either at root or under "flowchart")')
+    }
+
+    // Validate and normalize nodes
+    const validatedNodes: FlowNode[] = nodes.map((n: unknown, i: number) => {
+      const node = n as Record<string, unknown>
+      return {
+        id: (node.id as string) || `node_${i}`,
+        type: (node.type as FlowNodeType) || 'process',
+        label: (node.label as string) || `Node ${i + 1}`,
+        x: typeof node.x === 'number' ? node.x : 400,
+        y: typeof node.y === 'number' ? node.y : 100 + i * 120,
+        color: (node.color as FlowNode['color']) || 'teal',
+        // Preserve additional node properties
+        condition: node.condition as FlowNode['condition'],
+        subworkflow_id: node.subworkflow_id as string | undefined,
+        input_mapping: node.input_mapping as Record<string, string> | undefined,
+        output_variable: node.output_variable as string | undefined,
+        output_type: node.output_type as string | undefined,
+        output_template: node.output_template as string | undefined,
+      }
+    })
+
+    // Validate edges
+    const validatedEdges = (edges as Array<Record<string, unknown>>).map((e) => ({
+      from: e.from as string,
+      to: e.to as string,
+      label: (e.label as string) || '',
+    }))
+
+    return { nodes: validatedNodes, edges: validatedEdges, variables, outputs }
+  }, [])
+
+  // Handle JSON import from text
   const handleJsonImport = useCallback(() => {
     try {
-      const parsed = JSON.parse(jsonText) as Flowchart
+      const { nodes, edges, variables, outputs } = parseWorkflowJson(jsonText)
 
-      // Validate basic structure
-      if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
-        throw new Error('JSON must have a "nodes" array')
-      }
-      if (!parsed.edges || !Array.isArray(parsed.edges)) {
-        parsed.edges = [] // Allow missing edges
-      }
+      setFlowchart({ nodes, edges })
 
-      // Ensure nodes have required fields
-      const validatedNodes = parsed.nodes.map((n: any, i: number) => ({
-        id: n.id || `node_${i}`,
-        type: n.type || 'process',
-        label: n.label || `Node ${i + 1}`,
-        x: typeof n.x === 'number' ? n.x : 400,
-        y: typeof n.y === 'number' ? n.y : 100 + i * 120,
-        color: n.color || 'teal',
-      }))
+      // Always set analysis - use imported data or empty arrays
+      // This ensures the Variables panel is properly initialized
+      setAnalysis({
+        variables: (variables as never[]) || [],
+        outputs: (outputs as never[]) || [],
+        tree: {},
+        doubts: [],
+      })
 
-      setFlowchart({ nodes: validatedNodes, edges: parsed.edges })
       setShowJsonInput(false)
       setJsonText('')
       setJsonError(null)
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : 'Invalid JSON')
     }
-  }, [jsonText, setFlowchart])
+  }, [jsonText, setFlowchart, setAnalysis, parseWorkflowJson])
+
+  // Handle file upload
+  const handleFileUpload = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string
+        const { nodes, edges, variables, outputs } = parseWorkflowJson(content)
+
+        setFlowchart({ nodes, edges })
+
+        // Always set analysis - use imported data or empty arrays
+        // This ensures the Variables panel is properly initialized
+        setAnalysis({
+          variables: (variables as never[]) || [],
+          outputs: (outputs as never[]) || [],
+          tree: {},
+          doubts: [],
+        })
+
+        setShowJsonInput(false)
+        setJsonText('')
+        setJsonError(null)
+      } catch (err) {
+        setJsonError(err instanceof Error ? err.message : 'Invalid JSON file')
+      }
+    }
+    reader.onerror = () => {
+      setJsonError('Failed to read file')
+    }
+    reader.readAsText(file)
+
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [setFlowchart, setAnalysis, parseWorkflowJson])
 
   // Handle drag start
   const handleDragStart = useCallback(
@@ -228,12 +319,39 @@ export default function Palette() {
         </button>
       </div>
 
+      {/* Hidden file input for JSON upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        style={{ display: 'none' }}
+        onChange={handleFileUpload}
+      />
+
       {/* JSON Input Modal */}
       {showJsonInput && (
         <div className="json-modal-overlay" onClick={() => setShowJsonInput(false)}>
           <div className="json-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Import Flowchart JSON</h3>
-            <p className="muted small">Paste JSON with nodes and edges arrays</p>
+            <h3>Import Workflow JSON</h3>
+            <p className="muted small">Upload a JSON file or paste JSON below</p>
+
+            {/* File upload button */}
+            <button
+              className="ghost full-width file-upload-btn"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Choose JSON File
+            </button>
+
+            <div className="import-divider">
+              <span>or paste JSON</span>
+            </div>
+
             <textarea
               value={jsonText}
               onChange={(e) => {
@@ -241,20 +359,22 @@ export default function Palette() {
                 setJsonError(null)
               }}
               placeholder={`{
-  "nodes": [
-    {"id": "n1", "type": "start", "label": "Start", "x": 400, "y": 100},
-    {"id": "n2", "type": "decision", "label": "Check?", "x": 400, "y": 220}
-  ],
-  "edges": [
-    {"from": "n1", "to": "n2", "label": ""}
-  ]
+  "flowchart": {
+    "nodes": [
+      {"id": "n1", "type": "start", "label": "Start", "x": 400, "y": 100},
+      {"id": "n2", "type": "decision", "label": "Check?", "x": 400, "y": 220}
+    ],
+    "edges": [
+      {"from": "n1", "to": "n2", "label": ""}
+    ]
+  }
 }`}
-              rows={12}
+              rows={10}
             />
             {jsonError && <p className="error-text">{jsonError}</p>}
             <div className="json-modal-actions">
               <button className="ghost" onClick={() => setShowJsonInput(false)}>Cancel</button>
-              <button className="primary" onClick={handleJsonImport}>Import</button>
+              <button className="primary" onClick={handleJsonImport} disabled={!jsonText.trim()}>Import</button>
             </div>
           </div>
         </div>

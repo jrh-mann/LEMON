@@ -95,3 +95,28 @@ export async function validateWorkflow(payload: {
 }): Promise<ValidationResponse> {
   return api.post<ValidationResponse>('/api/validate', payload)
 }
+
+// Compile workflow to Python code
+export interface CompilePythonResponse {
+  success: boolean
+  code: string | null
+  error?: string
+  warnings: string[]
+}
+
+export interface CompilePythonRequest {
+  nodes: any[]
+  edges: any[]
+  variables: any[]
+  outputs?: any[]
+  name?: string
+  include_imports?: boolean
+  include_docstring?: boolean
+  include_main?: boolean
+}
+
+export async function compileToPython(
+  payload: CompilePythonRequest
+): Promise<CompilePythonResponse> {
+  return api.post<CompilePythonResponse>('/api/workflows/compile', payload)
+}

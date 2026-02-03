@@ -33,6 +33,7 @@ from ..tools import (
     SetWorkflowOutputTool,
     ValidateWorkflowTool,
     ExecuteWorkflowTool,
+    CompilePythonTool,
     ListWorkflowsInLibrary,
     CreateWorkflowTool,
     SaveWorkflowToLibrary,
@@ -161,6 +162,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     set_output_tool = SetWorkflowOutputTool()
     validate_tool = ValidateWorkflowTool()
     execute_tool = ExecuteWorkflowTool()
+    compile_python_tool = CompilePythonTool()
 
     # Workflow library tools and shared WorkflowStore for MCP mode.
     # MCP can't receive the live object from the orchestrator's session_state,
@@ -466,6 +468,19 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         state.setdefault("user_id", user_id or "mcp_user")
         return create_workflow_tool.execute(args, session_state=state)
 
+    @server.tool(name="compile_python")
+    def compile_python(
+        include_main: bool = False,
+        include_docstring: bool = True,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Generate Python code from the current workflow."""
+        args: dict[str, Any] = {
+            "include_main": include_main,
+            "include_docstring": include_docstring,
+        }
+        return compile_python_tool.execute(args, session_state=session_state or {})
+
     @server.tool(name="execute_workflow")
     def execute_workflow(
         workflow_id: str,
@@ -484,8 +499,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     def list_workflows_in_library(
         search_query: str | None = None,
         domain: str | None = None,
-        include_drafts: bool = True,
-        drafts_only: bool = False,
         limit: int = 50,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -494,8 +507,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         Args:
             search_query: Optional text search in name/description
             domain: Optional domain filter
-            include_drafts: Include draft workflows (default True for LLM use)
-            drafts_only: Only return draft workflows
             limit: Max workflows to return
             session_state: Session context
         """
@@ -504,8 +515,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["search_query"] = search_query
         if domain is not None:
             args["domain"] = domain
-        args["include_drafts"] = include_drafts
-        args["drafts_only"] = drafts_only
         args["limit"] = limit
         # Inject workflow_store so the tool can query the DB in MCP mode
         state = dict(session_state or {})

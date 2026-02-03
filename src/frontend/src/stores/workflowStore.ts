@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message } from '../types'
+import { useChatStore } from './chatStore'
 
 // Execution state for visual workflow execution
 export interface ExecutionState {
@@ -25,7 +26,9 @@ export interface WorkflowTab {
   pendingImage: string | null
   pendingImageName: string | null
   analysis: WorkflowAnalysis | null
-  conversationId: string | null  // Per-tab conversation ID for isolated chat history
+  // Chat state per tab — each workflow gets its own conversation
+  conversationId: string | null
+  messages: Message[]
 }
 
 interface WorkflowState {
@@ -165,6 +168,7 @@ const createInitialTab = (): WorkflowTab => {
     pendingImageName: null,
     analysis: null,
     conversationId: null,  // Will be generated on first message
+    messages: [],
   }
 }
 
@@ -270,9 +274,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       pendingImageName: null,
       analysis: null,
       conversationId: null,  // New tab starts with no conversation
+      messages: [],
     }
-    // Save current tab's pending image before switching
+    // Save current tab's state (including chat) before switching
     const state = get()
+    const chatSnapshot = useChatStore.getState().getSnapshot()
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? {
@@ -280,6 +286,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             pendingImage: state.pendingImage,
             pendingImageName: state.pendingImageName,
             analysis: state.currentAnalysis,
+            conversationId: chatSnapshot.conversationId,
+            messages: chatSnapshot.messages,
           }
         : tab
     )
@@ -298,6 +306,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       pendingImage: null,
       pendingImageName: null,
     })
+    // Reset chat for the new tab (fresh conversation)
+    useChatStore.getState().reset()
     return newTab.id
   },
 
@@ -319,6 +329,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         pendingImage: null,
         pendingImageName: null,
       })
+      // Reset chat for the fresh tab
+      useChatStore.getState().reset()
       return
     }
 
@@ -346,13 +358,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       pendingImage: activeTab.pendingImage,
       pendingImageName: activeTab.pendingImageName,
     })
+    // Restore chat state from the tab we're switching to
+    if (tabId === state.activeTabId) {
+      useChatStore.getState().restoreState(activeTab.conversationId, activeTab.messages)
+    }
   },
 
   switchTab: (tabId) => {
     const state = get()
     if (tabId === state.activeTabId) return
 
-    // Save current tab state including pending image
+    // Save current tab state including pending image and chat
+    const chatSnapshot = useChatStore.getState().getSnapshot()
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? {
@@ -363,6 +380,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             pendingImage: state.pendingImage,
             pendingImageName: state.pendingImageName,
             analysis: state.currentAnalysis,
+            conversationId: chatSnapshot.conversationId,
+            messages: chatSnapshot.messages,
           }
         : tab
     )
@@ -385,6 +404,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       pendingImage: newTab.pendingImage,
       pendingImageName: newTab.pendingImageName,
     })
+    // Restore chat state from the incoming tab
+    useChatStore.getState().restoreState(newTab.conversationId, newTab.messages)
   },
 
   updateTabTitle: (tabId, title) => {

@@ -771,6 +771,32 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "compile_python",
+                "description": (
+                    "Generate Python code from the current workflow. "
+                    "Returns executable Python source code with typed function parameters, "
+                    "if/else statements for decisions, and return statements for outputs. "
+                    "Use this when the user asks to export, generate, or compile the workflow to Python."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "include_main": {
+                            "type": "boolean",
+                            "description": "Whether to include an if __name__ == '__main__' block. Default: false",
+                        },
+                        "include_docstring": {
+                            "type": "boolean",
+                            "description": "Whether to include a docstring with parameter descriptions. Default: true",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
     ]
 
 
@@ -806,7 +832,8 @@ def build_system_prompt(
         "- VALIDATE/CHECK/VERIFY → call validate_workflow with workflow_id\n"
         "- RUN/EXECUTE/TEST/TRY → call execute_workflow with workflow_id\n"
         "- VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library\n"
-        "- SAVE/KEEP/PUBLISH (workflow) → call save_workflow_to_library with workflow_id\n\n"
+        "- SAVE/KEEP/PUBLISH (workflow) → call save_workflow_to_library with workflow_id\n"
+        "- COMPILE/GENERATE/EXPORT (to Python/code) → call compile_python\n\n"
         "## Checking for Existing Workflows\n"
         "WHENEVER the user wants to create a new workflow, ALWAYS call list_workflows_in_library first to check "
         "if a similar workflow already exists. This prevents duplicates and helps users discover what they've already built.\n\n"
