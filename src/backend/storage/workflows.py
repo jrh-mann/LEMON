@@ -760,6 +760,15 @@ class WorkflowStore:
                 new_status = "reviewed"
                 self._logger.info("Workflow %s promoted to reviewed (net_votes=%d)", workflow_id, new_net_votes)
 
+            # Auto-demote to unreviewed if net_votes < 1
+            if new_net_votes < 1 and new_status == "reviewed":
+                conn.execute(
+                    "UPDATE workflows SET review_status = 'unreviewed' WHERE id = ?",
+                    (workflow_id,),
+                )
+                new_status = "unreviewed"
+                self._logger.info("Workflow %s demoted to unreviewed (net_votes=%d)", workflow_id, new_net_votes)
+
         return {
             "success": True,
             "net_votes": new_net_votes,
