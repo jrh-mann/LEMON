@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
+from .helpers import resolve_node_id
 
 
 class DeleteConnectionTool(Tool):
@@ -29,8 +30,12 @@ class DeleteConnectionTool(Tool):
         workflow_analysis = session_state.get("workflow_analysis", {})
         variables = workflow_analysis.get("variables", [])
 
-        from_id = args.get("from_node_id")
-        to_id = args.get("to_node_id")
+        nodes = current_workflow.get("nodes", [])
+        try:
+            from_id = resolve_node_id(args.get("from_node_id"), nodes)
+            to_id = resolve_node_id(args.get("to_node_id"), nodes)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
         edge_id = f"{from_id}->{to_id}"
 
         new_workflow = {

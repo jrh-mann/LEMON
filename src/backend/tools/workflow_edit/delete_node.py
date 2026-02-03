@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
+from .helpers import resolve_node_id
 
 
 class DeleteNodeTool(Tool):
@@ -28,18 +29,12 @@ class DeleteNodeTool(Tool):
         workflow_analysis = session_state.get("workflow_analysis", {})
         variables = workflow_analysis.get("variables", [])
 
-        node_id = args.get("node_id")
+        raw_id = args.get("node_id")
         nodes = current_workflow.get("nodes", [])
-        node_exists = any(n.get("id") == node_id for n in nodes)
-        if not node_exists:
-            available = ", ".join(
-                f"{n.get('id')}: {n.get('label')}" for n in nodes
-            ) or "none"
-            return {
-                "success": False,
-                "error": f"Node not found: {node_id}. Available nodes: {available}",
-                "error_code": "NODE_NOT_FOUND",
-            }
+        try:
+            node_id = resolve_node_id(raw_id, nodes)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
 
         new_workflow = {
             "nodes": [n for n in current_workflow.get("nodes", []) if n["id"] != node_id],

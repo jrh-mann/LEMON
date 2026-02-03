@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import get_node_color, validate_subprocess_node
+from .helpers import get_node_color, resolve_node_id, validate_subprocess_node
 from .add_node import validate_decision_condition
 
 
@@ -196,7 +196,7 @@ class BatchEditWorkflowTool(Tool):
                     applied_operations.append({"op": "add_node", "node": new_node})
 
                 elif op_type == "modify_node":
-                    node_id = self._resolve_id(op["node_id"], temp_id_map)
+                    node_id = self._resolve_id(op["node_id"], temp_id_map, new_workflow["nodes"])
                     node_idx = next(
                         (i for i, n in enumerate(new_workflow["nodes"]) if n["id"] == node_id),
                         None,
@@ -221,7 +221,7 @@ class BatchEditWorkflowTool(Tool):
                     )
 
                 elif op_type == "delete_node":
-                    node_id = self._resolve_id(op["node_id"], temp_id_map)
+                    node_id = self._resolve_id(op["node_id"], temp_id_map, new_workflow["nodes"])
                     new_workflow["nodes"] = [
                         n for n in new_workflow["nodes"] if n["id"] != node_id
                     ]
@@ -233,8 +233,8 @@ class BatchEditWorkflowTool(Tool):
                     applied_operations.append({"op": "delete_node", "node_id": node_id})
 
                 elif op_type == "add_connection":
-                    from_id = self._resolve_id(op["from"], temp_id_map)
-                    to_id = self._resolve_id(op["to"], temp_id_map)
+                    from_id = self._resolve_id(op["from"], temp_id_map, new_workflow["nodes"])
+                    to_id = self._resolve_id(op["to"], temp_id_map, new_workflow["nodes"])
                     edge_id = f"{from_id}->{to_id}"
 
                     new_edge = {
@@ -247,8 +247,8 @@ class BatchEditWorkflowTool(Tool):
                     applied_operations.append({"op": "add_connection", "edge": new_edge})
 
                 elif op_type == "delete_connection":
-                    from_id = self._resolve_id(op["from"], temp_id_map)
-                    to_id = self._resolve_id(op["to"], temp_id_map)
+                    from_id = self._resolve_id(op["from"], temp_id_map, new_workflow["nodes"])
+                    to_id = self._resolve_id(op["to"], temp_id_map, new_workflow["nodes"])
                     edge_id = f"{from_id}->{to_id}"
 
                     new_workflow["edges"] = [
@@ -281,5 +281,17 @@ class BatchEditWorkflowTool(Tool):
             "message": f"Applied {len(applied_operations)} operations successfully",
         }
 
-    def _resolve_id(self, id_or_temp: str, temp_map: Dict[str, str]) -> str:
-        return temp_map.get(id_or_temp, id_or_temp)
+    def _resolve_id(
+        self,
+        id_or_temp: str,
+        temp_map: Dict[str, str],
+        nodes: List[Dict[str, Any]] | None = None,
+    ) -> str:
+        """Resolve temp IDs, real IDs, or node labels to a real node ID."""
+        # Temp ID takes priority (e.g. "temp_1" created earlier in the batch)
+        if id_or_temp in temp_map:
+            return temp_map[id_or_temp]
+        # Fall back to label-or-ID resolution when nodes are available
+        if nodes is not None:
+            return resolve_node_id(id_or_temp, nodes)
+        return id_or_temp
