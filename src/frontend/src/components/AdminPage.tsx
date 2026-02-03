@@ -22,8 +22,7 @@ import type {
 } from '../types/admin'
 import type { WorkflowVariable } from '../types'
 
-// Number of metadata/header rows to skip in EMIS CSVs
-const HEADER_ROWS_TO_SKIP = 10
+// Auto-detect header row by looking for "EMIS Number" in first column
 
 // ============================================================================
 // CSV PARSING HELPERS
@@ -48,26 +47,52 @@ function parseEMISDate(dateStr: string): Date {
   return new Date(0)
 }
 
-/** Parse CSV text, skipping EMIS header rows, into ParsedRow[] */
+/** Parse CSV text, auto-detecting header row by looking for "EMIS Number" */
 function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file: UploadedFile } {
-  const result = Papa.parse<string[]>(text, { header: false, skipEmptyLines: true })
-  // Skip the metadata header rows
-  const dataRows = result.data.slice(HEADER_ROWS_TO_SKIP)
+  const result = Papa.parse<string[]>(text, { header: false, skipEmptyLines: 'greedy' })
+
+  // Find the header row (contains "EMIS Number" or "EMIS")
+  let headerIndex = -1
+  for (let i = 0; i < Math.min(result.data.length, 20); i++) {
+    const firstCol = result.data[i][0]?.toString().toLowerCase().trim()
+    if (firstCol === 'emis number' || firstCol === 'emis') {
+      headerIndex = i
+      break
+    }
+  }
+
+  if (headerIndex === -1) {
+    console.warn(`[parseCSVText] Could not find header row in ${fileName}, trying row 9`)
+    headerIndex = 9 // fallback
+  }
+
+  // Data starts after header row
+  const dataRows = result.data.slice(headerIndex + 1)
+  console.log(`[parseCSVText] ${fileName}: header at row ${headerIndex}, ${dataRows.length} data rows`)
+
   const rows: ParsedRow[] = []
   for (const cols of dataRows) {
-    if (!cols[0] || cols.length < 4) continue // skip empty/malformed
+    // Skip rows without EMIS number or with too few columns
+    const emisNum = cols[0]?.toString().trim()
+    if (!emisNum || cols.length < 3) continue
+
+    // Skip if first column looks like metadata (contains letters other than just the number)
+    if (!/^\d+$/.test(emisNum)) continue
+
     rows.push({
-      emis_number: cols[0]?.trim() ?? '',
-      gender: cols[1]?.trim() ?? '',
-      age: parseInt(cols[2]?.trim() ?? '0', 10) || 0,
-      code_term: cols[3]?.trim() ?? '',
-      date: cols[4]?.trim() ?? '',
-      value: cols[5]?.trim() ?? '',
-      unit: cols[6]?.trim() ?? '',
-      secondary_value: cols[7]?.trim() ?? '',
-      secondary_unit: cols[8]?.trim() ?? '',
+      emis_number: emisNum,
+      gender: cols[1]?.toString().trim() ?? '',
+      age: parseInt(cols[2]?.toString().trim() ?? '0', 10) || 0,
+      code_term: cols[3]?.toString().trim() ?? '',
+      date: cols[4]?.toString().trim() ?? '',
+      value: cols[5]?.toString().trim() ?? '',
+      unit: cols[6]?.toString().trim() ?? '',
+      secondary_value: cols[7]?.toString().trim() ?? '',
+      secondary_unit: cols[8]?.toString().trim() ?? '',
     })
   }
+
+  console.log(`[parseCSVText] ${fileName}: parsed ${rows.length} valid patient rows`)
   return {
     rows,
     file: { name: fileName, rowCount: rows.length },
@@ -167,7 +192,14 @@ export default function AdminPage() {
   }, [])
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px' }}>
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      overflowY: 'auto',
+      background: 'var(--bg, #1a1a1a)',
+      zIndex: 10,
+    }}>
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px', paddingBottom: 100 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24, gap: 16 }}>
         <button
@@ -191,6 +223,7 @@ export default function AdminPage() {
       {store.mappings.length > 0 && store.selectedWorkflowId && <PreviewSection onError={setError} />}
       {store.results.length > 0 && <ResultsSection />}
     </div>
+    </div>
   )
 }
 
@@ -201,34 +234,81 @@ export default function AdminPage() {
 function UploadSection() {
   const store = useAdminStore()
   const [dragOver, setDragOver] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null)
 
   const handleFiles = useCallback((files: FileList | null) => {
+    console.log('[AdminPage] handleFiles called with', files?.length, 'files')
     if (!files || files.length === 0) return
-    const allRows: ParsedRow[] = [...store.parsedRows]
-    const allFiles: UploadedFile[] = [...store.uploadedFiles]
 
-    let remaining = files.length
+    // Use getState() to always get fresh state, avoiding stale closure issues
+    const getLatestState = () => useAdminStore.getState()
+
+    // Track parsed results for this batch
+    const batchRows: ParsedRow[][] = []
+    const batchFiles: UploadedFile[] = []
+    const totalFiles = files.length
+    let doneCount = 0
+
+    setUploadProgress({ total: totalFiles, done: 0 })
+
     for (const file of Array.from(files)) {
+      console.log('[AdminPage] Starting to read file:', file.name)
       const reader = new FileReader()
       reader.onload = (e) => {
-        const text = e.target?.result as string
-        const { rows, file: fileMeta } = parseCSVText(text, file.name)
-        allRows.push(...rows)
-        allFiles.push(fileMeta)
-        remaining--
-        if (remaining === 0) {
-          // All files parsed — update store
-          store.setParsedRows(allRows)
-          store.setUploadedFiles(allFiles)
-          store.setCodeTerms(buildCodeTermSummaries(allRows))
-          store.setPatients(pivotToPatients(allRows))
-          store.setStage('map')
+        try {
+          const text = e.target?.result as string
+          console.log('[AdminPage] File loaded:', file.name, 'size:', (text?.length / 1024 / 1024).toFixed(2), 'MB')
+          const { rows, file: fileMeta } = parseCSVText(text, file.name)
+          console.log('[AdminPage] Parsed', rows.length, 'rows from', file.name)
+          batchRows.push(rows)
+          batchFiles.push(fileMeta)
+        } catch (err) {
+          console.error('[AdminPage] Parse error for', file.name, err)
+          // Still count as done but with empty data
+          batchRows.push([])
+          batchFiles.push({ name: file.name + ' (ERROR)', rowCount: 0 })
+        }
+
+        doneCount++
+        setUploadProgress({ total: totalFiles, done: doneCount })
+
+        if (doneCount === totalFiles) {
+          // All files in this batch parsed — merge with current store state
+          try {
+            const currentState = getLatestState()
+            const allRows = [...currentState.parsedRows, ...batchRows.flat()]
+            const allFiles = [...currentState.uploadedFiles, ...batchFiles]
+            console.log('[AdminPage] All files parsed. Total rows:', allRows.length, 'Total files:', allFiles.length)
+
+            const patients = pivotToPatients(allRows)
+            const codeTerms = buildCodeTermSummaries(allRows)
+            console.log('[AdminPage] Pivoted to', patients.length, 'patients,', codeTerms.length, 'code terms')
+
+            store.setParsedRows(allRows)
+            store.setUploadedFiles(allFiles)
+            store.setCodeTerms(codeTerms)
+            store.setPatients(patients)
+            store.setStage('map')
+          } catch (err) {
+            console.error('[AdminPage] Error finalizing upload:', err)
+          }
+          setUploadProgress(null)
+        }
+      }
+      reader.onerror = (err) => {
+        console.error('[AdminPage] FileReader error for', file.name, err)
+        batchRows.push([])
+        batchFiles.push({ name: file.name + ' (ERROR)', rowCount: 0 })
+        doneCount++
+        setUploadProgress({ total: totalFiles, done: doneCount })
+
+        if (doneCount === totalFiles) {
+          setUploadProgress(null)
         }
       }
       reader.readAsText(file)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.parsedRows, store.uploadedFiles])
+  }, [store])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -259,21 +339,32 @@ function UploadSection() {
           background: dragOver ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.03)',
         }}
       >
-        Drop CSV files here or click to browse
+        {uploadProgress
+          ? `Processing ${uploadProgress.done}/${uploadProgress.total} files...`
+          : 'Drop CSV files here or click to browse'}
       </div>
 
       {/* File list */}
       {store.uploadedFiles.length > 0 && (
         <div style={{ marginTop: 12 }}>
           {store.uploadedFiles.map((f) => (
-            <div key={f.name} style={{ fontSize: 13, color: '#aaa', marginBottom: 4 }}>
-              ✓ {f.name} — {f.rowCount.toLocaleString()} rows
+            <div key={f.name} style={{ fontSize: 13, color: '#aaa', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>✓ {f.name} — {f.rowCount.toLocaleString()} rows</span>
             </div>
           ))}
-          <div style={{ marginTop: 8, fontSize: 14, color: '#ccc' }}>
-            Patients: <strong>{store.patients.length.toLocaleString()}</strong>
-            {' | '}
-            Code Terms: <strong>{store.codeTerms.length}</strong>
+          <div style={{ marginTop: 8, fontSize: 14, color: '#ccc', display: 'flex', alignItems: 'center', gap: 16 }}>
+            <span>
+              Patients: <strong>{store.patients.length.toLocaleString()}</strong>
+              {' | '}
+              Code Terms: <strong>{store.codeTerms.length}</strong>
+            </span>
+            <button
+              onClick={() => store.clearUploads()}
+              style={{ ...linkBtnStyle, color: '#f87171' }}
+              title="Clear all uploaded files"
+            >
+              Clear All
+            </button>
           </div>
         </div>
       )}
