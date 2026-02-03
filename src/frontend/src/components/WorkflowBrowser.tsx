@@ -309,7 +309,7 @@ export default function WorkflowBrowser() {
             </span>
             {workflow.review_status === 'unreviewed' && (
               <span className="votes-needed">
-                ({3 - (workflow.net_votes ?? 0)} more for review)
+                ({1 - (workflow.net_votes ?? 0)} more for review)
               </span>
             )}
           </div>
@@ -407,7 +407,7 @@ export default function WorkflowBrowser() {
       {activeTab === 'peer-review' && (
         <div className="peer-review-info">
           <p>
-            <strong>Help review community workflows!</strong> Workflows with 3+ net upvotes
+            <strong>Help review community workflows!</strong> Workflows with 1+ net upvotes
             become publicly available. Vote based on correctness and usefulness.
           </p>
         </div>

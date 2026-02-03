@@ -751,8 +751,8 @@ class WorkflowStore:
             new_net_votes = updated["net_votes"]
             new_status = updated["review_status"]
 
-            # Auto-promote to reviewed if net_votes >= 3
-            if new_net_votes >= 3 and new_status == "unreviewed":
+            # Auto-promote to reviewed if net_votes >= 1
+            if new_net_votes >= 1 and new_status == "unreviewed":
                 conn.execute(
                     "UPDATE workflows SET review_status = 'reviewed' WHERE id = ?",
                     (workflow_id,),
