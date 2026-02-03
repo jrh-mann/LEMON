@@ -139,11 +139,12 @@ class SocketChatTask:
             return
         self.did_stream = True
         # Emit each character individually for smooth typewriter effect
+        # Small delay (5ms) between characters makes the effect visible
         for char in chunk:
             if self.is_cancelled():
                 return
             self.socketio.emit("chat_stream", {"chunk": char, "task_id": self.task_id}, to=self.sid)
-            self.socketio.sleep(0)  # Yield to event loop without artificial delay
+            self.socketio.sleep(0.005)  # 5ms delay for visible typewriter effect
 
     def heartbeat(self) -> None:
         while not self.done.is_set():

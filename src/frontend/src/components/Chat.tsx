@@ -10,7 +10,10 @@ import type { Message } from '../types'
 export default function Chat() {
   const [inputValue, setInputValue] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isUserScrolledUp = useRef(false)
+  const isProgrammaticScroll = useRef(false)
 
   const {
     messages,
@@ -64,10 +67,43 @@ export default function Chat() {
     rawToggleListening()
   }, [isListening, inputValue, rawToggleListening])
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
+  // Track if user has scrolled up manually (ignore programmatic scrolls)
+  const handleScroll = useCallback(() => {
+    // Ignore scroll events caused by our own scrollIntoView calls
+    if (isProgrammaticScroll.current) return
+
+    const container = messagesContainerRef.current
+    if (!container) return
+    // Consider "at bottom" if within 100px of the bottom
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    isUserScrolledUp.current = !atBottom
+  }, [])
+
+  // Helper to scroll without triggering the "user scrolled" detection
+  const scrollToBottom = useCallback(() => {
+    isProgrammaticScroll.current = true
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    // Reset flag after scroll animation completes
+    setTimeout(() => {
+      isProgrammaticScroll.current = false
+    }, 100)
+  }, [])
+
+  // Auto-scroll to bottom when new messages are added
+  // But only if user hasn't scrolled up manually
+  useEffect(() => {
+    if (!isUserScrolledUp.current) {
+      scrollToBottom()
+    }
+  }, [messages, scrollToBottom])
+
+  // Reset scroll tracking and scroll to bottom when streaming starts
+  useEffect(() => {
+    if (isStreaming) {
+      isUserScrolledUp.current = false
+      scrollToBottom()
+    }
+  }, [isStreaming, scrollToBottom])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -169,7 +205,7 @@ export default function Chat() {
         <p className="muted">Describe your workflow or ask questions</p>
       </div>
 
-      <div className="chat-messages" id="chatThread">
+      <div className="chat-messages" id="chatThread" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
             <p className="muted">
