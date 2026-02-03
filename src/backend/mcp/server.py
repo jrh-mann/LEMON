@@ -33,6 +33,7 @@ from ..tools import (
     SetWorkflowOutputTool,
     ValidateWorkflowTool,
     ExecuteWorkflowTool,
+    CompilePythonTool,
     ListWorkflowsInLibrary,
 )
 from ..utils.uploads import save_uploaded_image
@@ -159,6 +160,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     set_output_tool = SetWorkflowOutputTool()
     validate_tool = ValidateWorkflowTool()
     execute_tool = ExecuteWorkflowTool()
+    compile_python_tool = CompilePythonTool()
 
     @server.tool(
         name="analyze_workflow",
@@ -358,6 +360,18 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return validate_tool.execute({}, session_state=session_state or {})
+
+    @server.tool(name="compile_python")
+    def compile_python(
+        include_main: bool = False,
+        include_docstring: bool = True,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        args: dict[str, Any] = {
+            "include_main": include_main,
+            "include_docstring": include_docstring,
+        }
+        return compile_python_tool.execute(args, session_state=session_state or {})
 
     # Workflow library + execution tools — need their own WorkflowStore since
     # MCP can't receive the live object from the orchestrator's session_state.

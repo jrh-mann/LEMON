@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { ApiError } from '../api/client'
 import { logoutUser } from '../api/auth'
-import { validateWorkflow } from '../api/workflows'
+import { validateWorkflow, compileToPython } from '../api/workflows'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { addAssistantMessage } from '../stores/chatStore'
@@ -89,9 +89,10 @@ export default function Header() {
         }
       }
 
-      const exportData = currentWorkflow || {
-        id: 'draft',
-        metadata: {
+      // Build export data with analysis (variables/outputs)
+      const exportData = {
+        id: currentWorkflow?.id || 'draft',
+        metadata: currentWorkflow?.metadata || {
           name: 'Draft Workflow',
           description: '',
           tags: [],
@@ -102,6 +103,9 @@ export default function Header() {
           is_validated: false,
         },
         flowchart,
+        // Include analysis data so variables are preserved on import
+        variables: currentAnalysis?.variables || [],
+        outputs: currentAnalysis?.outputs || [],
       }
 
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -261,6 +265,66 @@ export default function Header() {
     }
   }, [currentWorkflow, setError])
 
+  // Handle Python export - generates Python code from workflow
+  const handleExportPython = useCallback(async () => {
+    setShowExportDropdown(false)
+    setIsValidating(true)
+
+    try {
+      const result = await compileToPython({
+        nodes: flowchart.nodes,
+        edges: flowchart.edges,
+        variables: currentAnalysis?.variables || [],
+        outputs: currentAnalysis?.outputs || [],
+        name: currentWorkflow?.metadata?.name || 'workflow',
+        include_imports: true,
+        include_docstring: true,
+        include_main: true,
+      })
+
+      if (!result.success || !result.code) {
+        throw new Error(result.error || 'Failed to generate Python code')
+      }
+
+      // Check for critical warnings that indicate broken code
+      const criticalWarnings = (result.warnings || []).filter(w =>
+        w.includes('Could not compile condition') ||
+        w.includes('Unknown variable') ||
+        w.includes('not defined') ||
+        w.includes('requires manual implementation')
+      )
+
+      if (criticalWarnings.length > 0) {
+        const proceed = confirm(
+          `⚠️ Python Export Warnings\n\n` +
+          `The generated code may not work correctly:\n\n` +
+          criticalWarnings.map(w => `• ${w}`).join('\n') +
+          `\n\nDo you want to download anyway?`
+        )
+        if (!proceed) {
+          setIsValidating(false)
+          return
+        }
+      }
+
+      // Download as .py file
+      const blob = new Blob([result.code], { type: 'text/x-python' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const workflowName = currentWorkflow?.metadata?.name || 'workflow'
+      // Convert name to valid filename
+      const filename = workflowName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '')
+      a.download = `${filename || 'workflow'}.py`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Python export failed')
+    } finally {
+      setIsValidating(false)
+    }
+  }, [flowchart, currentAnalysis, currentWorkflow, setError])
+
   const canExport = currentWorkflow || flowchart.nodes.length > 0
 
   const handleLogout = useCallback(async () => {
@@ -354,6 +418,13 @@ export default function Header() {
                   <polyline points="21 15 16 10 5 21" />
                 </svg>
                 Export as PNG
+              </button>
+              <button onClick={handleExportPython}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
+                  <path d="M8 12l2 2 4-4" />
+                </svg>
+                Export as Python
               </button>
             </div>
           )}

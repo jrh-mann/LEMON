@@ -74,17 +74,18 @@ export default function Palette() {
     let outputs: unknown[] | undefined
 
     if (parsed.flowchart && Array.isArray(parsed.flowchart.nodes)) {
-      // New export format: { id, metadata, flowchart: { nodes, edges } }
+      // New export format: { id, metadata, flowchart: { nodes, edges }, variables, outputs }
       nodes = parsed.flowchart.nodes
       edges = parsed.flowchart.edges || []
-      // Also extract analysis data if present
-      variables = parsed.variables || parsed.flowchart.variables
+      // Extract analysis data - check multiple possible keys for backwards compatibility
+      variables = parsed.variables || parsed.inputs || parsed.flowchart.variables || parsed.flowchart.inputs
       outputs = parsed.outputs || parsed.flowchart.outputs
     } else if (Array.isArray(parsed.nodes)) {
       // Old format: { nodes, edges } at root level
       nodes = parsed.nodes
       edges = parsed.edges || []
-      variables = parsed.variables
+      // Check both 'variables' and 'inputs' for backwards compatibility
+      variables = parsed.variables || parsed.inputs
       outputs = parsed.outputs
     } else {
       throw new Error('Invalid format: JSON must have "nodes" array (either at root or under "flowchart")')
@@ -127,15 +128,14 @@ export default function Palette() {
 
       setFlowchart({ nodes, edges })
 
-      // If the imported JSON has analysis data, set it
-      if (variables || outputs) {
-        setAnalysis({
-          variables: (variables as never[]) || [],
-          outputs: (outputs as never[]) || [],
-          tree: {},
-          doubts: [],
-        })
-      }
+      // Always set analysis - use imported data or empty arrays
+      // This ensures the Variables panel is properly initialized
+      setAnalysis({
+        variables: (variables as never[]) || [],
+        outputs: (outputs as never[]) || [],
+        tree: {},
+        doubts: [],
+      })
 
       setShowJsonInput(false)
       setJsonText('')
@@ -158,15 +158,14 @@ export default function Palette() {
 
         setFlowchart({ nodes, edges })
 
-        // If the imported JSON has analysis data, set it
-        if (variables || outputs) {
-          setAnalysis({
-            variables: (variables as never[]) || [],
-            outputs: (outputs as never[]) || [],
-            tree: {},
-            doubts: [],
-          })
-        }
+        // Always set analysis - use imported data or empty arrays
+        // This ensures the Variables panel is properly initialized
+        setAnalysis({
+          variables: (variables as never[]) || [],
+          outputs: (outputs as never[]) || [],
+          tree: {},
+          doubts: [],
+        })
 
         setShowJsonInput(false)
         setJsonText('')

@@ -1,0 +1,696 @@
+"""Python code generator for LEMON workflows.
+
+Transforms workflow trees (nodes, edges, variables) into clean,
+executable Python functions with proper control flow.
+
+Example output:
+    def loan_approval(age: int, income: float, credit_score: str) -> str:
+        if age < 18:
+            return "Rejected: Underage"
+        if income >= 50000:
+            if credit_score.lower() == "good":
+                return "Approved"
+            else:
+                return "Approved with conditions"
+        else:
+            return "Rejected: Insufficient income"
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Dict, Any, List, Optional, Set
+from dataclasses import dataclass, field
+
+
+@dataclass
+class CompilationResult:
+    """Result of Python code generation."""
+    success: bool
+    code: Optional[str] = None
+    error: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
+
+
+class CompilationError(Exception):
+    """Raised when code generation fails."""
+    pass
+
+
+class VariableNameResolver:
+    """Resolves workflow variable IDs to Python-safe identifiers.
+
+    Maps IDs like 'var_patient_age_int' to clean Python names like 'patient_age'.
+    Handles conflicts by adding numeric suffixes.
+    """
+
+    def __init__(self, variables: List[Dict[str, Any]]):
+        """Initialize resolver with variable definitions.
+
+        Args:
+            variables: List of variable definitions with 'id', 'name', 'type' fields.
+        """
+        self.variables = variables
+        self.id_to_var = {v['id']: v for v in variables}
+        self.id_to_python: Dict[str, str] = {}
+        self.used_names: Set[str] = set()
+
+        # Build mappings
+        for var in variables:
+            var_id = var['id']
+            python_name = self._to_python_name(var['name'])
+
+            # Handle conflicts
+            original_name = python_name
+            counter = 2
+            while python_name in self.used_names:
+                python_name = f"{original_name}_{counter}"
+                counter += 1
+
+            self.id_to_python[var_id] = python_name
+            self.used_names.add(python_name)
+
+    def _to_python_name(self, name: str) -> str:
+        """Convert a friendly name to a valid Python identifier.
+
+        Args:
+            name: Human-readable name like 'Patient Age'
+
+        Returns:
+            Python identifier like 'patient_age'
+        """
+        # Lowercase and replace non-alphanumeric with underscores
+        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+
+        # Ensure it doesn't start with a digit
+        if slug and slug[0].isdigit():
+            slug = f"var_{slug}"
+
+        # Handle empty or reserved names
+        if not slug or slug in {'if', 'else', 'for', 'while', 'return', 'def', 'class', 'import', 'from', 'and', 'or', 'not', 'in', 'is', 'True', 'False', 'None'}:
+            slug = f"var_{slug}" if slug else "var"
+
+        return slug
+
+    def resolve(self, var_id: str) -> str:
+        """Get Python name for a variable ID.
+
+        Args:
+            var_id: Variable ID like 'var_age_int'
+
+        Returns:
+            Python identifier like 'age'
+
+        Raises:
+            CompilationError: If variable ID not found
+        """
+        if var_id not in self.id_to_python:
+            raise CompilationError(f"Unknown variable ID: {var_id}")
+        return self.id_to_python[var_id]
+
+    def get_type(self, var_id: str) -> str:
+        """Get Python type hint for a variable.
+
+        Args:
+            var_id: Variable ID
+
+        Returns:
+            Python type hint string
+        """
+        if var_id not in self.id_to_var:
+            return "Any"
+
+        var_type = self.id_to_var[var_id].get('type', 'string')
+        return TYPE_MAP.get(var_type, 'str')
+
+    def get_friendly_name(self, var_id: str) -> str:
+        """Get original friendly name for a variable.
+
+        Args:
+            var_id: Variable ID
+
+        Returns:
+            Friendly name like 'Patient Age'
+        """
+        if var_id not in self.id_to_var:
+            return var_id
+        return self.id_to_var[var_id].get('name', var_id)
+
+
+# Type mapping from workflow types to Python type hints
+TYPE_MAP = {
+    'int': 'int',
+    'float': 'float',
+    'bool': 'bool',
+    'string': 'str',
+    'enum': 'str',
+    'date': 'str',  # Dates as ISO strings for simplicity
+    'json': 'dict',
+}
+
+
+class ConditionCompiler:
+    """Compiles workflow DecisionConditions to Python boolean expressions.
+
+    Supports all comparator types from evaluator.py.
+    """
+
+    # Maps comparators to Python expression templates
+    # {var} = variable name, {val} = comparison value, {val2} = second value (for ranges)
+    COMPARATOR_TEMPLATES = {
+        # Numeric
+        'eq': '{var} == {val}',
+        'neq': '{var} != {val}',
+        'lt': '{var} < {val}',
+        'lte': '{var} <= {val}',
+        'gt': '{var} > {val}',
+        'gte': '{var} >= {val}',
+        'within_range': '{val} <= {var} <= {val2}',
+        # Boolean
+        'is_true': '{var} is True',
+        'is_false': '{var} is False',
+        # String (case-insensitive)
+        'str_eq': '{var}.lower() == {val}.lower()',
+        'str_neq': '{var}.lower() != {val}.lower()',
+        'str_contains': '{val}.lower() in {var}.lower()',
+        'str_starts_with': '{var}.lower().startswith({val}.lower())',
+        'str_ends_with': '{var}.lower().endswith({val}.lower())',
+        # Date (assuming ISO format strings)
+        'date_eq': '{var} == {val}',
+        'date_before': '{var} < {val}',
+        'date_after': '{var} > {val}',
+        'date_between': '{val} <= {var} <= {val2}',
+        # Enum (case-insensitive)
+        'enum_eq': '{var}.lower() == {val}.lower()',
+        'enum_neq': '{var}.lower() != {val}.lower()',
+    }
+
+    def compile(
+        self,
+        condition: Dict[str, Any],
+        resolver: VariableNameResolver
+    ) -> str:
+        """Compile a DecisionCondition to a Python expression.
+
+        Args:
+            condition: DecisionCondition dict with input_id, comparator, value, value2
+            resolver: Variable name resolver
+
+        Returns:
+            Python expression string like 'age >= 18'
+
+        Raises:
+            CompilationError: If condition is invalid
+        """
+        input_id = condition.get('input_id')
+        comparator = condition.get('comparator')
+        value = condition.get('value')
+        value2 = condition.get('value2')
+
+        if not input_id:
+            raise CompilationError("Condition missing 'input_id'")
+        if not comparator:
+            raise CompilationError("Condition missing 'comparator'")
+        if comparator not in self.COMPARATOR_TEMPLATES:
+            raise CompilationError(f"Unknown comparator: '{comparator}'")
+
+        # Get Python variable name
+        var_name = resolver.resolve(input_id)
+
+        # Format the value as Python literal
+        val_str = self._format_value(value)
+        val2_str = self._format_value(value2) if value2 is not None else None
+
+        # Get template and fill in
+        template = self.COMPARATOR_TEMPLATES[comparator]
+        expr = template.format(var=var_name, val=val_str, val2=val2_str)
+
+        return expr
+
+    def _format_value(self, value: Any) -> str:
+        """Format a value as a Python literal.
+
+        Args:
+            value: The value to format
+
+        Returns:
+            Python literal string
+        """
+        if value is None:
+            return 'None'
+        elif isinstance(value, bool):
+            return 'True' if value else 'False'
+        elif isinstance(value, str):
+            # Escape quotes and use repr for safety
+            return repr(value)
+        elif isinstance(value, (int, float)):
+            return str(value)
+        else:
+            return repr(value)
+
+
+class PythonCodeGenerator:
+    """Generates Python source code from LEMON workflow trees.
+
+    Usage:
+        generator = PythonCodeGenerator()
+        result = generator.compile(tree, variables, outputs, "my_workflow")
+        if result.success:
+            print(result.code)
+    """
+
+    def __init__(self):
+        """Initialize the generator."""
+        self.condition_compiler = ConditionCompiler()
+        self._indent_level = 0
+        self._lines: List[str] = []
+        self._warnings: List[str] = []
+
+    def compile(
+        self,
+        tree: Dict[str, Any],
+        variables: List[Dict[str, Any]],
+        outputs: Optional[List[Dict[str, Any]]] = None,
+        workflow_name: str = "workflow",
+        include_imports: bool = True,
+        include_docstring: bool = True,
+        include_main: bool = False,
+    ) -> CompilationResult:
+        """Generate Python code from a workflow tree.
+
+        Args:
+            tree: Nested workflow tree with 'start' key
+            variables: List of variable definitions
+            outputs: List of output definitions (optional)
+            workflow_name: Name for the generated function
+            include_imports: Whether to include import statements
+            include_docstring: Whether to include docstring
+            include_main: Whether to include if __name__ == "__main__" block
+
+        Returns:
+            CompilationResult with generated code or error
+        """
+        try:
+            # Reset state
+            self._indent_level = 0
+            self._lines = []
+            self._warnings = []
+
+            # Create resolver
+            # Filter to only input-source variables for function parameters
+            input_vars = [v for v in variables if v.get('source', 'input') == 'input']
+            self.resolver = VariableNameResolver(variables)
+
+            # Validate tree
+            if 'start' not in tree:
+                raise CompilationError("Tree missing 'start' node")
+
+            # Generate imports
+            if include_imports:
+                self._generate_imports(variables)
+                self._add_line("")
+
+            # Generate function signature
+            func_name = self._to_function_name(workflow_name)
+            self._generate_function_signature(func_name, input_vars)
+
+            # Generate docstring
+            if include_docstring:
+                self._indent_level += 1
+                self._generate_docstring(workflow_name, input_vars, outputs)
+
+            # Generate body
+            if self._indent_level == 0:
+                self._indent_level = 1
+
+            start_node = tree['start']
+            children = start_node.get('children', [])
+
+            if not children:
+                self._add_line("pass  # Empty workflow")
+            else:
+                self._visit_node(children[0])
+
+            self._indent_level = 0
+
+            # Generate main block
+            if include_main:
+                self._add_line("")
+                self._generate_main_block(func_name, input_vars)
+
+            code = "\n".join(self._lines)
+            return CompilationResult(
+                success=True,
+                code=code,
+                warnings=self._warnings
+            )
+
+        except CompilationError as e:
+            return CompilationResult(
+                success=False,
+                error=str(e),
+                warnings=self._warnings
+            )
+        except Exception as e:
+            return CompilationResult(
+                success=False,
+                error=f"Unexpected error: {str(e)}",
+                warnings=self._warnings
+            )
+
+    def _to_function_name(self, name: str) -> str:
+        """Convert workflow name to valid Python function name."""
+        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+        if slug and slug[0].isdigit():
+            slug = f"workflow_{slug}"
+        return slug or "workflow"
+
+    def _generate_imports(self, variables: List[Dict[str, Any]]) -> None:
+        """Generate necessary import statements."""
+        imports = set()
+
+        # Check if we need datetime for date types
+        for var in variables:
+            if var.get('type') == 'date':
+                imports.add("from datetime import date")
+
+        # Add typing import for type hints
+        imports.add("from typing import Union")
+
+        for imp in sorted(imports):
+            self._add_line(imp)
+
+    def _generate_function_signature(
+        self,
+        func_name: str,
+        input_vars: List[Dict[str, Any]]
+    ) -> None:
+        """Generate function definition with typed parameters."""
+        params = []
+        for var in input_vars:
+            var_id = var['id']
+            python_name = self.resolver.resolve(var_id)
+            python_type = self.resolver.get_type(var_id)
+            params.append(f"{python_name}: {python_type}")
+
+        params_str = ", ".join(params)
+        self._add_line(f"def {func_name}({params_str}) -> Union[str, int, float, bool]:")
+
+    def _generate_docstring(
+        self,
+        workflow_name: str,
+        input_vars: List[Dict[str, Any]],
+        outputs: Optional[List[Dict[str, Any]]]
+    ) -> None:
+        """Generate Google-style docstring."""
+        self._add_line('"""')
+        self._add_line(f"{workflow_name}")
+        self._add_line("")
+
+        if input_vars:
+            self._add_line("Args:")
+            for var in input_vars:
+                var_id = var['id']
+                python_name = self.resolver.resolve(var_id)
+                friendly_name = var.get('name', python_name)
+                description = var.get('description', friendly_name)
+                self._add_line(f"    {python_name}: {description}")
+            self._add_line("")
+
+        self._add_line("Returns:")
+        if outputs:
+            output_names = [o.get('name', 'result') for o in outputs]
+            self._add_line(f"    Workflow output: {', '.join(output_names)}")
+        else:
+            self._add_line("    Workflow result")
+
+        self._add_line('"""')
+
+    def _generate_main_block(
+        self,
+        func_name: str,
+        input_vars: List[Dict[str, Any]]
+    ) -> None:
+        """Generate if __name__ == "__main__" block with example usage."""
+        self._add_line('if __name__ == "__main__":')
+        self._indent_level += 1
+        self._add_line("# Example usage")
+
+        # Generate example call with placeholder values
+        example_args = []
+        for var in input_vars:
+            var_type = var.get('type', 'string')
+            if var_type == 'int':
+                example_args.append("0")
+            elif var_type == 'float':
+                example_args.append("0.0")
+            elif var_type == 'bool':
+                example_args.append("False")
+            else:
+                example_args.append('""')
+
+        args_str = ", ".join(example_args)
+        self._add_line(f"result = {func_name}({args_str})")
+        self._add_line("print(f\"Result: {result}\")")
+        self._indent_level -= 1
+
+    def _visit_node(self, node: Dict[str, Any]) -> None:
+        """Visit a node and generate appropriate code.
+
+        Args:
+            node: Tree node to visit
+        """
+        node_type = node.get('type')
+        node_id = node.get('id', 'unknown')
+
+        if node_type in ('output', 'end'):
+            self._visit_end_node(node)
+
+        elif node_type == 'decision':
+            self._visit_decision_node(node)
+
+        elif node_type == 'subprocess':
+            self._visit_subprocess_node(node)
+
+        elif node_type in ('start', 'action', 'process'):
+            # Pass-through nodes - continue to children
+            children = node.get('children', [])
+            if children:
+                self._visit_node(children[0])
+            else:
+                self._warnings.append(f"Node '{node_id}' has no children")
+                self._add_line(f"pass  # Node '{node_id}' has no continuation")
+
+        else:
+            self._warnings.append(f"Unknown node type '{node_type}' at '{node_id}'")
+            self._add_line(f"pass  # Unknown node type: {node_type}")
+
+    def _visit_end_node(self, node: Dict[str, Any]) -> None:
+        """Generate return statement for end/output node."""
+        output_value = self._resolve_output(node)
+        self._add_line(f"return {output_value}")
+
+    def _resolve_output(self, node: Dict[str, Any]) -> str:
+        """Resolve output value from node to Python expression.
+
+        Args:
+            node: End/output node
+
+        Returns:
+            Python expression for the return value
+        """
+        # Priority: output_template > output_value > label
+
+        if node.get('output_template'):
+            template = node['output_template']
+            # Convert {Variable} to {python_name} for f-string
+            return self._compile_template(template)
+
+        if 'output_value' in node:
+            value = node['output_value']
+            output_type = node.get('output_type', 'string')
+            return self._format_output_value(value, output_type)
+
+        # Fallback to label
+        label = node.get('label', '')
+        if '{' in label and '}' in label:
+            return self._compile_template(label)
+        return repr(label)
+
+    def _compile_template(self, template: str) -> str:
+        """Convert a template string to Python f-string.
+
+        Converts {VariableName} to {python_name} format.
+
+        Args:
+            template: Template like "Result: {Age}"
+
+        Returns:
+            f-string like 'f"Result: {age}"'
+        """
+        # Find all {variable} references
+        pattern = r'\{([^}]+)\}'
+
+        def replace_var(match):
+            var_name = match.group(1)
+            # Try to find variable by friendly name
+            for var_id, var in self.resolver.id_to_var.items():
+                if var.get('name') == var_name:
+                    return '{' + self.resolver.resolve(var_id) + '}'
+            # Try by ID
+            if var_name in self.resolver.id_to_python:
+                return '{' + self.resolver.resolve(var_name) + '}'
+            # Keep as-is (will use local variable if exists)
+            return '{' + var_name.lower().replace(' ', '_') + '}'
+
+        converted = re.sub(pattern, replace_var, template)
+        return f'f"{converted}"'
+
+    def _format_output_value(self, value: Any, output_type: str) -> str:
+        """Format static output value as Python literal."""
+        if output_type == 'int':
+            return str(int(value))
+        elif output_type == 'float':
+            return str(float(value))
+        elif output_type == 'bool':
+            return 'True' if str(value).lower() in ('true', '1', 'yes') else 'False'
+        elif output_type == 'json':
+            import json
+            return repr(json.loads(value) if isinstance(value, str) else value)
+        else:
+            return repr(str(value))
+
+    def _visit_decision_node(self, node: Dict[str, Any]) -> None:
+        """Generate if/else block for decision node."""
+        condition = node.get('condition')
+        children = node.get('children', [])
+        node_label = node.get('label', node.get('id', 'decision'))
+
+        if not condition:
+            self._warnings.append(f"Decision node '{node_label}' has no condition")
+            self._add_line(f"# WARNING: Decision '{node_label}' has no condition")
+            if children:
+                self._visit_node(children[0])
+            return
+
+        # Compile condition to Python expression
+        try:
+            condition_expr = self.condition_compiler.compile(condition, self.resolver)
+        except CompilationError as e:
+            # Provide helpful error message with available variable IDs
+            available_vars = list(self.resolver.id_to_python.keys())
+            input_id = condition.get('input_id', 'unknown')
+            warning_msg = (
+                f"Decision '{node_label}' references variable '{input_id}' "
+                f"which is not defined. Available variables: {available_vars}"
+            )
+            self._warnings.append(warning_msg)
+            self._add_line(f"# ERROR: {warning_msg}")
+            self._add_line("pass  # Condition could not be compiled")
+            return
+
+        # Find true and false branches
+        true_branch = None
+        false_branch = None
+        true_labels = {'yes', 'true', 'y', 't', '1'}
+        false_labels = {'no', 'false', 'n', 'f', '0'}
+
+        for child in children:
+            edge_label = child.get('edge_label', '').lower().strip()
+            if edge_label in true_labels:
+                true_branch = child
+            elif edge_label in false_labels:
+                false_branch = child
+
+        # Fallback: first child is true, second is false
+        if true_branch is None and len(children) >= 1:
+            true_branch = children[0]
+        if false_branch is None and len(children) >= 2:
+            false_branch = children[1]
+
+        # Generate if block
+        self._add_line(f"if {condition_expr}:")
+        self._indent_level += 1
+        if true_branch:
+            self._visit_node(true_branch)
+        else:
+            self._add_line("pass")
+        self._indent_level -= 1
+
+        # Generate else block
+        if false_branch:
+            self._add_line("else:")
+            self._indent_level += 1
+            self._visit_node(false_branch)
+            self._indent_level -= 1
+
+    def _visit_subprocess_node(self, node: Dict[str, Any]) -> None:
+        """Generate subprocess call (as comment placeholder for now).
+
+        Full subprocess support would require loading the subworkflow
+        and generating it as a separate function.
+        """
+        node_label = node.get('label', node.get('id', 'subprocess'))
+        subworkflow_id = node.get('subworkflow_id', 'unknown')
+        output_variable = node.get('output_variable', 'result')
+
+        # Generate comment about subprocess
+        python_var = re.sub(r'[^a-z0-9]+', '_', output_variable.lower()).strip('_')
+        self._add_line(f"# Subprocess: {node_label}")
+        self._add_line(f"# TODO: Implement call to subworkflow '{subworkflow_id}'")
+        self._add_line(f"{python_var} = None  # Placeholder for subprocess output")
+
+        self._warnings.append(
+            f"Subprocess '{node_label}' requires manual implementation. "
+            f"Subworkflow ID: {subworkflow_id}"
+        )
+
+        # Continue to children
+        children = node.get('children', [])
+        if children:
+            self._add_line("")
+            self._visit_node(children[0])
+
+    def _add_line(self, line: str) -> None:
+        """Add a line of code with current indentation."""
+        if line:
+            indent = "    " * self._indent_level
+            self._lines.append(f"{indent}{line}")
+        else:
+            self._lines.append("")
+
+
+def compile_workflow_to_python(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    variables: List[Dict[str, Any]],
+    outputs: Optional[List[Dict[str, Any]]] = None,
+    workflow_name: str = "workflow",
+    **kwargs
+) -> CompilationResult:
+    """Convenience function to compile a workflow from nodes/edges format.
+
+    Args:
+        nodes: Flat list of workflow nodes
+        edges: Flat list of workflow edges
+        variables: List of variable definitions
+        outputs: List of output definitions (optional)
+        workflow_name: Name for the generated function
+        **kwargs: Additional options passed to compile()
+
+    Returns:
+        CompilationResult with generated code or error
+    """
+    from ..utils.flowchart import tree_from_flowchart
+
+    # Convert to tree format
+    tree = tree_from_flowchart(nodes, edges)
+    if not tree or 'start' not in tree:
+        return CompilationResult(
+            success=False,
+            error="Could not build tree from nodes/edges. Ensure workflow has a start node."
+        )
+
+    # Generate code
+    generator = PythonCodeGenerator()
+    return generator.compile(tree, variables, outputs, workflow_name, **kwargs)
