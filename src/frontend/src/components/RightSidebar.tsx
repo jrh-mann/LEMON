@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { executeWorkflow } from '../api/execution'
@@ -38,9 +38,59 @@ const buildVariableId = (name: string, type: InputType): string => {
 // Backwards compatibility alias
 const buildInputId = buildVariableId
 
+// Storage key and default/min width for sidebar
+const SIDEBAR_WIDTH_KEY = 'lemon_right_sidebar_width'
+const DEFAULT_WIDTH = 320
+const MIN_WIDTH = 280  // Minimum to show all 3 tabs comfortably
+
 export default function RightSidebar() {
   const { activeTab, setActiveTab, openModal } = useUIStore()
   const { currentWorkflow, currentAnalysis, setAnalysis, selectedNodeId, flowchart, updateNode, workflows, setWorkflows } = useWorkflowStore()
+
+  // Resizable sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY)
+    return stored ? Math.max(parseInt(stored, 10), MIN_WIDTH) : DEFAULT_WIDTH
+  })
+  const [isResizing, setIsResizing] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  // Handle resize drag
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate new width based on mouse position from right edge of window
+      const newWidth = window.innerWidth - e.clientX
+      const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidth, window.innerWidth * 0.6))
+      setSidebarWidth(clampedWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      // Persist to localStorage
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth))
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    // Prevent text selection during resize
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ew-resize'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isResizing, sidebarWidth])
+
+  // Start resizing
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
 
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({})
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
@@ -220,7 +270,17 @@ export default function RightSidebar() {
   )
 
   return (
-    <aside className="sidebar library-sidebar">
+    <aside
+      ref={sidebarRef}
+      className={`sidebar library-sidebar ${isResizing ? 'resizing' : ''}`}
+      style={{ width: sidebarWidth }}
+    >
+      {/* Resize handle on left edge */}
+      <div
+        className="sidebar-resize-handle"
+        onMouseDown={handleResizeStart}
+        title="Drag to resize"
+      />
       <div className="sidebar-tabs">
         <button
           className={`sidebar-tab ${activeTab === 'library' ? 'active' : ''}`}

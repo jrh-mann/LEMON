@@ -318,6 +318,36 @@ body {
   border-left: 1px solid var(--edge);
 }
 
+/* Resizable sidebar */
+.sidebar.library-sidebar {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 280px;
+  max-width: 60vw;
+}
+
+.sidebar.library-sidebar.resizing {
+  transition: none;
+}
+
+/* Resize handle on left edge */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar.resizing .sidebar-resize-handle {
+  background: var(--teal);
+  opacity: 0.3;
+}
+
 .sidebar-section {
   margin-bottom: 24px;
 }
