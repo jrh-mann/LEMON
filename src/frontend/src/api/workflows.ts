@@ -153,8 +153,8 @@ export async function listPublicWorkflows(
 
   const response = await api.get<PublicWorkflowsResponse>(endpoint)
   return {
-    workflows: response.workflows,
-    publishThreshold: response.publish_threshold,
+    workflows: response.workflows || [],
+    publishThreshold: response.publish_threshold ?? 1,  // Default to 1 if not provided
   }
 }
 

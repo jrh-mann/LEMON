@@ -350,12 +350,12 @@ export default function WorkflowBrowser() {
         {/* Vote count display for peer review and published tabs */}
         {(showVoting || showVoteCount) && (
           <div className="workflow-votes">
-            <span className={`vote-count ${(workflow.net_votes ?? 0) >= publishThreshold ? 'positive' : (workflow.net_votes ?? 0) < 0 ? 'negative' : ''}`}>
-              {(workflow.net_votes ?? 0) > 0 ? '+' : ''}{workflow.net_votes ?? 0} / {publishThreshold} votes
+            <span className={`vote-count ${(workflow.net_votes ?? 0) >= (publishThreshold || 1) ? 'positive' : (workflow.net_votes ?? 0) < 0 ? 'negative' : ''}`}>
+              {(workflow.net_votes ?? 0) > 0 ? '+' : ''}{workflow.net_votes ?? 0} / {publishThreshold || 1} votes
             </span>
             {showVoting && workflow.review_status === 'unreviewed' && (
               <span className="votes-needed">
-                ({publishThreshold - (workflow.net_votes ?? 0)} more to publish)
+                ({(publishThreshold || 1) - (workflow.net_votes ?? 0)} more to publish)
               </span>
             )}
           </div>
@@ -446,7 +446,7 @@ export default function WorkflowBrowser() {
       {activeTab === 'peer-review' && (
         <div className="peer-review-info">
           <p>
-            <strong>Help review community workflows!</strong> Workflows with {publishThreshold}+ net upvotes
+            <strong>Help review community workflows!</strong> Workflows with {publishThreshold || 1}+ net upvotes
             appear in Published. Continue voting to adjust their visibility.
           </p>
         </div>
