@@ -838,9 +838,21 @@ class WorkflowStore:
                 (workflow_id,),
             ).fetchone()
 
+            new_net_votes = updated["net_votes"] if updated else 0
+            new_status = updated["review_status"] if updated else "unreviewed"
+
+            # Check for demotion if votes fell below threshold
+            if new_net_votes < PUBLISH_VOTE_THRESHOLD and new_status == "reviewed":
+                conn.execute(
+                    "UPDATE workflows SET review_status = 'unreviewed' WHERE id = ?",
+                    (workflow_id,),
+                )
+                new_status = "unreviewed"
+                self._logger.info("Workflow %s demoted to unreviewed after vote removal (net_votes=%d, threshold=%d)", workflow_id, new_net_votes, PUBLISH_VOTE_THRESHOLD)
+
         return {
             "success": True,
-            "net_votes": updated["net_votes"] if updated else 0,
-            "review_status": updated["review_status"] if updated else "unreviewed",
+            "net_votes": new_net_votes,
+            "review_status": new_status,
             "user_vote": None,
         }
