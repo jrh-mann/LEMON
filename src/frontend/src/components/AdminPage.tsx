@@ -38,7 +38,10 @@ function parseEMISDate(dateStr: string): Date {
   return new Date(0)
 }
 
-/** Parse CSV text, auto-detecting header row by scanning for "EMIS Number" */
+/** Parse CSV text, auto-detecting header row by scanning for "EMIS Number".
+ *  Detects whether column 3 is "Code Term" (clinical observations) or something
+ *  else (e.g. "Date Drug Added" in Medication exports). Files without a Code Term
+ *  column still contribute Age/Gender per patient but don't add Code Terms. */
 function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file: UploadedFile } {
   const result = Papa.parse<string[]>(text, { header: false, skipEmptyLines: 'greedy' })
 
@@ -53,6 +56,13 @@ function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file
   }
   if (headerIndex === -1) headerIndex = 9 // fallback for standard EMIS export
 
+  // Check if column 3 is actually "Code Term" — some EMIS exports have different
+  // column layouts (e.g. Medication has "Date Drug Added" in column 3)
+  const headerRow = result.data[headerIndex]
+  const col3Header = headerRow?.[3]?.toString().toLowerCase().trim() ?? ''
+  const hasCodeTermCol = col3Header === 'code term' || col3Header === 'codeterm'
+    || col3Header === 'read code description' || col3Header === ''
+
   const dataRows = result.data.slice(headerIndex + 1)
   const rows: ParsedRow[] = []
   for (const cols of dataRows) {
@@ -62,12 +72,13 @@ function parseCSVText(text: string, fileName: string): { rows: ParsedRow[]; file
       emis_number: emisNum,
       gender: cols[1]?.toString().trim() ?? '',
       age: parseInt(cols[2]?.toString().trim() ?? '0', 10) || 0,
-      code_term: cols[3]?.toString().trim() ?? '',
-      date: cols[4]?.toString().trim() ?? '',
-      value: cols[5]?.toString().trim() ?? '',
-      unit: cols[6]?.toString().trim() ?? '',
-      secondary_value: cols[7]?.toString().trim() ?? '',
-      secondary_unit: cols[8]?.toString().trim() ?? '',
+      // Only read Code Term if the column header confirms it's a Code Term column
+      code_term: hasCodeTermCol ? (cols[3]?.toString().trim() ?? '') : '',
+      date: hasCodeTermCol ? (cols[4]?.toString().trim() ?? '') : '',
+      value: hasCodeTermCol ? (cols[5]?.toString().trim() ?? '') : '',
+      unit: hasCodeTermCol ? (cols[6]?.toString().trim() ?? '') : '',
+      secondary_value: hasCodeTermCol ? (cols[7]?.toString().trim() ?? '') : '',
+      secondary_unit: hasCodeTermCol ? (cols[8]?.toString().trim() ?? '') : '',
     })
   }
   return { rows, file: { name: fileName, rowCount: rows.length } }
@@ -189,10 +200,12 @@ function relevantCodeTerms(
       // Only show Code Terms that contain numeric values
       filtered = nonDates.filter(hasNumericData)
       break
-    case 'bool':
-      // Only show Code Terms that look boolean, plus any numeric ones as fallback
-      filtered = nonDates.filter(ct => looksBoolish(ct) || hasNumericData(ct))
+    case 'bool': {
+      // Prefer Code Terms with boolean-like values, fall back to all non-date terms
+      const boolish = nonDates.filter(ct => looksBoolish(ct))
+      filtered = boolish.length > 0 ? boolish : nonDates
       break
+    }
     default:
       // String — show all non-date terms
       filtered = nonDates
