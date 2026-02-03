@@ -559,6 +559,9 @@ def register_routes(
         validation_count = payload.get("validation_count", existing.validation_count)
         is_validated = payload.get("is_validated", existing.is_validated)
 
+        # Peer review: check if user wants to publish to community
+        is_published = payload.get("is_published", existing.is_published)
+
         # Validate workflow structure before saving
         workflow_to_validate = {
             "nodes": nodes,
@@ -597,6 +600,7 @@ def register_routes(
             validation_count=validation_count,
             is_validated=is_validated,
             is_draft=False,  # Explicitly saving marks it as non-draft
+            is_published=is_published,
         )
 
         if not success:
