@@ -396,6 +396,31 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "execute_workflow",
+                "description": (
+                    "Run the current workflow with the given input values and return the result. "
+                    "Provide input values as a JSON object mapping variable names to their values. "
+                    "Returns the output, the path of nodes visited, and the final variable context. "
+                    "Use this when the user asks to run, execute, test, or try the workflow."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "input_values": {
+                            "type": "object",
+                            "description": (
+                                "Input values keyed by variable name or ID. "
+                                "Example: {\"Age\": 25, \"Smoker\": false}"
+                            ),
+                        },
+                    },
+                    "required": ["input_values"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "add_workflow_variable",
                 "description": (
                     "Register a user-input variable for the workflow. This variable will appear in the Variables tab "
@@ -615,6 +640,7 @@ def build_system_prompt(
         "- CONNECT/LINK → call add_connection\n"
         "- WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow\n"
         "- VALIDATE/CHECK/VERIFY → call validate_workflow\n"
+        "- RUN/EXECUTE/TEST/TRY → call execute_workflow\n"
         "- VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library\n\n"
         "## Checking for Existing Workflows\n"
         "WHENEVER the user wants to create a new workflow, ALWAYS call list_workflows_in_library first to check "
