@@ -198,9 +198,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setCurrentWorkflowId: (workflowId) => {
     const state = get()
     // Create or update the workflow object with the ID
+    // If no workflow exists, create a minimal stub - full data comes from workflow_modified event
     const workflow = state.currentWorkflow
       ? { ...state.currentWorkflow, id: workflowId }
-      : { id: workflowId, metadata: { name: '' }, nodes: [], edges: [] } as Workflow
+      : {
+          id: workflowId,
+          metadata: { name: '' },
+          blocks: [],
+          connections: [],
+        } as unknown as Workflow
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? { ...tab, workflow }
