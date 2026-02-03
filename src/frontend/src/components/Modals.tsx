@@ -3,7 +3,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
-import { createWorkflow, updateWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
+import { createWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
 import {
   startWorkflowExecution,
   pauseWorkflowExecution,
@@ -377,12 +377,12 @@ function SaveWorkflowForm() {
         is_published: isPublished,  // Peer review: publish to community library
       }
 
-      // Use update if workflow already has an ID (from LLM creation), otherwise create
-      if (existingWorkflowId) {
-        await updateWorkflow(existingWorkflowId, payload)
-      } else {
-        await createWorkflow(payload)
-      }
+      // Always use createWorkflow - backend handles duplicates by falling back to update
+      // This handles the case where LLM created a workflow (has ID) but it's not in DB yet
+      const payloadWithId = existingWorkflowId
+        ? { ...payload, id: existingWorkflowId }
+        : payload
+      await createWorkflow(payloadWithId)
 
       setSaveSuccess(true)
       setShowValidationWarning(false)
