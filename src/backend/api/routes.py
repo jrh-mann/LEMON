@@ -1136,6 +1136,76 @@ def register_routes(
                 "warnings": result.warnings,
             }), 400
 
+    @app.post("/api/admin/batch-execute")
+    def batch_execute() -> Any:
+        """Execute a workflow against a batch of patients.
+
+        Request body:
+        {
+            "workflow_id": "wf_abc123",
+            "patients": [
+                {"emis_number": "33", "input_values": {"Age": 25, "Total Cholesterol": 5.2}},
+                ...
+            ]
+        }
+
+        Returns:
+        {
+            "results": [
+                {"emis_number": "33", "success": true, "output": "...", "path": [...],
+                 "status": "SUCCESS", "error": null, "missing_variables": []},
+                ...
+            ],
+            "summary": {"total": 100, "success": 80, "skipped": 15, "error": 5}
+        }
+        """
+        from ..batch.executor import BatchExecutor
+
+        user_id = g.auth_user.id
+        payload = request.get_json(force=True, silent=True) or {}
+
+        workflow_id = payload.get("workflow_id")
+        patients = payload.get("patients")
+
+        if not workflow_id:
+            return jsonify({"error": "workflow_id is required"}), 400
+        if not isinstance(patients, list):
+            return jsonify({"error": "patients must be a list"}), 400
+
+        # Load workflow
+        workflow = workflow_store.get_workflow(workflow_id, user_id)
+        if not workflow:
+            return jsonify({"error": f"Workflow '{workflow_id}' not found"}), 404
+
+        if not workflow.tree or "start" not in workflow.tree:
+            return jsonify({
+                "error": "Workflow has no execution tree. Save the workflow first.",
+            }), 400
+
+        # Execute batch
+        executor = BatchExecutor(
+            workflow=workflow,
+            workflow_store=workflow_store,
+            user_id=user_id,
+        )
+
+        try:
+            results = executor.execute_batch(patients)
+        except Exception as exc:
+            logger.exception("Batch execution failed")
+            return jsonify({"error": f"Batch execution failed: {exc}"}), 500
+
+        # Build summary counts
+        result_dicts = [r.to_dict() for r in results]
+        summary = {
+            "total": len(results),
+            "success": sum(1 for r in results if r.status == "SUCCESS"),
+            "skipped": sum(1 for r in results if r.status == "SKIPPED"),
+            "error": sum(1 for r in results if r.status == "ERROR"),
+        }
+
+        return jsonify({"results": result_dicts, "summary": summary})
+
     @app.post("/api/validation/start")
     def start_validation() -> Any:
         return jsonify({"error": "Validation not implemented."}), 501
