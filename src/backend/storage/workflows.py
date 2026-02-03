@@ -80,9 +80,6 @@ class WorkflowStore:
 
                 CREATE INDEX IF NOT EXISTS idx_workflows_created_at
                     ON workflows(created_at DESC);
-                
-                CREATE INDEX IF NOT EXISTS idx_workflows_is_draft
-                    ON workflows(is_draft);
                 """
             )
             # Add output_type column if it doesn't exist (migration for existing DBs)
@@ -96,6 +93,8 @@ class WorkflowStore:
             except sqlite3.OperationalError:
                 # Default existing workflows to is_draft=0 (saved) since they were manually saved
                 conn.execute("ALTER TABLE workflows ADD COLUMN is_draft BOOLEAN NOT NULL DEFAULT 0")
+            # Create is_draft index after migration ensures column exists
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_draft ON workflows(is_draft)")
 
     @contextmanager
     def _conn(self) -> Iterable[sqlite3.Connection]:
