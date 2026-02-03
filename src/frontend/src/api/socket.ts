@@ -432,6 +432,56 @@ export function connectSocket(): Socket {
     console.log('[Socket] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
   })
 
+  // ===== Workflow Library Events =====
+  // These events handle workflow creation and saving by the LLM
+
+  // Workflow created - LLM called create_workflow, track the workflow_id for this tab
+  socket.on('workflow_created', (data: {
+    workflow_id: string
+    name: string
+    output_type: string
+    is_draft: boolean
+  }) => {
+    console.log('[Socket] workflow_created:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    // Set the workflow ID for the current tab so we can track it
+    // This links the current tab to the newly created workflow in the database
+    workflowStore.setCurrentWorkflowId(data.workflow_id)
+    
+    // Update the tab title to match the workflow name
+    const activeTabId = workflowStore.activeTabId
+    if (activeTabId) {
+      workflowStore.updateTabTitle(activeTabId, data.name)
+    }
+
+    console.log('[Socket] Set current workflow ID:', data.workflow_id, 'name:', data.name)
+  })
+
+  // Workflow saved - LLM called save_workflow_to_library, update draft status
+  socket.on('workflow_saved', (data: {
+    workflow_id: string
+    name: string
+    is_draft: boolean
+    already_saved: boolean
+  }) => {
+    console.log('[Socket] workflow_saved:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    // Update the workflow in the current tab to mark it as saved
+    // This could update a UI indicator showing the workflow is now in the user's library
+    if (!data.already_saved) {
+      // Only update tab title if it wasn't already saved (name may have changed)
+      const activeTabId = workflowStore.activeTabId
+      if (activeTabId && data.name) {
+        workflowStore.updateTabTitle(activeTabId, data.name)
+      }
+      console.log('[Socket] Workflow saved to library:', data.workflow_id, 'name:', data.name)
+    } else {
+      console.log('[Socket] Workflow was already saved:', data.workflow_id)
+    }
+  })
+
   // ===== Execution Events =====
   // These events handle visual workflow execution (highlighting nodes as they execute)
 

@@ -26,6 +26,7 @@ WORKFLOW_INPUT_TOOLS = frozenset(
 WORKFLOW_LIBRARY_TOOLS = frozenset(
     {
         "create_workflow",
+        "save_workflow_to_library",
         "list_workflows_in_library",
     }
 )

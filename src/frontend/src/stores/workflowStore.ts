@@ -62,6 +62,7 @@ interface WorkflowState {
   setWorkflows: (workflows: WorkflowSummary[]) => void
   setLoadingWorkflows: (loading: boolean) => void
   setCurrentWorkflow: (workflow: Workflow | null) => void
+  setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
 
@@ -184,6 +185,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? { ...tab, workflow, title: workflow?.metadata?.name || tab.title }
+        : tab
+    )
+    set({ currentWorkflow: workflow, tabs })
+  },
+  // Sets just the workflow ID for the current tab (used when LLM creates a workflow)
+  // Creates a minimal workflow object if none exists, or updates existing workflow's ID
+  setCurrentWorkflowId: (workflowId) => {
+    const state = get()
+    // Create or update the workflow object with the ID
+    const workflow = state.currentWorkflow
+      ? { ...state.currentWorkflow, id: workflowId }
+      : { id: workflowId, metadata: { name: '' }, nodes: [], edges: [] } as Workflow
+    const tabs = state.tabs.map(tab =>
+      tab.id === state.activeTabId
+        ? { ...tab, workflow }
         : tab
     )
     set({ currentWorkflow: workflow, tabs })

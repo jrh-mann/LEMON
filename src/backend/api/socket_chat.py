@@ -17,7 +17,7 @@ from .common import utc_now
 from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
-from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
+from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_LIBRARY_TOOLS
 from ..utils.uploads import save_uploaded_image
 from ..storage.workflows import WorkflowStore
 
@@ -207,6 +207,34 @@ class SocketChatTask:
                     {
                         "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
                         "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                    },
+                    to=self.sid,
+                )
+
+            # Emit workflow_created event when create_workflow succeeds
+            # This allows frontend to track the new workflow_id for the current tab
+            if tool == "create_workflow":
+                self.socketio.emit(
+                    "workflow_created",
+                    {
+                        "workflow_id": result.get("workflow_id"),
+                        "name": result.get("name"),
+                        "output_type": result.get("output_type"),
+                        "is_draft": True,  # Newly created workflows are always drafts
+                    },
+                    to=self.sid,
+                )
+
+            # Emit workflow_saved event when save_workflow_to_library succeeds
+            # This allows frontend to update the workflow's draft status
+            if tool == "save_workflow_to_library":
+                self.socketio.emit(
+                    "workflow_saved",
+                    {
+                        "workflow_id": result.get("workflow_id"),
+                        "name": result.get("name"),
+                        "is_draft": False,  # Saved workflows are no longer drafts
+                        "already_saved": result.get("already_saved", False),
                     },
                     to=self.sid,
                 )
