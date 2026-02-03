@@ -51,6 +51,10 @@ class Orchestrator:
         # Session context for tools (workflow_store, user_id)
         self.workflow_store: Optional[Any] = None
         self.user_id: Optional[str] = None
+        # ID of current workflow on canvas (None if unsaved/new)
+        self.current_workflow_id: Optional[str] = None
+        # All open tabs with workflows (for list_workflows_in_library to show drafts)
+        self.open_tabs: List[Dict[str, Any]] = []
 
     # Backward-compatible properties for existing code
     @property
@@ -212,7 +216,9 @@ class Orchestrator:
                 "session_state": {
                     "current_workflow": self.current_workflow,
                     "workflow_analysis": self.workflow_analysis,
+                    "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
                     "user_id": self.user_id,  # Serialize user_id (string)
+                    "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
                 },
             }
             data = call_mcp_tool(tool_name, mcp_args)
@@ -221,6 +227,8 @@ class Orchestrator:
             session_state = {
                 "current_workflow": self.current_workflow,
                 "workflow_analysis": self.workflow_analysis,
+                "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
+                "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
             }
             # Add workflow_store and user_id if available
             if self.workflow_store is not None:

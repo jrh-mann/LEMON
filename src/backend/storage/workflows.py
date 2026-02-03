@@ -338,55 +338,42 @@ class WorkflowStore:
         self,
         user_id: str,
         *,
-        include_drafts: bool = True,
-        drafts_only: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> Tuple[List[WorkflowRecord], int]:
         """List workflows for a user.
 
+        All workflows in DB are considered "saved" - no draft filtering needed.
+
         Args:
             user_id: User ID to filter by
-            include_drafts: If True, include draft workflows (default True for LLM use)
-            drafts_only: If True, only return drafts (overrides include_drafts)
             limit: Maximum number of workflows to return
             offset: Offset for pagination
 
         Returns:
             Tuple of (workflows list, total count)
         """
-        # Build WHERE clause based on draft filtering
-        where_clauses = ["user_id = ?"]
-        params: List[Any] = [user_id]
-
-        if drafts_only:
-            where_clauses.append("is_draft = 1")
-        elif not include_drafts:
-            where_clauses.append("is_draft = 0")
-
-        where_sql = " AND ".join(where_clauses)
-
         with self._conn() as conn:
             # Get total count
             count_row = conn.execute(
-                f"SELECT COUNT(*) FROM workflows WHERE {where_sql}",
-                params,
+                "SELECT COUNT(*) FROM workflows WHERE user_id = ?",
+                (user_id,),
             ).fetchone()
             total_count = count_row[0] if count_row else 0
 
             # Get paginated results
             rows = conn.execute(
-                f"""
+                """
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, created_at, updated_at
                 FROM workflows
-                WHERE {where_sql}
+                WHERE user_id = ?
                 ORDER BY updated_at DESC
                 LIMIT ? OFFSET ?
                 """,
-                params + [limit, offset],
+                (user_id, limit, offset),
             ).fetchall()
 
         workflows = [self._row_to_workflow(row) for row in rows if row]
@@ -399,20 +386,18 @@ class WorkflowStore:
         query: Optional[str] = None,
         domain: Optional[str] = None,
         validated: Optional[bool] = None,
-        include_drafts: bool = True,
-        drafts_only: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> Tuple[List[WorkflowRecord], int]:
         """Search workflows with filters.
+
+        All workflows in DB are considered "saved" - no draft filtering needed.
 
         Args:
             user_id: User ID to filter by
             query: Text search in name/description
             domain: Filter by domain
             validated: Filter by validation status
-            include_drafts: If True, include draft workflows (default True for LLM use)
-            drafts_only: If True, only return drafts (overrides include_drafts)
             limit: Maximum results
             offset: Pagination offset
 
@@ -434,12 +419,6 @@ class WorkflowStore:
         if validated is not None:
             where_clauses.append("is_validated = ?")
             params.append(validated)
-
-        # Draft filtering
-        if drafts_only:
-            where_clauses.append("is_draft = 1")
-        elif not include_drafts:
-            where_clauses.append("is_draft = 0")
 
         where_sql = " AND ".join(where_clauses)
 

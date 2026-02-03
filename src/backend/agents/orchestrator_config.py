@@ -666,12 +666,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "list_workflows_in_library",
                 "description": (
-                    "List all workflows in the user's library, including both saved and draft workflows. "
-                    "Drafts are workflows you've created that haven't been saved to the user's library yet. "
-                    "Returns workflow metadata including name, description, domain, tags, status (saved/draft), "
+                    "List all workflows in the user's library, PLUS the current canvas workflow (even if unsaved). "
+                    "Returns workflow metadata including name, description, domain, tags, status, "
                     "validation status, and input/output information. "
-                    "Use this to check if similar workflows already exist before creating new ones, "
-                    "or to find the workflow_id of an existing workflow."
+                    "Status values: 'saved' (in DB), 'current' (on canvas and in DB), 'current (unsaved)' (on canvas, not in DB). "
+                    "Use this to: check if similar workflows already exist before creating new ones, "
+                    "find the workflow_id of an existing workflow, or get the ID of the current canvas workflow."
                 ),
                 "parameters": {
                     "type": "object",
@@ -683,14 +683,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "domain": {
                             "type": "string",
                             "description": "Optional domain filter (e.g., 'Healthcare', 'Finance')",
-                        },
-                        "include_drafts": {
-                            "type": "boolean",
-                            "description": "Include draft (unsaved) workflows. Default: true",
-                        },
-                        "drafts_only": {
-                            "type": "boolean",
-                            "description": "Only return draft workflows. Default: false",
                         },
                         "limit": {
                             "type": "integer",

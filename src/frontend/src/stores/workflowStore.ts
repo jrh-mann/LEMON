@@ -140,19 +140,33 @@ const initialExecutionState: ExecutionState = {
 // Generate unique tab ID
 const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 
-// Create initial tab
-const createInitialTab = (): WorkflowTab => ({
-  id: generateTabId(),
-  title: 'New Workflow',
-  workflow: null,
-  flowchart: emptyFlowchart,
-  history: [],
-  historyIndex: -1,
-  pendingImage: null,
-  pendingImageName: null,
-  analysis: null,
-  conversationId: null,  // Will be generated on first message
-})
+// Generate unique workflow ID (used for new workflows before they're saved)
+// Format matches backend: wf_{uuid hex}
+const generateWorkflowId = () => `wf_${crypto.randomUUID().replace(/-/g, '')}`
+
+// Create initial tab with a pre-generated workflow ID
+const createInitialTab = (): WorkflowTab => {
+  const workflowId = generateWorkflowId()
+  return {
+    id: generateTabId(),
+    title: 'New Workflow',
+    // Create a minimal workflow object with the pre-generated ID
+    // This ensures the workflow has an ID from the start
+    workflow: {
+      id: workflowId,
+      metadata: { name: 'New Workflow' },
+      blocks: [],
+      connections: [],
+    } as unknown as Workflow,
+    flowchart: emptyFlowchart,
+    history: [],
+    historyIndex: -1,
+    pendingImage: null,
+    pendingImageName: null,
+    analysis: null,
+    conversationId: null,  // Will be generated on first message
+  }
+}
 
 const initialTab = createInitialTab()
 
@@ -165,8 +179,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   tabs: [initialTab],
   activeTabId: initialTab.id,
 
-  // Current state (from active tab)
-  currentWorkflow: null,
+  // Current state (from active tab) - use initial tab's workflow (has pre-generated ID)
+  currentWorkflow: initialTab.workflow,
   flowchart: emptyFlowchart,
   currentAnalysis: null,
   selectedNodeId: null,
@@ -236,10 +250,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   // Tab operations
   addTab: (title = 'New Workflow', workflow = null, flowchart = emptyFlowchart) => {
+    // Generate a workflow ID if not provided (for new tabs without existing workflow)
+    const workflowId = workflow?.id ?? generateWorkflowId()
+    const workflowWithId = workflow ?? {
+      id: workflowId,
+      metadata: { name: title },
+      blocks: [],
+      connections: [],
+    } as unknown as Workflow
+    
     const newTab: WorkflowTab = {
       id: generateTabId(),
       title,
-      workflow,
+      workflow: workflowWithId,
       flowchart,
       history: [],
       historyIndex: -1,
@@ -286,7 +309,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       set({
         tabs: [newTab],
         activeTabId: newTab.id,
-        currentWorkflow: null,
+        currentWorkflow: newTab.workflow,  // Use the new tab's workflow (has pre-generated ID)
         flowchart: emptyFlowchart,
         currentAnalysis: null,
         selectedNodeId: null,

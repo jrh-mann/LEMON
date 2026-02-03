@@ -144,11 +144,13 @@ class CreateWorkflowTool(Tool):
         if tags and not isinstance(tags, list):
             tags = [str(tags)]
         
-        # Generate unique workflow ID
-        workflow_id = generate_workflow_id()
+        # Use provided workflow_id from session if available (frontend generates ID on tab creation)
+        # This ensures the canvas workflow and saved workflow share the same ID (no duplicates)
+        workflow_id = session_state.get("current_workflow_id") or generate_workflow_id()
         
         try:
             # Create workflow in database with empty structure
+            # is_draft=False because all DB workflows are "saved" - they're in the user's library
             workflow_store.create_workflow(
                 workflow_id=workflow_id,
                 user_id=user_id,
@@ -166,6 +168,7 @@ class CreateWorkflowTool(Tool):
                 validation_count=0,
                 is_validated=False,
                 output_type=output_type,  # Store the declared output type
+                is_draft=False,     # All DB workflows are saved (not drafts)
             )
             
             return {

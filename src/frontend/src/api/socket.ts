@@ -410,9 +410,24 @@ export function connectSocket(): Socket {
   })
 
   // Analysis updates (from input management tools)
-  socket.on('analysis_updated', (data: { variables: unknown[]; outputs: unknown[] }) => {
+  // Only apply if task_id matches current task (prevents updates from inactive tabs)
+  socket.on('analysis_updated', (data: { variables: unknown[]; outputs: unknown[]; task_id?: string }) => {
     console.log('[Socket] analysis_updated:', data)
+    const chatStore = useChatStore.getState()
     const workflowStore = useWorkflowStore.getState()
+    const taskId = data.task_id
+
+    // Filter out updates from stale/different tasks to prevent tab cross-contamination
+    if (taskId) {
+      if (chatStore.isTaskCancelled(taskId)) {
+        console.log('[Socket] Ignoring cancelled analysis_updated:', taskId)
+        return
+      }
+      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
+        console.log('[Socket] Ignoring stale analysis_updated:', taskId, 'current:', chatStore.currentTaskId)
+        return
+      }
+    }
 
     // Update the analysis with new variables/outputs
     const currentAnalysis = workflowStore.currentAnalysis ?? {
@@ -444,10 +459,18 @@ export function connectSocket(): Socket {
   }) => {
     console.log('[Socket] workflow_created:', data)
     const workflowStore = useWorkflowStore.getState()
+    const currentId = workflowStore.currentWorkflow?.id
 
-    // Set the workflow ID for the current tab so we can track it
-    // This links the current tab to the newly created workflow in the database
-    workflowStore.setCurrentWorkflowId(data.workflow_id)
+    // Only update workflow ID if frontend didn't already have one
+    // Frontend generates ID on tab creation, backend should use that same ID
+    // If IDs match (expected case), no need to update
+    // If IDs differ, it means backend generated a new ID (legacy behavior) - update to sync
+    if (!currentId || currentId !== data.workflow_id) {
+      workflowStore.setCurrentWorkflowId(data.workflow_id)
+      console.log('[Socket] Updated workflow ID:', currentId, '->', data.workflow_id)
+    } else {
+      console.log('[Socket] Workflow ID already matches:', data.workflow_id)
+    }
     
     // Update the tab title to match the workflow name
     const activeTabId = workflowStore.activeTabId
@@ -455,7 +478,7 @@ export function connectSocket(): Socket {
       workflowStore.updateTabTitle(activeTabId, data.name)
     }
 
-    console.log('[Socket] Set current workflow ID:', data.workflow_id, 'name:', data.name)
+    console.log('[Socket] workflow_created complete - ID:', data.workflow_id, 'name:', data.name)
   })
 
   // Workflow saved - LLM called save_workflow_to_library, update draft status
@@ -631,6 +654,26 @@ export function sendChatMessage(
   // Get the ensured conversation ID
   const ensuredConversationId = chatStore.conversationId
 
+  // Collect info about all open tabs with unsaved workflows (not in DB)
+  // This allows list_workflows_in_library to show all drafts, not just the current tab
+  const openTabs = workflowStore.tabs
+    .filter(tab => {
+      // Include tabs that have nodes (actual work) but aren't saved to DB
+      // A workflow is considered "unsaved" if it has nodes but its ID isn't in the saved workflows list
+      const hasNodes = tab.flowchart.nodes.length > 0
+      const workflowId = tab.workflow?.id
+      // We don't have access to the DB list here, so we send all tabs with content
+      // Backend will filter out ones that are already saved
+      return hasNodes && workflowId
+    })
+    .map(tab => ({
+      workflow_id: tab.workflow?.id,
+      title: tab.title,
+      node_count: tab.flowchart.nodes.length,
+      edge_count: tab.flowchart.edges.length,
+      is_active: tab.id === workflowStore.activeTabId,
+    }))
+
   // Atomic: workflow travels with message (no race conditions)
   sock.emit('chat', {
     session_id: getSessionId(),
@@ -645,6 +688,8 @@ export function sendChatMessage(
     },
     // Include analysis so backend has current variables
     analysis: workflowStore.currentAnalysis ?? undefined,
+    // Include all open tabs so list_workflows_in_library can show all drafts
+    open_tabs: openTabs,
   })
 }
 

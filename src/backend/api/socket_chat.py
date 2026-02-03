@@ -107,6 +107,8 @@ class SocketChatTask:
     image_data: Optional[str]
     workflow: Optional[Dict[str, Any]]
     analysis: Optional[Dict[str, Any]]  # Frontend analysis (variables, outputs, etc)
+    current_workflow_id: Optional[str] = None  # ID of current workflow on canvas (None if unsaved)
+    open_tabs: Optional[list[Dict[str, Any]]] = None  # All open tabs with unsaved workflows
     done: Event = field(default_factory=Event)
     executed_tools: list[dict[str, Any]] = field(default_factory=list)
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
@@ -202,11 +204,13 @@ class SocketChatTask:
             if tool in WORKFLOW_INPUT_TOOLS and self.convo:
                 # Emit variables (unified variable system) - includes inputs, subprocess, calculated
                 # Frontend receives under 'variables' key for display in Variables tab
+                # Include task_id so frontend can filter out updates for inactive tabs
                 self.socketio.emit(
                     "analysis_updated",
                     {
                         "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
                         "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                        "task_id": self.task_id,
                     },
                     to=self.sid,
                 )
@@ -269,6 +273,10 @@ class SocketChatTask:
         # Set workflow_store and user_id for tool access
         self.convo.orchestrator.workflow_store = self.workflow_store
         self.convo.orchestrator.user_id = self.user_id
+        # Set current_workflow_id so tools know what's on the canvas
+        self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+        # Set open_tabs so list_workflows_in_library can show all drafts
+        self.convo.orchestrator.open_tabs = self.open_tabs or []
 
     def _sync_convo_from_orchestrator(self) -> None:
         if not self.convo:
@@ -356,6 +364,8 @@ def handle_socket_chat(
         image_data=payload.get("image"),
         workflow=payload.get("workflow"),
         analysis=payload.get("analysis"),
+        current_workflow_id=payload.get("current_workflow_id"),  # ID of workflow on canvas
+        open_tabs=payload.get("open_tabs"),  # All open tabs for list_workflows_in_library
     )
     socketio.start_background_task(task.run)
 

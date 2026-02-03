@@ -321,21 +321,18 @@ def register_routes(
     def list_workflows() -> Any:
         """List all workflows for the authenticated user.
         
-        By default, only shows saved (non-draft) workflows.
-        Drafts are workflows created by the LLM that haven't been explicitly saved.
+        All workflows in the database are considered "saved" workflows.
+        The current canvas workflow (if unsaved) is not included - use the
+        LLM's list_workflows_in_library tool to see that.
         """
         user_id = g.auth_user.id
         limit = min(int(request.args.get("limit", 100)), 500)
         offset = max(int(request.args.get("offset", 0)), 0)
-        # By default, only show saved (non-draft) workflows in the browse library
-        # Drafts are LLM-created workflows that haven't been saved yet
-        include_drafts = request.args.get("include_drafts", "false").lower() in ("true", "1", "yes")
 
         workflows, total_count = workflow_store.list_workflows(
             user_id,
             limit=limit,
             offset=offset,
-            include_drafts=include_drafts,
         )
 
         # Convert to WorkflowSummary format for frontend
@@ -616,7 +613,7 @@ def register_routes(
     def search_workflows() -> Any:
         """Search workflows with filters.
         
-        By default, only searches saved (non-draft) workflows.
+        All workflows in the database are considered "saved" workflows.
         """
         user_id = g.auth_user.id
         query = request.args.get("q")
@@ -624,8 +621,6 @@ def register_routes(
         validated = request.args.get("validated")
         limit = min(int(request.args.get("limit", 100)), 500)
         offset = max(int(request.args.get("offset", 0)), 0)
-        # By default, only search saved (non-draft) workflows
-        include_drafts = request.args.get("include_drafts", "false").lower() in ("true", "1", "yes")
 
         # Convert validated string to bool if provided
         validated_bool = None
@@ -639,7 +634,6 @@ def register_routes(
             validated=validated_bool,
             limit=limit,
             offset=offset,
-            include_drafts=include_drafts,
         )
 
         # Convert to WorkflowSummary format
