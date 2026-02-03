@@ -45,8 +45,9 @@ body {
 /* App Layout */
 .app-layout {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;  /* Header, TabBar, Workspace */
   height: calc(100vh - var(--chat-height, 280px)); /* Dynamically adjust for chat dock height */
+  min-height: 300px;  /* Minimum height for usable workspace */
 }
 
 /* Header */
@@ -1592,6 +1593,8 @@ body {
   display: flex;
   flex-direction: column;
   z-index: 100;
+  min-height: 200px;  /* Minimum chat height */
+  max-height: 60vh;   /* Maximum to leave room for workspace */
 }
 
 .chat-resize-handle {

@@ -140,7 +140,8 @@ export default function Chat() {
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging.current) return
     const delta = startY.current - e.clientY
-    const newHeight = Math.min(Math.max(startHeight.current + delta, 150), window.innerHeight * 0.7)
+    // Min 200px, max 60% of viewport to leave room for workspace
+    const newHeight = Math.min(Math.max(startHeight.current + delta, 200), window.innerHeight * 0.6)
     setChatHeight(newHeight)
   }
 
