@@ -44,6 +44,14 @@ class ListWorkflowsInLibrary(Tool):
                     "type": "string",
                     "description": "Optional domain filter (e.g., 'Healthcare', 'Finance')",
                 },
+                "include_drafts": {
+                    "type": "boolean",
+                    "description": "Include draft (unsaved) workflows. Default: true. Drafts are workflows created by the LLM but not yet saved to the user's library.",
+                },
+                "drafts_only": {
+                    "type": "boolean",
+                    "description": "Only return draft workflows. Default: false. Use this to see only unsaved workflows.",
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Maximum number of workflows to return (default: 50, max: 100)",
@@ -61,19 +69,23 @@ class ListWorkflowsInLibrary(Tool):
             args: Tool arguments containing:
                 - search_query: Optional text search filter
                 - domain: Optional domain filter
+                - include_drafts: Include draft workflows (default: True)
+                - drafts_only: Only return draft workflows (default: False)
                 - limit: Maximum workflows to return
             **kwargs: Additional arguments including session_state
 
         Returns:
             Dict with:
                 - success: bool
-                - workflows: list of workflow summaries
+                - workflows: list of workflow summaries with status indicator
                 - count: total number of workflows
                 - message: human-readable result
         """
         # Extract parameters from args
         search_query = args.get("search_query")
         domain = args.get("domain")
+        include_drafts = args.get("include_drafts", True)  # Default True for LLM use
+        drafts_only = args.get("drafts_only", False)
         limit = args.get("limit", 50)
 
         # Get session_state from kwargs
@@ -107,23 +119,27 @@ class ListWorkflowsInLibrary(Tool):
         limit = max(1, min(limit, 100))
 
         try:
-            # Search or list workflows
+            # Search or list workflows with draft filtering
             if search_query or domain:
                 workflows, total_count = workflow_store.search_workflows(
                     user_id,
                     query=search_query,
                     domain=domain,
+                    include_drafts=include_drafts,
+                    drafts_only=drafts_only,
                     limit=limit,
                     offset=0,
                 )
             else:
                 workflows, total_count = workflow_store.list_workflows(
                     user_id,
+                    include_drafts=include_drafts,
+                    drafts_only=drafts_only,
                     limit=limit,
                     offset=0,
                 )
 
-            # Format workflows for output
+            # Format workflows for output with status indicator
             workflow_summaries = []
             for wf in workflows:
                 # Extract input names
@@ -140,6 +156,9 @@ class ListWorkflowsInLibrary(Tool):
                     if isinstance(out, dict)
                 ]
 
+                # Status indicator: "saved" or "draft (unsaved)"
+                status = "draft (unsaved)" if wf.is_draft else "saved"
+
                 workflow_summaries.append({
                     "id": wf.id,
                     "name": wf.name,
@@ -151,6 +170,8 @@ class ListWorkflowsInLibrary(Tool):
                     "is_validated": wf.is_validated,
                     "validation_score": wf.validation_score,
                     "validation_count": wf.validation_count,
+                    "status": status,  # "saved" or "draft (unsaved)"
+                    "is_draft": wf.is_draft,  # Raw bool for programmatic use
                     "created_at": wf.created_at,
                     "updated_at": wf.updated_at,
                 })
@@ -162,11 +183,17 @@ class ListWorkflowsInLibrary(Tool):
                     message += f" Search query: '{search_query}'"
                 if domain:
                     message += f" Domain filter: '{domain}'"
+                if drafts_only:
+                    message += " (drafts only)"
             elif total_count == 1:
-                message = f"Found 1 workflow: {workflows[0].name}"
+                status_str = " (draft)" if workflows[0].is_draft else ""
+                message = f"Found 1 workflow: {workflows[0].name}{status_str}"
             else:
                 shown = min(limit, total_count)
-                message = f"Found {total_count} workflows (showing {shown})"
+                # Count drafts vs saved
+                draft_count = sum(1 for wf in workflows if wf.is_draft)
+                saved_count = len(workflows) - draft_count
+                message = f"Found {total_count} workflows (showing {shown}: {saved_count} saved, {draft_count} drafts)"
                 if search_query:
                     message += f" matching '{search_query}'"
                 if domain:

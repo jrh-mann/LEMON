@@ -666,11 +666,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "list_workflows_in_library",
                 "description": (
-                    "List all workflows saved in the user's library. "
-                    "Returns workflow metadata including name, description, domain, tags, "
+                    "List all workflows in the user's library, including both saved and draft workflows. "
+                    "Drafts are workflows you've created that haven't been saved to the user's library yet. "
+                    "Returns workflow metadata including name, description, domain, tags, status (saved/draft), "
                     "validation status, and input/output information. "
                     "Use this to check if similar workflows already exist before creating new ones, "
-                    "or to recommend existing workflows to the user."
+                    "or to find the workflow_id of an existing workflow."
                 ),
                 "parameters": {
                     "type": "object",
@@ -683,6 +684,14 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "Optional domain filter (e.g., 'Healthcare', 'Finance')",
                         },
+                        "include_drafts": {
+                            "type": "boolean",
+                            "description": "Include draft (unsaved) workflows. Default: true",
+                        },
+                        "drafts_only": {
+                            "type": "boolean",
+                            "description": "Only return draft workflows. Default: false",
+                        },
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of workflows to return (default: 50, max: 100)",
@@ -691,6 +700,46 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                     },
                     "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "save_workflow_to_library",
+                "description": (
+                    "Save a draft workflow to the user's permanent library. "
+                    "Drafts are workflows you've created that haven't been explicitly saved yet. "
+                    "Once saved, the workflow appears in the user's browse library. "
+                    "Use this when the user asks to save the workflow, confirms they want to keep it, "
+                    "or says the workflow is complete and ready to use."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "ID of the workflow to save (from create_workflow)",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Optional new name for the workflow",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional new description",
+                        },
+                        "domain": {
+                            "type": "string",
+                            "description": "Optional domain/category",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of tags",
+                        },
+                    },
+                    "required": ["workflow_id"],
                 },
             },
         },
@@ -764,7 +813,8 @@ def build_system_prompt(
         "- WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow with workflow_id\n"
         "- VALIDATE/CHECK/VERIFY → call validate_workflow with workflow_id\n"
         "- RUN/EXECUTE/TEST/TRY → call execute_workflow with workflow_id\n"
-        "- VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library\n\n"
+        "- VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library\n"
+        "- SAVE/KEEP/PUBLISH (workflow) → call save_workflow_to_library with workflow_id\n\n"
         "## Checking for Existing Workflows\n"
         "WHENEVER the user wants to create a new workflow, ALWAYS call list_workflows_in_library first to check "
         "if a similar workflow already exists. This prevents duplicates and helps users discover what they've already built.\n\n"

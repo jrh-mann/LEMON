@@ -33,6 +33,7 @@ class WorkflowRecord:
     created_at: str
     updated_at: str
     output_type: Optional[str] = None  # Type of value workflow returns: string, int, float, bool, json
+    is_draft: bool = True  # True = unsaved draft, False = saved to library
 
 
 class WorkflowStore:
@@ -66,6 +67,7 @@ class WorkflowStore:
                     validation_count INTEGER NOT NULL DEFAULT 0,
                     is_validated BOOLEAN NOT NULL DEFAULT 0,
                     output_type TEXT DEFAULT 'string',
+                    is_draft BOOLEAN NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -78,6 +80,9 @@ class WorkflowStore:
 
                 CREATE INDEX IF NOT EXISTS idx_workflows_created_at
                     ON workflows(created_at DESC);
+                
+                CREATE INDEX IF NOT EXISTS idx_workflows_is_draft
+                    ON workflows(is_draft);
                 """
             )
             # Add output_type column if it doesn't exist (migration for existing DBs)
@@ -85,6 +90,12 @@ class WorkflowStore:
                 conn.execute("SELECT output_type FROM workflows LIMIT 1")
             except sqlite3.OperationalError:
                 conn.execute("ALTER TABLE workflows ADD COLUMN output_type TEXT DEFAULT 'string'")
+            # Add is_draft column if it doesn't exist (migration for existing DBs)
+            try:
+                conn.execute("SELECT is_draft FROM workflows LIMIT 1")
+            except sqlite3.OperationalError:
+                # Default existing workflows to is_draft=0 (saved) since they were manually saved
+                conn.execute("ALTER TABLE workflows ADD COLUMN is_draft BOOLEAN NOT NULL DEFAULT 0")
 
     @contextmanager
     def _conn(self) -> Iterable[sqlite3.Connection]:
@@ -117,6 +128,7 @@ class WorkflowStore:
         validation_count: int = 0,
         is_validated: bool = False,
         output_type: Optional[str] = None,
+        is_draft: bool = True,
     ) -> None:
         """Create a new workflow in the database.
 
@@ -137,6 +149,7 @@ class WorkflowStore:
             validation_count: Total validation attempts
             is_validated: Whether workflow passed validation
             output_type: Type of value workflow returns (string, int, float, bool, json)
+            is_draft: True for unsaved drafts, False for saved to library
         """
         now = datetime.now(timezone.utc).isoformat()
 
@@ -156,18 +169,18 @@ class WorkflowStore:
                     id, user_id, name, description, domain, tags,
                     nodes, edges, inputs, outputs, tree, doubts,
                     validation_score, validation_count, is_validated,
-                    output_type, created_at, updated_at
+                    output_type, is_draft, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id, user_id, name, description, domain, tags_json,
                     nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
                     validation_score, validation_count, is_validated,
-                    output_type or "string", now, now
+                    output_type or "string", is_draft, now, now
                 ),
             )
-        self._logger.info("Created workflow id=%s user=%s name=%s", workflow_id, user_id, name)
+        self._logger.info("Created workflow id=%s user=%s name=%s is_draft=%s", workflow_id, user_id, name, is_draft)
 
     def get_workflow(self, workflow_id: str, user_id: str) -> Optional[WorkflowRecord]:
         """Get a workflow by ID, ensuring it belongs to the user.
@@ -185,7 +198,7 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       output_type, created_at, updated_at
+                       output_type, is_draft, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND user_id = ?
                 """,
@@ -213,6 +226,7 @@ class WorkflowStore:
         validation_count: Optional[int] = None,
         is_validated: Optional[bool] = None,
         output_type: Optional[str] = None,
+        is_draft: Optional[bool] = None,
     ) -> bool:
         """Update an existing workflow.
 
@@ -226,7 +240,7 @@ class WorkflowStore:
         """
         # Build dynamic UPDATE query for provided fields
         updates = []
-        params = []
+        params: List[Any] = []
 
         if name is not None:
             updates.append("name = ?")
@@ -270,6 +284,9 @@ class WorkflowStore:
         if output_type is not None:
             updates.append("output_type = ?")
             params.append(output_type)
+        if is_draft is not None:
+            updates.append("is_draft = ?")
+            params.append(is_draft)
 
         if not updates:
             return True  # No updates requested
@@ -322,6 +339,8 @@ class WorkflowStore:
         self,
         user_id: str,
         *,
+        include_drafts: bool = True,
+        drafts_only: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> Tuple[List[WorkflowRecord], int]:
@@ -329,76 +348,22 @@ class WorkflowStore:
 
         Args:
             user_id: User ID to filter by
+            include_drafts: If True, include draft workflows (default True for LLM use)
+            drafts_only: If True, only return drafts (overrides include_drafts)
             limit: Maximum number of workflows to return
             offset: Offset for pagination
 
         Returns:
             Tuple of (workflows list, total count)
         """
-        with self._conn() as conn:
-            # Get total count
-            count_row = conn.execute(
-                "SELECT COUNT(*) FROM workflows WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()
-            total_count = count_row[0] if count_row else 0
-
-            # Get paginated results
-            rows = conn.execute(
-                """
-                SELECT id, user_id, name, description, domain, tags,
-                       nodes, edges, inputs, outputs, tree, doubts,
-                       validation_score, validation_count, is_validated,
-                       output_type, created_at, updated_at
-                FROM workflows
-                WHERE user_id = ?
-                ORDER BY updated_at DESC
-                LIMIT ? OFFSET ?
-                """,
-                (user_id, limit, offset),
-            ).fetchall()
-
-        workflows = [self._row_to_workflow(row) for row in rows if row]
-        return workflows, total_count
-
-    def search_workflows(
-        self,
-        user_id: str,
-        *,
-        query: Optional[str] = None,
-        domain: Optional[str] = None,
-        validated: Optional[bool] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> Tuple[List[WorkflowRecord], int]:
-        """Search workflows with filters.
-
-        Args:
-            user_id: User ID to filter by
-            query: Text search in name/description
-            domain: Filter by domain
-            validated: Filter by validation status
-            limit: Maximum results
-            offset: Pagination offset
-
-        Returns:
-            Tuple of (workflows list, total count)
-        """
+        # Build WHERE clause based on draft filtering
         where_clauses = ["user_id = ?"]
-        params = [user_id]
+        params: List[Any] = [user_id]
 
-        if query:
-            where_clauses.append("(name LIKE ? OR description LIKE ?)")
-            search_term = f"%{query}%"
-            params.extend([search_term, search_term])
-
-        if domain:
-            where_clauses.append("domain = ?")
-            params.append(domain)
-
-        if validated is not None:
-            where_clauses.append("is_validated = ?")
-            params.append(validated)
+        if drafts_only:
+            where_clauses.append("is_draft = 1")
+        elif not include_drafts:
+            where_clauses.append("is_draft = 0")
 
         where_sql = " AND ".join(where_clauses)
 
@@ -416,7 +381,84 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       output_type, created_at, updated_at
+                       output_type, is_draft, created_at, updated_at
+                FROM workflows
+                WHERE {where_sql}
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset],
+            ).fetchall()
+
+        workflows = [self._row_to_workflow(row) for row in rows if row]
+        return workflows, total_count
+
+    def search_workflows(
+        self,
+        user_id: str,
+        *,
+        query: Optional[str] = None,
+        domain: Optional[str] = None,
+        validated: Optional[bool] = None,
+        include_drafts: bool = True,
+        drafts_only: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Tuple[List[WorkflowRecord], int]:
+        """Search workflows with filters.
+
+        Args:
+            user_id: User ID to filter by
+            query: Text search in name/description
+            domain: Filter by domain
+            validated: Filter by validation status
+            include_drafts: If True, include draft workflows (default True for LLM use)
+            drafts_only: If True, only return drafts (overrides include_drafts)
+            limit: Maximum results
+            offset: Pagination offset
+
+        Returns:
+            Tuple of (workflows list, total count)
+        """
+        where_clauses = ["user_id = ?"]
+        params: List[Any] = [user_id]
+
+        if query:
+            where_clauses.append("(name LIKE ? OR description LIKE ?)")
+            search_term = f"%{query}%"
+            params.extend([search_term, search_term])
+
+        if domain:
+            where_clauses.append("domain = ?")
+            params.append(domain)
+
+        if validated is not None:
+            where_clauses.append("is_validated = ?")
+            params.append(validated)
+
+        # Draft filtering
+        if drafts_only:
+            where_clauses.append("is_draft = 1")
+        elif not include_drafts:
+            where_clauses.append("is_draft = 0")
+
+        where_sql = " AND ".join(where_clauses)
+
+        with self._conn() as conn:
+            # Get total count
+            count_row = conn.execute(
+                f"SELECT COUNT(*) FROM workflows WHERE {where_sql}",
+                params,
+            ).fetchone()
+            total_count = count_row[0] if count_row else 0
+
+            # Get paginated results
+            rows = conn.execute(
+                f"""
+                SELECT id, user_id, name, description, domain, tags,
+                       nodes, edges, inputs, outputs, tree, doubts,
+                       validation_score, validation_count, is_validated,
+                       output_type, is_draft, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -481,6 +523,7 @@ class WorkflowStore:
                 validation_count=row["validation_count"],
                 is_validated=bool(row["is_validated"]),
                 output_type=row["output_type"],
+                is_draft=bool(row["is_draft"]),
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )

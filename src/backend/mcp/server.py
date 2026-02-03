@@ -35,6 +35,7 @@ from ..tools import (
     ExecuteWorkflowTool,
     ListWorkflowsInLibrary,
     CreateWorkflowTool,
+    SaveWorkflowToLibrary,
 )
 from ..utils.uploads import save_uploaded_image
 
@@ -168,6 +169,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
     list_library_tool = ListWorkflowsInLibrary()
     create_workflow_tool = CreateWorkflowTool()
+    save_workflow_tool = SaveWorkflowToLibrary()
 
     @server.tool(
         name="analyze_workflow",
@@ -482,19 +484,71 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     def list_workflows_in_library(
         search_query: str | None = None,
         domain: str | None = None,
+        include_drafts: bool = True,
+        drafts_only: bool = False,
         limit: int = 50,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """List workflows in the user's library.
+        
+        Args:
+            search_query: Optional text search in name/description
+            domain: Optional domain filter
+            include_drafts: Include draft workflows (default True for LLM use)
+            drafts_only: Only return draft workflows
+            limit: Max workflows to return
+            session_state: Session context
+        """
         args: dict[str, Any] = {}
         if search_query is not None:
             args["search_query"] = search_query
         if domain is not None:
             args["domain"] = domain
+        args["include_drafts"] = include_drafts
+        args["drafts_only"] = drafts_only
         args["limit"] = limit
         # Inject workflow_store so the tool can query the DB in MCP mode
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return list_library_tool.execute(args, session_state=state)
+
+    @server.tool(name="save_workflow_to_library")
+    def save_workflow_to_library(
+        workflow_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        domain: str | None = None,
+        tags: list[str] | None = None,
+        user_id: str | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Save a draft workflow to the user's permanent library.
+        
+        Drafts are workflows created by the LLM that haven't been saved yet.
+        This tool publishes the draft to the user's library (is_draft=False).
+        
+        Args:
+            workflow_id: The workflow to save
+            name: Optional new name (updates existing if provided)
+            description: Optional new description
+            domain: Optional domain/category
+            tags: Optional list of tags
+            user_id: User ID for ownership (defaults to mcp_user in MCP mode)
+            session_state: Session context
+        """
+        args: dict[str, Any] = {"workflow_id": workflow_id}
+        if name is not None:
+            args["name"] = name
+        if description is not None:
+            args["description"] = description
+        if domain is not None:
+            args["domain"] = domain
+        if tags is not None:
+            args["tags"] = tags
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        state.setdefault("user_id", user_id or "mcp_user")
+        return save_workflow_tool.execute(args, session_state=state)
 
     return server
 
