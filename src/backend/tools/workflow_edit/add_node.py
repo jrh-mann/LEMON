@@ -3,6 +3,11 @@
 This tool adds nodes to the workflow flowchart. For subprocess nodes,
 it automatically registers the output as a derived variable with the
 correct type inferred from the subworkflow's output definition.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
 """
 
 from __future__ import annotations
@@ -13,8 +18,14 @@ from typing import Any, Dict
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
 from ..workflow_input.add import generate_variable_id
-from ..workflow_input.helpers import ensure_workflow_analysis, normalize_variable_name
-from .helpers import get_node_color, validate_subprocess_node, get_subworkflow_output_type
+from ..workflow_input.helpers import normalize_variable_name
+from .helpers import (
+    get_node_color,
+    validate_subprocess_node,
+    get_subworkflow_output_type,
+    load_workflow_for_tool,
+    save_workflow_changes,
+)
 
 
 # Valid comparators by input type - mirrors frontend COMPARATORS_BY_TYPE
@@ -108,8 +119,15 @@ class AddNodeTool(Tool):
     """
 
     name = "add_node"
-    description = "Add a new node (block) to the workflow."
+    description = "Add a new node (block) to the workflow. Requires workflow_id."
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to add the node to (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "type",
             "string",
@@ -189,13 +207,17 @@ class AddNodeTool(Tool):
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
-
-        # Ensure workflow_analysis exists with unified variable structure
-        workflow_analysis = ensure_workflow_analysis(session_state)
-
-        # Get workflow variables for condition validation
-        variables = workflow_analysis.get("variables", [])
+        workflow_id = args.get("workflow_id")
+        
+        # Load workflow from database
+        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        if error:
+            return error
+        
+        # Extract workflow components
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
 
         # Validate condition for decision nodes
         node_type = args["type"]
@@ -220,6 +242,7 @@ class AddNodeTool(Tool):
                     "error_code": "INVALID_CONDITION",
                 }
 
+        # Create new node
         node_id = f"node_{uuid.uuid4().hex[:8]}"
         new_node = {
             "id": node_id,
@@ -249,13 +272,14 @@ class AddNodeTool(Tool):
                 new_node["output_value"] = args["output_value"]
 
         # Add subprocess-specific fields
+        variables_modified = False
         if node_type == "subprocess":
-            subworkflow_id = args.get("subworkflow_id")
+            subworkflow_id_param = args.get("subworkflow_id")
             input_mapping = args.get("input_mapping")
             output_variable = args.get("output_variable")
             
-            if subworkflow_id:
-                new_node["subworkflow_id"] = subworkflow_id
+            if subworkflow_id_param:
+                new_node["subworkflow_id"] = subworkflow_id_param
             if input_mapping is not None:
                 new_node["input_mapping"] = input_mapping
             if output_variable:
@@ -270,32 +294,37 @@ class AddNodeTool(Tool):
                 
                 if normalize_variable_name(output_variable) not in existing_var_names:
                     # Get output type from subworkflow
-                    output_info = get_subworkflow_output_type(subworkflow_id or "", session_state)
-                    output_type = output_info.get("type", "string") if output_info else "string"
+                    output_info = get_subworkflow_output_type(subworkflow_id_param or "", session_state)
+                    output_type_val = output_info.get("type", "string") if output_info else "string"
                     output_desc = output_info.get("description") if output_info else None
                     
                     # Generate variable ID with subprocess source
-                    var_id = generate_variable_id(output_variable, output_type, "subprocess")
+                    var_id = generate_variable_id(output_variable, output_type_val, "subprocess")
                     
                     # Create derived variable with source='subprocess'
                     new_variable: Dict[str, Any] = {
                         "id": var_id,
                         "name": output_variable,
-                        "type": output_type,
+                        "type": output_type_val,
                         "source": "subprocess",  # Derived from subprocess execution
                         "source_node_id": node_id,  # Which node produces this
-                        "subworkflow_id": subworkflow_id,  # Which subworkflow it comes from
+                        "subworkflow_id": subworkflow_id_param,  # Which subworkflow it comes from
                         "description": output_desc or f"Output from subprocess '{args['label']}'",
                     }
                     
-                    # Add to unified variables list
-                    workflow_analysis["variables"].append(new_variable)
-                    variables = workflow_analysis["variables"]
+                    # Add to variables list
+                    variables.append(new_variable)
+                    variables_modified = True
             
             # Validate subprocess node configuration
+            # Build a mock session_state for validation that includes the updated variables
+            mock_session = {
+                **session_state,
+                "workflow_analysis": {"variables": variables},
+            }
             subprocess_errors = validate_subprocess_node(
                 new_node,
-                session_state,
+                mock_session,
                 check_workflow_exists=True,
             )
             if subprocess_errors:
@@ -313,10 +342,14 @@ class AddNodeTool(Tool):
             if "output_variable" in args:
                 new_node["output_variable"] = args["output_variable"]
 
+        # Add node to list
+        nodes.append(new_node)
+
+        # Validate the workflow
         new_workflow = {
-            "nodes": [*current_workflow.get("nodes", []), new_node],
-            "edges": current_workflow.get("edges", []),
-            "variables": variables,  # Use unified variables instead of inputs
+            "nodes": nodes,
+            "edges": edges,
+            "variables": variables,
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
@@ -327,10 +360,19 @@ class AddNodeTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Auto-save changes to database
+        save_kwargs = {"nodes": nodes}
+        if variables_modified:
+            save_kwargs["variables"] = variables
+        
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "add_node",
             "node": new_node,
-            "message": f"Added {node_type} node '{args['label']}'",
-            "workflow_analysis": workflow_analysis,  # Return updated analysis for state sync
+            "message": f"Added {node_type} node '{args['label']}' to workflow {workflow_id}",
         }

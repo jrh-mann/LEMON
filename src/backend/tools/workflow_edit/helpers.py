@@ -268,3 +268,197 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
         return result
     except Exception:
         return []
+
+
+# ============================================================================
+# Workflow Load/Save Helpers for Multi-Workflow ID-Centric Architecture
+# ============================================================================
+#
+# These helpers enable tools to load from DB, modify, and auto-save back.
+# Every tool operation is self-contained:
+# 1. Tool receives workflow_id parameter
+# 2. Tool loads workflow from WorkflowStore database
+# 3. Tool applies its changes to the workflow
+# 4. Tool saves changes back to database immediately
+# 5. Tool returns success with workflow_id for tracking
+#
+# This pattern ensures all changes persist automatically with no "Save" button.
+# ============================================================================
+
+from typing import Tuple
+
+
+def load_workflow_for_tool(
+    workflow_id: str,
+    session_state: Dict[str, Any],
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Load workflow from database for tool execution.
+    
+    Provides a standard way for tools to load a workflow by ID from the
+    database. Returns the workflow data in a format ready for tool use.
+    
+    Args:
+        workflow_id: ID of the workflow to load (e.g., "wf_abc123")
+        session_state: Session state containing workflow_store and user_id
+        
+    Returns:
+        Tuple of (workflow_data, error_response):
+        - On success: (workflow_data dict, None)
+        - On failure: (None, error_response dict)
+        
+    The workflow_data dict contains:
+        - nodes: List of node objects
+        - edges: List of edge objects
+        - variables: List of variable objects (unified format, stored as 'inputs')
+        - outputs: List of output definitions
+        - output_type: Declared output type for the workflow
+        - name: Workflow name (for reference)
+        - workflow_id: The ID (for convenience)
+    """
+    # Validate workflow_id is provided
+    if not workflow_id:
+        return None, {
+            "success": False,
+            "error": "workflow_id is required",
+            "error_code": "MISSING_WORKFLOW_ID",
+            "message": "You must provide a workflow_id. Create a workflow first using create_workflow.",
+        }
+    
+    # Get workflow_store and user_id from session
+    workflow_store = session_state.get("workflow_store")
+    user_id = session_state.get("user_id")
+    
+    if not workflow_store:
+        return None, {
+            "success": False,
+            "error": "No workflow_store in session",
+            "error_code": "NO_STORE",
+            "message": "Unable to access workflow - storage not available.",
+        }
+    
+    if not user_id:
+        return None, {
+            "success": False,
+            "error": "No user_id in session",
+            "error_code": "NO_USER",
+            "message": "Unable to access workflow - user not authenticated.",
+        }
+    
+    # Load workflow from database
+    try:
+        record = workflow_store.get_workflow(workflow_id, user_id)
+    except Exception as e:
+        return None, {
+            "success": False,
+            "error": f"Database error: {e}",
+            "error_code": "DB_ERROR",
+            "message": f"Failed to load workflow: {e}",
+        }
+    
+    if record is None:
+        return None, {
+            "success": False,
+            "error": f"Workflow '{workflow_id}' not found",
+            "error_code": "WORKFLOW_NOT_FOUND",
+            "message": f"Workflow '{workflow_id}' not found. Check the ID or create a new workflow first.",
+        }
+    
+    # Convert WorkflowRecord to tool-friendly dict format
+    # Note: Storage uses 'inputs' but tools use 'variables' (unified format)
+    workflow_data = {
+        "workflow_id": workflow_id,
+        "name": record.name,
+        "nodes": record.nodes,
+        "edges": record.edges,
+        "variables": record.inputs,  # Expose as 'variables', stored as 'inputs'
+        "outputs": record.outputs,
+        "output_type": record.output_type,
+        "tree": record.tree,
+        "doubts": record.doubts,
+    }
+    
+    return workflow_data, None
+
+
+def save_workflow_changes(
+    workflow_id: str,
+    session_state: Dict[str, Any],
+    *,
+    nodes: Optional[List[Dict[str, Any]]] = None,
+    edges: Optional[List[Dict[str, Any]]] = None,
+    variables: Optional[List[Dict[str, Any]]] = None,
+    outputs: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Save workflow changes back to database.
+    
+    Auto-saves modified fields to the database. Only provided fields are updated.
+    
+    Args:
+        workflow_id: ID of the workflow to update
+        session_state: Session state containing workflow_store and user_id
+        nodes: Updated list of nodes (optional)
+        edges: Updated list of edges (optional)
+        variables: Updated list of variables (optional, stored as 'inputs')
+        outputs: Updated list of outputs (optional)
+        
+    Returns:
+        None on success, or an error dict on failure.
+        
+    Note:
+        Tools should call this after making any modifications to ensure
+        changes persist to the database immediately.
+    """
+    # Get workflow_store and user_id from session
+    workflow_store = session_state.get("workflow_store")
+    user_id = session_state.get("user_id")
+    
+    if not workflow_store:
+        return {
+            "success": False,
+            "error": "No workflow_store in session",
+            "error_code": "NO_STORE",
+            "message": "Unable to save workflow - storage not available.",
+        }
+    
+    if not user_id:
+        return {
+            "success": False,
+            "error": "No user_id in session",
+            "error_code": "NO_USER",
+            "message": "Unable to save workflow - user not authenticated.",
+        }
+    
+    # Build update kwargs - only include provided fields
+    update_kwargs: Dict[str, Any] = {}
+    if nodes is not None:
+        update_kwargs["nodes"] = nodes
+    if edges is not None:
+        update_kwargs["edges"] = edges
+    if variables is not None:
+        update_kwargs["inputs"] = variables  # Store as 'inputs' in database
+    if outputs is not None:
+        update_kwargs["outputs"] = outputs
+    
+    # If nothing to update, return success
+    if not update_kwargs:
+        return None
+    
+    # Save to database
+    try:
+        success = workflow_store.update_workflow(workflow_id, user_id, **update_kwargs)
+        if not success:
+            return {
+                "success": False,
+                "error": f"Failed to update workflow '{workflow_id}'",
+                "error_code": "UPDATE_FAILED",
+                "message": f"Workflow '{workflow_id}' not found or unauthorized.",
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Database error: {e}",
+            "error_code": "DB_ERROR",
+            "message": f"Failed to save workflow: {e}",
+        }
+    
+    return None  # Success

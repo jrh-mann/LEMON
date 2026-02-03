@@ -22,3 +22,11 @@ WORKFLOW_INPUT_TOOLS = frozenset(
     }
 )
 
+# Tools that create or modify workflow library entries
+WORKFLOW_LIBRARY_TOOLS = frozenset(
+    {
+        "create_workflow",
+        "list_workflows_in_library",
+    }
+)
+

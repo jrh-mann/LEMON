@@ -334,3 +334,191 @@ class TestWorkflowValidator:
         is_valid, errors = self.validator.validate(workflow)
         assert not is_valid
         assert len(errors) >= 3  # Invalid type, duplicate ID, invalid edge target
+
+
+class TestOutputTypeValidation:
+    """Test output_type consistency validation (Rule 14)"""
+
+    def setup_method(self):
+        """Setup validator instance for each test"""
+        self.validator = WorkflowValidator()
+
+    def test_end_node_output_type_matches_workflow(self):
+        """End nodes with matching output_type should pass validation"""
+        workflow = {
+            "output_type": "float",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "Result", "x": 100, "y": 0, "output_type": "float"},
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_end_node_output_type_mismatch_fails(self):
+        """End nodes with mismatched output_type should fail validation"""
+        workflow = {
+            "output_type": "float",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "Result", "x": 100, "y": 0, "output_type": "string"},
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "OUTPUT_TYPE_MISMATCH" for err in errors)
+
+    def test_end_node_default_output_type_is_string(self):
+        """End nodes without explicit output_type default to 'string'"""
+        workflow = {
+            "output_type": "string",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "Result", "x": 100, "y": 0},  # No output_type specified
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid  # Should pass because default is "string"
+
+    def test_end_node_missing_output_type_fails_for_non_string_workflow(self):
+        """End nodes without output_type should fail if workflow declares non-string type"""
+        workflow = {
+            "output_type": "int",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "Result", "x": 100, "y": 0},  # No output_type, defaults to string
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "OUTPUT_TYPE_MISMATCH" for err in errors)
+        # Verify error message includes both types
+        mismatch_error = next(e for e in errors if e.code == "OUTPUT_TYPE_MISMATCH")
+        assert "string" in mismatch_error.message  # Default type
+        assert "int" in mismatch_error.message  # Workflow type
+
+    def test_multiple_end_nodes_all_must_match_output_type(self):
+        """All end nodes must match workflow output_type"""
+        workflow = {
+            "output_type": "int",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {
+                    "id": "decision",
+                    "type": "decision",
+                    "label": "Check",
+                    "x": 100, "y": 0,
+                    "condition": {"input_id": "var_x", "comparator": "gt", "value": 0}
+                },
+                {"id": "end1", "type": "end", "label": "High", "x": 200, "y": 0, "output_type": "int"},
+                {"id": "end2", "type": "end", "label": "Low", "x": 200, "y": 100, "output_type": "string"},  # Mismatch!
+            ],
+            "edges": [
+                {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
+                {"id": "decision->end1", "from": "decision", "to": "end1", "label": "true"},
+                {"id": "decision->end2", "from": "decision", "to": "end2", "label": "false"},
+            ],
+            "variables": [{"id": "var_x", "name": "x", "type": "int"}]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        # Should have exactly one OUTPUT_TYPE_MISMATCH error for end2
+        mismatch_errors = [e for e in errors if e.code == "OUTPUT_TYPE_MISMATCH"]
+        assert len(mismatch_errors) == 1
+        assert mismatch_errors[0].node_id == "end2"
+
+    def test_multiple_end_nodes_all_matching_passes(self):
+        """Workflow with multiple end nodes all matching output_type should pass"""
+        workflow = {
+            "output_type": "bool",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {
+                    "id": "decision",
+                    "type": "decision",
+                    "label": "Check",
+                    "x": 100, "y": 0,
+                    "condition": {"input_id": "var_x", "comparator": "gt", "value": 0}
+                },
+                {"id": "end1", "type": "end", "label": "True Result", "x": 200, "y": 0, "output_type": "bool"},
+                {"id": "end2", "type": "end", "label": "False Result", "x": 200, "y": 100, "output_type": "bool"},
+            ],
+            "edges": [
+                {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
+                {"id": "decision->end1", "from": "decision", "to": "end1", "label": "true"},
+                {"id": "decision->end2", "from": "decision", "to": "end2", "label": "false"},
+            ],
+            "variables": [{"id": "var_x", "name": "x", "type": "int"}]
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_no_workflow_output_type_skips_validation(self):
+        """If workflow has no output_type, end node output_type is not validated"""
+        workflow = {
+            # No output_type declared at workflow level
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "Result", "x": 100, "y": 0, "output_type": "json"},
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+        # No OUTPUT_TYPE_MISMATCH errors because workflow doesn't declare output_type
+        assert not any(e.code == "OUTPUT_TYPE_MISMATCH" for e in errors)
+
+    def test_output_type_validation_only_in_strict_mode(self):
+        """Output type validation should only run in strict mode"""
+        workflow = {
+            "output_type": "float",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "Result", "x": 100, "y": 0, "output_type": "string"},  # Mismatch
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        # Strict mode should fail
+        is_valid_strict, errors_strict = self.validator.validate(workflow, strict=True)
+        assert not is_valid_strict
+        assert any(e.code == "OUTPUT_TYPE_MISMATCH" for e in errors_strict)
+        
+        # Non-strict mode should pass (output_type validation skipped)
+        is_valid_lenient, errors_lenient = self.validator.validate(workflow, strict=False)
+        assert is_valid_lenient
+        assert not any(e.code == "OUTPUT_TYPE_MISMATCH" for e in errors_lenient)
+
+    def test_output_type_json_workflow(self):
+        """Workflow with json output_type should validate correctly"""
+        workflow = {
+            "output_type": "json",
+            "nodes": [
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end", "type": "end", "label": "JSON Result", "x": 100, "y": 0, "output_type": "json"},
+            ],
+            "edges": [
+                {"id": "start->end", "from": "start", "to": "end", "label": ""}
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+        assert len(errors) == 0
+

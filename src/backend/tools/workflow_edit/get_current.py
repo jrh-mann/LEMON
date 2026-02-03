@@ -1,4 +1,10 @@
-"""Get current workflow tool."""
+"""Get current workflow tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database
+- Read-only - does not save changes
+"""
 
 from __future__ import annotations
 
@@ -6,6 +12,7 @@ import copy
 from typing import Any, Dict, List
 
 from ..core import Tool, ToolParameter
+from .helpers import load_workflow_for_tool
 
 
 # Human-readable labels for comparators
@@ -117,7 +124,7 @@ def format_variable_description(var: Dict[str, Any]) -> str:
 
 
 class GetCurrentWorkflowTool(Tool):
-    """Get the current workflow displayed on the canvas.
+    """Get the current workflow from the database.
     
     Returns workflow structure including nodes, edges, and variables.
     For decision nodes, includes structured condition information.
@@ -126,22 +133,33 @@ class GetCurrentWorkflowTool(Tool):
     """
 
     name = "get_current_workflow"
-    description = "Get the current workflow displayed on the canvas as JSON (nodes and edges)."
-    parameters: List[ToolParameter] = []
+    description = "Get a workflow from the library as JSON (nodes, edges, variables). Requires workflow_id."
+    parameters: List[ToolParameter] = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to retrieve (from create_workflow)",
+            required=True,
+        ),
+    ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
-        raw_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        workflow_id = args.get("workflow_id")
         
-        # Deep copy to avoid modifying orchestrator state when adding defaults for tool output
+        # Load workflow from database
+        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        if error:
+            return error
+        
+        # Deep copy to avoid any issues
         workflow = {
-            "nodes": [copy.deepcopy(n) for n in raw_workflow.get("nodes", [])],
-            "edges": [copy.deepcopy(e) for e in raw_workflow.get("edges", [])]
+            "nodes": [copy.deepcopy(n) for n in workflow_data.get("nodes", [])],
+            "edges": [copy.deepcopy(e) for e in workflow_data.get("edges", [])],
         }
         
-        # Get unified variables list
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
+        # Get variables from loaded data
+        variables = workflow_data.get("variables", [])
         if variables:
             workflow["variables"] = variables
 
@@ -238,6 +256,9 @@ class GetCurrentWorkflowTool(Tool):
 
         return {
             "success": True,
+            "workflow_id": workflow_id,
+            "name": workflow_data.get("name", ""),
+            "output_type": workflow_data.get("output_type", "string"),
             "workflow": workflow,
             "node_count": len(workflow.get("nodes", [])),
             "edge_count": len(workflow.get("edges", [])),

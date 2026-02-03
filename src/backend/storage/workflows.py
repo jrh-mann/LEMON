@@ -32,6 +32,7 @@ class WorkflowRecord:
     is_validated: bool
     created_at: str
     updated_at: str
+    output_type: Optional[str] = None  # Type of value workflow returns: string, int, float, bool, json
 
 
 class WorkflowStore:
@@ -64,6 +65,7 @@ class WorkflowStore:
                     validation_score INTEGER NOT NULL DEFAULT 0,
                     validation_count INTEGER NOT NULL DEFAULT 0,
                     is_validated BOOLEAN NOT NULL DEFAULT 0,
+                    output_type TEXT DEFAULT 'string',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -78,6 +80,11 @@ class WorkflowStore:
                     ON workflows(created_at DESC);
                 """
             )
+            # Add output_type column if it doesn't exist (migration for existing DBs)
+            try:
+                conn.execute("SELECT output_type FROM workflows LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE workflows ADD COLUMN output_type TEXT DEFAULT 'string'")
 
     @contextmanager
     def _conn(self) -> Iterable[sqlite3.Connection]:
@@ -109,6 +116,7 @@ class WorkflowStore:
         validation_score: int = 0,
         validation_count: int = 0,
         is_validated: bool = False,
+        output_type: Optional[str] = None,
     ) -> None:
         """Create a new workflow in the database.
 
@@ -128,6 +136,7 @@ class WorkflowStore:
             validation_score: Number of successful validations
             validation_count: Total validation attempts
             is_validated: Whether workflow passed validation
+            output_type: Type of value workflow returns (string, int, float, bool, json)
         """
         now = datetime.now(timezone.utc).isoformat()
 
@@ -147,15 +156,15 @@ class WorkflowStore:
                     id, user_id, name, description, domain, tags,
                     nodes, edges, inputs, outputs, tree, doubts,
                     validation_score, validation_count, is_validated,
-                    created_at, updated_at
+                    output_type, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id, user_id, name, description, domain, tags_json,
                     nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
                     validation_score, validation_count, is_validated,
-                    now, now
+                    output_type or "string", now, now
                 ),
             )
         self._logger.info("Created workflow id=%s user=%s name=%s", workflow_id, user_id, name)
@@ -176,7 +185,7 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       created_at, updated_at
+                       output_type, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND user_id = ?
                 """,
@@ -203,6 +212,7 @@ class WorkflowStore:
         validation_score: Optional[int] = None,
         validation_count: Optional[int] = None,
         is_validated: Optional[bool] = None,
+        output_type: Optional[str] = None,
     ) -> bool:
         """Update an existing workflow.
 
@@ -257,6 +267,9 @@ class WorkflowStore:
         if is_validated is not None:
             updates.append("is_validated = ?")
             params.append(is_validated)
+        if output_type is not None:
+            updates.append("output_type = ?")
+            params.append(output_type)
 
         if not updates:
             return True  # No updates requested
@@ -336,7 +349,7 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       created_at, updated_at
+                       output_type, created_at, updated_at
                 FROM workflows
                 WHERE user_id = ?
                 ORDER BY updated_at DESC
@@ -403,7 +416,7 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       created_at, updated_at
+                       output_type, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -467,6 +480,7 @@ class WorkflowStore:
                 validation_score=row["validation_score"],
                 validation_count=row["validation_count"],
                 is_validated=bool(row["is_validated"]),
+                output_type=row["output_type"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )

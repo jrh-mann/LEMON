@@ -23,6 +23,9 @@ VALID_COMPARATORS_BY_TYPE = {
     "enum": {"enum_eq", "enum_neq"},
 }
 
+# Valid output types for workflows (matches database schema)
+VALID_OUTPUT_TYPES = {"string", "int", "float", "bool", "json"}
+
 # Regex to extract template variables like {var_name}
 TEMPLATE_VAR_PATTERN = re.compile(r'\{([^}]+)\}')
 
@@ -72,6 +75,7 @@ class WorkflowValidator:
         11. Start nodes should have at least 1 outgoing edge
         12. End nodes should have 0 outgoing edges
         13. Decision nodes must have all referenced variables registered as workflow variables
+        14. All end nodes must have output_type matching workflow's declared output_type
         """
         errors: List[ValidationError] = []
         nodes = workflow.get("nodes", [])
@@ -423,6 +427,14 @@ class WorkflowValidator:
                         )
                     )
 
+            # Rule 14: Validate end node output_type consistency with workflow's declared type
+            workflow_output_type = workflow.get("output_type")
+            if workflow_output_type:
+                output_type_errors = self._validate_end_node_output_types(
+                    nodes, workflow_output_type
+                )
+                errors.extend(output_type_errors)
+
         return (len(errors) == 0, errors)
 
     def _detect_cycles(
@@ -686,6 +698,50 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
+        
+        return errors
+
+    def _validate_end_node_output_types(
+        self,
+        nodes: List[Dict[str, Any]],
+        workflow_output_type: str,
+    ) -> List[ValidationError]:
+        """Validate all end nodes have output_type matching workflow's declared output_type.
+        
+        When a workflow declares an output_type (e.g., "float"), every end node
+        must explicitly set its output_type to match. This ensures type consistency
+        across all possible execution paths.
+        
+        Args:
+            nodes: List of workflow nodes
+            workflow_output_type: The workflow's declared output type (string, int, float, bool, json)
+            
+        Returns:
+            List of ValidationError objects for any mismatches found
+        """
+        errors = []
+        
+        # Find all end nodes
+        end_nodes = [n for n in nodes if n.get("type") == "end"]
+        
+        for node in end_nodes:
+            node_id = node.get("id", "unknown")
+            node_label = node.get("label", node_id)
+            # End nodes default to "string" if no output_type specified
+            node_output_type = node.get("output_type", "string")
+            
+            if node_output_type != workflow_output_type:
+                errors.append(
+                    ValidationError(
+                        code="OUTPUT_TYPE_MISMATCH",
+                        message=(
+                            f"End node '{node_label}' has output_type '{node_output_type}' "
+                            f"but workflow declares output_type '{workflow_output_type}'. "
+                            f"All end nodes must match the workflow's output type."
+                        ),
+                        node_id=node_id,
+                    )
+                )
         
         return errors
 

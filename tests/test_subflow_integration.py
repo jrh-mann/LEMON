@@ -1,5 +1,8 @@
 """Integration tests for subflow execution through the API and tools.
 
+All workflow tools now require workflow_id parameter - workflows must be created first
+using create_workflow, then tools operate on them by ID with auto-save to database.
+
 Tests the full flow:
 1. Creating subprocess nodes via tools
 2. Workflow validation with subprocess nodes
@@ -13,10 +16,11 @@ from src.backend.tools.workflow_edit import AddNodeTool, ModifyNodeTool
 from src.backend.tools.workflow_edit.get_current import GetCurrentWorkflowTool
 from src.backend.validation.workflow_validator import WorkflowValidator
 from src.backend.execution.interpreter import TreeInterpreter
+from tests.conftest import make_session_with_workflow
 
 
 # =============================================================================
-# MOCK WORKFLOW STORE
+# MOCK WORKFLOW STORE (for interpreter execution tests only)
 # =============================================================================
 
 class MockWorkflowStore:
@@ -101,101 +105,123 @@ class TestAddSubprocessNodeTool:
 
     def setup_method(self):
         self.add_node_tool = AddNodeTool()
-        self.workflow_store = MockWorkflowStore({
-            "wf_simple": SIMPLE_SUBWORKFLOW
-        })
     
-    def test_add_subprocess_node_success(self):
+    def test_add_subprocess_node_success(self, workflow_store, test_user_id):
         """Test successfully adding a subprocess node."""
-        session_state = {
-            "current_workflow": {"nodes": [], "edges": []},
-            "workflow_analysis": {
-                "variables": [
-                    {"id": "var_value_int", "name": "Value", "type": "int", "source": "input"}
-                ]
-            },
-            "workflow_store": self.workflow_store,
-            "user_id": "test_user",
+        # Create a mock subworkflow to reference
+        from src.backend.tools import CreateWorkflowTool
+        create_tool = CreateWorkflowTool()
+        session = {"workflow_store": workflow_store, "user_id": test_user_id}
+        
+        # Create subworkflow
+        sub_result = create_tool.execute(
+            {"name": "Simple Calculator", "output_type": "string"},
+            session_state=session
+        )
+        subworkflow_id = sub_result["workflow_id"]
+        
+        # Create main workflow with a variable to map
+        variables = [
+            {"id": "var_value_int", "name": "Value", "type": "int", "source": "input"}
+        ]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, variables=variables
+        )
+        session["workflow_analysis"] = {
+            "variables": variables
         }
         
         result = self.add_node_tool.execute({
+            "workflow_id": workflow_id,
             "type": "subprocess",
             "label": "Calculate Result",
-            "subworkflow_id": "wf_simple",
+            "subworkflow_id": subworkflow_id,
             "input_mapping": {"Value": "X"},
             "output_variable": "Result",
-        }, session_state=session_state)
+        }, session_state=session)
         
         assert result["success"] is True
         assert result["node"]["type"] == "subprocess"
-        assert result["node"]["subworkflow_id"] == "wf_simple"
+        assert result["node"]["subworkflow_id"] == subworkflow_id
         assert result["node"]["input_mapping"] == {"Value": "X"}
         assert result["node"]["output_variable"] == "Result"
     
-    def test_add_subprocess_node_missing_subworkflow_id(self):
+    def test_add_subprocess_node_missing_subworkflow_id(self, workflow_store, test_user_id):
         """Test that subprocess without subworkflow_id fails validation."""
-        session_state = {
-            "current_workflow": {"nodes": [], "edges": []},
-            "workflow_analysis": {
-                "inputs": [
-                    {"id": "input_value_int", "name": "Value", "type": "int"}
-                ]
-            },
-        }
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id
+        )
         
         result = self.add_node_tool.execute({
+            "workflow_id": workflow_id,
             "type": "subprocess",
             "label": "Missing ID",
             # No subworkflow_id
             "input_mapping": {},
             "output_variable": "Result",
-        }, session_state=session_state)
+        }, session_state=session)
         
         assert result["success"] is False
         assert "subworkflow_id" in result["error"].lower()
     
-    def test_add_subprocess_node_missing_output_variable(self):
+    def test_add_subprocess_node_missing_output_variable(self, workflow_store, test_user_id):
         """Test that subprocess without output_variable fails validation."""
-        session_state = {
-            "current_workflow": {"nodes": [], "edges": []},
-            "workflow_analysis": {
-                "inputs": []
-            },
-            "workflow_store": self.workflow_store,
-            "user_id": "test_user",
-        }
+        # Create a subworkflow to reference
+        from src.backend.tools import CreateWorkflowTool
+        create_tool = CreateWorkflowTool()
+        session = {"workflow_store": workflow_store, "user_id": test_user_id}
+        
+        sub_result = create_tool.execute(
+            {"name": "Subworkflow", "output_type": "string"},
+            session_state=session
+        )
+        subworkflow_id = sub_result["workflow_id"]
+        
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id
+        )
         
         result = self.add_node_tool.execute({
+            "workflow_id": workflow_id,
             "type": "subprocess",
             "label": "Missing Output",
-            "subworkflow_id": "wf_simple",
+            "subworkflow_id": subworkflow_id,
             "input_mapping": {},
             # No output_variable
-        }, session_state=session_state)
+        }, session_state=session)
         
         assert result["success"] is False
         assert "output_variable" in result["error"].lower()
     
-    def test_add_subprocess_node_invalid_input_mapping(self):
+    def test_add_subprocess_node_invalid_input_mapping(self, workflow_store, test_user_id):
         """Test that subprocess with invalid input_mapping fails validation."""
-        session_state = {
-            "current_workflow": {"nodes": [], "edges": []},
-            "workflow_analysis": {
-                "inputs": [
-                    {"id": "input_value_int", "name": "Value", "type": "int"}
-                ]
-            },
-            "workflow_store": self.workflow_store,
-            "user_id": "test_user",
-        }
+        # Create a subworkflow to reference
+        from src.backend.tools import CreateWorkflowTool
+        create_tool = CreateWorkflowTool()
+        session = {"workflow_store": workflow_store, "user_id": test_user_id}
+        
+        sub_result = create_tool.execute(
+            {"name": "Subworkflow", "output_type": "string"},
+            session_state=session
+        )
+        subworkflow_id = sub_result["workflow_id"]
+        
+        variables = [
+            {"id": "input_value_int", "name": "Value", "type": "int", "source": "input"}
+        ]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, variables=variables
+        )
+        session["workflow_analysis"] = {"variables": variables}
         
         result = self.add_node_tool.execute({
+            "workflow_id": workflow_id,
             "type": "subprocess",
             "label": "Invalid Mapping",
-            "subworkflow_id": "wf_simple",
+            "subworkflow_id": subworkflow_id,
             "input_mapping": {"NonExistent": "X"},  # NonExistent is not a valid input
             "output_variable": "Result",
-        }, session_state=session_state)
+        }, session_state=session)
         
         assert result["success"] is False
         assert "input" in result["error"].lower()
@@ -206,43 +232,48 @@ class TestModifySubprocessNodeTool:
 
     def setup_method(self):
         self.modify_node_tool = ModifyNodeTool()
-        self.workflow_store = MockWorkflowStore({
-            "wf_simple": SIMPLE_SUBWORKFLOW
-        })
     
-    def test_modify_subprocess_node(self):
+    def test_modify_subprocess_node(self, workflow_store, test_user_id):
         """Test modifying a subprocess node."""
-        session_state = {
-            "current_workflow": {
-                "nodes": [
-                    {
-                        "id": "sub_1",
-                        "type": "subprocess",
-                        "label": "Old Label",
-                        "x": 100, "y": 100,
-                        "color": "sky",
-                        "subworkflow_id": "wf_simple",
-                        "input_mapping": {},
-                        "output_variable": "OldResult",
-                    }
-                ],
-                "edges": []
-            },
-            "workflow_analysis": {
-                "variables": [
-                    {"id": "var_val_int", "name": "Val", "type": "int", "source": "input"}
-                ]
-            },
-            "workflow_store": self.workflow_store,
-            "user_id": "test_user",
-        }
+        # Create a subworkflow to reference
+        from src.backend.tools import CreateWorkflowTool
+        create_tool = CreateWorkflowTool()
+        session = {"workflow_store": workflow_store, "user_id": test_user_id}
+        
+        sub_result = create_tool.execute(
+            {"name": "Subworkflow", "output_type": "string"},
+            session_state=session
+        )
+        subworkflow_id = sub_result["workflow_id"]
+        
+        # Create main workflow with subprocess node
+        nodes = [
+            {
+                "id": "sub_1",
+                "type": "subprocess",
+                "label": "Old Label",
+                "x": 100, "y": 100,
+                "color": "rose",
+                "subworkflow_id": subworkflow_id,
+                "input_mapping": {},
+                "output_variable": "OldResult",
+            }
+        ]
+        variables = [
+            {"id": "var_val_int", "name": "Val", "type": "int", "source": "input"}
+        ]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, nodes=nodes, variables=variables
+        )
+        session["workflow_analysis"] = {"variables": variables}
         
         result = self.modify_node_tool.execute({
+            "workflow_id": workflow_id,
             "node_id": "sub_1",
             "label": "New Label",
             "input_mapping": {"Val": "X"},
             "output_variable": "NewResult",
-        }, session_state=session_state)
+        }, session_state=session)
         
         assert result["success"] is True
         assert result["node"]["label"] == "New Label"
@@ -256,28 +287,28 @@ class TestGetCurrentWorkflowWithSubprocess:
     def setup_method(self):
         self.get_workflow_tool = GetCurrentWorkflowTool()
     
-    def test_get_workflow_shows_subprocess_info(self):
+    def test_get_workflow_shows_subprocess_info(self, workflow_store, test_user_id):
         """Test that subprocess node info is displayed."""
-        session_state = {
-            "current_workflow": {
-                "nodes": [
-                    {
-                        "id": "sub_1",
-                        "type": "subprocess",
-                        "label": "Credit Check",
-                        "x": 100, "y": 100,
-                        "color": "sky",
-                        "subworkflow_id": "wf_credit",
-                        "input_mapping": {"Income": "Salary"},
-                        "output_variable": "Score",
-                    }
-                ],
-                "edges": []
-            },
-            "workflow_analysis": {"inputs": []},
-        }
+        nodes = [
+            {
+                "id": "sub_1",
+                "type": "subprocess",
+                "label": "Credit Check",
+                "x": 100, "y": 100,
+                "color": "rose",
+                "subworkflow_id": "wf_credit",
+                "input_mapping": {"Income": "Salary"},
+                "output_variable": "Score",
+            }
+        ]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, nodes=nodes
+        )
         
-        result = self.get_workflow_tool.execute({}, session_state=session_state)
+        result = self.get_workflow_tool.execute(
+            {"workflow_id": workflow_id},
+            session_state=session
+        )
         
         assert result["success"] is True
         
@@ -304,7 +335,7 @@ class TestWorkflowValidatorSubprocess:
                     "type": "subprocess",
                     "label": "Process",
                     "x": 100, "y": 100,
-                    "color": "sky",
+                    "color": "rose",
                     "subworkflow_id": "wf_sub",
                     "input_mapping": {},
                     "output_variable": "Result",
@@ -334,7 +365,7 @@ class TestWorkflowValidatorSubprocess:
                     "type": "subprocess",
                     "label": "Process",
                     "x": 100, "y": 100,
-                    "color": "sky",
+                    "color": "rose",
                     # Missing: subworkflow_id, input_mapping, output_variable
                 },
                 {"id": "end", "type": "end", "label": "Done", "x": 200, "y": 200, "color": "green"},
@@ -702,4 +733,3 @@ class TestSubflowTreeRebuild:
         assert result.error is not None
         assert "no start node" in result.error.lower()
         assert "Cyclic Workflow" in result.error
-

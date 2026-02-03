@@ -3,6 +3,11 @@
 This tool registers user-input variables for the workflow. These are variables
 that users provide values for at execution time. For subprocess outputs or
 calculated variables, those are created automatically when adding nodes.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
 """
 
 from __future__ import annotations
@@ -11,7 +16,8 @@ import re
 from typing import Any, Dict
 
 from ..core import Tool, ToolParameter
-from .helpers import ensure_workflow_analysis, normalize_variable_name
+from ..workflow_edit.helpers import load_workflow_for_tool, save_workflow_changes
+from .helpers import normalize_variable_name
 
 
 # Map user-friendly types to internal types used by condition validation
@@ -65,17 +71,26 @@ class AddWorkflowVariableTool(Tool):
     This tool creates variables with source='input', meaning users provide
     values at execution time. These variables appear in the Variables tab
     under the 'Inputs' section.
+    
+    Requires workflow_id - the workflow must exist in the library first.
     """
 
     name = "add_workflow_variable"
     aliases = ["add_workflow_input"]  # Backwards compatibility
     description = (
-        "Register an input variable for the workflow. This variable will appear in the Variables tab "
-        "where users can provide values at execution time. Use this when the workflow needs data from "
-        "users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). For subprocess outputs, use "
-        "the output_variable parameter when adding a subprocess node instead."
+        "Register an input variable for the workflow. Requires workflow_id. "
+        "This variable will appear in the Variables tab where users can provide values at execution time. "
+        "Use this when the workflow needs data from users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
+        "For subprocess outputs, use the output_variable parameter when adding a subprocess node instead."
     )
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to add the variable to (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "name",
             "string",
@@ -116,7 +131,15 @@ class AddWorkflowVariableTool(Tool):
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
-        workflow_analysis = ensure_workflow_analysis(session_state)
+        workflow_id = args.get("workflow_id")
+
+        # Load workflow from database
+        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        if error:
+            return error
+
+        # Extract variables from loaded workflow
+        variables = list(workflow_data["variables"])
 
         name = args.get("name")
         var_type = args.get("type")
@@ -140,7 +163,7 @@ class AddWorkflowVariableTool(Tool):
 
         # Check for duplicate names (case-insensitive) across ALL variables
         normalized_name = normalize_variable_name(name)
-        for existing in workflow_analysis.get("variables", []):
+        for existing in variables:
             if normalize_variable_name(existing.get("name", "")) == normalized_name:
                 return {
                     "success": False,
@@ -189,12 +212,17 @@ class AddWorkflowVariableTool(Tool):
                 if range_max is not None:
                     variable_obj["range"]["max"] = range_max
 
-        # Add to unified variables list
-        workflow_analysis["variables"].append(variable_obj)
+        # Add to variables list
+        variables.append(variable_obj)
+
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, variables=variables)
+        if save_error:
+            return save_error
 
         return {
             "success": True,
-            "message": f"Added input variable '{name}' ({var_type})",
+            "workflow_id": workflow_id,
+            "message": f"Added input variable '{name}' ({var_type}) to workflow {workflow_id}",
             "variable": variable_obj,
-            "workflow_analysis": workflow_analysis,
         }

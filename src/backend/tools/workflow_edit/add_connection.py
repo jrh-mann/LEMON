@@ -1,4 +1,10 @@
-"""Add connection tool."""
+"""Add connection tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
+"""
 
 from __future__ import annotations
 
@@ -6,15 +12,21 @@ from typing import Any, Dict
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import resolve_node_id
+from .helpers import resolve_node_id, load_workflow_for_tool, save_workflow_changes
 
 
 class AddConnectionTool(Tool):
     """Connect two nodes with an edge."""
 
     name = "add_connection"
-    description = "Create an edge connecting two nodes."
+    description = "Create an edge connecting two nodes. Requires workflow_id."
     parameters = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to add the connection to (from create_workflow)",
+            required=True,
+        ),
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),
         ToolParameter(
@@ -30,18 +42,24 @@ class AddConnectionTool(Tool):
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        workflow_id = args.get("workflow_id")
+        
+        # Load workflow from database
+        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        if error:
+            return error
+        
+        # Extract workflow components
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
 
-        # Get variables for validation of output templates
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
-
-        nodes = current_workflow.get("nodes", [])
         try:
             from_id = resolve_node_id(args.get("from_node_id"), nodes)
             to_id = resolve_node_id(args.get("to_node_id"), nodes)
         except ValueError as exc:
             return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
+        
         label = args.get("label", "")
         edge_id = f"{from_id}->{to_id}"
 
@@ -52,9 +70,12 @@ class AddConnectionTool(Tool):
             "label": label,
         }
 
+        # Create new edges list with the new edge
+        new_edges = [*edges, new_edge]
+        
         new_workflow = {
-            "nodes": current_workflow.get("nodes", []),
-            "edges": [*current_workflow.get("edges", []), new_edge],
+            "nodes": nodes,
+            "edges": new_edges,
             "variables": variables,
         }
 
@@ -66,9 +87,15 @@ class AddConnectionTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, edges=new_edges)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "add_connection",
             "edge": new_edge,
-            "message": f"Connected {from_id} to {to_id}",
+            "message": f"Connected {from_id} to {to_id} in workflow {workflow_id}",
         }

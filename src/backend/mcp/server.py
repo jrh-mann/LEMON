@@ -34,6 +34,7 @@ from ..tools import (
     ValidateWorkflowTool,
     ExecuteWorkflowTool,
     ListWorkflowsInLibrary,
+    CreateWorkflowTool,
 )
 from ..utils.uploads import save_uploaded_image
 
@@ -160,6 +161,14 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     validate_tool = ValidateWorkflowTool()
     execute_tool = ExecuteWorkflowTool()
 
+    # Workflow library tools and shared WorkflowStore for MCP mode.
+    # MCP can't receive the live object from the orchestrator's session_state,
+    # so we create our own WorkflowStore instance here.
+    _data_dir = lemon_data_dir(_repo_root())
+    _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
+    list_library_tool = ListWorkflowsInLibrary()
+    create_workflow_tool = CreateWorkflowTool()
+
     @server.tool(
         name="analyze_workflow",
         description=(
@@ -202,26 +211,37 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         return AnalyzeWorkflowResult.model_validate(result)
 
     @server.tool(name="get_current_workflow")
-    def get_current_workflow(session_state: dict[str, Any] | None = None) -> dict[str, Any]:
-        return get_workflow_tool.execute({}, session_state=session_state or {})
+    def get_current_workflow(
+        workflow_id: str,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Get the current workflow state for a given workflow_id."""
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return get_workflow_tool.execute({"workflow_id": workflow_id}, session_state=state)
 
     @server.tool(name="add_node")
     def add_node(
+        workflow_id: str,
         type: str,
         label: str,
         x: float | None = None,
         y: float | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args = {"type": type, "label": label}
+        """Add a node to the specified workflow."""
+        args: dict[str, Any] = {"workflow_id": workflow_id, "type": type, "label": label}
         if x is not None:
             args["x"] = x
         if y is not None:
             args["y"] = y
-        return add_node_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return add_node_tool.execute(args, session_state=state)
 
     @server.tool(name="modify_node")
     def modify_node(
+        workflow_id: str,
         node_id: str,
         label: str | None = None,
         type: str | None = None,
@@ -229,7 +249,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         y: float | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args = {"node_id": node_id}
+        """Modify a node in the specified workflow."""
+        args: dict[str, Any] = {"workflow_id": workflow_id, "node_id": node_id}
         if label is not None:
             args["label"] = label
         if type is not None:
@@ -238,47 +259,80 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["x"] = x
         if y is not None:
             args["y"] = y
-        return modify_node_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return modify_node_tool.execute(args, session_state=state)
 
     @server.tool(name="delete_node")
     def delete_node(
+        workflow_id: str,
         node_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return delete_node_tool.execute({"node_id": node_id}, session_state=session_state or {})
+        """Delete a node from the specified workflow."""
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return delete_node_tool.execute(
+            {"workflow_id": workflow_id, "node_id": node_id},
+            session_state=state,
+        )
 
     @server.tool(name="add_connection")
     def add_connection(
+        workflow_id: str,
         from_node_id: str,
         to_node_id: str,
         label: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args = {"from_node_id": from_node_id, "to_node_id": to_node_id}
+        """Add a connection between nodes in the specified workflow."""
+        args: dict[str, Any] = {
+            "workflow_id": workflow_id,
+            "from_node_id": from_node_id,
+            "to_node_id": to_node_id,
+        }
         if label is not None:
             args["label"] = label
-        return add_conn_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return add_conn_tool.execute(args, session_state=state)
 
     @server.tool(name="delete_connection")
     def delete_connection(
+        workflow_id: str,
         from_node_id: str,
         to_node_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Delete a connection in the specified workflow."""
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
         return delete_conn_tool.execute(
-            {"from_node_id": from_node_id, "to_node_id": to_node_id},
-            session_state=session_state or {},
+            {
+                "workflow_id": workflow_id,
+                "from_node_id": from_node_id,
+                "to_node_id": to_node_id,
+            },
+            session_state=state,
         )
 
     @server.tool(name="batch_edit_workflow")
     def batch_edit_workflow(
+        workflow_id: str,
         operations: list[dict[str, Any]],
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return batch_edit_tool.execute({"operations": operations}, session_state=session_state or {})
+        """Apply multiple operations to the specified workflow in a single batch."""
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return batch_edit_tool.execute(
+            {"workflow_id": workflow_id, "operations": operations},
+            session_state=state,
+        )
 
     @server.tool(name="add_workflow_variable")
     def add_workflow_variable(
+        workflow_id: str,
         name: str,
         type: str,
         description: str | None = None,
@@ -287,7 +341,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         range_max: float | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args: dict[str, Any] = {"name": name, "type": type}
+        """Add a variable to the specified workflow."""
+        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name, "type": type}
         if description:
             args["description"] = description
         if enum_values:
@@ -296,27 +351,38 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["range_min"] = range_min
         if range_max is not None:
             args["range_max"] = range_max
-        return add_variable_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return add_variable_tool.execute(args, session_state=state)
 
     @server.tool(name="list_workflow_variables")
     def list_workflow_variables(
+        workflow_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return list_variables_tool.execute({}, session_state=session_state or {})
+        """List all variables in the specified workflow."""
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return list_variables_tool.execute({"workflow_id": workflow_id}, session_state=state)
 
     @server.tool(name="remove_workflow_variable")
     def remove_workflow_variable(
+        workflow_id: str,
         name: str,
         force: bool = False,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args: dict[str, Any] = {"name": name}
+        """Remove a variable from the specified workflow."""
+        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name}
         if force:
             args["force"] = force
-        return remove_variable_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return remove_variable_tool.execute(args, session_state=state)
 
     @server.tool(name="modify_workflow_variable")
     def modify_workflow_variable(
+        workflow_id: str,
         name: str,
         new_type: str | None = None,
         new_name: str | None = None,
@@ -326,7 +392,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         range_max: float | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args: dict[str, Any] = {"name": name}
+        """Modify a variable in the specified workflow."""
+        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name}
         if new_type is not None:
             args["new_type"] = new_type
         if new_name is not None:
@@ -339,41 +406,76 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["range_min"] = range_min
         if range_max is not None:
             args["range_max"] = range_max
-        return modify_variable_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return modify_variable_tool.execute(args, session_state=state)
 
     @server.tool(name="set_workflow_output")
     def set_workflow_output(
+        workflow_id: str,
         name: str,
         type: str,
         description: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        args: dict[str, Any] = {"name": name, "type": type}
+        """Set the output configuration for the specified workflow."""
+        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name, "type": type}
         if description is not None:
             args["description"] = description
-        return set_output_tool.execute(args, session_state=session_state or {})
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return set_output_tool.execute(args, session_state=state)
 
     @server.tool(name="validate_workflow")
     def validate_workflow(
+        workflow_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return validate_tool.execute({}, session_state=session_state or {})
+        """Validate the specified workflow for errors."""
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return validate_tool.execute({"workflow_id": workflow_id}, session_state=state)
 
-    # Workflow library + execution tools — need their own WorkflowStore since
-    # MCP can't receive the live object from the orchestrator's session_state.
-    _data_dir = lemon_data_dir(_repo_root())
-    _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
-    list_library_tool = ListWorkflowsInLibrary()
+    @server.tool(name="create_workflow")
+    def create_workflow(
+        name: str,
+        output_type: str,
+        description: str | None = None,
+        domain: str | None = None,
+        tags: list[str] | None = None,
+        user_id: str | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a new workflow in the library.
+        
+        Must be called before using any workflow editing tools.
+        Returns the workflow_id to use for subsequent tool calls.
+        """
+        args: dict[str, Any] = {"name": name, "output_type": output_type}
+        if description:
+            args["description"] = description
+        if domain:
+            args["domain"] = domain
+        if tags:
+            args["tags"] = tags
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        # Use provided user_id or default for MCP mode
+        state.setdefault("user_id", user_id or "mcp_user")
+        return create_workflow_tool.execute(args, session_state=state)
 
     @server.tool(name="execute_workflow")
     def execute_workflow(
+        workflow_id: str,
         input_values: dict[str, Any],
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Execute the specified workflow with the given input values."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return execute_tool.execute(
-            {"input_values": input_values}, session_state=state,
+            {"workflow_id": workflow_id, "input_values": input_values},
+            session_state=state,
         )
 
     @server.tool(name="list_workflows_in_library")

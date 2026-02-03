@@ -1,4 +1,10 @@
-"""Batch edit workflow tool."""
+"""Batch edit workflow tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
+"""
 
 from __future__ import annotations
 
@@ -7,16 +13,29 @@ from typing import Any, Dict, List
 
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
-from .helpers import get_node_color, resolve_node_id, validate_subprocess_node
+from ..workflow_input.add import generate_variable_id
+from ..workflow_input.helpers import normalize_variable_name
+from .helpers import (
+    get_node_color,
+    resolve_node_id,
+    validate_subprocess_node,
+    load_workflow_for_tool,
+    save_workflow_changes,
+)
 from .add_node import validate_decision_condition
 
 
 class BatchEditWorkflowTool(Tool):
-    """Apply multiple workflow changes atomically."""
+    """Apply multiple workflow changes atomically.
+    
+    Requires workflow_id - the workflow must exist in the library first
+    (create it with create_workflow tool).
+    """
 
     name = "batch_edit_workflow"
     description = """
     Apply multiple workflow changes in a single atomic operation.
+    Requires workflow_id - workflow must exist in library first.
     Validation uses lenient mode - you can create decision nodes without branches, then add connections later.
 
     Use this for efficient bulk operations:
@@ -34,6 +53,7 @@ class BatchEditWorkflowTool(Tool):
 
     Example: Add decision with condition and both branches
     {
+      "workflow_id": "wf_abc123",
       "operations": [
         {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_decision", "x": 100, "y": 100,
          "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
@@ -45,12 +65,19 @@ class BatchEditWorkflowTool(Tool):
     }
     """
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to edit (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "operations",
             "array",
             "List of operations to perform. Each operation has 'op' and parameters.",
             required=True,
-        )
+        ),
     ]
 
     def __init__(self):
@@ -72,19 +99,24 @@ class BatchEditWorkflowTool(Tool):
         Temporary IDs: Use "temp_X" or any ID for new nodes. They'll be replaced with real UUIDs.
         """
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        workflow_id = args.get("workflow_id")
+
+        # Load workflow from database
+        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        if error:
+            return error
 
         operations = args.get("operations", [])
         if not isinstance(operations, list):
             return {"success": False, "error": "operations must be an array"}
 
-        # Get variables from unified 'variables' field
-        variables = session_state.get("workflow_analysis", {}).get("variables", [])
-        new_workflow = {
-            "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
-            "edges": [dict(e) for e in current_workflow.get("edges", [])],
-            "variables": variables,
-        }
+        # Extract workflow components from loaded data
+        nodes = [dict(n) for n in workflow_data["nodes"]]
+        edges = [dict(e) for e in workflow_data["edges"]]
+        variables = list(workflow_data["variables"])
+
+        # Track what was modified for auto-save
+        variables_modified = False
 
         temp_id_map: Dict[str, str] = {}
         applied_operations: List[Dict[str, Any]] = []
@@ -117,7 +149,7 @@ class BatchEditWorkflowTool(Tool):
                                 f"Decision node '{op['label']}' requires a 'condition' object. "
                                 f"Provide: {{input_id: '<input_id>', comparator: '<comparator>', value: <value>}}"
                             )
-                        condition_error = validate_decision_condition(condition, new_workflow.get("variables", []))
+                        condition_error = validate_decision_condition(condition, variables)
                         if condition_error:
                             raise ValueError(f"Invalid condition for decision node '{op['label']}': {condition_error}")
                         new_node["condition"] = condition
@@ -152,33 +184,32 @@ class BatchEditWorkflowTool(Tool):
                             new_node["output_variable"] = output_variable
                             
                             # Auto-register output_variable as a workflow variable
-                            # This allows subsequent decision nodes to reference it
-                            existing_var_names = [v.get("name", "").lower() for v in new_workflow.get("variables", [])]
-                            if output_variable.lower() not in existing_var_names:
-                                # Generate variable ID with subprocess source (var_sub_{slug}_{type})
-                                var_slug = output_variable.lower().replace(' ', '_')
-                                var_id = f"var_sub_{var_slug}_string"
+                            existing_var_names = [
+                                normalize_variable_name(v.get("name", ""))
+                                for v in variables
+                            ]
+                            if normalize_variable_name(output_variable) not in existing_var_names:
+                                # Generate variable ID with subprocess source
+                                var_id = generate_variable_id(output_variable, "string", "subprocess")
                                 new_variable = {
                                     "id": var_id,
                                     "name": output_variable,
                                     "type": "string",  # Default - ideally inferred from subworkflow
                                     "source": "subprocess",
+                                    "source_node_id": real_id,
                                     "description": f"Output from subprocess '{op['label']}'",
                                 }
-                                if "variables" not in new_workflow:
-                                    new_workflow["variables"] = []
-                                new_workflow["variables"].append(new_variable)
-                                # Also update session_state so subsequent ops can reference it
-                                if "workflow_analysis" not in session_state:
-                                    session_state["workflow_analysis"] = {"variables": []}
-                                if "variables" not in session_state["workflow_analysis"]:
-                                    session_state["workflow_analysis"]["variables"] = []
-                                session_state["workflow_analysis"]["variables"].append(new_variable)
+                                variables.append(new_variable)
+                                variables_modified = True
                         
                         # Validate subprocess node configuration
+                        mock_session = {
+                            **session_state,
+                            "workflow_analysis": {"variables": variables},
+                        }
                         subprocess_errors = validate_subprocess_node(
                             new_node,
-                            session_state,
+                            mock_session,
                             check_workflow_exists=True,
                         )
                         if subprocess_errors:
@@ -192,27 +223,27 @@ class BatchEditWorkflowTool(Tool):
                         if "output_variable" in op:
                             new_node["output_variable"] = op["output_variable"]
 
-                    new_workflow["nodes"].append(new_node)
+                    nodes.append(new_node)
                     applied_operations.append({"op": "add_node", "node": new_node})
 
                 elif op_type == "modify_node":
-                    node_id = self._resolve_id(op["node_id"], temp_id_map, new_workflow["nodes"])
+                    node_id = self._resolve_id(op["node_id"], temp_id_map, nodes)
                     node_idx = next(
-                        (i for i, n in enumerate(new_workflow["nodes"]) if n["id"] == node_id),
+                        (i for i, n in enumerate(nodes) if n["id"] == node_id),
                         None,
                     )
                     if node_idx is None:
                         raise ValueError(f"Node not found: {node_id}")
 
                     updates = {k: v for k, v in op.items() if k not in ["op", "node_id"]}
-                    new_workflow["nodes"][node_idx].update(updates)
+                    nodes[node_idx].update(updates)
                     
                     # Validate condition if node is/becomes decision type
-                    updated_node = new_workflow["nodes"][node_idx]
+                    updated_node = nodes[node_idx]
                     if updated_node.get("type") == "decision":
                         condition = updated_node.get("condition")
                         if condition:
-                            condition_error = validate_decision_condition(condition, new_workflow.get("variables", []))
+                            condition_error = validate_decision_condition(condition, variables)
                             if condition_error:
                                 raise ValueError(f"Invalid condition for decision node: {condition_error}")
                     
@@ -221,20 +252,18 @@ class BatchEditWorkflowTool(Tool):
                     )
 
                 elif op_type == "delete_node":
-                    node_id = self._resolve_id(op["node_id"], temp_id_map, new_workflow["nodes"])
-                    new_workflow["nodes"] = [
-                        n for n in new_workflow["nodes"] if n["id"] != node_id
-                    ]
-                    new_workflow["edges"] = [
+                    node_id = self._resolve_id(op["node_id"], temp_id_map, nodes)
+                    nodes = [n for n in nodes if n["id"] != node_id]
+                    edges = [
                         e
-                        for e in new_workflow["edges"]
+                        for e in edges
                         if e["from"] != node_id and e["to"] != node_id
                     ]
                     applied_operations.append({"op": "delete_node", "node_id": node_id})
 
                 elif op_type == "add_connection":
-                    from_id = self._resolve_id(op["from"], temp_id_map, new_workflow["nodes"])
-                    to_id = self._resolve_id(op["to"], temp_id_map, new_workflow["nodes"])
+                    from_id = self._resolve_id(op["from"], temp_id_map, nodes)
+                    to_id = self._resolve_id(op["to"], temp_id_map, nodes)
                     edge_id = f"{from_id}->{to_id}"
 
                     new_edge = {
@@ -243,17 +272,17 @@ class BatchEditWorkflowTool(Tool):
                         "to": to_id,
                         "label": op.get("label", ""),
                     }
-                    new_workflow["edges"].append(new_edge)
+                    edges.append(new_edge)
                     applied_operations.append({"op": "add_connection", "edge": new_edge})
 
                 elif op_type == "delete_connection":
-                    from_id = self._resolve_id(op["from"], temp_id_map, new_workflow["nodes"])
-                    to_id = self._resolve_id(op["to"], temp_id_map, new_workflow["nodes"])
+                    from_id = self._resolve_id(op["from"], temp_id_map, nodes)
+                    to_id = self._resolve_id(op["to"], temp_id_map, nodes)
                     edge_id = f"{from_id}->{to_id}"
 
-                    new_workflow["edges"] = [
+                    edges = [
                         e
-                        for e in new_workflow["edges"]
+                        for e in edges
                         if not (e["from"] == from_id and e["to"] == to_id)
                     ]
                     applied_operations.append({"op": "delete_connection", "edge_id": edge_id})
@@ -264,6 +293,13 @@ class BatchEditWorkflowTool(Tool):
         except Exception as exc:
             return {"success": False, "error": f"Failed to apply operations: {str(exc)}"}
 
+        # Validate the resulting workflow
+        new_workflow = {
+            "nodes": nodes,
+            "edges": edges,
+            "variables": variables,
+        }
+        
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
             return {
@@ -272,13 +308,22 @@ class BatchEditWorkflowTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Auto-save changes to database
+        save_kwargs: Dict[str, Any] = {"nodes": nodes, "edges": edges}
+        if variables_modified:
+            save_kwargs["variables"] = variables
+        
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "batch_edit",
-            "workflow": new_workflow,
             "operations": applied_operations,
             "operation_count": len(applied_operations),
-            "message": f"Applied {len(applied_operations)} operations successfully",
+            "message": f"Applied {len(applied_operations)} operations to workflow {workflow_id}",
         }
 
     def _resolve_id(
