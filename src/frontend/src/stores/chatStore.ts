@@ -54,6 +54,10 @@ interface ChatState {
   // User message helper
   sendUserMessage: (content: string) => Message
 
+  // Snapshot: save/restore chat state when switching workflow tabs
+  getSnapshot: () => { conversationId: string | null; messages: Message[] }
+  restoreState: (conversationId: string | null, messages: Message[]) => void
+
   // Reset
   reset: () => void
 }
@@ -184,6 +188,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
     get().addMessage(message)
     return message
   },
+
+  // Snapshot: returns current chat state for saving into a workflow tab
+  getSnapshot: () => {
+    const state = get()
+    return { conversationId: state.conversationId, messages: state.messages }
+  },
+
+  // Restore: loads chat state from a workflow tab (single atomic update)
+  restoreState: (conversationId, messages) =>
+    set({
+      conversationId,
+      messages,
+      isStreaming: false,
+      streamingContent: '',
+      currentTaskId: null,
+      processingStatus: null,
+      pendingQuestion: null,
+      taskId: null,
+    }),
 
   // Reset
   reset: () =>
