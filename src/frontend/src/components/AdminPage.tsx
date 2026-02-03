@@ -149,6 +149,11 @@ function fuzzyMatch(needle: string, haystack: string): boolean {
   return words.length > 0 && words.every(w => b.includes(w))
 }
 
+/** Check if a Code Term name looks like a date (e.g. "01-Oct-2025", "22-Nov-2025") */
+function looksLikeDate(codeTerm: string): boolean {
+  return /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$/.test(codeTerm.trim())
+}
+
 /** Check if a Code Term looks like it has numeric data */
 function hasNumericData(ct: CodeTermSummary): boolean {
   return ct.minValue !== undefined && ct.maxValue !== undefined
@@ -174,21 +179,23 @@ function relevantCodeTerms(
   variableName: string,
   variableType: string
 ): CodeTermSummary[] {
+  // Always exclude date-like Code Terms — they're never valid variable mappings
+  const nonDates = allTerms.filter(ct => !looksLikeDate(ct.codeTerm))
   let filtered: CodeTermSummary[]
 
   switch (variableType) {
     case 'int':
     case 'float':
       // Only show Code Terms that contain numeric values
-      filtered = allTerms.filter(hasNumericData)
+      filtered = nonDates.filter(hasNumericData)
       break
     case 'bool':
       // Only show Code Terms that look boolean, plus any numeric ones as fallback
-      filtered = allTerms.filter(ct => looksBoolish(ct) || hasNumericData(ct))
+      filtered = nonDates.filter(ct => looksBoolish(ct) || hasNumericData(ct))
       break
     default:
-      // String — show all, but cap at a reasonable number
-      filtered = allTerms
+      // String — show all non-date terms
+      filtered = nonDates
       break
   }
 
