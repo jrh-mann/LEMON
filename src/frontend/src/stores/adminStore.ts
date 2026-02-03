@@ -46,6 +46,8 @@ interface AdminState {
   setExecuting: (executing: boolean) => void
   setResults: (results: BatchResultRow[], summary: BatchSummary) => void
   setStage: (stage: AdminStage) => void
+  clearUploads: () => void
+  removeFile: (fileName: string) => void
   reset: () => void
 }
 
@@ -91,6 +93,27 @@ export const useAdminStore = create<AdminState>((set) => ({
     set({ results, summary, stage: 'results' }),
 
   setStage: (stage) => set({ stage }),
+
+  // Clear all uploaded data but keep workflow list
+  clearUploads: () =>
+    set({
+      uploadedFiles: [],
+      parsedRows: [],
+      codeTerms: [],
+      patients: [],
+      selectedWorkflowId: null,
+      selectedWorkflowVariables: [],
+      mappings: [],
+      results: [],
+      summary: null,
+      stage: 'upload',
+    }),
+
+  // Remove a specific file by name - requires recalculating derived data externally
+  removeFile: (fileName) =>
+    set((state) => ({
+      uploadedFiles: state.uploadedFiles.filter((f) => f.name !== fileName),
+    })),
 
   reset: () => set(initialState),
 }))
