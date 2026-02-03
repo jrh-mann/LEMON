@@ -280,7 +280,9 @@ export default function RightSidebar() {
         className="sidebar-resize-handle"
         onMouseDown={handleResizeStart}
         title="Drag to resize"
-      />
+      >
+        <div className="resize-grip"></div>
+      </div>
       <div className="sidebar-tabs">
         <button
           className={`sidebar-tab ${activeTab === 'library' ? 'active' : ''}`}

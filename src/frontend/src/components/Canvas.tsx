@@ -1397,14 +1397,14 @@ export default function Canvas() {
           </div>
         )}
 
-        {/* Mode toggle control */}
-        <div className="mode-toggle-control">
-          <button
-            className={`mode-btn ${canvasMode === 'select' ? 'active' : ''}`}
-            onClick={() => canvasMode !== 'select' && toggleCanvasMode()}
-            title="Select mode - drag to select elements (V)"
-          >
-            {/* Cursor/pointer icon for select mode */}
+        {/* Mode toggle control - single button showing current mode */}
+        <button
+          className="mode-toggle-btn"
+          onClick={toggleCanvasMode}
+          title={canvasMode === 'select' ? 'Select mode (click to switch to Pan - H)' : 'Pan mode (click to switch to Select - V)'}
+        >
+          {canvasMode === 'select' ? (
+            /* Cursor/pointer icon for select mode */
             <svg
               width="16"
               height="16"
@@ -1416,13 +1416,8 @@ export default function Canvas() {
               <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
               <path d="M13 13l6 6" />
             </svg>
-          </button>
-          <button
-            className={`mode-btn ${canvasMode === 'pan' ? 'active' : ''}`}
-            onClick={() => canvasMode !== 'pan' && toggleCanvasMode()}
-            title="Pan mode - drag to move canvas (H)"
-          >
-            {/* Hand/pan icon for pan mode */}
+          ) : (
+            /* Hand/pan icon for pan mode */
             <svg
               width="16"
               height="16"
@@ -1436,8 +1431,8 @@ export default function Canvas() {
               <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
               <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
             </svg>
-          </button>
-        </div>
+          )}
+        </button>
 
         {/* Zoom controls */}
         <div className="zoom-controls">

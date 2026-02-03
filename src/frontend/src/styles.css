@@ -325,6 +325,7 @@ body {
   flex-shrink: 0;
   min-width: 280px;
   max-width: 60vw;
+  padding-left: 24px; /* Extra padding for resize handle */
 }
 
 .sidebar.library-sidebar.resizing {
@@ -335,18 +336,30 @@ body {
 .sidebar-resize-handle {
   position: absolute;
   top: 0;
-  left: -4px;
-  width: 8px;
+  left: 0;
+  width: 12px;
   height: 100%;
   cursor: ew-resize;
-  background: transparent;
+  background: var(--paper);
+  border-left: 1px solid var(--edge);
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
 }
 
-.sidebar-resize-handle:hover,
-.sidebar.resizing .sidebar-resize-handle {
+.sidebar-resize-handle .resize-grip {
+  width: 4px;
+  height: 40px;
+  background: var(--edge);
+  border-radius: 2px;
+  transition: background 0.15s ease;
+}
+
+.sidebar-resize-handle:hover .resize-grip,
+.sidebar.resizing .sidebar-resize-handle .resize-grip {
   background: var(--teal);
-  opacity: 0.3;
 }
 
 .sidebar-section {
@@ -482,8 +495,8 @@ body {
   display: flex;
   gap: 0;
   border-bottom: 1px solid var(--edge);
-  margin: -20px -16px 16px -16px;
-  padding: 0;
+  margin: -20px -16px 16px -24px; /* -24px left to align with resize handle */
+  padding: 0 0 0 12px; /* 12px left padding for resize handle */
 }
 
 .sidebar-tab {
@@ -1186,54 +1199,33 @@ body {
   border-top: 1px solid var(--edge);
 }
 
-/* Mode toggle control - select/pan mode switcher */
-.mode-toggle-control {
+/* Mode toggle button - single button showing current mode */
+.mode-toggle-btn {
   position: absolute;
   bottom: 16px;
   right: 124px;
-  display: flex;
-  flex-direction: row;
-  gap: 2px;
-  background: white;
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-sm);
-  padding: 4px;
-  box-shadow: var(--shadow);
-  z-index: 10;
-}
-
-.mode-btn {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  z-index: 10;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--teal);
   transition: all 0.15s ease;
 }
 
-.mode-btn:hover {
-  background: var(--bg);
-  color: var(--ink);
+.mode-toggle-btn:hover {
+  background: var(--teal-light);
+  border-color: var(--teal);
 }
 
-.mode-btn:active {
+.mode-toggle-btn:active {
   transform: scale(0.95);
-}
-
-/* Active state for the selected mode */
-.mode-btn.active {
-  background: var(--teal-light);
-  color: var(--teal);
-}
-
-.mode-btn.active:hover {
-  background: var(--teal-light);
-  color: var(--teal);
 }
 
 /* Zoom controls */
