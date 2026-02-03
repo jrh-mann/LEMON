@@ -75,3 +75,6 @@ publishprofile.xml
 .lemon/auth.sqlite
 .lemon/tokens_usage.json
 .lemon/workflows.sqlite
+.mcp.json
+.cursor/
+.claude/settings.local.json

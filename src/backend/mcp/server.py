@@ -32,6 +32,7 @@ from ..tools import (
     RemoveWorkflowVariableTool,
     SetWorkflowOutputTool,
     ValidateWorkflowTool,
+    ExecuteWorkflowTool,
     ListWorkflowsInLibrary,
 )
 from ..utils.uploads import save_uploaded_image
@@ -157,6 +158,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     remove_variable_tool = RemoveWorkflowVariableTool()
     set_output_tool = SetWorkflowOutputTool()
     validate_tool = ValidateWorkflowTool()
+    execute_tool = ExecuteWorkflowTool()
 
     @server.tool(
         name="analyze_workflow",
@@ -357,11 +359,22 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     ) -> dict[str, Any]:
         return validate_tool.execute({}, session_state=session_state or {})
 
-    # Workflow library tools — needs its own WorkflowStore since MCP can't
-    # receive the live object from the orchestrator's session_state.
+    # Workflow library + execution tools — need their own WorkflowStore since
+    # MCP can't receive the live object from the orchestrator's session_state.
     _data_dir = lemon_data_dir(_repo_root())
     _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
     list_library_tool = ListWorkflowsInLibrary()
+
+    @server.tool(name="execute_workflow")
+    def execute_workflow(
+        input_values: dict[str, Any],
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        return execute_tool.execute(
+            {"input_values": input_values}, session_state=state,
+        )
 
     @server.tool(name="list_workflows_in_library")
     def list_workflows_in_library(
