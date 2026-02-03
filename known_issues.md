@@ -1,4 +1,4 @@
 different workflows should not share chats
-export as png
+export as png not just json
 compile to c
-import json not copy paste -- also this is broken
+import json not copy paste of text -- also this is broken
