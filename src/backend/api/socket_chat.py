@@ -134,11 +134,16 @@ class SocketChatTask:
             self.socketio.emit("chat_cancelled", {"task_id": self.task_id}, to=self.sid)
 
     def stream_chunk(self, chunk: str) -> None:
+        """Stream text to frontend character-by-character for typewriter effect."""
         if self.is_cancelled():
             return
         self.did_stream = True
-        self.socketio.emit("chat_stream", {"chunk": chunk, "task_id": self.task_id}, to=self.sid)
-        self.socketio.sleep(0)
+        # Emit each character individually for smooth typewriter effect
+        for char in chunk:
+            if self.is_cancelled():
+                return
+            self.socketio.emit("chat_stream", {"chunk": char, "task_id": self.task_id}, to=self.sid)
+            self.socketio.sleep(0)  # Yield to event loop without artificial delay
 
     def heartbeat(self) -> None:
         while not self.done.is_set():
