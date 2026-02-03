@@ -301,6 +301,7 @@ function SaveWorkflowForm() {
   const [description, setDescription] = useState('')
   const [domain, setDomain] = useState('')
   const [tags, setTags] = useState('')
+  const [isPublished, setIsPublished] = useState(false)  // Publish to community library
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -314,6 +315,7 @@ function SaveWorkflowForm() {
       setDescription(currentWorkflow.metadata.description || '')
       setDomain(currentWorkflow.metadata.domain || '')
       setTags((currentWorkflow.metadata.tags || []).join(', '))
+      // Note: isPublished stays false on edit - republishing is a deliberate choice
     }
   }, [currentWorkflow])
 
@@ -372,6 +374,7 @@ function SaveWorkflowForm() {
         validation_score: 0,
         validation_count: 0,
         is_validated: false,
+        is_published: isPublished,  // Peer review: publish to community library
       }
 
       // Use update if workflow already has an ID (from LLM creation), otherwise create
@@ -393,12 +396,13 @@ function SaveWorkflowForm() {
         setDescription('')
         setDomain('')
         setTags('')
+        setIsPublished(false)
       }, 1500)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate])
+  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
 
   if (flowchart.nodes.length === 0) {
     return (
@@ -474,6 +478,24 @@ function SaveWorkflowForm() {
           disabled={isSaving}
         />
         <small className="muted">Separate tags with commas</small>
+      </div>
+
+      {/* Publish to community library checkbox */}
+      <div className="form-group checkbox-group publish-option">
+        <label>
+          <input
+            id="workflow-publish"
+            type="checkbox"
+            checked={isPublished}
+            onChange={(e) => setIsPublished(e.target.checked)}
+            disabled={isSaving}
+          />
+          <span className="checkbox-label">Publish to Community Library</span>
+        </label>
+        <small className="muted">
+          Published workflows appear in the peer review section.
+          They will be reviewed by other users before becoming publicly available.
+        </small>
       </div>
 
       {saveError && <p className="error-text">{saveError}</p>}

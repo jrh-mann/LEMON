@@ -2841,6 +2841,166 @@ body {
   align-items: center;
 }
 
+/* ====== Peer Review / Browser Tabs ====== */
+
+.browser-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: 12px;
+}
+
+.browser-tabs .tab-btn {
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.browser-tabs .tab-btn:hover {
+  color: var(--ink);
+}
+
+.browser-tabs .tab-btn.active {
+  color: var(--teal);
+  border-bottom-color: var(--teal);
+}
+
+.review-filter {
+  padding: 8px 12px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.peer-review-info {
+  background: var(--teal-light);
+  color: var(--teal);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.peer-review-info p {
+  margin: 0;
+}
+
+/* Voting buttons */
+.voting-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vote-btn {
+  width: 36px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--muted);
+  transition: all 0.2s;
+}
+
+.vote-btn:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.vote-btn.upvote.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
+.vote-btn.downvote.active {
+  background: var(--red);
+  border-color: var(--red);
+  color: white;
+}
+
+.vote-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Vote count display */
+.workflow-votes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--edge);
+  font-size: 0.8rem;
+}
+
+.vote-count {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.vote-count.positive {
+  color: var(--green);
+}
+
+.vote-count.negative {
+  color: var(--red);
+}
+
+.votes-needed {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* Reviewed badge */
+.reviewed-badge {
+  background: var(--green);
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+/* Publish checkbox in save form */
+.publish-option {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--teal-light);
+  border-radius: var(--radius-sm);
+}
+
+.publish-option label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.publish-option .checkbox-label {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.publish-option small {
+  display: block;
+  margin-top: 6px;
+  margin-left: 24px;
+}
+
 /* Chat Empty State */
 .chat-empty {
   display: flex;

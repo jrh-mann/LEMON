@@ -120,3 +120,49 @@ export async function compileToPython(
 ): Promise<CompilePythonResponse> {
   return api.post<CompilePythonResponse>('/api/workflows/compile', payload)
 }
+
+// ============ Peer Review / Public Workflows ============
+
+// Response type for public workflow list
+export interface PublicWorkflowsResponse {
+  workflows: WorkflowSummary[]
+  count: number
+}
+
+// Response type for voting
+export interface VoteResponse {
+  success: boolean
+  net_votes: number
+  review_status: 'unreviewed' | 'reviewed'
+  user_vote: number | null  // +1, -1, or null if vote removed
+}
+
+// List published workflows for peer review
+// Can filter by review_status: 'unreviewed', 'reviewed', or all (no filter)
+export async function listPublicWorkflows(
+  reviewStatus?: 'unreviewed' | 'reviewed'
+): Promise<WorkflowSummary[]> {
+  const params = new URLSearchParams()
+  if (reviewStatus) {
+    params.set('review_status', reviewStatus)
+  }
+  const query = params.toString()
+  const endpoint = query ? `/api/workflows/public?${query}` : '/api/workflows/public'
+
+  const response = await api.get<PublicWorkflowsResponse>(endpoint)
+  return response.workflows
+}
+
+// Get a specific published workflow by ID
+export async function getPublicWorkflow(workflowId: string): Promise<Workflow> {
+  return api.get<Workflow>(`/api/workflows/public/${workflowId}`)
+}
+
+// Vote on a published workflow
+// vote: +1 for upvote, -1 for downvote, 0 to remove vote
+export async function voteOnWorkflow(
+  workflowId: string,
+  vote: number
+): Promise<VoteResponse> {
+  return api.post<VoteResponse>(`/api/workflows/public/${workflowId}/vote`, { vote })
+}

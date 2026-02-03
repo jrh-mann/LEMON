@@ -1,12 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { listWorkflows, getWorkflow, deleteWorkflow } from '../api/workflows'
+import { listWorkflows, getWorkflow, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
 import { autoLayoutFlowchart } from '../utils/canvas'
-import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis, Workflow } from '../types'
+import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis, Workflow, ReviewStatus } from '../types'
+
+// Tab options for the workflow browser
+type BrowserTab = 'my-workflows' | 'peer-review'
 
 export default function WorkflowBrowser() {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<BrowserTab>('my-workflows')
+
+  // My Workflows state
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([])
+
+  // Peer Review state
+  const [publicWorkflows, setPublicWorkflows] = useState<WorkflowSummary[]>([])
+  const [reviewFilter, setReviewFilter] = useState<ReviewStatus | 'all'>('unreviewed')
+  const [userVotes, setUserVotes] = useState<Record<string, number>>({})  // workflow_id -> vote (+1/-1)
+  const [votingId, setVotingId] = useState<string | null>(null)  // ID of workflow currently being voted on
+
+  // Common state
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -14,27 +29,78 @@ export default function WorkflowBrowser() {
   const { addTab, setAnalysis, setWorkflows: setGlobalWorkflows } = useWorkflowStore()
   const { closeModal } = useUIStore()
 
-  // Load workflows on mount
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const workflowsData = await listWorkflows()
-        setWorkflows(workflowsData)
-        // Also update the global store so other components can access workflows
-        setGlobalWorkflows(workflowsData)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load workflows')
-      } finally {
-        setIsLoading(false)
-      }
+  // Load my workflows
+  const loadMyWorkflows = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const workflowsData = await listWorkflows()
+      setWorkflows(workflowsData)
+      setGlobalWorkflows(workflowsData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load workflows')
+    } finally {
+      setIsLoading(false)
     }
-    loadData()
-  }, [])
+  }, [setGlobalWorkflows])
+
+  // Load public workflows for peer review
+  const loadPublicWorkflows = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const filter = reviewFilter === 'all' ? undefined : reviewFilter
+      const workflowsData = await listPublicWorkflows(filter)
+      setPublicWorkflows(workflowsData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load public workflows')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [reviewFilter])
+
+  // Load data based on active tab
+  useEffect(() => {
+    if (activeTab === 'my-workflows') {
+      loadMyWorkflows()
+    } else {
+      loadPublicWorkflows()
+    }
+  }, [activeTab, loadMyWorkflows, loadPublicWorkflows])
+
+  // Handle voting on a public workflow
+  const handleVote = useCallback(async (workflowId: string, vote: number, e: React.MouseEvent) => {
+    e.stopPropagation()  // Prevent opening the workflow
+    setVotingId(workflowId)
+
+    try {
+      // If clicking the same vote, remove it (toggle off)
+      const currentVote = userVotes[workflowId] || 0
+      const newVote = currentVote === vote ? 0 : vote
+
+      const result = await voteOnWorkflow(workflowId, newVote)
+
+      // Update local state
+      setUserVotes(prev => ({
+        ...prev,
+        [workflowId]: result.user_vote ?? 0
+      }))
+
+      // Update workflow in list with new vote count and status
+      setPublicWorkflows(prev => prev.map(w =>
+        w.id === workflowId
+          ? { ...w, net_votes: result.net_votes, review_status: result.review_status }
+          : w
+      ))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to vote')
+    } finally {
+      setVotingId(null)
+    }
+  }, [userVotes])
 
   // Filter workflows by search query
-  const filteredWorkflows = workflows.filter((workflow) => {
+  const filterBySearch = (workflow: WorkflowSummary) => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
     return (
@@ -42,7 +108,11 @@ export default function WorkflowBrowser() {
       workflow.description.toLowerCase().includes(query) ||
       workflow.domain?.toLowerCase().includes(query)
     )
-  })
+  }
+
+  // Filtered lists for each tab
+  const filteredMyWorkflows = workflows.filter(filterBySearch)
+  const filteredPublicWorkflows = publicWorkflows.filter(filterBySearch)
 
   // Handle workflow deletion
   const handleDeleteWorkflow = async (workflowId: string, workflowName: string, e: React.MouseEvent) => {
@@ -196,8 +266,119 @@ export default function WorkflowBrowser() {
     )
   }
 
+  // Render workflow card (shared between tabs)
+  const renderWorkflowCard = (workflow: WorkflowSummary, showVoting: boolean) => (
+    <div key={workflow.id} className="workflow-card-container">
+      <button
+        className="workflow-card"
+        onClick={() => handleSelectWorkflow(workflow.id)}
+      >
+        <div className="workflow-card-header">
+          <h4>{workflow.name}</h4>
+          <div className="workflow-card-badges">
+            {workflow.is_validated && (
+              <span className="validated-badge" title="Validated">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </span>
+            )}
+            {showVoting && workflow.review_status === 'reviewed' && (
+              <span className="reviewed-badge" title="Peer Reviewed">✓ Reviewed</span>
+            )}
+          </div>
+        </div>
+        <p className="workflow-description">{workflow.description}</p>
+        <div className="workflow-meta">
+          {workflow.domain && (
+            <span className="domain-tag">{workflow.domain}</span>
+          )}
+          {workflow.tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+
+        {/* Vote count display for peer review */}
+        {showVoting && (
+          <div className="workflow-votes">
+            <span className={`vote-count ${(workflow.net_votes ?? 0) > 0 ? 'positive' : (workflow.net_votes ?? 0) < 0 ? 'negative' : ''}`}>
+              {(workflow.net_votes ?? 0) > 0 ? '+' : ''}{workflow.net_votes ?? 0} votes
+            </span>
+            {workflow.review_status === 'unreviewed' && (
+              <span className="votes-needed">
+                ({3 - (workflow.net_votes ?? 0)} more for review)
+              </span>
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* Vote buttons for peer review */}
+      {showVoting && (
+        <div className="voting-buttons">
+          <button
+            className={`vote-btn upvote ${userVotes[workflow.id] === 1 ? 'active' : ''}`}
+            onClick={(e) => handleVote(workflow.id, 1, e)}
+            disabled={votingId === workflow.id}
+            title="Upvote"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 19V6M5 12l7-7 7 7" />
+            </svg>
+          </button>
+          <button
+            className={`vote-btn downvote ${userVotes[workflow.id] === -1 ? 'active' : ''}`}
+            onClick={(e) => handleVote(workflow.id, -1, e)}
+            disabled={votingId === workflow.id}
+            title="Downvote"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v13M5 12l7 7 7-7" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Delete button (only for my workflows) */}
+      {!showVoting && (
+        <button
+          className="workflow-delete-btn"
+          onClick={(e) => handleDeleteWorkflow(workflow.id, workflow.name, e)}
+          title="Delete workflow"
+          aria-label={`Delete ${workflow.name}`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
+
   return (
     <div className="workflow-browser">
+      {/* Tabs */}
+      <div className="browser-tabs">
+        <button
+          className={`tab-btn ${activeTab === 'my-workflows' ? 'active' : ''}`}
+          onClick={() => setActiveTab('my-workflows')}
+        >
+          My Workflows
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'peer-review' ? 'active' : ''}`}
+          onClick={() => setActiveTab('peer-review')}
+        >
+          Peer Review
+        </button>
+      </div>
+
       {/* Search */}
       <div className="browser-filters">
         <input
@@ -207,59 +388,47 @@ export default function WorkflowBrowser() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="search-input"
         />
+
+        {/* Review status filter (only for peer review tab) */}
+        {activeTab === 'peer-review' && (
+          <select
+            value={reviewFilter}
+            onChange={(e) => setReviewFilter(e.target.value as ReviewStatus | 'all')}
+            className="review-filter"
+          >
+            <option value="unreviewed">Needs Review</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="all">All Published</option>
+          </select>
+        )}
       </div>
+
+      {/* Peer review info banner */}
+      {activeTab === 'peer-review' && (
+        <div className="peer-review-info">
+          <p>
+            <strong>Help review community workflows!</strong> Workflows with 3+ net upvotes
+            become publicly available. Vote based on correctness and usefulness.
+          </p>
+        </div>
+      )}
 
       {/* Workflow list */}
       <div className="workflow-list">
-        {filteredWorkflows.length === 0 ? (
-          <p className="muted">No workflows found</p>
+        {activeTab === 'my-workflows' ? (
+          // My Workflows list
+          filteredMyWorkflows.length === 0 ? (
+            <p className="muted">No workflows found</p>
+          ) : (
+            filteredMyWorkflows.map((workflow) => renderWorkflowCard(workflow, false))
+          )
         ) : (
-          filteredWorkflows.map((workflow) => (
-            <div key={workflow.id} className="workflow-card-container">
-              <button
-                className="workflow-card"
-                onClick={() => handleSelectWorkflow(workflow.id)}
-              >
-                <div className="workflow-card-header">
-                  <h4>{workflow.name}</h4>
-                  <div className="workflow-card-badges">
-                    {workflow.is_validated && (
-                      <span className="validated-badge" title="Validated">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                          <polyline points="22 4 12 14.01 9 11.01" />
-                        </svg>
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <p className="workflow-description">{workflow.description}</p>
-                <div className="workflow-meta">
-                  {workflow.domain && (
-                    <span className="domain-tag">{workflow.domain}</span>
-                  )}
-                  {workflow.tags.slice(0, 3).map((tag) => (
-                    <span key={tag} className="tag">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </button>
-              <button
-                className="workflow-delete-btn"
-                onClick={(e) => handleDeleteWorkflow(workflow.id, workflow.name, e)}
-                title="Delete workflow"
-                aria-label={`Delete ${workflow.name}`}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  <line x1="10" y1="11" x2="10" y2="17" />
-                  <line x1="14" y1="11" x2="14" y2="17" />
-                </svg>
-              </button>
-            </div>
-          ))
+          // Peer Review list
+          filteredPublicWorkflows.length === 0 ? (
+            <p className="muted">No workflows to review</p>
+          ) : (
+            filteredPublicWorkflows.map((workflow) => renderWorkflowCard(workflow, true))
+          )
         )}
       </div>
     </div>

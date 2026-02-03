@@ -34,6 +34,21 @@ class WorkflowRecord:
     updated_at: str
     output_type: Optional[str] = None  # Type of value workflow returns: string, int, float, bool, json
     is_draft: bool = True  # True = unsaved draft, False = saved to library
+    # Peer review fields
+    is_published: bool = False  # True = published to community library
+    review_status: str = "unreviewed"  # "unreviewed" or "reviewed"
+    net_votes: int = 0  # upvotes - downvotes
+    published_at: Optional[str] = None  # When workflow was published
+
+
+@dataclass(frozen=True)
+class VoteRecord:
+    """Represents a user's vote on a workflow."""
+    id: int
+    workflow_id: str
+    user_id: str
+    vote: int  # +1 for upvote, -1 for downvote
+    created_at: str
 
 
 class WorkflowStore:
@@ -96,6 +111,37 @@ class WorkflowStore:
             # Create is_draft index after migration ensures column exists
             conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_draft ON workflows(is_draft)")
 
+            # Add peer review columns if they don't exist (migration for existing DBs)
+            for col, default in [
+                ("is_published", "0"),
+                ("review_status", "'unreviewed'"),
+                ("net_votes", "0"),
+                ("published_at", "NULL"),
+            ]:
+                try:
+                    conn.execute(f"SELECT {col} FROM workflows LIMIT 1")
+                except sqlite3.OperationalError:
+                    conn.execute(f"ALTER TABLE workflows ADD COLUMN {col} DEFAULT {default}")
+
+            # Create indexes for peer review queries
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_published ON workflows(is_published)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_review_status ON workflows(review_status)")
+
+            # Create votes table for peer review
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS workflow_votes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workflow_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    vote INTEGER NOT NULL CHECK (vote IN (-1, 1)),
+                    created_at TEXT NOT NULL,
+                    UNIQUE(workflow_id, user_id),
+                    FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_workflow ON workflow_votes(workflow_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_user ON workflow_votes(user_id)")
+
     @contextmanager
     def _conn(self) -> Iterable[sqlite3.Connection]:
         """Context manager for database connections."""
@@ -128,6 +174,7 @@ class WorkflowStore:
         is_validated: bool = False,
         output_type: Optional[str] = None,
         is_draft: bool = True,
+        is_published: bool = False,
     ) -> None:
         """Create a new workflow in the database.
 
@@ -149,6 +196,7 @@ class WorkflowStore:
             is_validated: Whether workflow passed validation
             output_type: Type of value workflow returns (string, int, float, bool, json)
             is_draft: True for unsaved drafts, False for saved to library
+            is_published: True to publish to community library for peer review
         """
         now = datetime.now(timezone.utc).isoformat()
 
@@ -161,6 +209,9 @@ class WorkflowStore:
         tree_json = json.dumps(tree or {})
         doubts_json = json.dumps(doubts or [])
 
+        # Set published_at if publishing
+        published_at = now if is_published else None
+
         with self._conn() as conn:
             conn.execute(
                 """
@@ -168,18 +219,20 @@ class WorkflowStore:
                     id, user_id, name, description, domain, tags,
                     nodes, edges, inputs, outputs, tree, doubts,
                     validation_score, validation_count, is_validated,
-                    output_type, is_draft, created_at, updated_at
+                    output_type, is_draft, is_published, review_status, net_votes, published_at,
+                    created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id, user_id, name, description, domain, tags_json,
                     nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
                     validation_score, validation_count, is_validated,
-                    output_type or "string", is_draft, now, now
+                    output_type or "string", is_draft, is_published, "unreviewed", 0, published_at,
+                    now, now
                 ),
             )
-        self._logger.info("Created workflow id=%s user=%s name=%s is_draft=%s", workflow_id, user_id, name, is_draft)
+        self._logger.info("Created workflow id=%s user=%s name=%s is_published=%s", workflow_id, user_id, name, is_published)
 
     def get_workflow(self, workflow_id: str, user_id: str) -> Optional[WorkflowRecord]:
         """Get a workflow by ID, ensuring it belongs to the user.
@@ -197,7 +250,8 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       output_type, is_draft, created_at, updated_at
+                       output_type, is_draft, is_published, review_status, net_votes, published_at,
+                       created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND user_id = ?
                 """,
@@ -226,6 +280,9 @@ class WorkflowStore:
         is_validated: Optional[bool] = None,
         output_type: Optional[str] = None,
         is_draft: Optional[bool] = None,
+        is_published: Optional[bool] = None,
+        review_status: Optional[str] = None,
+        net_votes: Optional[int] = None,
     ) -> bool:
         """Update an existing workflow.
 
@@ -286,6 +343,19 @@ class WorkflowStore:
         if is_draft is not None:
             updates.append("is_draft = ?")
             params.append(is_draft)
+        if is_published is not None:
+            updates.append("is_published = ?")
+            params.append(is_published)
+            # Set published_at when first publishing
+            if is_published:
+                updates.append("published_at = COALESCE(published_at, ?)")
+                params.append(datetime.now(timezone.utc).isoformat())
+        if review_status is not None:
+            updates.append("review_status = ?")
+            params.append(review_status)
+        if net_votes is not None:
+            updates.append("net_votes = ?")
+            params.append(net_votes)
 
         if not updates:
             return True  # No updates requested
@@ -367,7 +437,8 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       output_type, is_draft, created_at, updated_at
+                       output_type, is_draft, is_published, review_status, net_votes, published_at,
+                       created_at, updated_at
                 FROM workflows
                 WHERE user_id = ?
                 ORDER BY updated_at DESC
@@ -436,7 +507,8 @@ class WorkflowStore:
                 SELECT id, user_id, name, description, domain, tags,
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
-                       output_type, is_draft, created_at, updated_at
+                       output_type, is_draft, is_published, review_status, net_votes, published_at,
+                       created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -502,6 +574,10 @@ class WorkflowStore:
                 is_validated=bool(row["is_validated"]),
                 output_type=row["output_type"],
                 is_draft=bool(row["is_draft"]),
+                is_published=bool(row["is_published"]) if row["is_published"] is not None else False,
+                review_status=row["review_status"] or "unreviewed",
+                net_votes=row["net_votes"] or 0,
+                published_at=row["published_at"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
@@ -512,3 +588,246 @@ class WorkflowStore:
                 e,
             )
             return None
+
+    # =========================================================================
+    # PEER REVIEW METHODS
+    # =========================================================================
+
+    def list_published_workflows(
+        self,
+        *,
+        review_status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Tuple[List[WorkflowRecord], int]:
+        """List published workflows for peer review.
+
+        Args:
+            review_status: Filter by "unreviewed" or "reviewed" (None for all)
+            limit: Maximum number to return
+            offset: Pagination offset
+
+        Returns:
+            Tuple of (workflows list, total count)
+        """
+        where_clauses = ["is_published = 1"]
+        params: List[Any] = []
+
+        if review_status:
+            where_clauses.append("review_status = ?")
+            params.append(review_status)
+
+        where_sql = " AND ".join(where_clauses)
+
+        with self._conn() as conn:
+            count_row = conn.execute(
+                f"SELECT COUNT(*) FROM workflows WHERE {where_sql}",
+                params,
+            ).fetchone()
+            total_count = count_row[0] if count_row else 0
+
+            # Order by net_votes DESC for reviewed, by published_at DESC for unreviewed
+            order_by = "net_votes DESC, published_at DESC" if review_status == "reviewed" else "published_at DESC"
+
+            rows = conn.execute(
+                f"""
+                SELECT id, user_id, name, description, domain, tags,
+                       nodes, edges, inputs, outputs, tree, doubts,
+                       validation_score, validation_count, is_validated,
+                       output_type, is_draft, is_published, review_status, net_votes, published_at,
+                       created_at, updated_at
+                FROM workflows
+                WHERE {where_sql}
+                ORDER BY {order_by}
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset],
+            ).fetchall()
+
+        workflows = [self._row_to_workflow(row) for row in rows if row]
+        return workflows, total_count
+
+    def get_published_workflow(self, workflow_id: str) -> Optional[WorkflowRecord]:
+        """Get a published workflow by ID (no user ownership check).
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            WorkflowRecord if found and published, None otherwise
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id, user_id, name, description, domain, tags,
+                       nodes, edges, inputs, outputs, tree, doubts,
+                       validation_score, validation_count, is_validated,
+                       output_type, is_draft, is_published, review_status, net_votes, published_at,
+                       created_at, updated_at
+                FROM workflows
+                WHERE id = ? AND is_published = 1
+                """,
+                (workflow_id,),
+            ).fetchone()
+
+        return self._row_to_workflow(row) if row else None
+
+    def cast_vote(self, workflow_id: str, user_id: str, vote: int) -> Dict[str, Any]:
+        """Cast or update a vote on a published workflow.
+
+        Args:
+            workflow_id: Workflow to vote on
+            user_id: User casting the vote
+            vote: +1 for upvote, -1 for downvote
+
+        Returns:
+            Dict with success status, new net_votes, and review_status
+        """
+        if vote not in (-1, 1):
+            return {"success": False, "error": "Vote must be +1 or -1"}
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self._conn() as conn:
+            # Check workflow exists and is published
+            wf_row = conn.execute(
+                "SELECT is_published, review_status FROM workflows WHERE id = ?",
+                (workflow_id,),
+            ).fetchone()
+
+            if not wf_row:
+                return {"success": False, "error": "Workflow not found"}
+            if not wf_row["is_published"]:
+                return {"success": False, "error": "Workflow is not published"}
+
+            # Check if user already voted
+            existing = conn.execute(
+                "SELECT vote FROM workflow_votes WHERE workflow_id = ? AND user_id = ?",
+                (workflow_id, user_id),
+            ).fetchone()
+
+            if existing:
+                old_vote = existing["vote"]
+                if old_vote == vote:
+                    # Same vote - no change needed
+                    net_votes = conn.execute(
+                        "SELECT net_votes FROM workflows WHERE id = ?",
+                        (workflow_id,),
+                    ).fetchone()["net_votes"]
+                    return {
+                        "success": True,
+                        "message": "Vote unchanged",
+                        "net_votes": net_votes,
+                        "review_status": wf_row["review_status"],
+                        "user_vote": vote,
+                    }
+
+                # Update existing vote
+                conn.execute(
+                    "UPDATE workflow_votes SET vote = ?, created_at = ? WHERE workflow_id = ? AND user_id = ?",
+                    (vote, now, workflow_id, user_id),
+                )
+                # Adjust net_votes: remove old vote, add new vote
+                vote_delta = vote - old_vote
+            else:
+                # Insert new vote
+                conn.execute(
+                    "INSERT INTO workflow_votes (workflow_id, user_id, vote, created_at) VALUES (?, ?, ?, ?)",
+                    (workflow_id, user_id, vote, now),
+                )
+                vote_delta = vote
+
+            # Update net_votes on workflow
+            conn.execute(
+                "UPDATE workflows SET net_votes = net_votes + ? WHERE id = ?",
+                (vote_delta, workflow_id),
+            )
+
+            # Get updated values
+            updated = conn.execute(
+                "SELECT net_votes, review_status FROM workflows WHERE id = ?",
+                (workflow_id,),
+            ).fetchone()
+            new_net_votes = updated["net_votes"]
+            new_status = updated["review_status"]
+
+            # Auto-promote to reviewed if net_votes >= 3
+            if new_net_votes >= 3 and new_status == "unreviewed":
+                conn.execute(
+                    "UPDATE workflows SET review_status = 'reviewed' WHERE id = ?",
+                    (workflow_id,),
+                )
+                new_status = "reviewed"
+                self._logger.info("Workflow %s promoted to reviewed (net_votes=%d)", workflow_id, new_net_votes)
+
+        return {
+            "success": True,
+            "net_votes": new_net_votes,
+            "review_status": new_status,
+            "user_vote": vote,
+        }
+
+    def get_user_vote(self, workflow_id: str, user_id: str) -> Optional[int]:
+        """Get a user's vote on a workflow.
+
+        Args:
+            workflow_id: Workflow ID
+            user_id: User ID
+
+        Returns:
+            +1, -1, or None if no vote
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT vote FROM workflow_votes WHERE workflow_id = ? AND user_id = ?",
+                (workflow_id, user_id),
+            ).fetchone()
+
+        return row["vote"] if row else None
+
+    def remove_vote(self, workflow_id: str, user_id: str) -> Dict[str, Any]:
+        """Remove a user's vote from a workflow.
+
+        Args:
+            workflow_id: Workflow ID
+            user_id: User ID
+
+        Returns:
+            Dict with success status and updated net_votes
+        """
+        with self._conn() as conn:
+            # Get existing vote
+            existing = conn.execute(
+                "SELECT vote FROM workflow_votes WHERE workflow_id = ? AND user_id = ?",
+                (workflow_id, user_id),
+            ).fetchone()
+
+            if not existing:
+                return {"success": False, "error": "No vote to remove"}
+
+            old_vote = existing["vote"]
+
+            # Delete vote
+            conn.execute(
+                "DELETE FROM workflow_votes WHERE workflow_id = ? AND user_id = ?",
+                (workflow_id, user_id),
+            )
+
+            # Update net_votes
+            conn.execute(
+                "UPDATE workflows SET net_votes = net_votes - ? WHERE id = ?",
+                (old_vote, workflow_id),
+            )
+
+            # Get updated values
+            updated = conn.execute(
+                "SELECT net_votes, review_status FROM workflows WHERE id = ?",
+                (workflow_id,),
+            ).fetchone()
+
+        return {
+            "success": True,
+            "net_votes": updated["net_votes"] if updated else 0,
+            "review_status": updated["review_status"] if updated else "unreviewed",
+            "user_vote": None,
+        }
