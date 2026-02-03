@@ -311,7 +311,9 @@ export default function WorkflowBrowser() {
   }
 
   // Render workflow card (shared between tabs)
-  const renderWorkflowCard = (workflow: WorkflowSummary, showVoting: boolean) => (
+  // showVoting: show vote buttons (Peer Review tab)
+  // showVoteCount: show vote count without buttons (Published tab)
+  const renderWorkflowCard = (workflow: WorkflowSummary, showVoting: boolean, showVoteCount: boolean = false) => (
     <div key={workflow.id} className="workflow-card-container">
       <button
         className="workflow-card"
@@ -329,7 +331,7 @@ export default function WorkflowBrowser() {
               </span>
             )}
             {showVoting && workflow.review_status === 'reviewed' && (
-              <span className="reviewed-badge" title="Peer Reviewed">✓ Reviewed</span>
+              <span className="reviewed-badge" title="Has enough votes to appear in Published">✓ Published</span>
             )}
           </div>
         </div>
@@ -345,13 +347,13 @@ export default function WorkflowBrowser() {
           ))}
         </div>
 
-        {/* Vote count display for peer review */}
-        {showVoting && (
+        {/* Vote count display for peer review and published tabs */}
+        {(showVoting || showVoteCount) && (
           <div className="workflow-votes">
             <span className={`vote-count ${(workflow.net_votes ?? 0) >= publishThreshold ? 'positive' : (workflow.net_votes ?? 0) < 0 ? 'negative' : ''}`}>
               {(workflow.net_votes ?? 0) > 0 ? '+' : ''}{workflow.net_votes ?? 0} / {publishThreshold} votes
             </span>
-            {workflow.review_status === 'unreviewed' && (
+            {showVoting && workflow.review_status === 'unreviewed' && (
               <span className="votes-needed">
                 ({publishThreshold - (workflow.net_votes ?? 0)} more to publish)
               </span>
@@ -469,11 +471,11 @@ export default function WorkflowBrowser() {
           )
         )}
         {activeTab === 'published' && (
-          // Published list (reviewed - no voting)
+          // Published list (reviewed - show vote count but no voting buttons)
           filteredPublishedWorkflows.length === 0 ? (
             <p className="muted">No published workflows yet</p>
           ) : (
-            filteredPublishedWorkflows.map((workflow) => renderWorkflowCard(workflow, false))
+            filteredPublishedWorkflows.map((workflow) => renderWorkflowCard(workflow, false, true))
           )
         )}
       </div>
