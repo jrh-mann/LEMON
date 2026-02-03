@@ -325,7 +325,7 @@ body {
   flex-shrink: 0;
   min-width: 280px;
   max-width: 60vw;
-  padding-left: 24px; /* Extra padding for resize handle */
+  padding-left: 12px; /* Just enough for resize handle grip */
 }
 
 .sidebar.library-sidebar.resizing {
@@ -495,8 +495,8 @@ body {
   display: flex;
   gap: 0;
   border-bottom: 1px solid var(--edge);
-  margin: -20px -16px 16px -24px; /* -24px left to align with resize handle */
-  padding: 0 0 0 12px; /* 12px left padding for resize handle */
+  margin: -20px -16px 16px -12px; /* Extend to sidebar edges */
+  padding: 0;
 }
 
 .sidebar-tab {
@@ -530,6 +530,12 @@ body {
 
 .sidebar-panel.hidden {
   display: none;
+}
+
+/* Library panel extends to sidebar edges for full-width elements */
+.sidebar-panel[data-panel="library"] {
+  margin: 0 -16px 0 -12px;
+  padding: 0 16px 0 12px;
 }
 
 /* Inputs Panel */
@@ -2827,6 +2833,7 @@ body {
   position: relative;
   display: flex;
   gap: 8px;
+  align-items: flex-start; /* Align vote buttons to top */
 }
 
 .workflow-card-container .workflow-card {
@@ -2872,7 +2879,8 @@ body {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid var(--edge);
-  margin-bottom: 12px;
+  margin: 0 -16px 12px -12px; /* Extend to sidebar edges */
+  padding: 0 16px 0 12px;
 }
 
 .browser-tabs .tab-btn {

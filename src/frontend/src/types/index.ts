@@ -183,6 +183,7 @@ export interface WorkflowSummary {
   net_votes?: number
   published_at?: string
   publisher_id?: string
+  user_vote?: number | null  // Current user's vote: +1, -1, or null
 }
 
 // Peer review status type

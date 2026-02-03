@@ -703,11 +703,17 @@ def register_routes(
             offset=offset,
         )
 
+        # Get current user for vote lookup
+        user_id = g.auth_user.id
+
         # Convert to summary format with peer review fields
         summaries = []
         for wf in workflows:
             input_names = [inp.get("name", "") for inp in wf.inputs if isinstance(inp, dict)]
             output_values = [out.get("value", "") or out.get("name", "") for out in wf.outputs if isinstance(out, dict)]
+
+            # Get user's vote on this workflow
+            user_vote = workflow_store.get_user_vote(wf.id, user_id)
 
             summaries.append({
                 "id": wf.id,
@@ -729,6 +735,7 @@ def register_routes(
                 "net_votes": wf.net_votes,
                 "published_at": wf.published_at,
                 "publisher_id": wf.user_id,  # Show who published it
+                "user_vote": user_vote,  # Current user's vote (+1, -1, or None)
             })
 
         return jsonify({

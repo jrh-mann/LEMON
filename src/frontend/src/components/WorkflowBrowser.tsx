@@ -55,6 +55,15 @@ export default function WorkflowBrowser() {
       const { workflows: workflowsData, publishThreshold: threshold } = await listPublicWorkflows()
       setPeerReviewWorkflows(workflowsData)
       setPublishThreshold(threshold)
+
+      // Initialize userVotes from the loaded data
+      const votes: Record<string, number> = {}
+      for (const wf of workflowsData) {
+        if (wf.user_vote) {
+          votes[wf.id] = wf.user_vote
+        }
+      }
+      setUserVotes(votes)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflows for review')
     } finally {
