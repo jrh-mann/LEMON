@@ -41,7 +41,12 @@ class BatchEditWorkflowTool(Tool):
     Use this for efficient bulk operations:
     - Add multiple nodes at once
     - Add node + connections together
+    - Modify edge labels (e.g., set "true"/"false" on decision branches)
     - Complex multi-step changes
+
+    DECISION NODE EDGES: Decision nodes MUST have exactly two outgoing edges with labels "true" and "false".
+    When adding connections from decision nodes, use add_connection with label "true" or "false".
+    To change an edge label, use modify_connection.
 
     For decision nodes, include a 'condition' object with: input_id, comparator, value, value2 (optional).
     Comparators by type:
@@ -63,6 +68,9 @@ class BatchEditWorkflowTool(Tool):
         {"op": "add_connection", "from": "temp_decision", "to": "temp_adult", "label": "true"}
       ]
     }
+
+    Example: Modify an edge label
+    {"op": "modify_connection", "from": "node_abc", "to": "node_xyz", "label": "true"}
     """
     parameters = [
         # workflow_id is REQUIRED and must be first
@@ -89,12 +97,15 @@ class BatchEditWorkflowTool(Tool):
         [
             {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_1",
              "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
-            {"op": "add_connection", "from": "input_age", "to": "temp_1", "label": ""},
-            {"op": "add_connection", "from": "temp_1", "to": "output_1", "label": "true"},
+            {"op": "add_connection", "from": "input_age", "to": "temp_1", "label": "true"},
+            {"op": "modify_connection", "from": "temp_1", "to": "output_1", "label": "false"},
             {"op": "modify_node", "node_id": "node_abc", "label": "Updated label"},
             {"op": "delete_node", "node_id": "node_xyz"},
             {"op": "delete_connection", "from": "node_a", "to": "node_b"}
         ]
+
+        Decision node edges MUST have labels "true" or "false". Labels are auto-assigned if not provided.
+        Use modify_connection to change an existing edge's label.
 
         Temporary IDs: Use "temp_X" or any ID for new nodes. They'll be replaced with real UUIDs.
         """
@@ -267,12 +278,46 @@ class BatchEditWorkflowTool(Tool):
                     from_id = self._resolve_id(op["from"], temp_id_map, nodes)
                     to_id = self._resolve_id(op["to"], temp_id_map, nodes)
                     edge_id = f"{from_id}->{to_id}"
+                    label = op.get("label", "")
+
+                    # Auto-assign edge labels for decision nodes if not provided
+                    # This ensures decision node branches are correctly identified during execution
+                    source_node = next((n for n in nodes if n.get("id") == from_id), None)
+                    if source_node and source_node.get("type") == "decision":
+                        # Get existing edges from this decision node
+                        existing_edges_from_decision = [
+                            e for e in edges
+                            if (e.get("from") or e.get("source")) == from_id
+                        ]
+                        existing_labels = {
+                            e.get("label", "").lower()
+                            for e in existing_edges_from_decision
+                        }
+
+                        # Validate or auto-assign label
+                        if label:
+                            # Enforce that label must be "true" or "false"
+                            if label.lower() not in ("true", "false"):
+                                raise ValueError(
+                                    f"Decision node edges must have label 'true' or 'false', got: '{label}'"
+                                )
+                            label = label.lower()  # Normalize to lowercase
+                        else:
+                            # Auto-assign "true" for first edge, "false" for second
+                            if "true" not in existing_labels:
+                                label = "true"
+                            elif "false" not in existing_labels:
+                                label = "false"
+                            else:
+                                raise ValueError(
+                                    f"Decision node '{source_node.get('label', from_id)}' already has both true and false branches"
+                                )
 
                     new_edge = {
                         "id": edge_id,
                         "from": from_id,
                         "to": to_id,
-                        "label": op.get("label", ""),
+                        "label": label,
                     }
                     edges.append(new_edge)
                     applied_operations.append({"op": "add_connection", "edge": new_edge})
@@ -288,6 +333,49 @@ class BatchEditWorkflowTool(Tool):
                         if not (e["from"] == from_id and e["to"] == to_id)
                     ]
                     applied_operations.append({"op": "delete_connection", "edge_id": edge_id})
+
+                elif op_type == "modify_connection":
+                    # Modify an existing edge's label (primarily for decision node branches)
+                    from_id = self._resolve_id(op["from"], temp_id_map, nodes)
+                    to_id = self._resolve_id(op["to"], temp_id_map, nodes)
+                    edge_id = f"{from_id}->{to_id}"
+                    new_label = op.get("label", "")
+
+                    # Find the edge to modify
+                    edge_idx = next(
+                        (i for i, e in enumerate(edges) if e["from"] == from_id and e["to"] == to_id),
+                        None,
+                    )
+                    if edge_idx is None:
+                        raise ValueError(f"Edge not found: {from_id} -> {to_id}")
+
+                    # Validate label for decision nodes
+                    source_node = next((n for n in nodes if n.get("id") == from_id), None)
+                    if source_node and source_node.get("type") == "decision":
+                        if new_label.lower() not in ("true", "false"):
+                            raise ValueError(
+                                f"Decision node edges must have label 'true' or 'false', got: '{new_label}'"
+                            )
+                        new_label = new_label.lower()  # Normalize to lowercase
+
+                        # Ensure we're not duplicating a label
+                        other_edges_from_decision = [
+                            e for i, e in enumerate(edges)
+                            if (e.get("from") or e.get("source")) == from_id and i != edge_idx
+                        ]
+                        existing_labels = {e.get("label", "").lower() for e in other_edges_from_decision}
+                        if new_label in existing_labels:
+                            raise ValueError(
+                                f"Decision node '{source_node.get('label', from_id)}' already has a '{new_label}' branch"
+                            )
+
+                    # Update the edge
+                    edges[edge_idx]["label"] = new_label
+                    applied_operations.append({
+                        "op": "modify_connection",
+                        "edge_id": edge_id,
+                        "new_label": new_label,
+                    })
 
                 else:
                     raise ValueError(f"Unknown operation type: {op_type}")

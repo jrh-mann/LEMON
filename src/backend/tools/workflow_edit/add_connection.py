@@ -63,6 +63,52 @@ class AddConnectionTool(Tool):
             return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
         
         label = args.get("label", "")
+        
+        # Enforce and auto-assign edge labels for decision nodes
+        # Decision node branches MUST have "true" or "false" labels for execution to work correctly
+        source_node = next((n for n in nodes if n.get("id") == from_id), None)
+        if source_node and source_node.get("type") == "decision":
+            # Count existing edges from this decision node
+            existing_edges_from_decision = [
+                e for e in edges 
+                if (e.get("from") or e.get("source")) == from_id
+            ]
+            existing_labels = {
+                e.get("label", "").lower() 
+                for e in existing_edges_from_decision
+            }
+            
+            # Validate or auto-assign label
+            if label:
+                # Enforce that label must be "true" or "false"
+                if label.lower() not in ("true", "false"):
+                    return {
+                        "success": False,
+                        "error": f"Decision node edges must have label 'true' or 'false', got: '{label}'",
+                        "error_code": "INVALID_EDGE_LABEL",
+                    }
+                label = label.lower()  # Normalize to lowercase
+                
+                # Prevent duplicate labels
+                if label in existing_labels:
+                    return {
+                        "success": False,
+                        "error": f"Decision node '{source_node.get('label', from_id)}' already has a '{label}' branch",
+                        "error_code": "DUPLICATE_EDGE_LABEL",
+                    }
+            else:
+                # Auto-assign "true" for first edge, "false" for second
+                if "true" not in existing_labels:
+                    label = "true"
+                elif "false" not in existing_labels:
+                    label = "false"
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Decision node '{source_node.get('label', from_id)}' already has both true and false branches",
+                        "error_code": "MAX_BRANCHES_REACHED",
+                    }
+        
         edge_id = f"{from_id}->{to_id}"
 
         new_edge = {

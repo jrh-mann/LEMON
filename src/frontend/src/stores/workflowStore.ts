@@ -48,6 +48,7 @@ interface WorkflowState {
   // Canvas state
   selectedNodeId: string | null
   selectedNodeIds: string[]
+  selectedEdge: { from: string; to: string } | null  // Selected edge for editing
   connectMode: boolean
   connectFromId: string | null
 
@@ -91,8 +92,10 @@ interface WorkflowState {
 
   // Edge operations
   addEdge: (edge: FlowEdge) => void
+  updateEdgeLabel: (from: string, to: string, label: string) => void
   deleteEdge: (from: string, to: string) => void
   deleteEdgeById: (edgeId: string) => void
+  selectEdge: (edge: { from: string; to: string } | null) => void
 
   // Connect mode
   startConnect: (nodeId: string) => void
@@ -189,6 +192,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   currentAnalysis: null,
   selectedNodeId: null,
   selectedNodeIds: [],
+  selectedEdge: null,
   connectMode: false,
   connectFromId: null,
   history: [],
@@ -437,12 +441,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Node operations
   selectNode: (nodeId) => set({
     selectedNodeId: nodeId,
-    selectedNodeIds: nodeId ? [nodeId] : []
+    selectedNodeIds: nodeId ? [nodeId] : [],
+    selectedEdge: null  // Clear edge selection when selecting a node
   }),
 
   selectNodes: (nodeIds) => set({
     selectedNodeId: nodeIds.length > 0 ? nodeIds[0] : null,
-    selectedNodeIds: nodeIds
+    selectedNodeIds: nodeIds,
+    selectedEdge: null  // Clear edge selection when selecting nodes
   }),
 
   addToSelection: (nodeId) => {
@@ -450,13 +456,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (state.selectedNodeIds.includes(nodeId)) return
     set({
       selectedNodeId: nodeId,
-      selectedNodeIds: [...state.selectedNodeIds, nodeId]
+      selectedNodeIds: [...state.selectedNodeIds, nodeId],
+      selectedEdge: null  // Clear edge selection when selecting nodes
     })
   },
 
   clearSelection: () => set({
     selectedNodeId: null,
-    selectedNodeIds: []
+    selectedNodeIds: [],
+    selectedEdge: null  // Also clear edge selection
   }),
 
   addNode: (node) => {
@@ -552,6 +560,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     })
   },
 
+  updateEdgeLabel: (from, to, label) => {
+    const state = get()
+    state.pushHistory()
+    set({
+      flowchart: {
+        ...state.flowchart,
+        edges: state.flowchart.edges.map((e) =>
+          e.from === from && e.to === to ? { ...e, label } : e
+        ),
+      },
+    })
+  },
+
   deleteEdgeById: (edgeId) => {
     const state = get()
     state.pushHistory()
@@ -561,6 +582,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         edges: state.flowchart.edges.filter((e) => e.id !== edgeId),
       },
     })
+  },
+
+  selectEdge: (edge) => {
+    // Clear node selection when selecting an edge
+    set({ selectedEdge: edge, selectedNodeId: null, selectedNodeIds: [] })
   },
 
   // Connect mode

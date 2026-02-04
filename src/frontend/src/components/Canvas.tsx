@@ -56,10 +56,12 @@ export default function Canvas() {
     setFlowchart,
     selectedNodeId: _selectedNodeId,
     selectedNodeIds,
+    selectedEdge,
     connectMode,
     connectFromId,
     selectNode,
     selectNodes,
+    selectEdge,
     clearSelection,
     moveNode,
     moveNodes,
@@ -872,30 +874,53 @@ export default function Canvas() {
     // Edge is "executed" if both ends have been executed (not just executing)
     const isEdgeExecuted = execution.executedNodeIds.includes(edge.from) && execution.executedNodeIds.includes(edge.to)
 
+    // Check if this edge is selected
+    const isSelected = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to
+
+    // Check if this edge is from a decision node (for UI purposes)
+    const isDecisionEdge = fromNode.type === 'decision'
+
     const edgeClassNames = [
       'flow-edge',
       isEdgeExecuting ? 'executing' : '',
       isEdgeExecuted && !isEdgeExecuting ? 'executed' : '',
+      isSelected ? 'selected' : '',
     ].filter(Boolean).join(' ')
 
+    // Click handler for edge selection
+    const handleEdgeClick = (e: React.MouseEvent) => {
+      e.stopPropagation()
+      selectEdge({ from: edge.from, to: edge.to })
+    }
+
     return (
-      <g key={`${edge.from}-${edge.to}`} className={edgeClassNames}>
+      <g key={`${edge.from}-${edge.to}`} className={edgeClassNames} onClick={handleEdgeClick} style={{ cursor: 'pointer' }}>
+        {/* Invisible wider path for easier clicking */}
         <path
           d={path}
           fill="none"
-          stroke="var(--ink)"
-          strokeWidth={1.5}
+          stroke="transparent"
+          strokeWidth={12}
+          style={{ cursor: 'pointer' }}
+        />
+        <path
+          d={path}
+          fill="none"
+          stroke={isSelected ? 'var(--accent)' : 'var(--ink)'}
+          strokeWidth={isSelected ? 2.5 : 1.5}
           markerEnd="url(#arrowhead)"
         />
-        {edge.label && (
+        {/* Show label for decision edges, or any edge with a label */}
+        {(edge.label || isDecisionEdge) && (
           <text
             x={labelX}
             y={labelY}
             textAnchor="middle"
             fontSize="11"
-            fill="var(--muted)"
+            fill={isSelected ? 'var(--accent)' : 'var(--muted)'}
+            fontWeight={isSelected ? 600 : 400}
           >
-            {edge.label}
+            {edge.label || (isDecisionEdge ? '?' : '')}
           </text>
         )}
       </g>

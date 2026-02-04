@@ -52,7 +52,8 @@ class TestBatchEditWorkflowTool:
         nodes = [
             {"id": "input_1", "type": "start", "label": "Age", "x": 0, "y": 0, "color": "teal"}
         ]
-        variables = [{"id": "input_age_int", "name": "Age", "type": "int", "source": "input"}]
+        # Use 'number' type to match validator's unified numeric type
+        variables = [{"id": "input_age_number", "name": "Age", "type": "number", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, variables=variables
         )
@@ -68,7 +69,7 @@ class TestBatchEditWorkflowTool:
                     "label": "Age >= 18?",
                     "id": "temp_decision",
                     "condition": {
-                        "input_id": "input_age_int",
+                        "input_id": "input_age_number",
                         "comparator": "gte",
                         "value": 18
                     }
@@ -251,7 +252,8 @@ class TestBatchEditWorkflowTool:
 
     def test_complex_workflow_construction(self, workflow_store, test_user_id):
         """Should build complex workflow with multiple node types"""
-        variables = [{"id": "input_age_int", "name": "Age", "type": "int", "source": "input"}]
+        # Use 'number' type to match validator's unified numeric type
+        variables = [{"id": "input_age_number", "name": "Age", "type": "number", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, variables=variables
         )
@@ -271,7 +273,7 @@ class TestBatchEditWorkflowTool:
                     "x": 200,
                     "y": 100,
                     "condition": {
-                        "input_id": "input_age_int",
+                        "input_id": "input_age_number",
                         "comparator": "gte",
                         "value": 18
                     }

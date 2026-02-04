@@ -47,7 +47,7 @@ const MIN_WIDTH = 280  // Minimum to show all 3 tabs comfortably
 
 export default function RightSidebar() {
   const { activeTab, setActiveTab, openModal } = useUIStore()
-  const { currentWorkflow, currentAnalysis, setAnalysis, selectedNodeId, flowchart, updateNode, workflows, setWorkflows } = useWorkflowStore()
+  const { currentWorkflow, currentAnalysis, setAnalysis, selectedNodeId, selectedEdge, flowchart, updateNode, updateEdgeLabel, workflows, setWorkflows } = useWorkflowStore()
 
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -107,17 +107,29 @@ export default function RightSidebar() {
   const [draftRangeMax, setDraftRangeMax] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
 
-  // Auto-switch to properties tab when a node is selected
+  // Auto-switch to properties tab when a node or edge is selected
   useEffect(() => {
-    if (selectedNodeId) {
+    if (selectedNodeId || selectedEdge) {
       setActiveTab('properties')
     }
-  }, [selectedNodeId, setActiveTab])
+  }, [selectedNodeId, selectedEdge, setActiveTab])
 
   // Get selected node
   const selectedNode = selectedNodeId
     ? flowchart.nodes.find((n) => n.id === selectedNodeId)
     : null
+
+  // Get selected edge and its source/target nodes
+  const selectedEdgeData = selectedEdge
+    ? flowchart.edges.find((e) => e.from === selectedEdge.from && e.to === selectedEdge.to)
+    : null
+  const selectedEdgeSourceNode = selectedEdge
+    ? flowchart.nodes.find((n) => n.id === selectedEdge.from)
+    : null
+  const selectedEdgeTargetNode = selectedEdge
+    ? flowchart.nodes.find((n) => n.id === selectedEdge.to)
+    : null
+  const isDecisionEdge = selectedEdgeSourceNode?.type === 'decision'
 
   // Load workflows from API if not already loaded (needed for subprocess config)
   useEffect(() => {
@@ -605,10 +617,48 @@ export default function RightSidebar() {
               />
             )}
           </div>
+        ) : selectedEdgeData ? (
+          // Edge properties panel
+          <div className="properties-panel">
+            <div className="properties-header">
+              <h4>Edge Properties</h4>
+              <p className="muted small">
+                {selectedEdgeSourceNode?.label || selectedEdge?.from} → {selectedEdgeTargetNode?.label || selectedEdge?.to}
+              </p>
+            </div>
+
+            {isDecisionEdge ? (
+              <div className="form-group">
+                <label>Branch Type</label>
+                <select
+                  value={selectedEdgeData.label || ''}
+                  onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
+                >
+                  <option value="">Select branch...</option>
+                  <option value="true">True (condition is met)</option>
+                  <option value="false">False (condition is not met)</option>
+                </select>
+                <p className="muted small">
+                  Decision nodes require exactly two branches: one for when the condition is true, and one for when it is false.
+                </p>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label>Label (Optional)</label>
+                <input
+                  type="text"
+                  value={selectedEdgeData.label || ''}
+                  onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
+                  placeholder="Edge label"
+                />
+                <p className="muted small">Optional text to display on the edge.</p>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="properties-empty">
-            <p className="muted">No node selected.</p>
-            <p className="muted small">Select a node on the canvas to edit its properties.</p>
+            <p className="muted">No node or edge selected.</p>
+            <p className="muted small">Select a node or edge on the canvas to edit its properties.</p>
           </div>
         )}
       </div>
