@@ -749,9 +749,17 @@ Args:
         
         Supports:
         - output_template: Python f-string style template (e.g., "Result: {Age}")
+          - If template is a single variable like "{BMI}" and output_type is number,
+            returns the raw numeric value instead of formatting as string
         - output_value: Static value
-        - output_type: Type casting (int, float, bool, json)
+        - output_type: Type casting (number, bool, json, string)
         - label: Fallback
+        
+        Type casting behavior:
+        - output_type='number': Returns float value
+        - output_type='bool': Returns boolean
+        - output_type='json': Returns dict/list
+        - output_type='string' (default): Returns string
         """
         output_type = node.get('output_type', 'string')
         
@@ -768,9 +776,28 @@ Args:
             # Combine with raw ID context (allows both {BMI} and {input_bmi_float})
             full_context = {**context, **friendly_context}
             
+            # Check if template is a single variable reference like "{BMI}"
+            # Pattern: starts with {, ends with }, no other { or } in between
+            stripped = template.strip()
+            if (stripped.startswith('{') and stripped.endswith('}') and 
+                stripped.count('{') == 1 and stripped.count('}') == 1):
+                # Extract variable name
+                var_name = stripped[1:-1].strip()
+                
+                # Look up raw value from context
+                raw_value = None
+                if var_name in full_context:
+                    raw_value = full_context[var_name]
+                
+                if raw_value is not None:
+                    # Return raw value with appropriate type casting
+                    return self._cast_output_value(raw_value, output_type)
+            
+            # Complex template - format as string then optionally cast
             try:
-                # Safe format with helpful error on missing variable
-                return template.format(**full_context)
+                formatted = template.format(**full_context)
+                # Try to cast formatted string to declared output_type
+                return self._cast_output_value(formatted, output_type)
             except KeyError as e:
                 # Extract missing variable name from KeyError
                 missing_var = str(e).strip("'")
@@ -782,7 +809,7 @@ Args:
             except Exception as e:
                 return f"Error formatting output: {str(e)}"
 
-# 2. Static Value
+        # 2. Static Value
         if 'output_value' in node:
             val = node['output_value']
             try:
@@ -820,6 +847,51 @@ Args:
                 # If template substitution fails, return label as-is
                 return label
         return label
+
+    def _cast_output_value(self, value: Any, output_type: str) -> Any:
+        """Cast a value to the declared output type.
+        
+        Args:
+            value: The value to cast (can be any type)
+            output_type: Target type ('number', 'bool', 'json', 'string')
+            
+        Returns:
+            The value cast to the appropriate type
+            
+        Note:
+            - If value is already the correct type, returns as-is
+            - For 'number': converts to float
+            - For 'bool': converts to boolean
+            - For 'json': parses string as JSON or returns dict/list as-is
+            - For 'string': converts to string
+        """
+        try:
+            if output_type == 'number':
+                # If already numeric, return as-is
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return float(value)
+                # Try to parse string as number
+                return float(value)
+            elif output_type == 'bool':
+                # If already bool, return as-is
+                if isinstance(value, bool):
+                    return value
+                # Parse string as bool
+                return str(value).lower() in ('true', '1', 'yes', 'on')
+            elif output_type == 'json':
+                # If already dict/list, return as-is
+                if isinstance(value, (dict, list)):
+                    return value
+                # Try to parse string as JSON
+                if isinstance(value, str):
+                    return json.loads(value)
+                return value
+            else:
+                # Default: string
+                return str(value) if value is not None else ''
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
+            # If casting fails, return original value with error context
+            return f"Error casting to {output_type}: {str(e)}"
 
     def _validate_inputs(self, input_values: Dict[str, Any]) -> None:
         """Validate input values against variable schema.
