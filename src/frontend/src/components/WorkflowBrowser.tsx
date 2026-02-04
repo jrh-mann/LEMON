@@ -237,6 +237,7 @@ export default function WorkflowBrowser() {
       // (we only need the flowchart for rendering)
       const workflow: Workflow = {
         id: workflowData.id,
+        output_type: workflowData.output_type,
         metadata: workflowData.metadata,
         blocks: [],
         connections: [],

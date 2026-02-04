@@ -478,7 +478,15 @@ export function connectSocket(): Socket {
       workflowStore.updateTabTitle(activeTabId, data.name)
     }
 
-    console.log('[Socket] workflow_created complete - ID:', data.workflow_id, 'name:', data.name)
+    // Store workflow-level output_type from backend
+    if (data.output_type) {
+      const currentWf = workflowStore.currentWorkflow
+      if (currentWf) {
+        workflowStore.setCurrentWorkflow({ ...currentWf, output_type: data.output_type })
+      }
+    }
+
+    console.log('[Socket] workflow_created complete - ID:', data.workflow_id, 'name:', data.name, 'output_type:', data.output_type)
   })
 
   // Workflow saved - LLM called save_workflow_to_library, update draft status
@@ -790,6 +798,7 @@ export function startWorkflowExecution(
     edges: workflowStore.flowchart.edges,
     variables: workflowStore.currentAnalysis?.variables ?? [],
     outputs: workflowStore.currentAnalysis?.outputs ?? [],
+    output_type: workflowStore.currentWorkflow?.output_type || 'string',
   }
 
   console.log('[Socket] Executing workflow:', {
