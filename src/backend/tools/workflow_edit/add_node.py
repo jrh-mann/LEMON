@@ -284,21 +284,27 @@ class AddNodeTool(Tool):
             required=False,
         ),
         ToolParameter(
-            "output_type",
+"output_type",
             "string",
-            "Optional: data type for output nodes (string, int, bool, json, file)",
+            (
+                "Optional: data type for output nodes (string, number, bool, json). "
+                "Use 'number' or 'bool' with output_variable for typed returns."
+            ),
             required=False,
         ),
         ToolParameter(
             "output_template",
             "string",
-            "Optional: python f-string template for output (e.g., 'Result: {value}')",
+            (
+                "Optional: python f-string template for STRING outputs only (e.g., 'Patient BMI is {BMI}'). "
+                "Do NOT use for number/bool outputs - use output_variable instead."
+            ),
             required=False,
         ),
         ToolParameter(
             "output_value",
             "any",
-            "Optional: static value to return",
+            "Optional: static literal value to return (e.g., 42, true, 'fixed string')",
             required=False,
         ),
         # Subprocess-specific parameters
@@ -317,7 +323,10 @@ class AddNodeTool(Tool):
         ToolParameter(
             "output_variable",
             "string",
-            "For subprocess: name for the variable that stores subworkflow output",
+            (
+                "For output/end nodes: variable name to return (e.g., 'BMI' returns the BMI variable's value). "
+                "For subprocess nodes: name for the variable that stores subworkflow output."
+            ),
             required=False,
         ),
     ]
@@ -436,12 +445,19 @@ class AddNodeTool(Tool):
         # Add output configuration for 'end' nodes
         if node_type == "end":
             new_node["output_type"] = args.get("output_type", "string")
-            new_node["output_template"] = args.get("output_template", "")
-            new_node["output_value"] = args.get("output_value", None)
+            # For number/bool outputs, prefer output_variable over output_template
+            if args.get("output_variable"):
+                new_node["output_variable"] = args["output_variable"]
+            elif args.get("output_template"):
+                new_node["output_template"] = args["output_template"]
+            if args.get("output_value") is not None:
+                new_node["output_value"] = args["output_value"]
         else:
             # Still allow manual setting for other types if passed (future proofing)
             if "output_type" in args:
                 new_node["output_type"] = args["output_type"]
+            if "output_variable" in args:
+                new_node["output_variable"] = args["output_variable"]
             if "output_template" in args:
                 new_node["output_template"] = args["output_template"]
             if "output_value" in args:

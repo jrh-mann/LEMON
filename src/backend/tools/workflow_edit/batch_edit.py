@@ -173,11 +173,18 @@ class BatchEditWorkflowTool(Tool):
                     # Add output configuration for 'end' nodes
                     if node_type == "end":
                         new_node["output_type"] = op.get("output_type", "string")
-                        new_node["output_template"] = op.get("output_template", "")
-                        new_node["output_value"] = op.get("output_value", None)
+                        # For number/bool outputs, prefer output_variable over output_template
+                        if op.get("output_variable"):
+                            new_node["output_variable"] = op["output_variable"]
+                        elif op.get("output_template"):
+                            new_node["output_template"] = op["output_template"]
+                        if op.get("output_value") is not None:
+                            new_node["output_value"] = op["output_value"]
                     else:
                         if "output_type" in op:
                             new_node["output_type"] = op["output_type"]
+                        if "output_variable" in op:
+                            new_node["output_variable"] = op["output_variable"]
                         if "output_template" in op:
                             new_node["output_template"] = op["output_template"]
                         if "output_value" in op:

@@ -747,59 +747,77 @@ Args:
     def _resolve_output_value(self, node: Dict[str, Any], context: Dict[str, Any]) -> Any:
         """Resolve output value from node configuration.
         
-        Supports:
-        - output_template: Python f-string style template (e.g., "Result: {Age}")
-          - If template is a single variable like "{BMI}" and output_type is number,
-            returns the raw numeric value instead of formatting as string
-        - output_value: Static value
-        - output_type: Type casting (number, bool, json, string)
-        - label: Fallback
+        Priority order:
+        1. output_variable: Direct variable reference (preferred for number/bool)
+           - Returns the raw value from the variable, preserving type
+           - Example: output_variable="BMI" returns the numeric BMI value
+        2. output_value: Static literal value
+           - Cast to output_type (number, bool, json, string)
+        3. output_template: String template with variable substitution
+           - Only use for string outputs that need formatting
+           - Example: "Patient BMI is {BMI}"
+        4. label: Fallback (legacy support)
         
-        Type casting behavior:
-        - output_type='number': Returns float value
-        - output_type='bool': Returns boolean
-        - output_type='json': Returns dict/list
-        - output_type='string' (default): Returns string
+        Args:
+            node: Output node with output_type, output_variable/value/template
+            context: Execution context with variable values
+            
+        Returns:
+            The resolved output value with appropriate type
         """
         output_type = node.get('output_type', 'string')
         
-        # 1. Template (Dynamic)
+        # Build lookup context: both variable IDs and friendly names
+        friendly_context: Dict[str, Any] = {}
+        for name, input_id in self.name_to_id.items():
+            if input_id in context:
+                friendly_context[name] = context[input_id]
+        full_context = {**context, **friendly_context}
+        
+        # 1. Direct Variable Reference (preferred for number/bool)
+        # Use output_variable to return a variable's raw value without string formatting
+        if node.get('output_variable'):
+            var_ref = node['output_variable']
+            
+            # Look up value by name or ID
+            raw_value = None
+            if var_ref in full_context:
+                raw_value = full_context[var_ref]
+            
+            if raw_value is not None:
+                # Return raw value, cast to declared output_type
+                return self._cast_output_value(raw_value, output_type)
+            else:
+                # Variable not found - return error
+                available_vars = list(friendly_context.keys())
+                return (
+                    f"Error: Variable '{var_ref}' not found in workflow context. "
+                    f"Available variables: {available_vars}"
+                )
+        
+        # 2. Static Literal Value
+        if 'output_value' in node:
+            val = node['output_value']
+            return self._cast_output_value(val, output_type)
+
+        # 3. String Template (use only for string outputs that need formatting)
         if node.get('output_template'):
             template = node['output_template']
-            # Build user-friendly context (Name -> Value)
-            # Maps input names to their runtime values for template substitution
-            friendly_context: Dict[str, Any] = {}
-            for name, input_id in self.name_to_id.items():
-                if input_id in context:
-                    friendly_context[name] = context[input_id]
             
-            # Combine with raw ID context (allows both {BMI} and {input_bmi_float})
-            full_context = {**context, **friendly_context}
-            
-            # Check if template is a single variable reference like "{BMI}"
-            # Pattern: starts with {, ends with }, no other { or } in between
+            # For backwards compatibility: if template is a single variable like "{BMI}",
+            # extract the raw value (same as output_variable behavior)
             stripped = template.strip()
             if (stripped.startswith('{') and stripped.endswith('}') and 
                 stripped.count('{') == 1 and stripped.count('}') == 1):
-                # Extract variable name
                 var_name = stripped[1:-1].strip()
-                
-                # Look up raw value from context
-                raw_value = None
                 if var_name in full_context:
-                    raw_value = full_context[var_name]
-                
-                if raw_value is not None:
-                    # Return raw value with appropriate type casting
-                    return self._cast_output_value(raw_value, output_type)
+                    return self._cast_output_value(full_context[var_name], output_type)
             
-            # Complex template - format as string then optionally cast
+            # Format template as string
             try:
                 formatted = template.format(**full_context)
-                # Try to cast formatted string to declared output_type
                 return self._cast_output_value(formatted, output_type)
             except KeyError as e:
-                # Extract missing variable name from KeyError
                 missing_var = str(e).strip("'")
                 available_vars = list(friendly_context.keys())
                 return (
@@ -809,31 +827,9 @@ Args:
             except Exception as e:
                 return f"Error formatting output: {str(e)}"
 
-        # 2. Static Value
-        if 'output_value' in node:
-            val = node['output_value']
-            try:
-                if output_type == 'number':
-                    return float(val)
-                elif output_type == 'bool':
-                    return str(val).lower() in ('true', '1', 'yes', 'on')
-                elif output_type == 'json':
-                    if isinstance(val, str):
-                        return json.loads(val)
-                    return val
-                return val
-            except Exception as e:
-                return f"Error casting output: {str(e)}"
-
-        # 3. Fallback to label (also supports template substitution)
+        # 4. Fallback to label (legacy support)
         label = node.get('label', '')
         if '{' in label and '}' in label:
-            # Label contains template syntax, try to substitute
-            friendly_context: Dict[str, Any] = {}
-            for name, input_id in self.name_to_id.items():
-                if input_id in context:
-                    friendly_context[name] = context[input_id]
-            full_context = {**context, **friendly_context}
             try:
                 return label.format(**full_context)
             except KeyError as e:
@@ -844,7 +840,6 @@ Args:
                     f"Available variables: {available_vars}"
                 )
             except Exception:
-                # If template substitution fails, return label as-is
                 return label
         return label
 

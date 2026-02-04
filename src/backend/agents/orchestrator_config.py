@@ -155,13 +155,21 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "enum": ["string", "number", "bool", "json"],
                             "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
                         },
+                        "output_variable": {
+                            "type": "string",
+                            "description": (
+                                "For 'end' nodes returning number/bool: Name of the variable to return (e.g., 'BMI'). "
+                                "Returns the raw value preserving type. Do NOT use output_template for numeric returns. "
+                                "For 'subprocess' nodes: Name for the variable that stores the subworkflow's output."
+                            ),
+                        },
                         "output_template": {
                             "type": "string",
-                            "description": "For 'end' nodes: Python f-string template (e.g. 'Result: {Age}').",
+                            "description": "For 'end' nodes returning STRINGS only: Python f-string template (e.g. 'Patient BMI is {BMI}'). Do NOT use for number/bool outputs.",
                         },
                         "output_value": {
                             "type": "string",
-                            "description": "For 'end' nodes: Static value (or JSON string).",
+                            "description": "For 'end' nodes: Static literal value to return (e.g., 42, true, 'fixed string').",
                         },
                         "condition": {
                             "type": "object",
@@ -334,7 +342,11 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "output_variable": {
                             "type": "string",
-                            "description": "For 'subprocess' nodes: Name for the output variable.",
+                            "description": (
+                                "For 'end' nodes returning number/bool: Name of the variable to return (e.g., 'BMI'). "
+                                "Returns the raw value preserving type. Do NOT use output_template for numeric returns. "
+                                "For 'subprocess' nodes: Name for the variable that stores the subworkflow's output."
+                            ),
                         },
                         "calculation": {
                             "type": "object",
@@ -500,7 +512,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "output_value": {"type": "string"},
                                     "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
                                     "input_mapping": {"type": "object", "description": "For subprocess: parent->subworkflow input mapping"},
-                                    "output_variable": {"type": "string", "description": "For subprocess: name for output variable"},
+                                    "output_variable": {"type": "string", "description": "For end nodes: variable name to return raw value (number/bool). For subprocess: name for output variable."},
                                     "calculation": {"type": "object", "description": "For calculation nodes: {output, operator, operands} - see add_node for full schema"},
                                     "node_id": {"type": "string", "description": "Existing node ID"},
                                     "from": {"type": "string", "description": "Source node ID or temp ID"},
@@ -933,10 +945,23 @@ def build_system_prompt(
 "## Output Nodes (Templates & Types)\n"
         "Output nodes ('end' type) support dynamic values and templates:\n"
         "- output_type: 'string', 'number', 'bool', or 'json' (use 'number' for all numeric values)\n"
-        "- output_template: Python f-string style template using input variables, e.g. 'Patient BMI is {BMI}'\n"
-        "- output_value: Static value if no template is needed\n"
-        "You can set these fields in add_node, modify_node, and batch_edit_workflow.\n"
-        "Use templates to make outputs more informative based on inputs.\n\n"
+        "- output_variable: Direct variable reference (preferred for number/bool outputs, e.g., 'BMI')\n"
+        "- output_value: Static literal value if returning a constant\n"
+        "- output_template: Python f-string style template (ONLY for string outputs, e.g. 'Patient BMI is {BMI}')\n\n"
+        "CRITICAL: For numeric or boolean outputs, use output_variable instead of output_template.\n"
+        "- output_template converts values to strings, breaking type for downstream decision nodes\n"
+        "- output_variable preserves the raw value type (number stays number, bool stays bool)\n\n"
+        "Example for numeric output:\n"
+        "```\n"
+        "add_node(workflow_id='wf_abc', type='end', label='Return BMI',\n"
+        "         output_type='number', output_variable='BMI')  // Returns raw number\n"
+        "```\n\n"
+        "WRONG (do not do this for numeric outputs):\n"
+        "```\n"
+        "add_node(workflow_id='wf_abc', type='end', label='Return BMI',\n"
+        "         output_type='number', output_template='{BMI}')  // Converts to string!\n"
+        "```\n\n"
+        "You can set these fields in add_node, modify_node, and batch_edit_workflow.\n\n"
         "## When to Use batch_edit_workflow vs Single Tools\n"
         "Most operations should use single tools (add_node, add_connection, etc.).\n\n"
         "Use batch_edit_workflow when you need to REFERENCE newly created nodes within the same operation.\n\n"

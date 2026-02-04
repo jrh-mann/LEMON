@@ -106,7 +106,10 @@ class ModifyNodeTool(Tool):
         ToolParameter(
             "output_variable",
             "string",
-            "For subprocess: name for the variable that stores subworkflow output",
+            (
+                "For 'end' nodes returning number/bool: Name of the variable to return (preserves type). "
+                "For subprocess: name for the variable that stores subworkflow output."
+            ),
             required=False,
         ),
     ]

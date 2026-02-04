@@ -114,7 +114,7 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
                             "id": "out_fair",
                             "type": "output",
                             "label": "600",
-                            "output_type": "int",
+                            "output_type": "number",
                             "output_value": 600,
                             "edge_label": "No",
                             "children": []

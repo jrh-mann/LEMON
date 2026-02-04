@@ -169,6 +169,7 @@ class GetCurrentWorkflowTool(Tool):
         for node in workflow["nodes"]:
             if node.get("type") == "end":
                 node.setdefault("output_type", "string")
+                node.setdefault("output_variable", None)
                 node.setdefault("output_template", "")
                 node.setdefault("output_value", None)
             # Ensure decision nodes have condition field visible
@@ -197,7 +198,9 @@ class GetCurrentWorkflowTool(Tool):
                 parts = []
                 if node.get("output_type"):
                     parts.append(f"type={node['output_type']}")
-                if node.get("output_template"):
+                if node.get("output_variable"):
+                    parts.append(f"variable={node['output_variable']}")
+                elif node.get("output_template"):
                     parts.append(f"template='{node['output_template']}'")
                 if node.get("output_value"):
                     parts.append(f"value={node['output_value']}")
