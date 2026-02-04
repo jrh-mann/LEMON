@@ -21,11 +21,11 @@ from .helpers import normalize_variable_name
 
 
 # Map user-friendly types to internal types used by condition validation
-# and the execution interpreter. For 'number', we use 'float' as default
-# since it's more general (accepts both integers and decimals).
+# and the execution interpreter. 'number' is now a unified numeric type
+# that supports both integers and floats (stored as float internally).
 USER_TYPE_TO_INTERNAL = {
     "string": "string",
-    "number": "float",  # Use float for number type (more general)
+    "number": "number",  # Unified numeric type (stored as float)
     "boolean": "bool",
     "enum": "enum",
 }
@@ -173,17 +173,7 @@ class AddWorkflowVariableTool(Tool):
         # Map user-friendly type to internal type
         internal_type = USER_TYPE_TO_INTERNAL.get(var_type, "string")
         
-        # For number type with range constraints, determine if int or float
-        # based on whether min/max values are integers
-        if var_type == "number":
-            range_min = args.get("range_min")
-            range_max = args.get("range_max")
-            # If both range values are provided and both are integers, use int
-            if range_min is not None and range_max is not None:
-                if isinstance(range_min, int) and isinstance(range_max, int):
-                    # Check they're not float-like (e.g., 5.0)
-                    if range_min == int(range_min) and range_max == int(range_max):
-                        internal_type = "int"
+        # For number type, always use 'number' (unified numeric type)
         
         # Generate deterministic ID for input variable
         var_id = generate_variable_id(name.strip(), internal_type, "input")

@@ -33,6 +33,16 @@ const BLOCKS: BlockConfig[] = [
     )
   },
   {
+    type: 'calculation',
+    label: 'Calculation',
+    defaultLabel: 'Calculate',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M9 7h6M12 4v6M7 13h10M9 17h6" />
+      </svg>
+    )
+  },
+  {
     type: 'end',
     label: 'Output',
     defaultLabel: 'Result',

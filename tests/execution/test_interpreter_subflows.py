@@ -161,7 +161,7 @@ LOAN_APPROVAL_WORKFLOW = {
                             "type": "decision",
                             "label": "CreditScore >= 700",
                             "condition": {
-                                "input_id": "var_sub_creditscore_int",
+                                "input_id": "var_sub_creditscore_number",
                                 "comparator": "gte",
                                 "value": 700
                             },
@@ -776,8 +776,8 @@ class TestOutputVariableInjection:
         })
         
         # The CreditScore should be in context as a dynamically added input
-        assert "var_sub_creditscore_int" in result.context
-        assert result.context["var_sub_creditscore_int"] == 800
+        assert "var_sub_creditscore_number" in result.context
+        assert result.context["var_sub_creditscore_number"] == 800
     
     def test_output_variable_used_in_decision(self):
         """Test that injected output variable can be used in subsequent decision."""
@@ -830,9 +830,9 @@ class TestSubflowTypeInference:
             "input_loan_amount_int": 50000
         })
         
-        # Check that CreditScore was registered with int type
-        assert "var_sub_creditscore_int" in interpreter.inputs_schema
-        assert interpreter.inputs_schema["var_sub_creditscore_int"]["type"] == "int"
+        # Check that CreditScore was registered with number type (unified numeric type)
+        assert "var_sub_creditscore_number" in interpreter.inputs_schema
+        assert interpreter.inputs_schema["var_sub_creditscore_number"]["type"] == "number"
 
 
 class TestSubflowWithNoChildren:

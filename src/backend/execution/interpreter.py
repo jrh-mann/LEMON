@@ -26,6 +26,7 @@ import re
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
 from .evaluator import evaluate_condition, EvaluationError
+from .operators import execute_operator, OperatorError
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,10 @@ class TreeInterpreter:
                 elif node_type == 'subprocess':
                     # Execute subworkflow and inject output as new input
                     current = self._handle_subprocess_node(current, context)
+
+                elif node_type == 'calculation':
+                    # Execute calculation and inject result as new variable
+                    current = self._handle_calculation_node(current, context)
 
                 elif node_type in ('start', 'action', 'process'):
                     # Pass through to first child
@@ -418,6 +423,166 @@ class TreeInterpreter:
         
         return children[0]
 
+    def _handle_calculation_node(
+        self,
+        node: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Execute a calculation and inject its output as a new variable.
+        
+        Steps:
+        1. Resolve operand values (from variables or literals)
+        2. Execute the operator with resolved operands
+        3. Inject result as new calculated variable in context
+        4. Continue to next node
+        
+        Args:
+            node: Calculation node with calculation.output, operator, operands
+            context: Workflow execution context
+            
+        Returns:
+            Next node to execute
+            
+        Raises:
+            InterpreterError: If calculation fails
+        """
+        node_id = node.get('id', 'unknown')
+        node_label = node.get('label', node_id)
+        calculation = node.get('calculation')
+        
+        # Validate calculation exists
+        if not calculation:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing 'calculation' field"
+            )
+        
+        output = calculation.get('output', {})
+        operator_name = calculation.get('operator')
+        operands = calculation.get('operands', [])
+        
+        # Validate required fields
+        output_name = output.get('name') if isinstance(output, dict) else None
+        if not output_name:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing output.name"
+            )
+        if not operator_name:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing operator"
+            )
+        if not operands:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing operands"
+            )
+        
+        # Resolve operand values
+        resolved_operands = []
+        for i, operand in enumerate(operands):
+            kind = operand.get('kind')
+            
+            if kind == 'literal':
+                value = operand.get('value')
+                if value is None:
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] has no value"
+                    )
+                resolved_operands.append(float(value))
+                
+            elif kind == 'variable':
+                ref = operand.get('ref')
+                if not ref:
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] has no ref"
+                    )
+                
+                # Look up variable value in context
+                # ref can be either variable ID (var_weight_number) or variable name (Weight)
+                value = None
+                if ref in context:
+                    value = context[ref]
+                else:
+                    # Try to resolve by name
+                    var_id = self.name_to_id.get(ref)
+                    if var_id and var_id in context:
+                        value = context[var_id]
+                
+                if value is None:
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] references "
+                        f"variable '{ref}' which has no value in context"
+                    )
+                
+                # Ensure numeric value
+                if not isinstance(value, (int, float)):
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] references "
+                        f"variable '{ref}' with non-numeric value: {value}"
+                    )
+                
+                resolved_operands.append(float(value))
+            else:
+                raise InterpreterError(
+                    f"Calculation node '{node_label}': operand[{i}] has invalid kind '{kind}'"
+                )
+        
+        # Execute the operator
+        try:
+            result = execute_operator(operator_name, resolved_operands)
+        except OperatorError as e:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' failed: {e}"
+            )
+        except ValueError as e:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' failed: {e}"
+            )
+        
+        # Inject result as new calculated variable in context
+        self._inject_calculation_output(output_name, result, context)
+        
+        # Continue to next node
+        children = node.get('children', [])
+        if not children:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' has no children. "
+                f"Flow must continue after calculation or end explicitly."
+            )
+        
+        return children[0]
+
+    def _inject_calculation_output(
+        self,
+        output_name: str,
+        output_value: float,
+        context: Dict[str, Any]
+    ) -> None:
+        """Inject calculation output as a new derived variable in context.
+        
+        Args:
+            output_name: Name of the output variable (e.g., "BMI")
+            output_value: The calculated numeric value
+            context: Workflow context (modified in place)
+        """
+        # Calculation output is always 'number' type
+        output_type = "number"
+        
+        # Generate variable ID with calculated prefix
+        variable_id = self._generate_variable_id(output_name, output_type, "calculated")
+        
+        # Add to name->id mapping for future condition evaluation
+        self.name_to_id[output_name] = variable_id
+        
+        # Add to context
+        context[variable_id] = output_value
+        
+        # Track in variables_schema for potential validation
+        self.variables_schema[variable_id] = {
+            "id": variable_id,
+            "name": output_name,
+            "type": output_type,
+            "source": "calculated",  # Derived from calculation node
+        }
+
     def _map_inputs_to_subworkflow(
         self,
         input_mapping: Dict[str, str],
@@ -517,14 +682,14 @@ class TreeInterpreter:
             value: The value to analyze
             
         Returns:
-            Type string: 'int', 'float', 'bool', 'string', or 'json'
+            Type string: 'number', 'bool', 'string', or 'json'
+            Note: Uses unified 'number' type instead of separate 'int'/'float'
         """
         if isinstance(value, bool):
             return "bool"
-        elif isinstance(value, int):
-            return "int"
-        elif isinstance(value, float):
-            return "float"
+        elif isinstance(value, (int, float)):
+            # Unified numeric type - don't distinguish between int and float
+            return "number"
         elif isinstance(value, str):
             return "string"
         elif isinstance(value, (dict, list)):
@@ -670,8 +835,8 @@ class TreeInterpreter:
         # Check all required variables are present
         for var_id, schema in self.variables_schema.items():
             # Only validate input-source variables (user-provided)
-            # Subprocess-derived variables are injected at runtime
-            if schema.get('source') == 'subprocess':
+            # Subprocess-derived and calculated variables are injected at runtime
+            if schema.get('source') in ('subprocess', 'calculated'):
                 continue
                 
             if var_id not in input_values:
@@ -689,6 +854,11 @@ class TreeInterpreter:
                 if not isinstance(value, (int, float)) or isinstance(value, bool):
                     raise InterpreterError(f"{var_id} must be float, got {type(value).__name__}")
 
+            elif var_type == 'number':
+                # Unified numeric type - accepts both int and float
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    raise InterpreterError(f"{var_id} must be number, got {type(value).__name__}")
+
             elif var_type == 'bool':
                 if not isinstance(value, bool):
                     raise InterpreterError(f"{var_id} must be bool, got {type(value).__name__}")
@@ -698,7 +868,7 @@ class TreeInterpreter:
                     raise InterpreterError(f"{var_id} must be string, got {type(value).__name__}")
 
             # Range validation for numeric types
-            if var_type in ('int', 'float') and 'range' in schema:
+            if var_type in ('int', 'float', 'number') and 'range' in schema:
                 range_spec = schema['range']
                 if 'min' in range_spec and value < range_spec['min']:
                     raise InterpreterError(

@@ -12,6 +12,8 @@
   --green-light: rgba(62, 124, 77, 0.15);
   --rose: #b4533d;
   --rose-light: rgba(180, 83, 61, 0.15);
+  --purple: #7c3aed;
+  --purple-light: rgba(124, 58, 237, 0.15);
   --shadow: 0 8px 32px rgba(22, 24, 23, 0.12);
   --shadow-lg: 0 16px 48px rgba(22, 24, 23, 0.16);
   --radius: 16px;
@@ -488,6 +490,16 @@ body {
 
 .subprocess-icon svg {
   color: var(--rose);
+}
+
+.calculation-icon {
+  background: var(--purple-light);
+  border: 2px solid var(--purple);
+  border-radius: 6px;
+}
+
+.calculation-icon svg {
+  color: var(--purple);
 }
 
 /* Sidebar Tabs */
@@ -4344,6 +4356,189 @@ button.primary.warning:hover {
 /* Warning text style */
 .warning {
   color: var(--amber);
+}
+
+/* ==================== Calculation Configuration Styles ==================== */
+
+/* Operand count indicator in header */
+.operand-count {
+  font-weight: normal;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Warning when no numeric variables */
+.calc-warning {
+  background: var(--amber-light);
+  border: 1px solid var(--amber);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.calc-warning p {
+  margin: 0;
+}
+
+/* Operands list container */
+.operands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* Individual operand row */
+.operand-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.operand-row:hover {
+  border-color: var(--purple);
+}
+
+/* Operand index number */
+.operand-index {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  min-width: 18px;
+}
+
+/* Kind toggle button (var/123) */
+.operand-kind-toggle {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 36px;
+  text-align: center;
+  background: var(--purple-light);
+  border-color: var(--purple);
+  color: var(--purple);
+}
+
+.operand-kind-toggle:hover {
+  background: var(--purple);
+  color: white;
+}
+
+/* Operand input (select or number) */
+.operand-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.operand-input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+/* Remove operand button */
+.operand-remove {
+  padding: 2px 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  opacity: 0.5;
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+
+.operand-remove:hover {
+  opacity: 1;
+  color: var(--rose);
+  background: var(--rose-light);
+}
+
+/* Add operand button */
+.add-operand-btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 0.85rem;
+  border: 1px dashed var(--purple);
+  color: var(--purple);
+  background: transparent;
+}
+
+.add-operand-btn:hover {
+  background: var(--purple-light);
+  border-style: solid;
+}
+
+/* Calculation preview */
+.calc-preview {
+  margin-top: 12px;
+}
+
+.calc-preview label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.calc-formula {
+  padding: 12px;
+  background: var(--purple-light);
+  border: 1px solid var(--purple);
+  border-radius: 6px;
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 0.9rem;
+  color: var(--purple);
+  word-break: break-word;
+}
+
+/* Validation errors */
+.calc-validation-errors {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--rose-light);
+  border: 1px solid var(--rose);
+  border-radius: 6px;
+}
+
+.calc-validation-errors .error-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--rose);
+  margin-bottom: 8px;
+}
+
+.calc-validation-errors .error-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: var(--rose);
+}
+
+.calc-validation-errors .error-list li {
+  margin: 4px 0;
+}
+
+/* Operator dropdown optgroup styling */
+.form-group select optgroup {
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.form-group select option {
+  font-weight: normal;
+  padding: 4px 8px;
 }
 
 /* ============================================ */

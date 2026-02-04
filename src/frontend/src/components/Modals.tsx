@@ -571,6 +571,7 @@ function ExecuteWorkflowForm() {
           break
         case 'int':
         case 'float':
+        case 'number':  // Unified numeric type
           initial[input.id] = input.range?.min ?? 0
           break
         case 'enum':
@@ -666,6 +667,27 @@ function ExecuteWorkflowForm() {
               id={inputId}
               type="number"
               step="0.01"
+              min={input.range?.min}
+              max={input.range?.max}
+              value={Number(value)}
+              onChange={(e) => handleInputChange(input.id, parseFloat(e.target.value))}
+              disabled={execution.isExecuting}
+            />
+          </div>
+        )
+
+      // Unified numeric type - accepts both int and float
+      case 'number':
+        return (
+          <div className="form-group">
+            <label htmlFor={inputId}>{input.name}</label>
+            {input.description && (
+              <small className="muted">{input.description}</small>
+            )}
+            <input
+              id={inputId}
+              type="number"
+              step="any"
               min={input.range?.min}
               max={input.range?.max}
               value={Number(value)}

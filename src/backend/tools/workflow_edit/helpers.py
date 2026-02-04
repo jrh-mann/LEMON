@@ -52,6 +52,7 @@ NODE_COLOR_BY_TYPE = {
     "end": "green",
     "subprocess": "rose",
     "process": "slate",
+    "calculation": "purple",
 }
 
 # Required fields for subprocess nodes that reference other workflows

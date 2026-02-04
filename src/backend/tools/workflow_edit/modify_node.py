@@ -18,7 +18,7 @@ from .helpers import (
     load_workflow_for_tool,
     save_workflow_changes,
 )
-from .add_node import validate_decision_condition
+from .add_node import validate_decision_condition, validate_calculation
 
 
 class ModifyNodeTool(Tool):
@@ -26,10 +26,13 @@ class ModifyNodeTool(Tool):
     
     For decision nodes, you can update the 'condition' field with a structured
     condition object containing input_id, comparator, value, and optionally value2.
+    
+    For calculation nodes, you can update the 'calculation' field with output,
+    operator, and operands.
     """
 
     name = "modify_node"
-    description = "Update an existing node's label, type, position, or condition. Requires workflow_id."
+    description = "Update an existing node's label, type, position, condition, or calculation. Requires workflow_id."
     parameters = [
         ToolParameter(
             "workflow_id",
@@ -55,6 +58,17 @@ class ModifyNodeTool(Tool):
                 "string: str_eq,str_neq,str_contains,str_starts_with,str_ends_with | "
                 "date: date_eq,date_before,date_after,date_between | "
                 "enum: enum_eq,enum_neq"
+            ),
+            required=False,
+        ),
+        # Calculation node config
+        ToolParameter(
+            "calculation",
+            "object",
+            (
+                "For calculation nodes: Mathematical operation to perform. "
+                "Object with: output {name, description?}, operator (string), operands (array). "
+                "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}."
             ),
             required=False,
         ),
@@ -161,6 +175,18 @@ class ModifyNodeTool(Tool):
                         "success": False,
                         "error": condition_error,
                         "error_code": "INVALID_CONDITION",
+                    }
+        
+        # Validate calculation for calculation nodes
+        if updated_node.get("type") == "calculation":
+            calculation = updated_node.get("calculation")
+            if calculation:
+                calculation_error = validate_calculation(calculation, variables)
+                if calculation_error:
+                    return {
+                        "success": False,
+                        "error": calculation_error,
+                        "error_code": "INVALID_CALCULATION",
                     }
         
         if updated_node.get("type") == "subprocess":

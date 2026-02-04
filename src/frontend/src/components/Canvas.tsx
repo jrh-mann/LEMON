@@ -18,6 +18,7 @@ const DEFAULT_LABELS: Record<FlowNodeType, string> = {
   process: 'Process',
   decision: 'Condition?',
   subprocess: 'Workflow',
+  calculation: 'Calculate',
 }
 
 // Get fill color based on node type
@@ -27,6 +28,7 @@ const getNodeFillColor = (type: FlowNodeType): string => {
     case 'decision': return 'var(--amber-light)'
     case 'end': return 'var(--green-light)'
     case 'subprocess': return 'var(--rose-light)'
+    case 'calculation': return 'var(--purple-light)'
     case 'process': return 'var(--paper)'
     default: return 'var(--paper)'
   }
@@ -39,6 +41,7 @@ const getNodeStrokeColor = (type: FlowNodeType): string => {
     case 'decision': return 'var(--amber)'
     case 'end': return 'var(--green)'
     case 'subprocess': return 'var(--rose)'
+    case 'calculation': return 'var(--purple)'
     case 'process': return 'var(--edge)'
     default: return 'var(--edge)'
   }

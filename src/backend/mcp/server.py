@@ -231,14 +231,49 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         label: str,
         x: float | None = None,
         y: float | None = None,
+        condition: dict[str, Any] | None = None,
+        output_type: str | None = None,
+        output_template: str | None = None,
+        output_value: str | None = None,
+        subworkflow_id: str | None = None,
+        input_mapping: dict[str, str] | None = None,
+        output_variable: str | None = None,
+        calculation: dict[str, Any] | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Add a node to the specified workflow."""
+        """Add a node to the specified workflow.
+        
+        Args:
+            workflow_id: Target workflow ID
+            type: Node type (start, process, decision, subprocess, calculation, end)
+            label: Display text for the node
+            x, y: Optional coordinates
+            condition: For decision nodes - {input_id, comparator, value, value2?}
+            output_type/template/value: For end nodes
+            subworkflow_id/input_mapping/output_variable: For subprocess nodes
+            calculation: For calculation nodes - {output, operator, operands}
+        """
         args: dict[str, Any] = {"workflow_id": workflow_id, "type": type, "label": label}
         if x is not None:
             args["x"] = x
         if y is not None:
             args["y"] = y
+        if condition is not None:
+            args["condition"] = condition
+        if output_type is not None:
+            args["output_type"] = output_type
+        if output_template is not None:
+            args["output_template"] = output_template
+        if output_value is not None:
+            args["output_value"] = output_value
+        if subworkflow_id is not None:
+            args["subworkflow_id"] = subworkflow_id
+        if input_mapping is not None:
+            args["input_mapping"] = input_mapping
+        if output_variable is not None:
+            args["output_variable"] = output_variable
+        if calculation is not None:
+            args["calculation"] = calculation
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return add_node_tool.execute(args, session_state=state)
@@ -251,9 +286,27 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         type: str | None = None,
         x: float | None = None,
         y: float | None = None,
+        condition: dict[str, Any] | None = None,
+        output_type: str | None = None,
+        output_template: str | None = None,
+        output_value: str | None = None,
+        subworkflow_id: str | None = None,
+        input_mapping: dict[str, str] | None = None,
+        output_variable: str | None = None,
+        calculation: dict[str, Any] | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Modify a node in the specified workflow."""
+        """Modify a node in the specified workflow.
+        
+        Args:
+            workflow_id: Target workflow ID
+            node_id: ID of the node to modify
+            label, type, x, y: Basic node properties
+            condition: For decision nodes - {input_id, comparator, value, value2?}
+            output_type/template/value: For end nodes
+            subworkflow_id/input_mapping/output_variable: For subprocess nodes
+            calculation: For calculation nodes - {output, operator, operands}
+        """
         args: dict[str, Any] = {"workflow_id": workflow_id, "node_id": node_id}
         if label is not None:
             args["label"] = label
@@ -263,6 +316,22 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["x"] = x
         if y is not None:
             args["y"] = y
+        if condition is not None:
+            args["condition"] = condition
+        if output_type is not None:
+            args["output_type"] = output_type
+        if output_template is not None:
+            args["output_template"] = output_template
+        if output_value is not None:
+            args["output_value"] = output_value
+        if subworkflow_id is not None:
+            args["subworkflow_id"] = subworkflow_id
+        if input_mapping is not None:
+            args["input_mapping"] = input_mapping
+        if output_variable is not None:
+            args["output_variable"] = output_variable
+        if calculation is not None:
+            args["calculation"] = calculation
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return modify_node_tool.execute(args, session_state=state)

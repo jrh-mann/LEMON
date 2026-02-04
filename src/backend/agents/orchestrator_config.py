@@ -72,8 +72,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "output_type": {
                             "type": "string",
-                            "enum": ["string", "int", "float", "bool", "json"],
-                            "description": "Type of value the workflow returns when executed",
+"enum": ["string", "number", "int", "float", "bool", "json"],
+                            "description": "Type of value the workflow returns when executed. Prefer 'number' for numeric values.",
                         },
                         "domain": {
                             "type": "string",
@@ -135,7 +135,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "type": {
                             "type": "string",
-                            "enum": ["start", "process", "decision", "subprocess", "end"],
+                            "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
                             "description": "Node type",
                         },
                         "label": {
@@ -146,14 +146,14 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "number",
                             "description": "X coordinate (optional, auto-positions if omitted)",
                         },
-                        "y": {
+"y": {
                             "type": "number",
                             "description": "Y coordinate (optional, auto-positions if omitted)",
                         },
                         "output_type": {
                             "type": "string",
-                            "enum": ["string", "int", "float", "bool", "json"],
-                            "description": "For 'end' nodes: data type of the output.",
+                            "enum": ["string", "number", "int", "float", "bool", "json"],
+                            "description": "For 'end' nodes: data type of the output. Prefer 'number' for numeric values.",
                         },
                         "output_template": {
                             "type": "string",
@@ -201,6 +201,62 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "For 'subprocess' nodes: Name for the variable that will hold the subworkflow's output. This becomes available as a new input for subsequent nodes.",
                         },
+                        "calculation": {
+                            "type": "object",
+                            "description": (
+                                "For 'calculation' nodes: Defines a mathematical operation on variables. "
+                                "The result is stored in an output variable that can be used by subsequent nodes."
+                            ),
+                            "properties": {
+                                "output": {
+                                    "type": "object",
+                                    "description": "Output variable definition",
+                                    "properties": {
+                                        "name": {"type": "string", "description": "Name for the calculated result (e.g., 'BMI')"},
+                                        "description": {"type": "string", "description": "Description of what this value represents"},
+                                    },
+                                    "required": ["name"],
+                                },
+                                "operator": {
+                                    "type": "string",
+                                    "description": "Mathematical operator to apply. See system prompt for full list.",
+                                    "enum": [
+                                        "add", "subtract", "multiply", "divide", "floor_divide", "modulo", "power",
+                                        "negate", "abs", "sqrt", "square", "cube", "reciprocal",
+                                        "floor", "ceil", "round", "sign",
+                                        "ln", "log10", "log", "exp",
+                                        "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+                                        "degrees", "radians",
+                                        "min", "max", "sum", "average", "hypot",
+                                        "geometric_mean", "harmonic_mean", "variance", "std_dev", "range"
+                                    ],
+                                },
+                                "operands": {
+                                    "type": "array",
+                                    "description": "List of operands for the operator",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "kind": {
+                                                "type": "string",
+                                                "enum": ["variable", "literal"],
+                                                "description": "'variable' to reference a workflow variable, 'literal' for a constant number",
+                                            },
+                                            "ref": {
+                                                "type": "string",
+                                                "description": "For kind='variable': variable ID (e.g., 'var_weight_number')",
+                                            },
+                                            "value": {
+                                                "type": "number",
+                                                "description": "For kind='literal': the constant numeric value",
+                                            },
+                                        },
+                                        "required": ["kind"],
+                                    },
+                                },
+                            },
+                            "required": ["output", "operator", "operands"],
+                        },
                     },
                     "required": ["workflow_id", "type", "label"],
                 },
@@ -215,7 +271,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                     "Requires workflow_id. "
                     "You must know the node_id first - call get_current_workflow to find it.\n\n"
                     "For SUBPROCESS nodes: You can update subworkflow_id, input_mapping, and output_variable.\n"
-                    "For DECISION nodes: You can update the condition."
+                    "For DECISION nodes: You can update the condition.\n"
+                    "For CALCULATION nodes: You can update the calculation definition."
                 ),
                 "parameters": {
                     "type": "object",
@@ -234,15 +291,15 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "type": {
                             "type": "string",
-                            "enum": ["start", "process", "decision", "subprocess", "end"],
+                            "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
                             "description": "New node type",
                         },
-                        "x": {"type": "number", "description": "New X coordinate"},
+"x": {"type": "number", "description": "New X coordinate"},
                         "y": {"type": "number", "description": "New Y coordinate"},
                         "output_type": {
                             "type": "string",
-                            "enum": ["string", "int", "float", "bool", "json"],
-                            "description": "For 'end' nodes: data type of the output.",
+                            "enum": ["string", "number", "int", "float", "bool", "json"],
+                            "description": "For 'end' nodes: data type of the output. Prefer 'number' for numeric values.",
                         },
                         "output_template": {
                             "type": "string",
@@ -278,6 +335,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "output_variable": {
                             "type": "string",
                             "description": "For 'subprocess' nodes: Name for the output variable.",
+                        },
+                        "calculation": {
+                            "type": "object",
+                            "description": "For 'calculation' nodes: Updated calculation definition. See add_node for schema.",
                         },
                     },
                     "required": ["workflow_id", "node_id"],
@@ -400,8 +461,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "array",
                             "description": (
                                 "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
-                                "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
-                                "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?}\n"
+                                "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                                "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
                                 "delete_node: {op, node_id}\n"
                                 "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
                                 "delete_connection: {op, from (node_id), to (node_id)}"
@@ -420,7 +481,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                         ],
                                     },
                                     "id": {"type": "string", "description": "Temp ID for new nodes (e.g., temp_1)"},
-                                    "type": {"type": "string", "enum": ["start", "process", "decision", "subprocess", "end"]},
+                                    "type": {"type": "string", "enum": ["start", "process", "decision", "subprocess", "calculation", "end"]},
                                     "label": {"type": "string"},
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
@@ -434,12 +495,13 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                             "value2": {}
                                         }
                                     },
-                                    "output_type": {"type": "string", "enum": ["string", "int", "float", "bool", "json"]},
+                                    "output_type": {"type": "string", "enum": ["string", "number", "int", "float", "bool", "json"]},
                                     "output_template": {"type": "string"},
                                     "output_value": {"type": "string"},
                                     "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
                                     "input_mapping": {"type": "object", "description": "For subprocess: parent->subworkflow input mapping"},
                                     "output_variable": {"type": "string", "description": "For subprocess: name for output variable"},
+                                    "calculation": {"type": "object", "description": "For calculation nodes: {output, operator, operands} - see add_node for full schema"},
                                     "node_id": {"type": "string", "description": "Existing node ID"},
                                     "from": {"type": "string", "description": "Source node ID or temp ID"},
                                     "to": {"type": "string", "description": "Target node ID or temp ID"},
@@ -759,8 +821,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "type": {
                             "type": "string",
-                            "enum": ["string", "int", "float", "bool", "enum", "date"],
-                            "description": "Output type - determines derived variable type in calling workflows",
+"enum": ["string", "number", "int", "float", "bool", "enum", "date"],
+                            "description": "Output type - determines derived variable type in calling workflows. Prefer 'number' for numeric values.",
                         },
                         "description": {
                             "type": "string",
@@ -868,9 +930,9 @@ def build_system_prompt(
         "2. Find the node ID by matching the label\n"
         "3. Use that ID in your tool calls\n"
         "NEVER guess node IDs.\n\n"
-        "## Output Nodes (Templates & Types)\n"
+"## Output Nodes (Templates & Types)\n"
         "Output nodes ('end' type) support dynamic values and templates:\n"
-        "- output_type: 'string', 'int', 'float', 'bool', or 'json'\n"
+        "- output_type: 'string', 'number', 'int', 'float', 'bool', or 'json' (prefer 'number' for numeric values)\n"
         "- output_template: Python f-string style template using input variables, e.g. 'Patient BMI is {BMI}'\n"
         "- output_value: Static value if no template is needed\n"
         "You can set these fields in add_node, modify_node, and batch_edit_workflow.\n"
@@ -883,14 +945,14 @@ def build_system_prompt(
         "- batch_edit lets you use temporary IDs (like 'temp_start') that get mapped to real IDs automatically\n"
         "- All operations in the batch can reference each other using these temp IDs\n\n"
         "Common scenarios where batch_edit is recommended:\n\n"
-        "1. Decision nodes with branches (most common):\n"
+"1. Decision nodes with branches (most common):\n"
         "```\n"
-        "// First: add_workflow_variable(workflow_id='wf_abc123', name='Age', type='number') -> returns variable with id 'var_age_int'\n"
+        "// First: add_workflow_variable(workflow_id='wf_abc123', name='Age', type='number') -> returns variable with id 'var_age_number'\n"
         "batch_edit_workflow(\n"
         "  workflow_id='wf_abc123',\n"
         "  operations=[\n"
-        "    {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\",\n"
-        "     \"condition\": {\"input_id\": \"var_age_int\", \"comparator\": \"gte\", \"value\": 18}},\n"
+"    {\"op\": \"add_node\", \"id\": \"temp_decision\", \"type\": \"decision\", \"label\": \"Check Age\",\n"
+        "     \"condition\": {\"input_id\": \"var_age_number\", \"comparator\": \"gte\", \"value\": 18}},\n"
         "    {\"op\": \"add_node\", \"id\": \"temp_true\", \"type\": \"end\", \"label\": \"Adult\", \"x\": 50, \"y\": 200},\n"
         "    {\"op\": \"add_node\", \"id\": \"temp_false\", \"type\": \"end\", \"label\": \"Minor\", \"x\": 150, \"y\": 200},\n"
         "    {\"op\": \"add_connection\", \"from\": \"temp_decision\", \"to\": \"temp_true\", \"label\": \"true\"},\n"
@@ -914,27 +976,27 @@ def build_system_prompt(
         "WHENEVER you see a decision node that checks a condition on data, you MUST register that data as a workflow variable:\n"
         "1. Identify what data the decision checks (e.g., 'Patient Age', 'Order Amount', 'Email Valid')\n"
         "2. Call add_workflow_variable(workflow_id, name, type) to register it with appropriate type\n"
-        "3. Note the variable ID from the response (e.g., 'var_patient_age_int')\n"
+"3. Note the variable ID from the response (e.g., 'var_patient_age_number')\n"
         "4. Then add the decision node with a condition parameter\n\n"
         "Examples:\n"
         "- User: 'Add decision: is patient over 60?'\n"
-        "  → Call add_workflow_variable(workflow_id='wf_abc', name='Patient Age', type='number') → returns id='var_patient_age_int'\n"
+        "  → Call add_workflow_variable(workflow_id='wf_abc', name='Patient Age', type='number') → returns id='var_patient_age_number'\n"
         "  → Then add_node(workflow_id='wf_abc', type='decision', label='Patient over 60?',\n"
-        "      condition={\"input_id\": \"var_patient_age_int\", \"comparator\": \"gt\", \"value\": 60})\n\n"
+        "      condition={\"input_id\": \"var_patient_age_number\", \"comparator\": \"gt\", \"value\": 60})\n\n"
         "ALWAYS register input variables BEFORE creating nodes that reference them.\n"
         "Use list_workflow_variables(workflow_id) to see what variables already exist AND to get their IDs.\n\n"
         "## Decision Node Conditions (CRITICAL)\n"
         "EVERY decision node MUST have a structured `condition` that defines the logic.\n\n"
         "### Condition Structure\n"
-        "A condition is an object with these fields:\n"
-        "- `input_id`: ID of the workflow variable to check (e.g., 'var_patient_age_int' or 'var_sub_creditscore_float')\n"
+"A condition is an object with these fields:\n"
+        "- `input_id`: ID of the workflow variable to check (e.g., 'var_patient_age_number' or 'var_sub_creditscore_number')\n"
         "- `comparator`: The comparison operator (see table below)\n"
         "- `value`: Value to compare against\n"
         "- `value2`: (Optional) Second value for range comparators\n\n"
         "### Comparators by Variable Type\n"
         "| Variable Type | Valid Comparators |\n"
         "|---------------|-------------------|\n"
-        "| int, float    | eq, neq, lt, lte, gt, gte, within_range |\n"
+        "| number, int, float | eq, neq, lt, lte, gt, gte, within_range |\n"
         "| bool          | is_true, is_false |\n"
         "| string        | str_eq, str_neq, str_contains, str_starts_with, str_ends_with |\n"
         "| date          | date_eq, date_before, date_after, date_between |\n"
@@ -946,6 +1008,51 @@ def build_system_prompt(
         "- For subprocess outputs: var_sub_{slug}_{type}\n"
         "- The comparator MUST be valid for the variable's type\n"
         "- For within_range/date_between, you MUST provide both value and value2\n\n"
+        "## Calculation Nodes (Mathematical Operations)\n"
+        "Use calculation nodes to perform mathematical operations on workflow variables.\n\n"
+        "WHEN TO USE CALCULATION:\n"
+        "- When you need to compute a value from input variables (e.g., BMI from weight/height)\n"
+        "- When you need to derive intermediate values for decision making\n"
+        "- When performing unit conversions or formula calculations\n\n"
+        "REQUIRED FIELDS FOR CALCULATION NODES:\n"
+        "1. calculation.output: {name, description?} - Defines the output variable\n"
+        "2. calculation.operator: The mathematical operation (see list below)\n"
+        "3. calculation.operands: List of operands, each with:\n"
+        "   - {kind: 'variable', ref: 'var_weight_number'} - References a workflow variable\n"
+        "   - {kind: 'literal', value: 2.5} - A constant number\n\n"
+        "### Operators by Arity\n"
+        "| Arity | Operators |\n"
+        "|-------|----------|\n"
+        "| Unary (1 operand) | negate, abs, sqrt, square, cube, reciprocal, floor, ceil, round, sign, ln, log10, exp, sin, cos, tan, asin, acos, atan, degrees, radians |\n"
+        "| Binary (2 operands) | subtract, divide, floor_divide, modulo, power, log (base), atan2 |\n"
+        "| Variadic (2+ operands) | add, multiply, min, max, sum, average, hypot, geometric_mean, harmonic_mean, variance, std_dev, range |\n\n"
+        "### Output Variable\n"
+        "Calculation nodes automatically create a derived variable with:\n"
+        "- ID: var_calc_{slug}_number (e.g., 'var_calc_bmi_number')\n"
+        "- Type: always 'number'\n"
+        "- Source: 'calculated'\n\n"
+        "This variable can be used in subsequent decision nodes.\n\n"
+        "### Example: BMI Calculation\n"
+        "```\n"
+        "// First add input variables\n"
+        "add_workflow_variable(workflow_id='wf_abc', name='Weight', type='number')  // -> var_weight_number\n"
+        "add_workflow_variable(workflow_id='wf_abc', name='Height', type='number')  // -> var_height_number\n\n"
+        "// Add calculation node for BMI = weight / (height^2)\n"
+        "add_node(\n"
+        "  workflow_id='wf_abc',\n"
+        "  type='calculation',\n"
+        "  label='Calculate BMI',\n"
+        "  calculation={\n"
+        "    \"output\": {\"name\": \"BMI\", \"description\": \"Body Mass Index\"},\n"
+        "    \"operator\": \"divide\",\n"
+        "    \"operands\": [\n"
+        "      {\"kind\": \"variable\", \"ref\": \"var_weight_number\"},\n"
+        "      {\"kind\": \"literal\", \"value\": 2}  // Simplified: height^2 as literal for demo\n"
+        "    ]\n"
+        "  }\n"
+        ")\n"
+        "// Creates var_calc_bmi_number for use in decisions\n"
+        "```\n\n"
         "## Subprocess Nodes (Subflows)\n"
         "Use subprocess nodes to call other workflows as reusable components.\n\n"
         "WHEN TO USE SUBPROCESS:\n"

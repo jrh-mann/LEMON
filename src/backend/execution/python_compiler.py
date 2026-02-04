@@ -141,11 +141,61 @@ class VariableNameResolver:
 TYPE_MAP = {
     'int': 'int',
     'float': 'float',
+    'number': 'float',  # Unified numeric type
     'bool': 'bool',
     'string': 'str',
     'enum': 'str',
     'date': 'str',  # Dates as ISO strings for simplicity
     'json': 'dict',
+}
+
+
+# Maps calculation operators to Python expressions
+# {operands} will be replaced with the appropriate operand expression(s)
+OPERATOR_TO_PYTHON = {
+    # Unary operators
+    'negate': '-{0}',
+    'abs': 'abs({0})',
+    'sqrt': '({0}) ** 0.5',
+    'square': '({0}) ** 2',
+    'cube': '({0}) ** 3',
+    'reciprocal': '1 / ({0})',
+    'floor': 'int({0})',
+    'ceil': 'int({0}) + (1 if {0} % 1 else 0)',
+    'round': 'round({0})',
+    'sign': '(1 if {0} > 0 else (-1 if {0} < 0 else 0))',
+    'ln': 'math.log({0})',
+    'log10': 'math.log10({0})',
+    'exp': 'math.exp({0})',
+    'sin': 'math.sin({0})',
+    'cos': 'math.cos({0})',
+    'tan': 'math.tan({0})',
+    'asin': 'math.asin({0})',
+    'acos': 'math.acos({0})',
+    'atan': 'math.atan({0})',
+    'degrees': 'math.degrees({0})',
+    'radians': 'math.radians({0})',
+    # Binary operators
+    'subtract': '({0}) - ({1})',
+    'divide': '({0}) / ({1})',
+    'floor_divide': '({0}) // ({1})',
+    'modulo': '({0}) % ({1})',
+    'power': '({0}) ** ({1})',
+    'log': 'math.log({0}, {1})',
+    'atan2': 'math.atan2({0}, {1})',
+    # Variadic operators (use special handling)
+    'add': None,  # Special: sum of operands
+    'multiply': None,  # Special: product of operands
+    'min': None,  # Special: min()
+    'max': None,  # Special: max()
+    'sum': None,  # Special: sum()
+    'average': None,  # Special: sum / len
+    'hypot': None,  # Special: math.hypot()
+    'geometric_mean': None,  # Special: statistics.geometric_mean()
+    'harmonic_mean': None,  # Special: statistics.harmonic_mean()
+    'variance': None,  # Special: statistics.variance()
+    'std_dev': None,  # Special: statistics.stdev()
+    'range': None,  # Special: max - min
 }
 
 
@@ -376,6 +426,11 @@ class PythonCodeGenerator:
 
         # Add typing import for type hints
         imports.add("from typing import Union")
+        
+        # Always include math for calculation support
+        # (could be optimized to only include if calculations are present)
+        imports.add("import math")
+        imports.add("import statistics")
 
         for imp in sorted(imports):
             self._add_line(imp)
@@ -471,6 +526,9 @@ class PythonCodeGenerator:
 
         elif node_type == 'subprocess':
             self._visit_subprocess_node(node)
+
+        elif node_type == 'calculation':
+            self._visit_calculation_node(node)
 
         elif node_type in ('start', 'action', 'process'):
             # Pass-through nodes - continue to children
@@ -650,6 +708,122 @@ class PythonCodeGenerator:
         if children:
             self._add_line("")
             self._visit_node(children[0])
+
+    def _visit_calculation_node(self, node: Dict[str, Any]) -> None:
+        """Generate calculation expression and assignment.
+        
+        Generates Python code like:
+            bmi = weight / (height ** 2)
+        """
+        node_label = node.get('label', node.get('id', 'calculation'))
+        calculation = node.get('calculation', {})
+        
+        output = calculation.get('output', {})
+        operator_name = calculation.get('operator', 'add')
+        operands = calculation.get('operands', [])
+        
+        output_name = output.get('name', 'result') if isinstance(output, dict) else 'result'
+        python_var = re.sub(r'[^a-z0-9]+', '_', output_name.lower()).strip('_')
+        
+        # Resolve operand expressions
+        operand_exprs = []
+        for operand in operands:
+            kind = operand.get('kind')
+            if kind == 'literal':
+                value = operand.get('value', 0)
+                operand_exprs.append(str(float(value)))
+            elif kind == 'variable':
+                ref = operand.get('ref', '')
+                # Try to resolve to Python variable name
+                if ref in self.resolver.id_to_python:
+                    operand_exprs.append(self.resolver.resolve(ref))
+                else:
+                    # Try by friendly name
+                    for var_id, var in self.resolver.id_to_var.items():
+                        if var.get('name') == ref:
+                            operand_exprs.append(self.resolver.resolve(var_id))
+                            break
+                    else:
+                        # Fallback to slugified name
+                        slug = re.sub(r'[^a-z0-9]+', '_', ref.lower()).strip('_')
+                        operand_exprs.append(slug)
+        
+        # Generate the calculation expression
+        expr = self._compile_operator_expression(operator_name, operand_exprs)
+        
+        # Add comment with node label
+        self._add_line(f"# Calculation: {node_label}")
+        self._add_line(f"{python_var} = {expr}")
+        
+        # Register the output variable for later use
+        # This allows subsequent decision nodes to reference it
+        calc_var_id = f"var_calc_{python_var}_number"
+        self.resolver.id_to_python[calc_var_id] = python_var
+        self.resolver.id_to_var[calc_var_id] = {
+            'id': calc_var_id,
+            'name': output_name,
+            'type': 'number',
+            'source': 'calculated',
+        }
+        # Also map by name
+        self.resolver.id_to_python[output_name] = python_var
+        
+        # Continue to children
+        children = node.get('children', [])
+        if children:
+            self._add_line("")
+            self._visit_node(children[0])
+    
+    def _compile_operator_expression(
+        self,
+        operator_name: str,
+        operand_exprs: List[str]
+    ) -> str:
+        """Compile operator and operands to Python expression.
+        
+        Args:
+            operator_name: Name of the operator (e.g., 'add', 'divide', 'sqrt')
+            operand_exprs: List of Python expressions for operands
+            
+        Returns:
+            Python expression string
+        """
+        # Check if we have a template for this operator
+        template = OPERATOR_TO_PYTHON.get(operator_name)
+        
+        if template is not None:
+            # Use template (for unary/binary operators)
+            return template.format(*operand_exprs)
+        
+        # Handle variadic operators specially
+        operands_str = ', '.join(operand_exprs)
+        
+        if operator_name in ('add', 'sum'):
+            return f"({' + '.join(operand_exprs)})"
+        elif operator_name == 'multiply':
+            return f"({' * '.join(operand_exprs)})"
+        elif operator_name == 'min':
+            return f"min({operands_str})"
+        elif operator_name == 'max':
+            return f"max({operands_str})"
+        elif operator_name == 'average':
+            return f"(({' + '.join(operand_exprs)}) / {len(operand_exprs)})"
+        elif operator_name == 'hypot':
+            return f"math.hypot({operands_str})"
+        elif operator_name == 'geometric_mean':
+            return f"statistics.geometric_mean([{operands_str}])"
+        elif operator_name == 'harmonic_mean':
+            return f"statistics.harmonic_mean([{operands_str}])"
+        elif operator_name == 'variance':
+            return f"statistics.variance([{operands_str}])"
+        elif operator_name == 'std_dev':
+            return f"statistics.stdev([{operands_str}])"
+        elif operator_name == 'range':
+            return f"(max({operands_str}) - min({operands_str}))"
+        else:
+            # Unknown operator - generate error comment
+            self._warnings.append(f"Unknown operator '{operator_name}'")
+            return f"0  # Unknown operator: {operator_name}({operands_str})"
 
     def _add_line(self, line: str) -> None:
         """Add a line of code with current indentation."""

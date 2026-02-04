@@ -4,6 +4,9 @@ This tool adds nodes to the workflow flowchart. For subprocess nodes,
 it automatically registers the output as a derived variable with the
 correct type inferred from the subworkflow's output definition.
 
+For calculation nodes, validates the operator and operands, and auto-registers
+the output variable with source='calculated'.
+
 Multi-workflow architecture:
 - Requires workflow_id parameter (workflow must exist in library)
 - Loads workflow from database at start
@@ -13,8 +16,9 @@ Multi-workflow architecture:
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
+from ...execution.operators import get_operator, get_operator_names, validate_operator_arity
 from ...validation.workflow_validator import WorkflowValidator
 from ..core import Tool, ToolParameter
 from ..workflow_input.add import generate_variable_id
@@ -29,7 +33,9 @@ from .helpers import (
 
 
 # Valid comparators by input type - mirrors frontend COMPARATORS_BY_TYPE
+# 'number' is the unified numeric type that supports all numeric comparators
 COMPARATORS_BY_TYPE = {
+    "number": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
     "int": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
     "float": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
     "bool": ["is_true", "is_false"],
@@ -102,17 +108,121 @@ def validate_decision_condition(condition: Dict[str, Any], variables: list) -> s
     return None
 
 
+def validate_calculation(
+    calculation: Dict[str, Any],
+    variables: List[Dict[str, Any]],
+) -> Optional[str]:
+    """Validate a calculation object for a calculation node.
+    
+    Calculation schema:
+    {
+        "output": {"name": str, "description": str (optional)},
+        "operator": str (must be a valid operator name),
+        "operands": [
+            {"kind": "variable", "ref": str (variable ID)},
+            {"kind": "literal", "value": number}
+        ]
+    }
+    
+    Args:
+        calculation: The calculation dict to validate
+        variables: List of workflow variable definitions
+        
+    Returns:
+        Error message if invalid, None if valid.
+    """
+    if not isinstance(calculation, dict):
+        return "calculation must be an object with output, operator, and operands"
+    
+    # Validate output
+    output = calculation.get("output")
+    if not output:
+        return "calculation.output is required"
+    if not isinstance(output, dict):
+        return "calculation.output must be an object with 'name'"
+    output_name = output.get("name")
+    if not output_name:
+        return "calculation.output.name is required"
+    if not isinstance(output_name, str):
+        return "calculation.output.name must be a string"
+    # Validate output name is a valid identifier
+    if not output_name.replace("_", "").isalnum():
+        return f"calculation.output.name must be alphanumeric with underscores, got '{output_name}'"
+    
+    # Validate operator
+    operator = calculation.get("operator")
+    if not operator:
+        return "calculation.operator is required"
+    if not isinstance(operator, str):
+        return "calculation.operator must be a string"
+    
+    op = get_operator(operator)
+    if op is None:
+        return f"Unknown operator '{operator}'. Valid operators: {', '.join(get_operator_names())}"
+    
+    # Validate operands
+    operands = calculation.get("operands")
+    if not operands:
+        return "calculation.operands is required"
+    if not isinstance(operands, list):
+        return "calculation.operands must be an array"
+    if len(operands) == 0:
+        return "calculation.operands must not be empty"
+    
+    # Validate arity
+    arity_error = validate_operator_arity(operator, len(operands))
+    if arity_error:
+        return arity_error
+    
+    # Build map of variable IDs for reference validation
+    var_ids = {v.get("id") for v in variables if v.get("id")}
+    var_names = {v.get("name") for v in variables if v.get("name")}
+    
+    # Validate each operand
+    for i, operand in enumerate(operands):
+        if not isinstance(operand, dict):
+            return f"calculation.operands[{i}] must be an object with 'kind'"
+        
+        kind = operand.get("kind")
+        if kind not in ("variable", "literal"):
+            return f"calculation.operands[{i}].kind must be 'variable' or 'literal', got '{kind}'"
+        
+        if kind == "variable":
+            ref = operand.get("ref")
+            if not ref:
+                return f"calculation.operands[{i}].ref is required for variable operands"
+            # Allow referencing by ID or name
+            if ref not in var_ids and ref not in var_names:
+                return (
+                    f"calculation.operands[{i}].ref '{ref}' not found in workflow variables. "
+                    f"Available variable IDs: {sorted(var_ids)}"
+                )
+        elif kind == "literal":
+            value = operand.get("value")
+            if value is None:
+                return f"calculation.operands[{i}].value is required for literal operands"
+            if not isinstance(value, (int, float)):
+                return f"calculation.operands[{i}].value must be a number, got {type(value).__name__}"
+    
+    return None
+
+
 class AddNodeTool(Tool):
     """Add a new node to the workflow.
     
     Supports all node types including subprocess nodes that reference
-    other workflows (subflows).
+    other workflows (subflows) and calculation nodes for mathematical operations.
     
     For decision nodes, a 'condition' object is REQUIRED with:
     - input_id: The workflow variable to compare (e.g., "var_age_int")
     - comparator: The comparison operator (e.g., "gte", "eq", "str_contains")
     - value: The value to compare against
     - value2: (optional) Second value for range comparisons
+    
+    For calculation nodes, a 'calculation' object is REQUIRED with:
+    - output: {"name": "ResultVar", "description": "Optional description"}
+    - operator: The operator name (e.g., "add", "divide", "sqrt")
+    - operands: Array of {"kind": "variable", "ref": "var_id"} or {"kind": "literal", "value": 123}
     
     For subprocess nodes, the output_variable is automatically registered
     as a derived variable with type inferred from the subworkflow's output.
@@ -131,7 +241,7 @@ class AddNodeTool(Tool):
         ToolParameter(
             "type",
             "string",
-            "Node type: start, process, decision, subprocess, or end",
+            "Node type: start, process, decision, subprocess, calculation, or end",
             required=True,
         ),
         ToolParameter("label", "string", "Display text for the node", required=True),
@@ -160,6 +270,18 @@ class AddNodeTool(Tool):
                 "string: str_eq,str_neq,str_contains,str_starts_with,str_ends_with | "
                 "date: date_eq,date_before,date_after,date_between | "
                 "enum: enum_eq,enum_neq"
+            ),
+            required=False,
+        ),
+        # Calculation node config (REQUIRED for calculation nodes)
+        ToolParameter(
+            "calculation",
+            "object",
+            (
+                "REQUIRED for calculation nodes: Mathematical operation to perform. "
+                "Object with: output {name, description?}, operator (string), operands (array). "
+                "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}. "
+                "Operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average, etc."
             ),
             required=False,
         ),
@@ -222,6 +344,7 @@ class AddNodeTool(Tool):
         # Validate condition for decision nodes
         node_type = args["type"]
         condition = args.get("condition")
+        calculation = args.get("calculation")
         
         if node_type == "decision":
             if not condition:
@@ -241,6 +364,26 @@ class AddNodeTool(Tool):
                     "error": condition_error,
                     "error_code": "INVALID_CONDITION",
                 }
+        
+        # Validate calculation for calculation nodes
+        if node_type == "calculation":
+            if not calculation:
+                return {
+                    "success": False,
+                    "error": (
+                        "Calculation nodes require a 'calculation' parameter. "
+                        "Provide: {output: {name: 'VarName'}, operator: 'add', operands: [{kind: 'variable', ref: 'var_id'}, ...]}"
+                    ),
+                    "error_code": "MISSING_CALCULATION",
+                }
+            
+            calculation_error = validate_calculation(calculation, variables)
+            if calculation_error:
+                return {
+                    "success": False,
+                    "error": calculation_error,
+                    "error_code": "INVALID_CALCULATION",
+                }
 
         # Create new node
         node_id = f"node_{uuid.uuid4().hex[:8]}"
@@ -252,10 +395,43 @@ class AddNodeTool(Tool):
             "y": args.get("y", 0),
             "color": get_node_color(node_type),
         }
+        
+        # Track if variables list is modified (for auto-save)
+        variables_modified = False
 
         # Add condition for decision nodes
         if condition:
             new_node["condition"] = condition
+        
+        # Add calculation for calculation nodes and auto-register output variable
+        if node_type == "calculation" and calculation:
+            new_node["calculation"] = calculation
+            
+            # Auto-register the output variable as a calculated variable
+            output_def = calculation["output"]
+            output_name = output_def["name"]
+            output_desc = output_def.get("description")
+            
+            existing_var_names = [
+                normalize_variable_name(v.get("name", ""))
+                for v in variables
+            ]
+            
+            if normalize_variable_name(output_name) not in existing_var_names:
+                # Calculate output is always 'number' type
+                var_id = generate_variable_id(output_name, "number", "calculated")
+                
+                new_variable: Dict[str, Any] = {
+                    "id": var_id,
+                    "name": output_name,
+                    "type": "number",  # Calculation output is always number
+                    "source": "calculated",  # Derived from calculation
+                    "source_node_id": node_id,  # Which node produces this
+                    "description": output_desc or f"Calculated by '{args['label']}'",
+                }
+                
+                variables.append(new_variable)
+                variables_modified = True
         
         # Add output configuration for 'end' nodes
         if node_type == "end":
@@ -272,7 +448,6 @@ class AddNodeTool(Tool):
                 new_node["output_value"] = args["output_value"]
 
         # Add subprocess-specific fields
-        variables_modified = False
         if node_type == "subprocess":
             subworkflow_id_param = args.get("subworkflow_id")
             input_mapping = args.get("input_mapping")
