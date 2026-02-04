@@ -230,6 +230,7 @@ export interface WorkflowMetadata {
 
 export interface Workflow {
   id: string
+  output_type?: string  // Workflow-level output type: 'string' | 'number' | 'bool' | 'json'
   metadata: WorkflowMetadata
   blocks: Block[]
   connections: Connection[]
@@ -499,6 +500,7 @@ export interface CreateWorkflowRequest {
   description: string
   domain?: string
   tags?: string[]
+  output_type?: string  // Workflow-level output type: 'string' | 'number' | 'bool' | 'json'
   nodes: FlowNode[]
   edges: FlowEdge[]
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
