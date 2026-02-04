@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..tools import ToolRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
-from ..mcp.client import call_mcp_tool
+from ..mcp_bridge.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .orchestrator_config import build_system_prompt, tool_descriptions
 from ..utils.cancellation import CancellationError
