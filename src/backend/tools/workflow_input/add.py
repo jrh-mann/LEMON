@@ -133,10 +133,13 @@ class AddWorkflowVariableTool(Tool):
         session_state = kwargs.get("session_state", {})
         workflow_id = args.get("workflow_id")
 
-        # Load workflow from database
+        # Load workflow from database (will fallback to current_workflow_id from session)
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
 
         # Extract variables from loaded workflow
         variables = list(workflow_data["variables"])
@@ -215,4 +218,6 @@ class AddWorkflowVariableTool(Tool):
             "workflow_id": workflow_id,
             "message": f"Added input variable '{name}' ({var_type}) to workflow {workflow_id}",
             "variable": variable_obj,
+            # Return workflow_analysis for orchestrator to sync local state
+            "workflow_analysis": {"variables": variables},
         }

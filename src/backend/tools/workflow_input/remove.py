@@ -62,6 +62,8 @@ class RemoveWorkflowVariableTool(Tool):
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
 
         # Extract data from loaded workflow
         nodes = list(workflow_data["nodes"])
@@ -159,9 +161,17 @@ class RemoveWorkflowVariableTool(Tool):
             if len(affected_node_labels) > 3:
                 message += f", and {len(affected_node_labels) - 3} more"
 
-        return {
+        result: Dict[str, Any] = {
             "success": True,
             "workflow_id": workflow_id,
             "message": message,
             "affected_nodes": len(affected_node_labels),
+            # Return workflow_analysis for orchestrator to sync local state
+            "workflow_analysis": {"variables": variables},
         }
+        
+        # If nodes were modified (force delete), also return current_workflow
+        if nodes_modified:
+            result["current_workflow"] = {"nodes": nodes}
+        
+        return result

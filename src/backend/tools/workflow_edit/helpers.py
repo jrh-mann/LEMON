@@ -299,7 +299,8 @@ def load_workflow_for_tool(
     database. Returns the workflow data in a format ready for tool use.
     
     Args:
-        workflow_id: ID of the workflow to load (e.g., "wf_abc123")
+        workflow_id: ID of the workflow to load (e.g., "wf_abc123"). If None,
+            falls back to session_state["current_workflow_id"].
         session_state: Session state containing workflow_store and user_id
         
     Returns:
@@ -316,7 +317,10 @@ def load_workflow_for_tool(
         - name: Workflow name (for reference)
         - workflow_id: The ID (for convenience)
     """
-    # Validate workflow_id is provided
+    # Validate workflow_id is provided - fall back to current_workflow_id from session
+    if not workflow_id:
+        workflow_id = session_state.get("current_workflow_id")
+    
     if not workflow_id:
         return None, {
             "success": False,

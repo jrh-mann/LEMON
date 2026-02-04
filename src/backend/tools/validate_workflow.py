@@ -47,6 +47,8 @@ class ValidateWorkflowTool(Tool):
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
 
         # Build workflow dict for validation
         # Include output_type for Rule 14 validation (all end nodes must match workflow output_type)

@@ -76,6 +76,8 @@ class SetWorkflowOutputTool(Tool):
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
 
         # Extract outputs from loaded workflow
         outputs = list(workflow_data["outputs"])

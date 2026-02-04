@@ -118,6 +118,8 @@ class ModifyWorkflowVariableTool(Tool):
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
 
         # Extract variables from loaded workflow
         variables = list(workflow_data["variables"])

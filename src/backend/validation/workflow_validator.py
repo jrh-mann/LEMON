@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from src.backend.execution.parser import parse_condition, ParseError
-from src.backend.execution.types import Variable, BinaryOp, UnaryOp
-from src.backend.execution.operators import get_operator, validate_operator_arity
+from ..execution.parser import parse_condition, ParseError
+from ..execution.types import Variable, BinaryOp, UnaryOp
+from ..execution.operators import get_operator, validate_operator_arity
 
 
 # Required fields for subprocess nodes

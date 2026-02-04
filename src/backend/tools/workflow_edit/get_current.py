@@ -151,6 +151,8 @@ class GetCurrentWorkflowTool(Tool):
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
         
         # Deep copy to avoid any issues
         workflow = {

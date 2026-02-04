@@ -105,6 +105,8 @@ class BatchEditWorkflowTool(Tool):
         workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
         if error:
             return error
+        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
+        workflow_id = workflow_data["workflow_id"]
 
         operations = args.get("operations", [])
         if not isinstance(operations, list):
@@ -317,14 +319,23 @@ class BatchEditWorkflowTool(Tool):
         if save_error:
             return save_error
 
-        return {
+        # Build result with workflow state for orchestrator sync
+        result: Dict[str, Any] = {
             "success": True,
             "workflow_id": workflow_id,
             "action": "batch_edit",
             "operations": applied_operations,
             "operation_count": len(applied_operations),
             "message": f"Applied {len(applied_operations)} operations to workflow {workflow_id}",
+            # Include full workflow state for orchestrator to sync
+            "workflow": {"nodes": nodes, "edges": edges},
         }
+        
+        # Include workflow_analysis if variables were modified
+        if variables_modified:
+            result["workflow_analysis"] = {"variables": variables}
+        
+        return result
 
     def _resolve_id(
         self,
