@@ -895,19 +895,20 @@ export default function Canvas() {
 
     return (
       <g key={`${edge.from}-${edge.to}`} className={edgeClassNames} onClick={handleEdgeClick} style={{ cursor: 'pointer' }}>
-        {/* Invisible wider path for easier clicking */}
+        {/* Invisible wider path for easier clicking - increased from 12 to 20 */}
         <path
           d={path}
           fill="none"
           stroke="transparent"
-          strokeWidth={12}
+          strokeWidth={20}
           style={{ cursor: 'pointer' }}
         />
+        {/* Visible edge line - increased stroke width for better visibility */}
         <path
           d={path}
           fill="none"
           stroke={isSelected ? 'var(--accent)' : 'var(--ink)'}
-          strokeWidth={isSelected ? 2.5 : 1.5}
+          strokeWidth={isSelected ? 3 : 2}
           markerEnd="url(#arrowhead)"
         />
         {/* Show label for decision edges, or any edge with a label */}

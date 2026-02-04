@@ -2355,12 +2355,12 @@ body {
 
 .flow-edge:hover path {
   stroke: var(--teal);
-  stroke-width: 2.5;
+  stroke-width: 3;
 }
 
 .flow-edge.selected path {
   stroke: var(--teal);
-  stroke-width: 3;
+  stroke-width: 3.5;
 }
 
 /* Edge labels */

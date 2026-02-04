@@ -35,6 +35,27 @@ export async function updateWorkflow(
   return api.put<CreateWorkflowResponse>(`/api/workflows/${workflowId}`, data)
 }
 
+// Incrementally patch a workflow without changing draft status
+// Use this for UI-triggered changes (edge labels, node positions, etc.)
+export interface PatchWorkflowRequest {
+  nodes?: any[]
+  edges?: any[]
+  variables?: any[]
+}
+
+export interface PatchWorkflowResponse {
+  workflow_id: string
+  message: string
+  updated_fields: string[]
+}
+
+export async function patchWorkflow(
+  workflowId: string,
+  data: PatchWorkflowRequest
+): Promise<PatchWorkflowResponse> {
+  return api.patch<PatchWorkflowResponse>(`/api/workflows/${workflowId}`, data)
+}
+
 // Delete workflow
 export async function deleteWorkflow(workflowId: string): Promise<void> {
   await api.delete(`/api/workflows/${workflowId}`)

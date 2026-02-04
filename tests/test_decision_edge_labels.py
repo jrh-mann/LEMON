@@ -53,8 +53,12 @@ class TestDecisionEdgeLabelEnforcement:
         assert result["edge"]["label"] == "true"
 
     def test_add_connection_auto_assigns_false_for_second_decision_edge(self, workflow_store, test_user_id):
-        """When adding second edge from decision without label, should auto-assign 'false'."""
-        # Create workflow with one existing edge from decision
+        """When adding second decision edge without label, should auto-assign based on position.
+        
+        Position-based labeling: left child = false, right child = true.
+        If the new edge's target is to the right of the existing target, it gets 'true'
+        and the existing edge is swapped to 'false'.
+        """
         nodes = [
             {"id": "decision_1", "type": "decision", "label": "Check", "x": 100, "y": 0, "color": "amber",
              "condition": {"input_id": "var_value_number", "comparator": "gt", "value": 10}},
@@ -62,7 +66,7 @@ class TestDecisionEdgeLabelEnforcement:
             {"id": "end_false", "type": "end", "label": "False Path", "x": 150, "y": 100, "color": "green"},
         ]
         edges = [
-            # Already has a 'true' edge
+            # Already has a 'true' edge pointing to left node (x=50)
             {"id": "decision_1->end_true", "from": "decision_1", "to": "end_true", "label": "true"},
         ]
         variables = [{"id": "var_value_number", "name": "value", "type": "number", "source": "input"}]
@@ -71,7 +75,8 @@ class TestDecisionEdgeLabelEnforcement:
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
         )
         
-        # Add second edge without label
+        # Add second edge to right node (x=150) without label
+        # Position-based: right=true, so new edge gets "true" and existing gets swapped to "false"
         result = self.add_connection_tool.execute({
             "workflow_id": workflow_id,
             "from_node_id": "decision_1",
@@ -80,7 +85,8 @@ class TestDecisionEdgeLabelEnforcement:
         }, session_state=session)
         
         assert result["success"] is True
-        assert result["edge"]["label"] == "false"
+        # New edge to right target gets "true" (position-based: right = true)
+        assert result["edge"]["label"] == "true"
 
     def test_add_connection_rejects_invalid_decision_edge_label(self, workflow_store, test_user_id):
         """When providing invalid label for decision edge, should reject."""

@@ -519,6 +519,57 @@ def register_routes(
 
         return jsonify({"message": "Workflow deleted successfully"}), 200
 
+    @app.patch("/api/workflows/<workflow_id>")
+    def patch_workflow(workflow_id: str) -> Any:
+        """Incrementally update a workflow without changing draft status.
+        
+        Use this for UI-triggered changes (edge labels, node positions, etc.)
+        that should be persisted but shouldn't mark the workflow as "saved".
+        
+        Unlike PUT, this preserves is_draft status.
+        """
+        user_id = g.auth_user.id
+        payload = request.get_json(force=True, silent=True) or {}
+
+        # Check workflow exists and belongs to user
+        existing = workflow_store.get_workflow(workflow_id, user_id)
+        if not existing:
+            return jsonify({"error": "Workflow not found or unauthorized"}), 404
+
+        # Build update kwargs - only include provided fields
+        update_kwargs: Dict[str, Any] = {}
+        
+        if "nodes" in payload:
+            update_kwargs["nodes"] = payload["nodes"]
+        if "edges" in payload:
+            update_kwargs["edges"] = payload["edges"]
+        if "variables" in payload or "inputs" in payload:
+            update_kwargs["inputs"] = payload.get("variables") or payload.get("inputs")
+        
+        # If nothing to update, return success immediately
+        if not update_kwargs:
+            return jsonify({"message": "No changes to apply"}), 200
+        
+        # Recompute tree if nodes/edges changed
+        nodes = update_kwargs.get("nodes") or existing.nodes
+        edges = update_kwargs.get("edges") or existing.edges
+        update_kwargs["tree"] = tree_from_flowchart(nodes, edges)
+        
+        # Attempt the update (preserves is_draft by not passing it)
+        try:
+            success = workflow_store.update_workflow(workflow_id, user_id, **update_kwargs)
+            if not success:
+                return jsonify({"error": "Failed to update workflow"}), 500
+        except Exception as e:
+            logger.exception("PATCH workflow failed: %s", e)
+            return jsonify({"error": f"Database error: {e}"}), 500
+
+        return jsonify({
+            "workflow_id": workflow_id,
+            "message": "Workflow updated successfully",
+            "updated_fields": list(update_kwargs.keys()),
+        }), 200
+
     @app.put("/api/workflows/<workflow_id>")
     def update_workflow(workflow_id: str) -> Any:
         """Update an existing workflow.

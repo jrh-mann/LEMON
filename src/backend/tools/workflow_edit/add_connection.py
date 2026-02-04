@@ -97,17 +97,56 @@ class AddConnectionTool(Tool):
                         "error_code": "DUPLICATE_EDGE_LABEL",
                     }
             else:
-                # Auto-assign "true" for first edge, "false" for second
-                if "true" not in existing_labels:
-                    label = "true"
-                elif "false" not in existing_labels:
-                    label = "false"
-                else:
+                # Auto-assign label based on target node position relative to existing sibling
+                # Convention: left target = false, right target = true
+                
+                # If both labels are already taken, reject (max 2 branches)
+                if "true" in existing_labels and "false" in existing_labels:
                     return {
                         "success": False,
                         "error": f"Decision node '{source_node.get('label', from_id)}' already has both true and false branches",
                         "error_code": "MAX_BRANCHES_REACHED",
                     }
+                
+                # If this is the first edge, we can't compare positions yet - use "true" as default
+                if not existing_edges_from_decision:
+                    label = "true"
+                else:
+                    # Second edge - compare target node x positions
+                    target_node = next((n for n in nodes if n.get("id") == to_id), None)
+                    
+                    # Get the existing edge's target node
+                    existing_edge = existing_edges_from_decision[0]
+                    existing_target_id = existing_edge.get("to") or existing_edge.get("target")
+                    existing_target_node = next((n for n in nodes if n.get("id") == existing_target_id), None)
+                    
+                    if target_node and existing_target_node:
+                        target_x = target_node.get("x", 0)
+                        existing_x = existing_target_node.get("x", 0)
+                        
+                        # Left (smaller x) = false, Right (larger x) = true
+                        if target_x < existing_x:
+                            # New target is to the left of existing
+                            label = "false"
+                        else:
+                            # New target is to the right of existing
+                            label = "true"
+                        
+                        # Check if this conflicts with existing label, swap if needed
+                        existing_label = existing_edge.get("label", "").lower()
+                        if label == existing_label:
+                            # Swap the existing edge's label to maintain consistency
+                            swapped_label = "false" if existing_label == "true" else "true"
+                            for e in edges:
+                                if (e.get("from") or e.get("source")) == from_id and (e.get("to") or e.get("target")) == existing_target_id:
+                                    e["label"] = swapped_label
+                                    break
+                    else:
+                        # Fallback: assign remaining label
+                        if "true" not in existing_labels:
+                            label = "true"
+                        else:
+                            label = "false"
         
         edge_id = f"{from_id}->{to_id}"
 

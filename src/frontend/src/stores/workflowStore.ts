@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message } from '../types'
 import { useChatStore } from './chatStore'
+import { patchWorkflow } from '../api/workflows'
 
 // Execution state for visual workflow execution
 export interface ExecutionState {
@@ -93,6 +94,8 @@ interface WorkflowState {
   // Edge operations
   addEdge: (edge: FlowEdge) => void
   updateEdgeLabel: (from: string, to: string, label: string) => void
+  swapDecisionEdgeLabels: (decisionNodeId: string) => void
+  setDefaultDecisionEdgeLabels: (decisionNodeId: string) => void
   deleteEdge: (from: string, to: string) => void
   deleteEdgeById: (edgeId: string) => void
   selectEdge: (edge: { from: string; to: string } | null) => void
@@ -176,6 +179,19 @@ const createInitialTab = (): WorkflowTab => {
 }
 
 const initialTab = createInitialTab()
+
+// Helper to sync edges to backend (fire-and-forget, logs errors)
+// This persists UI-triggered edge changes without blocking the UI
+const syncEdgesToBackend = async (workflowId: string | undefined, edges: FlowEdge[]) => {
+  if (!workflowId) return
+  try {
+    await patchWorkflow(workflowId, { edges })
+    console.log('[WorkflowStore] Synced edges to backend')
+  } catch (error) {
+    // Log but don't throw - UI updates should not be blocked by backend issues
+    console.error('[WorkflowStore] Failed to sync edges to backend:', error)
+  }
+}
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Initial state
@@ -562,13 +578,102 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   updateEdgeLabel: (from, to, label) => {
     const state = get()
+    const sourceNode = state.flowchart.nodes.find((n) => n.id === from)
+    const isDecisionEdge = sourceNode?.type === 'decision'
+    
+    state.pushHistory()
+    
+    // Compute new edges before setting state (for backend sync)
+    let newEdges: FlowEdge[]
+    
+    // For decision edges, auto-swap sibling edge labels to maintain true/false pair
+    if (isDecisionEdge && (label === 'true' || label === 'false')) {
+      const siblingLabel = label === 'true' ? 'false' : 'true'
+      newEdges = state.flowchart.edges.map((e) => {
+        if (e.from === from && e.to === to) {
+          // Update the target edge
+          return { ...e, label }
+        } else if (e.from === from && e.to !== to) {
+          // Auto-swap sibling edge to opposite label
+          return { ...e, label: siblingLabel }
+        }
+        return e
+      })
+    } else {
+      // Non-decision edge or clearing label - just update this edge
+      newEdges = state.flowchart.edges.map((e) =>
+        e.from === from && e.to === to ? { ...e, label } : e
+      )
+    }
+    
+    // Update local state immediately
+    set({
+      flowchart: {
+        ...state.flowchart,
+        edges: newEdges,
+      },
+    })
+    
+    // Sync to backend asynchronously (fire-and-forget)
+    const workflowId = state.currentWorkflow?.id
+    syncEdgesToBackend(workflowId, newEdges)
+  },
+
+  // Swap edge labels for decision nodes (used for batch operations)
+  swapDecisionEdgeLabels: (decisionNodeId: string) => {
+    const state = get()
+    const edgesFromDecision = state.flowchart.edges.filter((e) => e.from === decisionNodeId)
+    if (edgesFromDecision.length !== 2) return // Only swap if exactly 2 edges
+    
     state.pushHistory()
     set({
       flowchart: {
         ...state.flowchart,
-        edges: state.flowchart.edges.map((e) =>
-          e.from === from && e.to === to ? { ...e, label } : e
-        ),
+        edges: state.flowchart.edges.map((e) => {
+          if (e.from === decisionNodeId) {
+            const currentLabel = e.label?.toLowerCase()
+            if (currentLabel === 'true') return { ...e, label: 'false' }
+            if (currentLabel === 'false') return { ...e, label: 'true' }
+          }
+          return e
+        }),
+      },
+    })
+  },
+
+  // Set default edge labels for decision nodes based on target node positions
+  // Left child = false, Right child = true
+  setDefaultDecisionEdgeLabels: (decisionNodeId: string) => {
+    const state = get()
+    const decisionNode = state.flowchart.nodes.find((n) => n.id === decisionNodeId)
+    if (!decisionNode || decisionNode.type !== 'decision') return
+
+    const edgesFromDecision = state.flowchart.edges.filter((e) => e.from === decisionNodeId)
+    if (edgesFromDecision.length !== 2) return // Only set defaults if exactly 2 edges
+
+    // Get target nodes and sort by x position (left to right)
+    const targetNodes = edgesFromDecision
+      .map((e) => ({
+        edge: e,
+        targetNode: state.flowchart.nodes.find((n) => n.id === e.to),
+      }))
+      .filter((item) => item.targetNode !== undefined)
+      .sort((a, b) => (a.targetNode!.x - b.targetNode!.x))
+
+    if (targetNodes.length !== 2) return
+
+    state.pushHistory()
+    set({
+      flowchart: {
+        ...state.flowchart,
+        edges: state.flowchart.edges.map((e) => {
+          if (e.from === decisionNodeId) {
+            // Left child (smaller x) = false, Right child (larger x) = true
+            if (e.to === targetNodes[0].edge.to) return { ...e, label: 'false' }
+            if (e.to === targetNodes[1].edge.to) return { ...e, label: 'true' }
+          }
+          return e
+        }),
       },
     })
   },
