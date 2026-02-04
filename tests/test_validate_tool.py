@@ -96,8 +96,8 @@ class TestValidateWorkflowTool:
             {"id": "e4", "from": "n3", "to": "n5", "label": "false"},
         ]
         variables = [
-            {"id": "var_height_float", "name": "Height", "type": "float", "source": "input"},
-            {"id": "var_sub_bmi_float", "name": "BMI", "type": "float", "source": "subprocess",
+            {"id": "var_height_float", "name": "Height", "type": "number", "source": "input"},
+            {"id": "var_sub_bmi_float", "name": "BMI", "type": "number", "source": "subprocess",
              "source_node_id": "n2", "subworkflow_id": "some_workflow"},
         ]
         workflow_id, session = make_session_with_workflow(
@@ -139,7 +139,7 @@ class TestEditToolsPassVariables:
             {"id": "e2", "from": "n2", "to": "n3", "label": ""},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "subprocess"},
+            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
@@ -175,7 +175,7 @@ class TestEditToolsPassVariables:
             {"id": "e2", "from": "n2", "to": "n3", "label": ""},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "subprocess"},
+            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
@@ -206,7 +206,7 @@ class TestEditToolsPassVariables:
              "output_template": "BMI is {BMI}"},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "subprocess"},
+            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, variables=variables
@@ -240,7 +240,7 @@ class TestEditToolsPassVariables:
             {"id": "e2", "from": "n2", "to": "n3", "label": ""},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "subprocess"},
+            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables

@@ -19,15 +19,15 @@ class TestVariableNameResolver:
 
     def test_simple_name_conversion(self):
         variables = [
-            {"id": "var_patient_age_int", "name": "Patient Age", "type": "int"},
+            {"id": "var_patient_age_int", "name": "Patient Age", "type": "number"},
         ]
         resolver = VariableNameResolver(variables)
         assert resolver.resolve("var_patient_age_int") == "patient_age"
 
     def test_multiple_variables(self):
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int"},
-            {"id": "var_income_float", "name": "Income", "type": "float"},
+            {"id": "var_age_int", "name": "Age", "type": "number"},
+            {"id": "var_income_float", "name": "Income", "type": "number"},
             {"id": "var_active_bool", "name": "Active", "type": "bool"},
         ]
         resolver = VariableNameResolver(variables)
@@ -37,8 +37,8 @@ class TestVariableNameResolver:
 
     def test_name_conflict_resolution(self):
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int"},
-            {"id": "var_age_float", "name": "Age", "type": "float"},
+            {"id": "var_age_int", "name": "Age", "type": "number"},
+            {"id": "var_age_float", "name": "Age", "type": "number"},
         ]
         resolver = VariableNameResolver(variables)
         # Second 'age' gets a suffix
@@ -74,18 +74,18 @@ class TestVariableNameResolver:
 
     def test_get_type(self):
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int"},
-            {"id": "var_price_float", "name": "Price", "type": "float"},
+            {"id": "var_age_int", "name": "Age", "type": "number"},
+            {"id": "var_price_float", "name": "Price", "type": "number"},
             {"id": "var_name_string", "name": "Name", "type": "string"},
         ]
         resolver = VariableNameResolver(variables)
-        assert resolver.get_type("var_age_int") == "int"
+        assert resolver.get_type("var_age_int") == "float"
         assert resolver.get_type("var_price_float") == "float"
         assert resolver.get_type("var_name_string") == "str"
 
     def test_get_friendly_name(self):
         variables = [
-            {"id": "var_age_int", "name": "Patient Age", "type": "int"},
+            {"id": "var_age_int", "name": "Patient Age", "type": "number"},
         ]
         resolver = VariableNameResolver(variables)
         assert resolver.get_friendly_name("var_age_int") == "Patient Age"
@@ -100,10 +100,10 @@ class TestConditionCompiler:
     @pytest.fixture
     def resolver(self):
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int"},
+            {"id": "var_age_int", "name": "Age", "type": "number"},
             {"id": "var_name_string", "name": "Name", "type": "string"},
             {"id": "var_active_bool", "name": "Active", "type": "bool"},
-            {"id": "var_price_float", "name": "Price", "type": "float"},
+            {"id": "var_price_float", "name": "Price", "type": "number"},
         ]
         return VariableNameResolver(variables)
 
@@ -243,14 +243,14 @@ class TestPythonCodeGenerator:
             }
         }
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int", "source": "input"},
+            {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
         ]
 
         generator = PythonCodeGenerator()
         result = generator.compile(tree, variables, workflow_name="Age Check")
 
         assert result.success
-        assert "def age_check(age: int)" in result.code
+        assert "def age_check(age: float)" in result.code
         assert "if age >= 18:" in result.code
         # Code uses single quotes for string literals
         assert "return 'Adult'" in result.code
@@ -311,15 +311,15 @@ class TestPythonCodeGenerator:
             }
         }
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int", "source": "input"},
-            {"id": "var_income_float", "name": "Income", "type": "float", "source": "input"},
+            {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
+            {"id": "var_income_float", "name": "Income", "type": "number", "source": "input"},
         ]
 
         generator = PythonCodeGenerator()
         result = generator.compile(tree, variables, workflow_name="Loan Approval")
 
         assert result.success
-        assert "def loan_approval(age: int, income: float)" in result.code
+        assert "def loan_approval(age: float, income: float)" in result.code
         assert "if age >= 18:" in result.code
         assert "if income >= 50000:" in result.code
         # Check indentation - nested if should be indented more
@@ -345,7 +345,7 @@ class TestPythonCodeGenerator:
             }
         }
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"},
+            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "input"},
         ]
 
         generator = PythonCodeGenerator()
@@ -382,7 +382,7 @@ class TestPythonCodeGenerator:
             }
         }
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int", "source": "input"},
+            {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
         ]
 
         generator = PythonCodeGenerator()
@@ -390,7 +390,7 @@ class TestPythonCodeGenerator:
 
         assert result.success
         assert 'if __name__ == "__main__":' in result.code
-        assert "result = workflow(0)" in result.code
+        assert "result = workflow(0.0)" in result.code
 
     def test_subprocess_warning(self):
         """Test that subprocess nodes generate warnings."""
@@ -459,7 +459,7 @@ class TestCompileWorkflowToPython:
             {"from": "n2", "to": "n4", "label": "false"},
         ]
         variables = [
-            {"id": "var_age_int", "name": "Age", "type": "int", "source": "input"},
+            {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
         ]
 
         result = compile_workflow_to_python(
@@ -470,7 +470,7 @@ class TestCompileWorkflowToPython:
         )
 
         assert result.success
-        assert "def test_workflow(age: int)" in result.code
+        assert "def test_workflow(age: float)" in result.code
         assert "if age >= 18:" in result.code
 
     def test_no_start_node(self):

@@ -34,7 +34,7 @@ class TestModifyNodeValidation:
             {"from": "d1", "to": "y", "label": "true"},
             {"from": "d1", "to": "n", "label": "false"},
         ]
-        variables = [{"name": "Age", "type": "int", "id": "input_age", "source": "input"}]
+        variables = [{"name": "Age", "type": "number", "id": "input_age", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
         )
@@ -67,7 +67,7 @@ class TestModifyNodeValidation:
             {"from": "d1", "to": "y", "label": "true"},
             {"from": "d1", "to": "n", "label": "false"},
         ]
-        variables = [{"name": "Age", "type": "int", "id": "input_age", "source": "input"}]
+        variables = [{"name": "Age", "type": "number", "id": "input_age", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
         )
@@ -110,7 +110,7 @@ class TestModifyNodeValidation:
             {"from": "d1", "to": "y", "label": "true"},
             {"from": "d1", "to": "n", "label": "false"},
         ]
-        variables = [{"name": "Age", "type": "int", "id": "input_age_int", "source": "input"}]
+        variables = [{"name": "Age", "type": "number", "id": "input_age_int", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
         )

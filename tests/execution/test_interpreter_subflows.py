@@ -55,14 +55,14 @@ class MockWorkflow:
 # =============================================================================
 
 # Subworkflow: Credit Score Calculator
-# Takes Income and Age, returns a credit score (int)
+# Takes Income and Age, returns a credit score (number)
 CREDIT_SCORE_WORKFLOW = MockWorkflow(
     name="Credit Score Calculator",
     inputs=[
-        {"id": "input_income_int", "name": "Income", "type": "int", "range": {"min": 0, "max": 1000000}},
-        {"id": "input_age_int", "name": "Age", "type": "int", "range": {"min": 18, "max": 120}},
+        {"id": "input_income_number", "name": "Income", "type": "number", "range": {"min": 0, "max": 1000000}},
+        {"id": "input_age_number", "name": "Age", "type": "number", "range": {"min": 18, "max": 120}},
     ],
-    outputs=[{"name": "CreditScore", "type": "int"}],
+    outputs=[{"name": "CreditScore", "type": "number"}],
     tree={
         "start": {
             "id": "start",
@@ -73,28 +73,28 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
                     "id": "income_check",
                     "type": "decision",
                     "label": "Income >= 50000",
-                    "condition": {
-                        "input_id": "input_income_int",
-                        "comparator": "gte",
-                        "value": 50000
-                    },
+                            "condition": {
+                                "input_id": "input_income_number",
+                                "comparator": "gte",
+                                "value": 50000
+                            },
                     "children": [
                         {
                             "id": "age_check_high",
                             "type": "decision",
                             "label": "Age >= 30",
                             "edge_label": "Yes",
-                            "condition": {
-                                "input_id": "input_age_int",
-                                "comparator": "gte",
-                                "value": 30
-                            },
+                                    "condition": {
+                                        "input_id": "input_age_number",
+                                        "comparator": "gte",
+                                        "value": 30
+                                    },
                             "children": [
                                 {
                                     "id": "out_excellent",
                                     "type": "output",
                                     "label": "800",
-                                    "output_type": "int",
+                                    "output_type": "number",
                                     "output_value": 800,
                                     "edge_label": "Yes",
                                     "children": []
@@ -103,7 +103,7 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
                                     "id": "out_good",
                                     "type": "output",
                                     "label": "700",
-                                    "output_type": "int",
+                                    "output_type": "number",
                                     "output_value": 700,
                                     "edge_label": "No",
                                     "children": []
@@ -130,9 +130,9 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
 # Calls Credit Score subworkflow, then uses output in decision
 LOAN_APPROVAL_WORKFLOW = {
     "inputs": [
-        {"id": "input_applicant_income_int", "name": "ApplicantIncome", "type": "int", "range": {"min": 0, "max": 1000000}},
-        {"id": "input_applicant_age_int", "name": "ApplicantAge", "type": "int", "range": {"min": 18, "max": 120}},
-        {"id": "input_loan_amount_int", "name": "LoanAmount", "type": "int", "range": {"min": 1000, "max": 1000000}},
+        {"id": "input_applicant_income_int", "name": "ApplicantIncome", "type": "number", "range": {"min": 0, "max": 1000000}},
+        {"id": "input_applicant_age_int", "name": "ApplicantAge", "type": "number", "range": {"min": 18, "max": 120}},
+        {"id": "input_loan_amount_int", "name": "LoanAmount", "type": "number", "range": {"min": 1000, "max": 1000000}},
     ],
     "outputs": [
         {"name": "Approved"},
@@ -212,7 +212,7 @@ LOAN_APPROVAL_WORKFLOW = {
 # Workflow that calls itself (direct cycle)
 SELF_CALLING_WORKFLOW = MockWorkflow(
     name="Self Caller",
-    inputs=[{"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}],
+    inputs=[{"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}],
     outputs=[{"name": "Result"}],
     tree={
         "start": {
@@ -239,7 +239,7 @@ SELF_CALLING_WORKFLOW = MockWorkflow(
 # Workflow A calls Workflow B, which calls Workflow A (indirect cycle)
 WORKFLOW_A = MockWorkflow(
     name="Workflow A",
-    inputs=[{"id": "input_val_int", "name": "Val", "type": "int", "range": {"min": 0, "max": 100}}],
+    inputs=[{"id": "input_val_int", "name": "Val", "type": "number", "range": {"min": 0, "max": 100}}],
     outputs=[{"name": "ResultA"}],
     tree={
         "start": {
@@ -265,7 +265,7 @@ WORKFLOW_A = MockWorkflow(
 
 WORKFLOW_B = MockWorkflow(
     name="Workflow B",
-    inputs=[{"id": "input_input_int", "name": "Input", "type": "int", "range": {"min": 0, "max": 100}}],
+    inputs=[{"id": "input_input_int", "name": "Input", "type": "number", "range": {"min": 0, "max": 100}}],
     outputs=[{"name": "ResultB"}],
     tree={
         "start": {
@@ -292,7 +292,7 @@ WORKFLOW_B = MockWorkflow(
 # Simple workflow for nesting tests (no subflows)
 SIMPLE_DOUBLER = MockWorkflow(
     name="Doubler",
-    inputs=[{"id": "input_n_int", "name": "N", "type": "int", "range": {"min": 0, "max": 1000}}],
+    inputs=[{"id": "input_n_int", "name": "N", "type": "number", "range": {"min": 0, "max": 1000}}],
     outputs=[{"name": "Doubled"}],
     tree={
         "start": {
@@ -429,17 +429,17 @@ class TestSubflowInputMapping:
         
         # Check mapped inputs in subflow result
         subflow_result = result.subflow_results[0]
-        assert "input_income_int" in subflow_result["sub_inputs"]
-        assert "input_age_int" in subflow_result["sub_inputs"]
-        assert subflow_result["sub_inputs"]["input_income_int"] == 60000
-        assert subflow_result["sub_inputs"]["input_age_int"] == 35
+        assert "input_income_number" in subflow_result["sub_inputs"]
+        assert "input_age_number" in subflow_result["sub_inputs"]
+        assert subflow_result["sub_inputs"]["input_income_number"] == 60000
+        assert subflow_result["sub_inputs"]["input_age_number"] == 35
     
     def test_missing_parent_input_in_mapping_fails(self):
         """Test error when input_mapping references non-existent parent input."""
         # Workflow with invalid input mapping
         bad_workflow = {
             "inputs": [
-                {"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}
+                {"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}
             ],
             "outputs": [{"name": "Result"}],
             "tree": {
@@ -533,7 +533,7 @@ class TestSubflowErrorPropagation:
         # Subworkflow that will fail with bad input
         failing_subworkflow = MockWorkflow(
             name="Failing Workflow",
-            inputs=[{"id": "input_val_int", "name": "Val", "type": "int", "range": {"min": 0, "max": 10}}],
+            inputs=[{"id": "input_val_int", "name": "Val", "type": "number", "range": {"min": 0, "max": 10}}],
             outputs=[{"name": "Result"}],
             tree={
                 "start": {
@@ -548,7 +548,7 @@ class TestSubflowErrorPropagation:
         
         parent_workflow = {
             "inputs": [
-                {"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 1000}}
+                {"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 1000}}
             ],
             "outputs": [{"name": "Result"}],
             "tree": {
@@ -595,7 +595,7 @@ class TestMissingSubflowConfiguration:
     def test_missing_subworkflow_id_fails(self):
         """Test error when subprocess node has no subworkflow_id."""
         bad_workflow = {
-            "inputs": [{"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}],
+            "inputs": [{"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}],
             "outputs": [{"name": "Result"}],
             "tree": {
                 "start": {
@@ -634,7 +634,7 @@ class TestMissingSubflowConfiguration:
     def test_missing_output_variable_fails(self):
         """Test error when subprocess node has no output_variable."""
         bad_workflow = {
-            "inputs": [{"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}],
+            "inputs": [{"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}],
             "outputs": [{"name": "Result"}],
             "tree": {
                 "start": {
@@ -673,7 +673,7 @@ class TestMissingSubflowConfiguration:
     def test_subworkflow_not_found_fails(self):
         """Test error when referenced subworkflow doesn't exist."""
         workflow = {
-            "inputs": [{"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}],
+            "inputs": [{"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}],
             "outputs": [{"name": "Result"}],
             "tree": {
                 "start": {
@@ -713,7 +713,7 @@ class TestMissingSubflowConfiguration:
     def test_missing_workflow_store_fails(self):
         """Test error when workflow_store is not provided."""
         workflow = {
-            "inputs": [{"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}],
+            "inputs": [{"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}],
             "outputs": [{"name": "Result"}],
             "tree": {
                 "start": {
@@ -841,7 +841,7 @@ class TestSubflowWithNoChildren:
     def test_subprocess_without_children_fails(self):
         """Test that subprocess node must have children to continue flow."""
         workflow = {
-            "inputs": [{"id": "input_x_int", "name": "X", "type": "int", "range": {"min": 0, "max": 100}}],
+            "inputs": [{"id": "input_x_int", "name": "X", "type": "number", "range": {"min": 0, "max": 100}}],
             "outputs": [{"name": "Result"}],
             "tree": {
                 "start": {

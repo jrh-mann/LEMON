@@ -156,7 +156,7 @@ class TestAddNodeTool:
     def test_add_decision_without_branches_succeeds_lenient(self, workflow_store, test_user_id):
         """Should succeed in lenient mode even without branches"""
         nodes = [{"id": "n1", "type": "start", "label": "Input", "x": 0, "y": 0, "color": "teal"}]
-        variables = [{"id": "input_age_int", "name": "Age", "type": "int"}]
+        variables = [{"id": "input_age_int", "name": "Age", "type": "number"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, variables=variables
         )
@@ -365,7 +365,7 @@ class TestAddConnectionTool:
             {"id": "n3", "type": "end", "label": "No", "x": 100, "y": 100, "color": "green"},
         ]
         edges = [{"id": "n1->n3", "from": "n1", "to": "n3", "label": "false"}]
-        variables = [{"id": "var_test", "name": "test", "type": "int"}]
+        variables = [{"id": "var_test", "name": "test", "type": "number"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
         )
@@ -461,7 +461,7 @@ class TestDeleteConnectionTool:
             {"id": "n1->n2", "from": "n1", "to": "n2", "label": "true"},
             {"id": "n1->n3", "from": "n1", "to": "n3", "label": "false"},
         ]
-        variables = [{"id": "var_test", "name": "test", "type": "int"}]
+        variables = [{"id": "var_test", "name": "test", "type": "number"}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
         )

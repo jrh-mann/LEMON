@@ -182,7 +182,7 @@ class TestWorkflowValidator:
                 {"id": "decision->yes", "from": "decision", "to": "yes", "label": "true"},
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
-            "variables": [{"id": "var_test", "name": "test", "type": "int"}]
+            "variables": [{"id": "var_test", "name": "test", "type": "number"}]
         }
         is_valid, errors = self.validator.validate(workflow)
         assert is_valid
@@ -295,7 +295,7 @@ class TestWorkflowValidator:
                 {"id": "n3->n5", "from": "n3", "to": "n5", "label": "false"},
                 {"id": "n4->n6", "from": "n4", "to": "n6", "label": ""},
             ],
-            "variables": [{"id": "var_test", "name": "test", "type": "int"}]
+            "variables": [{"id": "var_test", "name": "test", "type": "number"}]
         }
         is_valid, errors = self.validator.validate(workflow)
         assert is_valid
@@ -431,7 +431,7 @@ class TestOutputTypeValidation:
                 {"id": "decision->end1", "from": "decision", "to": "end1", "label": "true"},
                 {"id": "decision->end2", "from": "decision", "to": "end2", "label": "false"},
             ],
-            "variables": [{"id": "var_x", "name": "x", "type": "int"}]
+            "variables": [{"id": "var_x", "name": "x", "type": "number"}]
         }
         is_valid, errors = self.validator.validate(workflow)
         assert not is_valid
@@ -461,7 +461,7 @@ class TestOutputTypeValidation:
                 {"id": "decision->end1", "from": "decision", "to": "end1", "label": "true"},
                 {"id": "decision->end2", "from": "decision", "to": "end2", "label": "false"},
             ],
-            "variables": [{"id": "var_x", "name": "x", "type": "int"}]
+            "variables": [{"id": "var_x", "name": "x", "type": "number"}]
         }
         is_valid, errors = self.validator.validate(workflow)
         assert is_valid

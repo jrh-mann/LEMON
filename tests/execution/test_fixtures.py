@@ -129,7 +129,7 @@ class TestFixtureValidity:
             assert "id" in inp
             assert "name" in inp
             assert "type" in inp
-            assert inp["type"] in ["int", "float", "bool", "string", "enum", "date"]
+            assert inp["type"] in ["number", "bool", "string", "enum", "date"]
 
     @pytest.mark.parametrize("workflow", [
         SIMPLE_AGE_WORKFLOW,
@@ -221,12 +221,9 @@ class TestFixtureTestCases:
             for input_id, value in inputs.items():
                 expected_type = input_types[input_id]
 
-                if expected_type == "int":
-                    assert isinstance(value, int), \
-                        f"{name} - {description}: {input_id} should be int, got {type(value)}"
-                elif expected_type == "float":
+                if expected_type == "number":
                     assert isinstance(value, (int, float)), \
-                        f"{name} - {description}: {input_id} should be float, got {type(value)}"
+                        f"{name} - {description}: {input_id} should be number, got {type(value)}"
                 elif expected_type == "bool":
                     assert isinstance(value, bool), \
                         f"{name} - {description}: {input_id} should be bool, got {type(value)}"
@@ -256,7 +253,7 @@ class TestFixtureTestCases:
         input_ranges = {
             inp["id"]: inp.get("range")
             for inp in workflow["inputs"]
-            if inp["type"] in ("int", "float")
+            if inp["type"] == "number"
         }
 
         for inputs, _, description in test_cases:

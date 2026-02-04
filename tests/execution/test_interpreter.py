@@ -122,7 +122,7 @@ class TestErrorHandling:
         )
         result = interpreter.execute({"input_age_int": "not a number"})
         assert result.success is False
-        assert "must be int" in result.error
+        assert "must be number" in result.error
 
     def test_out_of_range_value(self):
         """Test error when input value out of range"""
@@ -295,8 +295,8 @@ class TestMultipleWorkflows:
 class TestInputValidation:
     """Test input schema validation before execution"""
 
-    def test_validate_int_type(self):
-        """Test validation of int type"""
+    def test_validate_number_type(self):
+        """Test validation of number type"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
             inputs=SIMPLE_AGE_WORKFLOW["inputs"],
@@ -304,21 +304,21 @@ class TestInputValidation:
         )
         result = interpreter.execute({"input_age_int": "25"})
         assert result.success is False
-        assert "must be int" in result.error
+        assert "must be number" in result.error
 
-    def test_validate_float_type(self):
-        """Test validation of float type"""
+    def test_validate_number_type_float(self):
+        """Test validation of number type (float values)"""
         interpreter = TreeInterpreter(
             tree=BMI_CLASSIFICATION_WORKFLOW["tree"],
             inputs=BMI_CLASSIFICATION_WORKFLOW["inputs"],
             outputs=BMI_CLASSIFICATION_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
-            "input_bmi_float": "not a float",
+            "input_bmi_float": "not a number",
             "input_athlete_bool": False
         })
         assert result.success is False
-        assert "must be float" in result.error
+        assert "must be number" in result.error
 
     def test_validate_bool_type(self):
         """Test validation of bool type"""

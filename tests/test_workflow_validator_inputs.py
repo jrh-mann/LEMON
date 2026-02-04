@@ -22,7 +22,7 @@ class TestWorkflowValidatorInputs:
         """Decision node with condition referencing registered variable should be valid."""
         workflow = {
             "variables": [
-                {"name": "Age", "type": "int", "id": "input_age"}
+                {"name": "Age", "type": "number", "id": "input_age"}
             ],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
@@ -55,7 +55,7 @@ class TestWorkflowValidatorInputs:
         """Decision node with condition referencing unregistered variable should fail."""
         workflow = {
             "variables": [
-                {"name": "Height", "type": "int", "id": "input_height"}
+                {"name": "Height", "type": "number", "id": "input_height"}
             ],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
@@ -88,7 +88,7 @@ class TestWorkflowValidatorInputs:
         """Multiple decision nodes with valid conditions referencing registered variables."""
         workflow = {
             "variables": [
-                {"name": "Age", "type": "int", "id": "input_age"},
+                {"name": "Age", "type": "number", "id": "input_age"},
                 {"name": "Smoker", "type": "bool", "id": "input_smoker"}
             ],
             "nodes": [
@@ -135,7 +135,7 @@ class TestWorkflowValidatorInputs:
         """Decision node without structured condition should fail validation."""
         workflow = {
             "variables": [
-                {"name": "Age", "type": "int", "id": "input_age"}
+                {"name": "Age", "type": "number", "id": "input_age"}
             ],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
@@ -157,7 +157,7 @@ class TestWorkflowValidatorInputs:
     def test_decision_with_invalid_condition_input_fails(self):
         """Decision node with structured condition referencing unknown input_id should fail."""
         workflow = {
-            "variables": [{"name": "Age", "type": "int", "id": "input_age_int"}],
+            "variables": [{"name": "Age", "type": "number", "id": "input_age_int"}],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {
@@ -188,7 +188,7 @@ class TestWorkflowValidatorInputs:
     def test_decision_with_descriptive_label_but_no_condition_fails(self):
         """Decision node with descriptive label but no condition field should fail."""
         workflow = {
-            "variables": [{"name": "Age", "type": "int", "id": "input_age_int"}],
+            "variables": [{"name": "Age", "type": "number", "id": "input_age_int"}],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 # No condition field - descriptive labels are no longer allowed without condition

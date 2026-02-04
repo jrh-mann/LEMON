@@ -95,7 +95,7 @@ class TestDecisionInputValidation:
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
             "variables": [
-                {"id": "var_age", "name": "age", "type": "int", "description": "Age in years"}
+                {"id": "var_age", "name": "age", "type": "number", "description": "Age in years"}
             ]
         }
 
@@ -129,7 +129,7 @@ class TestDecisionInputValidation:
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
             # Has a variable but NOT the one the condition references
-            "variables": [{"id": "var_bmi", "name": "BMI", "type": "float"}]
+            "variables": [{"id": "var_bmi", "name": "BMI", "type": "number"}]
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)
@@ -168,8 +168,8 @@ class TestDecisionInputValidation:
                 {"id": "d2->end2", "from": "d2", "to": "end2", "label": "false"},
             ],
             "variables": [
-                {"id": "var_age", "name": "age", "type": "int", "description": "Age in years"},
-                {"id": "var_height", "name": "height", "type": "int", "description": "Height in cm"}
+                {"id": "var_age", "name": "age", "type": "number", "description": "Age in years"},
+                {"id": "var_height", "name": "height", "type": "number", "description": "Height in cm"}
             ]
         }
 
@@ -230,7 +230,7 @@ class TestDecisionInputValidation:
                 {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
                 {"id": "decision->end", "from": "decision", "to": "end", "label": "true"},
             ],
-            "variables": [{"id": "var_age", "name": "age", "type": "int"}]
+            "variables": [{"id": "var_age", "name": "age", "type": "number"}]
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)

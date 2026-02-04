@@ -61,13 +61,13 @@ class TestModifyWorkflowVariableTool:
         
         # Check the variable was updated
         var = result["variable"]
-        assert var["type"] == "float"
-        assert var["id"] == "var_sub_bmi_float"  # ID should change with type
+        assert var["type"] == "number"
+        assert var["id"] == "var_sub_bmi_number"  # ID should change with type
         assert var["source"] == "subprocess"  # Source should remain unchanged
         
         # Check warning about ID change
         assert result["old_id"] == "var_sub_bmi_string"
-        assert result["new_id"] == "var_sub_bmi_float"
+        assert result["new_id"] == "var_sub_bmi_number"
         assert "warning" in result
 
     def test_change_subprocess_variable_type_to_integer(
@@ -85,8 +85,8 @@ class TestModifyWorkflowVariableTool:
 
         assert result["success"] is True
         var = result["variable"]
-        assert var["type"] == "int"
-        assert var["id"] == "var_sub_bmi_int"
+        assert var["type"] == "number"
+        assert var["id"] == "var_sub_bmi_number"
 
     def test_change_input_variable_type(
         self, tool, workflow_store, test_user_id, test_variables
@@ -103,8 +103,8 @@ class TestModifyWorkflowVariableTool:
 
         assert result["success"] is True
         var = result["variable"]
-        assert var["type"] == "float"
-        assert var["id"] == "var_patient_age_float"
+        assert var["type"] == "number"
+        assert var["id"] == "var_patient_age_number"
         assert var["source"] == "input"
 
     def test_rename_variable(self, tool, workflow_store, test_user_id, test_variables):
@@ -279,5 +279,5 @@ class TestModifyWorkflowVariableTool:
         record = workflow_store.get_workflow(workflow_id, test_user_id)
         bmi_var = next((v for v in record.inputs if v.get("name") == "BMI"), None)
         assert bmi_var is not None
-        assert bmi_var["type"] == "int"
-        assert bmi_var["id"] == "var_sub_bmi_int"
+        assert bmi_var["type"] == "number"
+        assert bmi_var["id"] == "var_sub_bmi_number"

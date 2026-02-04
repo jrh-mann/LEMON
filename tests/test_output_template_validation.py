@@ -25,7 +25,7 @@ class TestOutputTemplateValidation:
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
             "variables": [
-                {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
+                {"id": "input_bmi_float", "name": "BMI", "type": "number", "description": "Body Mass Index"}
             ]
         }
 
@@ -44,7 +44,7 @@ class TestOutputTemplateValidation:
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
             "variables": [
-                {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
+                {"id": "input_bmi_float", "name": "BMI", "type": "number", "description": "Body Mass Index"}
             ]
         }
 
@@ -73,7 +73,7 @@ class TestOutputTemplateValidation:
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
             "variables": [
-                {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
+                {"id": "input_bmi_float", "name": "BMI", "type": "number", "description": "Body Mass Index"}
                 # "Name" is NOT registered
             ]
         }
@@ -113,7 +113,7 @@ class TestOutputTemplateValidation:
                 {"id": "start->end", "from": "start", "to": "end", "label": ""},
             ],
             "variables": [
-                {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
+                {"id": "input_bmi_float", "name": "BMI", "type": "number", "description": "Body Mass Index"}
             ]
         }
 
@@ -164,7 +164,7 @@ class TestOutputTemplateValidation:
                 {"id": "subprocess->end", "from": "subprocess_calc", "to": "end", "label": ""},
             ],
             "variables": [
-                {"id": "var_height_float", "name": "Height", "type": "float"},
+                {"id": "var_height_float", "name": "Height", "type": "number"},
                 # BMI is NOT in variables list - it's derived from subprocess output_variable
             ]
         }
@@ -242,7 +242,7 @@ class TestComparatorValidation:
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
             "variables": [
-                {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
+                {"id": "input_bmi_float", "name": "BMI", "type": "number", "description": "Body Mass Index"}
             ]
         }
 
@@ -250,8 +250,8 @@ class TestComparatorValidation:
         comparator_errors = [e for e in errors if e.code == "INVALID_COMPARATOR_FOR_TYPE"]
         assert len(comparator_errors) == 0
 
-    def test_invalid_comparator_for_float_type(self):
-        """Using boolean comparator on float type should fail."""
+    def test_invalid_comparator_for_number_type(self):
+        """Using boolean comparator on number type should fail."""
         workflow = {
             "nodes": [
                 {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
@@ -261,7 +261,7 @@ class TestComparatorValidation:
                     "label": "Check BMI",
                     "condition": {
                         "input_id": "input_bmi_float",
-                        "comparator": "is_true",  # Invalid for float!
+                        "comparator": "is_true",  # Invalid for number!
                         "value": None
                     },
                     "x": 100, 
@@ -276,7 +276,7 @@ class TestComparatorValidation:
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
             "variables": [
-                {"id": "input_bmi_float", "name": "BMI", "type": "float", "description": "Body Mass Index"}
+                {"id": "input_bmi_float", "name": "BMI", "type": "number", "description": "Body Mass Index"}
             ]
         }
 
@@ -285,7 +285,7 @@ class TestComparatorValidation:
         comparator_errors = [e for e in errors if e.code == "INVALID_COMPARATOR_FOR_TYPE"]
         assert len(comparator_errors) == 1
         assert "is_true" in comparator_errors[0].message
-        assert "float" in comparator_errors[0].message
+        assert "number" in comparator_errors[0].message
 
     def test_valid_comparator_for_bool_type(self):
         """Valid comparator for bool type should pass."""
