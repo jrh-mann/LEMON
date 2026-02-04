@@ -301,6 +301,7 @@ function SaveWorkflowForm() {
   const [description, setDescription] = useState('')
   const [domain, setDomain] = useState('')
   const [tags, setTags] = useState('')
+  const [outputType, setOutputType] = useState('string')  // Workflow-level output type
   const [isPublished, setIsPublished] = useState(false)  // Publish to community library
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -315,6 +316,7 @@ function SaveWorkflowForm() {
       setDescription(currentWorkflow.metadata.description || '')
       setDomain(currentWorkflow.metadata.domain || '')
       setTags((currentWorkflow.metadata.tags || []).join(', '))
+      setOutputType(currentWorkflow.output_type || 'string')
       // Note: isPublished stays false on edit - republishing is a deliberate choice
     }
   }, [currentWorkflow])
@@ -364,6 +366,7 @@ function SaveWorkflowForm() {
         description: description.trim(),
         domain: domain.trim() || undefined,
         tags: tagArray,
+        output_type: outputType,
         nodes: flowchart.nodes,
         edges: flowchart.edges,
         variables: currentAnalysis?.variables || [],  // Unified variable system
@@ -396,13 +399,14 @@ function SaveWorkflowForm() {
         setDescription('')
         setDomain('')
         setTags('')
+        setOutputType('string')
         setIsPublished(false)
       }, 1500)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
 
   if (flowchart.nodes.length === 0) {
     return (
@@ -478,6 +482,22 @@ function SaveWorkflowForm() {
           disabled={isSaving}
         />
         <small className="muted">Separate tags with commas</small>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="workflow-output-type">Output Type</label>
+        <select
+          id="workflow-output-type"
+          value={outputType}
+          onChange={(e) => setOutputType(e.target.value)}
+          disabled={isSaving}
+        >
+          <option value="string">String</option>
+          <option value="number">Number</option>
+          <option value="bool">Boolean</option>
+          <option value="json">JSON</option>
+        </select>
+        <small className="muted">Type of value this workflow returns when executed</small>
       </div>
 
       {/* Publish to community library checkbox */}
