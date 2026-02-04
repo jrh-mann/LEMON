@@ -41,28 +41,29 @@ logger = logging.getLogger("backend.api")
 _workflow_validator = WorkflowValidator()
 
 
-def _infer_outputs_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Infer workflow outputs from end nodes that have output_type defined.
-    
-    When saving a workflow, we can automatically determine outputs by looking
-    at end nodes. If an end node has output_type (and optionally output_value
-    or output_template), we create an output definition from it.
-    
-    This allows subprocesses to properly determine the output type without
-    requiring users to explicitly define outputs via a separate UI.
-    
+def _infer_outputs_from_nodes(
+    nodes: List[Dict[str, Any]],
+    workflow_output_type: str = "string",
+) -> List[Dict[str, Any]]:
+    """Infer workflow outputs from end nodes using the workflow-level output_type.
+
+    When saving a workflow, we create output definitions from end nodes.
+    The output type comes from the workflow-level output_type setting,
+    not from per-node configuration.
+
     Args:
         nodes: List of workflow nodes
-        
+        workflow_output_type: Workflow-level output type (string, number, bool, json)
+
     Returns:
         List of output definitions [{name, type, description?}]
     """
     outputs = []
     for node in nodes:
-        if node.get("type") == "end" and node.get("output_type"):
+        if node.get("type") == "end":
             output_def = {
                 "name": node.get("label", "output"),
-                "type": node.get("output_type"),
+                "type": workflow_output_type,
             }
             # Include description from template if present
             if node.get("output_template"):
@@ -372,6 +373,7 @@ def register_routes(
         description = payload.get("description") or ""
         domain = payload.get("domain")
         tags = payload.get("tags") or []
+        output_type = payload.get("output_type", "string")
 
         # Extract workflow structure (nodes, edges, variables, doubts)
         nodes = payload.get("nodes") or []
@@ -384,12 +386,12 @@ def register_routes(
         # ALWAYS compute tree from nodes/edges - don't rely on frontend
         # This ensures the tree structure is always valid and up-to-date
         tree = tree_from_flowchart(nodes, edges)
-        
+
         # Infer outputs from end nodes if not explicitly provided
-        # This allows subprocesses to properly determine output types
+        # Uses workflow-level output_type for all end nodes
         outputs = payload.get("outputs") or []
         if not outputs:
-            outputs = _infer_outputs_from_nodes(nodes)
+            outputs = _infer_outputs_from_nodes(nodes, output_type)
 
         # Extract validation metadata
         validation_score = payload.get("validation_score") or 0
@@ -437,6 +439,7 @@ def register_routes(
                 validation_score=validation_score,
                 validation_count=validation_count,
                 is_validated=is_validated,
+                output_type=output_type,
                 is_published=is_published,
             )
         except sqlite3.IntegrityError:
@@ -457,6 +460,7 @@ def register_routes(
                 validation_score=validation_score,
                 validation_count=validation_count,
                 is_validated=is_validated,
+                output_type=output_type,
                 is_published=is_published,
             )
             if not success:
@@ -468,6 +472,7 @@ def register_routes(
             "description": description,
             "domain": domain,
             "tags": tags,
+            "output_type": output_type,
             "nodes": nodes,
             "edges": edges,
             "message": "Workflow saved successfully.",
@@ -486,6 +491,7 @@ def register_routes(
         # Convert to full Workflow format with metadata
         response = {
             "id": workflow.id,
+            "output_type": workflow.output_type or "string",
             "metadata": {
                 "name": workflow.name,
                 "description": workflow.description,
@@ -590,6 +596,7 @@ def register_routes(
         description = payload.get("description") or existing.description
         domain = payload.get("domain") or existing.domain
         tags = payload.get("tags") or existing.tags
+        output_type = payload.get("output_type") or existing.output_type or "string"
 
         # Extract workflow structure
         nodes = payload.get("nodes") or existing.nodes
@@ -599,11 +606,11 @@ def register_routes(
 
         # ALWAYS compute tree from nodes/edges
         tree = tree_from_flowchart(nodes, edges)
-        
-        # Infer outputs from end nodes
+
+        # Infer outputs from end nodes using workflow-level output_type
         outputs = payload.get("outputs") or []
         if not outputs:
-            outputs = _infer_outputs_from_nodes(nodes)
+            outputs = _infer_outputs_from_nodes(nodes, output_type)
 
         # Extract validation metadata (preserve existing if not provided)
         validation_score = payload.get("validation_score", existing.validation_score)
@@ -650,6 +657,7 @@ def register_routes(
             validation_score=validation_score,
             validation_count=validation_count,
             is_validated=is_validated,
+            output_type=output_type,
             is_draft=False,  # Explicitly saving marks it as non-draft
             is_published=is_published,
         )
@@ -663,6 +671,7 @@ def register_routes(
             "description": description,
             "domain": domain,
             "tags": tags,
+            "output_type": output_type,
             "nodes": nodes,
             "edges": edges,
             "message": "Workflow updated successfully.",
