@@ -15,8 +15,7 @@ VALID_SOURCES = {"input", "subprocess", "calculated", "constant"}
 
 # Valid internal types for variables
 # Note: 'number' is the unified numeric type (stored as float internally)
-# 'int' and 'float' are deprecated but kept for backwards compatibility
-VALID_TYPES = {"number", "int", "float", "bool", "string", "enum", "date"}
+VALID_TYPES = {"number", "bool", "string", "enum", "date"}
 
 
 def ensure_workflow_analysis(session_state: Dict[str, Any]) -> Dict[str, Any]:

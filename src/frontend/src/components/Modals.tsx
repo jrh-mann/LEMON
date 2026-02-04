@@ -569,8 +569,6 @@ function ExecuteWorkflowForm() {
         case 'bool':
           initial[input.id] = false
           break
-        case 'int':
-        case 'float':
         case 'number':  // Unified numeric type
           initial[input.id] = input.range?.min ?? 0
           break
@@ -634,47 +632,7 @@ function ExecuteWorkflowForm() {
               <small className="muted">{input.description}</small>
             )}
           </div>
-        )
-
-      case 'int':
-        return (
-          <div className="form-group">
-            <label htmlFor={inputId}>{input.name}</label>
-            {input.description && (
-              <small className="muted">{input.description}</small>
-            )}
-            <input
-              id={inputId}
-              type="number"
-              step="1"
-              min={input.range?.min}
-              max={input.range?.max}
-              value={Number(value)}
-              onChange={(e) => handleInputChange(input.id, parseInt(e.target.value, 10))}
-              disabled={execution.isExecuting}
-            />
-          </div>
-        )
-
-      case 'float':
-        return (
-          <div className="form-group">
-            <label htmlFor={inputId}>{input.name}</label>
-            {input.description && (
-              <small className="muted">{input.description}</small>
-            )}
-            <input
-              id={inputId}
-              type="number"
-              step="0.01"
-              min={input.range?.min}
-              max={input.range?.max}
-              value={Number(value)}
-              onChange={(e) => handleInputChange(input.id, parseFloat(e.target.value))}
-              disabled={execution.isExecuting}
-            />
-          </div>
-        )
+)
 
       // Unified numeric type - accepts both int and float
       case 'number':

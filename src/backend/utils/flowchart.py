@@ -108,10 +108,11 @@ def tree_from_flowchart(
             "label": node.get("label", node_id),
             "children": [],
         }
-        # Preserve additional fields
+# Preserve additional fields
         # NOTE: condition is critical for decision nodes - must be preserved
+        # NOTE: calculation is critical for calculation nodes - must be preserved
         for key in ("input_ids", "subworkflow_id", "input_mapping", "output_variable",
-                    "output_type", "output_value", "output_template", "condition"):
+                    "output_type", "output_value", "output_template", "condition", "calculation"):
             if key in node:
                 node_map[node_id][key] = node[key]
     

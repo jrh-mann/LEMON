@@ -38,11 +38,11 @@ def generate_variable_id(name: str, internal_type: str, source: str = "input") -
     
     Args:
         name: Variable name (e.g., "Patient Age")
-        internal_type: Internal type (e.g., "int", "float", "bool", "string")
+        internal_type: Internal type (e.g., "number", "bool", "string")
         source: Variable source ("input", "subprocess", "calculated", "constant")
         
     Returns:
-        Variable ID (e.g., "var_patient_age_float", "var_sub_creditscore_int")
+        Variable ID (e.g., "var_patient_age_number", "var_sub_creditscore_number")
     """
     # Slugify: lowercase, replace non-alphanumeric with underscore, strip trailing
     slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')

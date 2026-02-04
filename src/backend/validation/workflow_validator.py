@@ -21,8 +21,6 @@ CALCULATION_REQUIRED_FIELDS = ["calculation"]
 # 'number' is the unified numeric type that supports all numeric comparators
 VALID_COMPARATORS_BY_TYPE = {
     "number": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
-    "int": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
-    "float": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
     "bool": {"is_true", "is_false"},
     "string": {"str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"},
     "date": {"date_eq", "date_before", "date_after", "date_between"},
@@ -30,7 +28,7 @@ VALID_COMPARATORS_BY_TYPE = {
 }
 
 # Valid output types for workflows (matches database schema)
-VALID_OUTPUT_TYPES = {"string", "int", "float", "bool", "json"}
+VALID_OUTPUT_TYPES = {"string", "number", "bool", "json"}
 
 # Regex to extract template variables like {var_name}
 TEMPLATE_VAR_PATTERN = re.compile(r'\{([^}]+)\}')
@@ -941,13 +939,13 @@ class WorkflowValidator:
     ) -> List[ValidationError]:
         """Validate all end nodes have output_type matching workflow's declared output_type.
         
-        When a workflow declares an output_type (e.g., "float"), every end node
+        When a workflow declares an output_type (e.g., "number"), every end node
         must explicitly set its output_type to match. This ensures type consistency
         across all possible execution paths.
         
         Args:
             nodes: List of workflow nodes
-            workflow_output_type: The workflow's declared output type (string, int, float, bool, json)
+            workflow_output_type: The workflow's declared output type (string, number, bool, json)
             
         Returns:
             List of ValidationError objects for any mismatches found

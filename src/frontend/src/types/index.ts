@@ -4,13 +4,13 @@
 // ============ Enums ============
 
 export type BlockType = 'input' | 'decision' | 'output' | 'workflow_ref'
-export type InputType = 'int' | 'float' | 'bool' | 'string' | 'enum' | 'date' | 'number'
+export type InputType = 'number' | 'bool' | 'string' | 'enum' | 'date'
 export type PortType = 'default' | 'true' | 'false'
 
 // ============ Decision Condition Types ============
 // Comparators for structured decision node conditions
 
-// Numeric comparators (for int, float types)
+// Numeric comparators (for number type)
 export type NumericComparator = 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'within_range'
 
 // Boolean comparators
@@ -43,8 +43,6 @@ export interface DecisionCondition {
 
 // Helper: Map input types to their valid comparators
 export const COMPARATORS_BY_TYPE: Record<InputType, Comparator[]> = {
-  int: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],
-  float: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],
   number: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],  // Unified numeric type
   bool: ['is_true', 'is_false'],
   string: ['str_eq', 'str_neq', 'str_contains', 'str_starts_with', 'str_ends_with'],
@@ -272,9 +270,9 @@ export type VariableSource = 'input' | 'subprocess' | 'calculated' | 'constant'
 
 // Unified variable type - replaces the old WorkflowInput
 export interface WorkflowVariable {
-  id: string                          // e.g., "var_patient_age_int", "var_creditscore_float"
+id: string                          // e.g., "var_patient_age_number", "var_creditscore_number"
   name: string                        // Human-readable name, e.g., "Patient Age"
-  type: InputType                     // "int", "float", "bool", "string", "enum", "date"
+  type: InputType                     // "number", "bool", "string", "enum", "date"
   source: VariableSource              // Where this variable comes from
   description?: string                // Optional description
 

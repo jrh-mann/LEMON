@@ -20,7 +20,7 @@ from ..workflow_edit.helpers import load_workflow_for_tool, save_workflow_change
 
 
 # Valid output types that can be declared
-VALID_OUTPUT_TYPES = {"string", "int", "float", "bool", "enum", "date"}
+VALID_OUTPUT_TYPES = {"string", "number", "bool", "enum", "date"}
 
 
 class SetWorkflowOutputTool(Tool):
@@ -57,7 +57,7 @@ class SetWorkflowOutputTool(Tool):
         ToolParameter(
             "type",
             "string",
-            "Output type: 'string', 'int', 'float', 'bool', 'enum', or 'date'. This is REQUIRED.",
+            "Output type: 'string', 'number', 'bool', 'enum', or 'date'. This is REQUIRED.",
             required=True,
         ),
         ToolParameter(

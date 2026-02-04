@@ -15,7 +15,7 @@ from ..core import Tool, ToolParameter
 
 
 # Valid output types for workflows
-VALID_OUTPUT_TYPES = frozenset({"string", "int", "float", "bool", "json"})
+VALID_OUTPUT_TYPES = frozenset({"string", "number", "bool", "json"})
 
 
 def generate_workflow_id() -> str:
@@ -62,7 +62,7 @@ class CreateWorkflowTool(Tool):
         ToolParameter(
             "output_type",
             "string",
-            "Type of value the workflow returns: 'string', 'int', 'float', 'bool', or 'json'",
+            "Type of value the workflow returns: 'string', 'number', 'bool', or 'json'",
             required=True,
         ),
         ToolParameter(

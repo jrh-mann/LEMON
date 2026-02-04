@@ -263,7 +263,7 @@ class TestVariableAndNodeLinking:
         # Add variable
         input_result = orchestrator.run_tool(
             "add_workflow_variable",
-            {"name": "Patient Age", "type": "int"}
+            {"name": "Patient Age", "type": "number"}
         )
         print(f"\n[DEBUG] Variable result: {json.dumps(input_result.data, indent=2)}")
         assert input_result.data["success"] is True
@@ -301,8 +301,8 @@ class TestVariableAndNodeLinking:
         orchestrator.current_workflow = {"nodes": [], "edges": []}
 
         # Add variables
-        age_result = orchestrator.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "int"})
-        glucose_result = orchestrator.run_tool("add_workflow_variable", {"name": "Blood Glucose", "type": "int"})
+        age_result = orchestrator.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
+        glucose_result = orchestrator.run_tool("add_workflow_variable", {"name": "Blood Glucose", "type": "number"})
         age_id = age_result.data["variable"]["id"]
         glucose_id = glucose_result.data["variable"]["id"]
 

@@ -193,7 +193,7 @@ export default function RightSidebar() {
         nextInput.enum_values = values  // Use enum_values, not enum
       }
     }
-    if ((draftType === 'int' || draftType === 'float') && (draftRangeMin || draftRangeMax)) {
+    if (draftType === 'number' && (draftRangeMin || draftRangeMax)) {
       const min = draftRangeMin.trim() ? Number(draftRangeMin) : undefined
       const max = draftRangeMax.trim() ? Number(draftRangeMax) : undefined
       nextInput.range = {}
@@ -372,9 +372,8 @@ export default function RightSidebar() {
                     value={draftType}
                     onChange={(e) => setDraftType(e.target.value as InputType)}
                   >
-                    <option value="string">string</option>
-                    <option value="int">int</option>
-                    <option value="float">float</option>
+<option value="string">string</option>
+                    <option value="number">number</option>
                     <option value="bool">bool</option>
                     <option value="enum">enum</option>
                     <option value="date">date</option>
@@ -400,7 +399,7 @@ export default function RightSidebar() {
                     />
                   </div>
                 )}
-                {(draftType === 'int' || draftType === 'float') && (
+                {draftType === 'number' && (
                   <div className="input-add-row input-add-range">
                     <label>Range</label>
                     <div className="input-add-range-fields">
@@ -555,9 +554,8 @@ export default function RightSidebar() {
                     value={selectedNode.output_type || 'string'}
                     onChange={(e) => updateNode(selectedNode.id, { output_type: e.target.value })}
                   >
-                    <option value="string">String</option>
-                    <option value="int">Integer</option>
-                    <option value="float">Float</option>
+<option value="string">String</option>
+                    <option value="number">Number</option>
                     <option value="bool">Boolean</option>
                     <option value="json">JSON</option>
                   </select>
@@ -668,8 +666,7 @@ function InputField({
         </div>
       )
 
-    case 'int':
-    case 'float':
+case 'number':
       return (
         <div className="input-field">
           <label htmlFor={inputId}>{input.name}</label>
@@ -679,11 +676,9 @@ function InputField({
             value={value !== undefined ? String(value) : ''}
             min={input.range?.min}
             max={input.range?.max}
-            step={input.input_type === 'float' ? '0.1' : '1'}
+            step="any"
             onChange={(e) => {
-              const val = input.input_type === 'float'
-                ? parseFloat(e.target.value)
-                : parseInt(e.target.value, 10)
+              const val = parseFloat(e.target.value)
               onChange(isNaN(val) ? undefined : val)
             }}
           />
@@ -1021,17 +1016,15 @@ function DecisionConditionEditor({
       )
     }
 
-    // For numeric inputs
-    if (inputType === 'int' || inputType === 'float') {
+// For numeric inputs
+    if (inputType === 'number') {
       return (
         <input
           type="number"
           value={currentValue !== undefined && currentValue !== '' ? String(currentValue) : ''}
-          step={inputType === 'float' ? '0.1' : '1'}
+          step="any"
           onChange={(e) => {
-            const val = inputType === 'float' 
-              ? parseFloat(e.target.value) 
-              : parseInt(e.target.value, 10)
+            const val = parseFloat(e.target.value)
             updateCondition({ [valueKey]: isNaN(val) ? '' : val })
           }}
           placeholder={placeholder}
@@ -1186,9 +1179,9 @@ function CalculationConfigEditor({
   const minOperands = selectedOperator?.minArity ?? 2
   const maxOperands = selectedOperator?.maxArity ?? null // null = unlimited
 
-  // Filter to only numeric variables (int, float, number)
+  // Filter to only numeric variables
   const numericVariables = analysisInputs.filter(v => 
-    v.type === 'int' || v.type === 'float' || v.type === 'number'
+    v.type === 'number'
   )
 
   // Validation errors state

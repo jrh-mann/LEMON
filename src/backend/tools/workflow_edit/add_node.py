@@ -36,8 +36,6 @@ from .helpers import (
 # 'number' is the unified numeric type that supports all numeric comparators
 COMPARATORS_BY_TYPE = {
     "number": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
-    "int": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
-    "float": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
     "bool": ["is_true", "is_false"],
     "string": ["str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"],
     "date": ["date_eq", "date_before", "date_after", "date_between"],

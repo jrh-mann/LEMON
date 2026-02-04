@@ -21,19 +21,17 @@ from .add import generate_variable_id
 
 
 # Valid internal types for variables
-VALID_TYPES = {"string", "int", "float", "bool", "enum", "date"}
+VALID_TYPES = {"string", "number", "bool", "enum", "date"}
 
 # Map user-friendly types to internal types
 USER_TYPE_TO_INTERNAL = {
     "string": "string",
-    "number": "float",
-    "integer": "int",
+    "number": "number",
+    "integer": "number",
     "boolean": "bool",
     "enum": "enum",
     "date": "date",
     # Also accept internal types directly
-    "int": "int",
-    "float": "float",
     "bool": "bool",
 }
 
@@ -57,7 +55,7 @@ class ModifyWorkflowVariableTool(Tool):
         "Modify an existing workflow variable's properties (type, description, range, enum values). "
         "Requires workflow_id. "
         "Use this to correct auto-inferred types for subprocess outputs. For example, if a subprocess "
-        "output was inferred as 'string' but should be 'int', use this tool to fix it. "
+        "output was inferred as 'string' but should be 'number', use this tool to fix it. "
         "NOTE: Changing the type will also update the variable ID."
     )
     parameters = [
@@ -228,7 +226,7 @@ class ModifyWorkflowVariableTool(Tool):
 
         # Update range if provided
         if range_min is not None or range_max is not None:
-            if final_type not in ("int", "float"):
+            if final_type != "number":
                 return {
                     "success": False,
                     "error": f"range_min/range_max only valid for number types, not '{final_type}'"

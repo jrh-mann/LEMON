@@ -139,9 +139,7 @@ class VariableNameResolver:
 
 # Type mapping from workflow types to Python type hints
 TYPE_MAP = {
-    'int': 'int',
-    'float': 'float',
-    'number': 'float',  # Unified numeric type
+    'number': 'float',  # Unified numeric type maps to Python float
     'bool': 'bool',
     'string': 'str',
     'enum': 'str',
@@ -491,13 +489,11 @@ class PythonCodeGenerator:
         self._indent_level += 1
         self._add_line("# Example usage")
 
-        # Generate example call with placeholder values
+# Generate example call with placeholder values
         example_args = []
         for var in input_vars:
             var_type = var.get('type', 'string')
-            if var_type == 'int':
-                example_args.append("0")
-            elif var_type == 'float':
+            if var_type == 'number':
                 example_args.append("0.0")
             elif var_type == 'bool':
                 example_args.append("False")
@@ -598,7 +594,7 @@ class PythonCodeGenerator:
             # Try by ID
             if var_name in self.resolver.id_to_python:
                 return '{' + self.resolver.resolve(var_name) + '}'
-            # Keep as-is (will use local variable if exists)
+# Keep as-is (will use local variable if exists)
             return '{' + var_name.lower().replace(' ', '_') + '}'
 
         converted = re.sub(pattern, replace_var, template)
@@ -606,9 +602,7 @@ class PythonCodeGenerator:
 
     def _format_output_value(self, value: Any, output_type: str) -> str:
         """Format static output value as Python literal."""
-        if output_type == 'int':
-            return str(int(value))
-        elif output_type == 'float':
+        if output_type == 'number':
             return str(float(value))
         elif output_type == 'bool':
             return 'True' if str(value).lower() in ('true', '1', 'yes') else 'False'

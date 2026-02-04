@@ -683,7 +683,7 @@ class TreeInterpreter:
             
         Returns:
             Type string: 'number', 'bool', 'string', or 'json'
-            Note: Uses unified 'number' type instead of separate 'int'/'float'
+            Note: Uses unified 'number' type for all numeric values
         """
         if isinstance(value, bool):
             return "bool"
@@ -706,13 +706,13 @@ class TreeInterpreter:
         - Calculated: var_calc_{slug}_{type}
         - Constants: var_const_{slug}_{type}
         
-        Args:
+Args:
             name: Variable name (e.g., "Credit Score")
-            var_type: Variable type (e.g., "int", "float", "string")
+            var_type: Variable type (e.g., "number", "string", "bool")
             source: Variable source ("input", "subprocess", "calculated", "constant")
             
         Returns:
-            Variable ID (e.g., "var_credit_score_int", "var_sub_risk_float")
+            Variable ID (e.g., "var_credit_score_number", "var_sub_risk_number")
         """
         # Slugify: lowercase, replace non-alphanumeric with underscore
         slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
@@ -733,12 +733,12 @@ class TreeInterpreter:
         
         Kept for backwards compatibility. Generates legacy input_* format IDs.
         
-        Args:
+Args:
             name: Input name (e.g., "Credit Score")
-            input_type: Input type (e.g., "int")
+            input_type: Input type (e.g., "number")
             
         Returns:
-            Legacy input ID (e.g., "input_credit_score_int")
+            Legacy input ID (e.g., "input_credit_score_number")
         """
         # Slugify: lowercase, replace non-alphanumeric with underscore
         slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
@@ -782,13 +782,11 @@ class TreeInterpreter:
             except Exception as e:
                 return f"Error formatting output: {str(e)}"
 
-        # 2. Static Value
+# 2. Static Value
         if 'output_value' in node:
             val = node['output_value']
             try:
-                if output_type == 'int':
-                    return int(val)
-                elif output_type == 'float':
+                if output_type == 'number':
                     return float(val)
                 elif output_type == 'bool':
                     return str(val).lower() in ('true', '1', 'yes', 'on')
@@ -846,15 +844,7 @@ class TreeInterpreter:
             var_type = schema['type']
 
             # Type validation
-            if var_type == 'int':
-                if not isinstance(value, int) or isinstance(value, bool):
-                    raise InterpreterError(f"{var_id} must be int, got {type(value).__name__}")
-
-            elif var_type == 'float':
-                if not isinstance(value, (int, float)) or isinstance(value, bool):
-                    raise InterpreterError(f"{var_id} must be float, got {type(value).__name__}")
-
-            elif var_type == 'number':
+            if var_type == 'number':
                 # Unified numeric type - accepts both int and float
                 if not isinstance(value, (int, float)) or isinstance(value, bool):
                     raise InterpreterError(f"{var_id} must be number, got {type(value).__name__}")
@@ -868,7 +858,7 @@ class TreeInterpreter:
                     raise InterpreterError(f"{var_id} must be string, got {type(value).__name__}")
 
             # Range validation for numeric types
-            if var_type in ('int', 'float', 'number') and 'range' in schema:
+            if var_type == 'number' and 'range' in schema:
                 range_spec = schema['range']
                 if 'min' in range_spec and value < range_spec['min']:
                     raise InterpreterError(

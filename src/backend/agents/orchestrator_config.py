@@ -72,8 +72,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "output_type": {
                             "type": "string",
-"enum": ["string", "number", "int", "float", "bool", "json"],
-                            "description": "Type of value the workflow returns when executed. Prefer 'number' for numeric values.",
+"enum": ["string", "number", "bool", "json"],
+                            "description": "Type of value the workflow returns when executed. Use 'number' for all numeric values.",
                         },
                         "domain": {
                             "type": "string",
@@ -152,8 +152,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "output_type": {
                             "type": "string",
-                            "enum": ["string", "number", "int", "float", "bool", "json"],
-                            "description": "For 'end' nodes: data type of the output. Prefer 'number' for numeric values.",
+                            "enum": ["string", "number", "bool", "json"],
+                            "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
                         },
                         "output_template": {
                             "type": "string",
@@ -298,8 +298,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         "y": {"type": "number", "description": "New Y coordinate"},
                         "output_type": {
                             "type": "string",
-                            "enum": ["string", "number", "int", "float", "bool", "json"],
-                            "description": "For 'end' nodes: data type of the output. Prefer 'number' for numeric values.",
+                            "enum": ["string", "number", "bool", "json"],
+                            "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
                         },
                         "output_template": {
                             "type": "string",
@@ -495,7 +495,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                             "value2": {}
                                         }
                                     },
-                                    "output_type": {"type": "string", "enum": ["string", "number", "int", "float", "bool", "json"]},
+                                    "output_type": {"type": "string", "enum": ["string", "number", "bool", "json"]},
                                     "output_template": {"type": "string"},
                                     "output_value": {"type": "string"},
                                     "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
@@ -678,7 +678,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                     "Requires workflow_id. "
                     "CRITICAL USE CASE: Correct auto-inferred types for subprocess outputs. "
                     "When a subprocess node is added, the output variable type is inferred from the subworkflow. "
-                    "If this is wrong (e.g., 'string' instead of 'int'), use this tool to fix it. "
+                    "If this is wrong (e.g., 'string' instead of 'number'), use this tool to fix it. "
                     "WARNING: Changing the type also changes the variable ID, so decision nodes using the old ID must be updated."
                 ),
                 "parameters": {
@@ -821,8 +821,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "type": {
                             "type": "string",
-"enum": ["string", "number", "int", "float", "bool", "enum", "date"],
-                            "description": "Output type - determines derived variable type in calling workflows. Prefer 'number' for numeric values.",
+"enum": ["string", "number", "bool", "enum", "date"],
+                            "description": "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values.",
                         },
                         "description": {
                             "type": "string",
@@ -875,7 +875,7 @@ def build_system_prompt(
         "### Creating a New Workflow\n"
         "ALWAYS call create_workflow FIRST when building a new workflow:\n"
         "```\n"
-        "create_workflow(name='BMI Calculator', output_type='float')\n"
+"create_workflow(name='BMI Calculator', output_type='number')\n"
         "// Returns: {workflow_id: 'wf_abc123', ...}\n"
         "```\n"
         "Then use that workflow_id in ALL subsequent tool calls.\n\n"
@@ -902,7 +902,7 @@ def build_system_prompt(
         "Examples:\n"
         "- User: 'Create a BMI calculation workflow'\n"
         "  → First call list_workflows_in_library(search_query='BMI') to check\n"
-        "  → If none exist, call create_workflow(name='BMI Calculator', output_type='float')\n"
+"  → If none exist, call create_workflow(name='BMI Calculator', output_type='number')\n"
         "  → Then use the returned workflow_id for all subsequent tools\n"
         "- User: 'Show me my saved workflows' → Call list_workflows_in_library()\n"
         "- User: 'Do I have any healthcare workflows?' → Call list_workflows_in_library(domain='Healthcare')\n\n"
@@ -932,7 +932,7 @@ def build_system_prompt(
         "NEVER guess node IDs.\n\n"
 "## Output Nodes (Templates & Types)\n"
         "Output nodes ('end' type) support dynamic values and templates:\n"
-        "- output_type: 'string', 'number', 'int', 'float', 'bool', or 'json' (prefer 'number' for numeric values)\n"
+        "- output_type: 'string', 'number', 'bool', or 'json' (use 'number' for all numeric values)\n"
         "- output_template: Python f-string style template using input variables, e.g. 'Patient BMI is {BMI}'\n"
         "- output_value: Static value if no template is needed\n"
         "You can set these fields in add_node, modify_node, and batch_edit_workflow.\n"
@@ -1075,7 +1075,7 @@ def build_system_prompt(
         "set_workflow_output(\n"
         "  workflow_id='wf_bmi123',\n"
         "  name='BMI',\n"
-        "  type='float',  // BMI is a float value like 24.5\n"
+"  type='number',  // BMI is a numeric value like 24.5\n"
         "  description='Calculated Body Mass Index'\n"
         ")\n"
         "```\n\n"
@@ -1083,7 +1083,7 @@ def build_system_prompt(
         "- When another workflow adds a subprocess node calling this workflow\n"
         "- The derived variable type is inferred from the output definition\n"
         "- Without proper output type, the default is 'string' which causes type mismatches\n"
-        "- With proper output type (float), the derived variable is var_sub_bmi_float"
+        "- With proper output type (number), the derived variable is var_sub_bmi_number"
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."

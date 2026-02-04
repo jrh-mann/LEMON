@@ -99,7 +99,7 @@ class TestCreateWorkflow:
         # Create second workflow - should NOT fail with UNIQUE constraint
         # Instead, should generate a fresh ID
         result2 = tool.execute(
-            {"name": "Second Workflow", "output_type": "int"},
+            {"name": "Second Workflow", "output_type": "number"},
             session_state=session_state,
         )
         assert result2["success"] is True, f"Second create failed: {result2.get('error')}"

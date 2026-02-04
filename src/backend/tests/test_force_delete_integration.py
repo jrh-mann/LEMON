@@ -49,7 +49,7 @@ class TestForceDeleteIntegration:
         # Step 1: Add a workflow variable
         result1 = orchestrator.run_tool(
             "add_workflow_variable",
-            {"name": "Patient Age", "type": "int", "description": "Patient's age in years"}
+            {"name": "Patient Age", "type": "number", "description": "Patient's age in years"}
         )
 
         print(f"\n[TEST] Add variable result: {json.dumps(result1.data, indent=2)}")
@@ -106,7 +106,7 @@ class TestForceDeleteIntegration:
         # Step 1: Add a workflow variable
         result1 = orchestrator.run_tool(
             "add_workflow_variable",
-            {"name": "Blood Pressure", "type": "int"}
+            {"name": "Blood Pressure", "type": "number"}
         )
 
         print(f"\n[TEST] Add variable result: {json.dumps(result1.data, indent=2)}")
@@ -196,7 +196,7 @@ class TestForceDeleteIntegration:
         # Add variable
         result = orchestrator.run_tool(
             "add_workflow_variable",
-            {"name": "Temperature", "type": "float"}
+            {"name": "Temperature", "type": "number"}
         )
         var_id = result.data["variable"]["id"]
 
