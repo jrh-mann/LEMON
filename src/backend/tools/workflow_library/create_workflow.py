@@ -146,8 +146,21 @@ class CreateWorkflowTool(Tool):
         
         # Use provided workflow_id from session if available (frontend generates ID on tab creation)
         # This ensures the canvas workflow and saved workflow share the same ID (no duplicates)
-        workflow_id = session_state.get("current_workflow_id") or generate_workflow_id()
-        
+        # BUT: If that ID already exists in DB, generate a new one (user is creating a NEW workflow)
+        candidate_id = session_state.get("current_workflow_id")
+        if candidate_id:
+            # Check if workflow with this ID already exists
+            existing = workflow_store.get_workflow(candidate_id, user_id)
+            if existing:
+                # ID already used - generate fresh ID for this new workflow
+                workflow_id = generate_workflow_id()
+            else:
+                # ID is available - use it (saving canvas workflow for first time)
+                workflow_id = candidate_id
+        else:
+            # No current_workflow_id - generate fresh ID
+            workflow_id = generate_workflow_id()
+
         try:
             # Create workflow in database with empty structure
             # is_draft=False because all DB workflows are "saved" - they're in the user's library
