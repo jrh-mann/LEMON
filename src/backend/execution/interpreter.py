@@ -953,12 +953,17 @@ Args:
             Matching child node, or None if no match
 
         Edge label matching rules:
-        - "Yes", "True", "Y", "T", "1" → True
-        - "No", "False", "N", "F", "0" → False
-        - Empty or missing label → first child (fallback)
+        - "Yes", "True", "Y", "T", "1" → True branch
+        - "No", "False", "N", "F", "0" → False branch
+        - Empty or missing labels → Position-based fallback:
+            - Position 0 (first child) = True branch
+            - Position 1 (second child) = False branch
         """
+        if len(children) == 0:
+            return None
+            
         if len(children) == 1:
-            # Only one child - take it
+            # Only one child - take it regardless of condition
             return children[0]
 
         # Define label mappings
@@ -974,5 +979,12 @@ Args:
             elif not condition_result and edge_label in false_labels:
                 return child
 
-        # Fallback: return first child
-        return children[0] if children else None
+        # Position-based fallback when edge labels are empty or missing:
+        # Convention: first child (index 0) = True branch, second child (index 1) = False branch
+        # This matches how edges are typically created: true edge first, false edge second
+        if condition_result:
+            # True condition → take first child (position 0)
+            return children[0]
+        else:
+            # False condition → take second child (position 1)
+            return children[1] if len(children) > 1 else children[0]

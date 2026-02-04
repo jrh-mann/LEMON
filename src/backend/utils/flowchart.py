@@ -132,8 +132,8 @@ def tree_from_flowchart(
         parent_node = node_map[parent_id]
         for child_id, edge_label in children_info:
             child_node = node_map[child_id].copy()
-            if edge_label:
-                child_node["edge_label"] = edge_label
+            # Always set edge_label, even if empty (helps debugging branch selection issues)
+            child_node["edge_label"] = edge_label if edge_label else ""
             parent_node["children"].append(child_node)
     
     # Find start node
