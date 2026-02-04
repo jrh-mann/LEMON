@@ -982,6 +982,7 @@ def register_routes(
             call_stack=[],
             workflow_store=workflow_store,
             user_id=user_id,
+            output_type=workflow.output_type or "string",
         )
         
         # Execute workflow

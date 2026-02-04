@@ -71,7 +71,8 @@ class TestNumericOutputType:
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
             inputs=workflow["inputs"],
-            outputs=workflow["outputs"]
+            outputs=workflow["outputs"],
+            output_type="number"
         )
 
         result = interpreter.execute({"var_value_number": 25.5})
@@ -122,7 +123,8 @@ class TestNumericOutputType:
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
             inputs=workflow["inputs"],
-            outputs=workflow["outputs"]
+            outputs=workflow["outputs"],
+            output_type="number"
         )
 
         result = interpreter.execute({"var_age_number": 25})
@@ -212,7 +214,8 @@ class TestNumericOutputType:
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
             inputs=workflow["inputs"],
-            outputs=workflow["outputs"]
+            outputs=workflow["outputs"],
+            output_type="bool"
         )
 
         result = interpreter.execute({"var_flag_bool": True})
@@ -242,6 +245,7 @@ class TestSubworkflowNumericOutputType:
                 outputs = [{"name": "Result", "type": "number"}]
                 nodes = []
                 edges = []
+                output_type = "number"
 
                 # The tree that doubles and returns as a number
                 tree = {
@@ -383,6 +387,7 @@ class TestSubworkflowNumericOutputType:
                 outputs = [{"name": "Result", "type": "number"}]
                 nodes = []
                 edges = []
+                output_type = "number"
                 tree = {
                     "start": {
                         "id": "start",

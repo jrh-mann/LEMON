@@ -278,6 +278,7 @@ class SteppedExecutionTask:
                 outputs=workflow_outputs,
                 workflow_store=self.workflow_store,
                 user_id=self.user_id,
+                output_type=self.workflow.get("output_type", "string"),
             )
 
             # Execute with step callback

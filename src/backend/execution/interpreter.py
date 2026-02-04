@@ -87,6 +87,7 @@ class TreeInterpreter:
         workflow_store: Optional["WorkflowStore"] = None,
         user_id: Optional[str] = None,
         variables: Optional[List[Dict[str, Any]]] = None,
+        output_type: str = "string",
     ):
         """Initialize interpreter
         
@@ -99,6 +100,7 @@ class TreeInterpreter:
             workflow_store: Store for loading subworkflows (required for subprocess nodes)
             user_id: User ID for loading subworkflows (required for subprocess nodes)
             variables: List of variable definitions (unified system - replaces inputs)
+            output_type: Workflow-level output type ('string', 'number', 'bool', 'json')
         """
         self.tree = tree
         
@@ -115,13 +117,23 @@ class TreeInterpreter:
         # Create mapping from variable names to IDs for condition evaluation
         # e.g., "Age" -> "var_age_int", "BMI" -> "var_bmi_float"
         # Also supports legacy "input_age_int" format
-        self.name_to_id = {var['name']: var['id'] for var in var_list}
+        # Handle variables without 'name' field by using ID as fallback
+        self.name_to_id = {}
+        for var in var_list:
+            var_id = var.get('id', '')
+            var_name = var.get('name')
+            if var_name:
+                self.name_to_id[var_name] = var_id
+            # Also allow referencing by ID directly in templates
+            if var_id:
+                self.name_to_id[var_id] = var_id
         
         # Subflow support
         self.workflow_id = workflow_id
         self.call_stack = call_stack or []
         self.workflow_store = workflow_store
         self.user_id = user_id
+        self.output_type = output_type
         
         # Track subflow execution results
         self.subflow_results: List[Dict[str, Any]] = []
@@ -383,6 +395,7 @@ class TreeInterpreter:
             call_stack=new_call_stack,
             workflow_store=self.workflow_store,
             user_id=self.user_id,
+            output_type=getattr(subworkflow, 'output_type', 'string'),
         )
         
         # Execute subworkflow
@@ -765,7 +778,7 @@ Args:
         Returns:
             The resolved output value with appropriate type
         """
-        output_type = node.get('output_type', 'string')
+        output_type = self.output_type
         
         # Build lookup context: both variable IDs and friendly names
         friendly_context: Dict[str, Any] = {}

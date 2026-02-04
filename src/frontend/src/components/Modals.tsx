@@ -578,40 +578,59 @@ function ExecuteWorkflowForm() {
     execution,
     setExecutionSpeed,
     clearExecution,
+    tabs,
+    activeTabId,
+    setTabInputValues,
   } = useWorkflowStore()
 
-  // Initialize input values from workflow variables
+  // Get the active tab's persisted input values
+  const activeTab = tabs.find(t => t.id === activeTabId)
+  const persistedValues = activeTab?.inputValues ?? {}
+
+  // Initialize input values from workflow variables, using persisted values when available
   const workflowInputs = currentAnalysis?.variables ?? []
   const [inputValues, setInputValues] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {}
     for (const input of workflowInputs) {
-      switch (input.type) {
-        case 'bool':
-          initial[input.id] = false
-          break
-        case 'number':  // Unified numeric type
-          initial[input.id] = input.range?.min ?? 0
-          break
-        case 'enum':
-          const enumVals = input.enum_values ?? []
-          initial[input.id] = enumVals[0] ?? ''
-          break
-        case 'date':
-          initial[input.id] = new Date().toISOString().split('T')[0]
-          break
-        case 'string':
-        default:
-          initial[input.id] = ''
-          break
+      // Use persisted value if available, otherwise use defaults
+      if (input.id in persistedValues) {
+        initial[input.id] = persistedValues[input.id]
+      } else {
+        switch (input.type) {
+          case 'bool':
+            initial[input.id] = false
+            break
+          case 'number':  // Unified numeric type
+            initial[input.id] = input.range?.min ?? 0
+            break
+          case 'enum':
+            const enumVals = input.enum_values ?? []
+            initial[input.id] = enumVals[0] ?? ''
+            break
+          case 'date':
+            initial[input.id] = new Date().toISOString().split('T')[0]
+            break
+          case 'string':
+          default:
+            initial[input.id] = ''
+            break
+        }
       }
     }
     return initial
   })
 
-  // Handle input value change
+  // Handle input value change - update local state and persist to tab
   const handleInputChange = useCallback((inputId: string, value: unknown) => {
-    setInputValues((prev) => ({ ...prev, [inputId]: value }))
-  }, [])
+    setInputValues((prev) => {
+      const newValues = { ...prev, [inputId]: value }
+      // Persist to tab for next execution
+      if (activeTabId) {
+        setTabInputValues(activeTabId, newValues)
+      }
+      return newValues
+    })
+  }, [activeTabId, setTabInputValues])
 
   // Handle speed slider change
   const handleSpeedChange = useCallback(
@@ -625,9 +644,13 @@ function ExecuteWorkflowForm() {
   // Start execution - closes modal immediately so user can watch canvas
   // Modal will reopen when execution completes or errors (handled by socket.ts)
   const handleRun = useCallback(() => {
+    // Persist input values before running
+    if (activeTabId) {
+      setTabInputValues(activeTabId, inputValues)
+    }
     startWorkflowExecution(inputValues, execution.executionSpeed)
     closeModal()  // Close modal so user can see the canvas with execution highlighting
-  }, [inputValues, execution.executionSpeed, closeModal])
+  }, [inputValues, execution.executionSpeed, closeModal, activeTabId, setTabInputValues])
 
   // Render input field based on type
   const renderInputField = (input: WorkflowInput) => {

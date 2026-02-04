@@ -123,6 +123,7 @@ class ExecuteWorkflowTool(Tool):
             outputs=outputs,
             workflow_store=workflow_store,
             user_id=user_id,
+            output_type=workflow_data.get("output_type", "string"),
         )
 
         try:

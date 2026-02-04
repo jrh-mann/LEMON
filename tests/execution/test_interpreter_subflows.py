@@ -43,11 +43,12 @@ class MockWorkflowStore:
 class MockWorkflow:
     """Mock workflow object with required attributes."""
     
-    def __init__(self, name: str, tree: dict, inputs: list, outputs: list):
+    def __init__(self, name: str, tree: dict, inputs: list, outputs: list, output_type: str = "string"):
         self.name = name
         self.tree = tree
         self.inputs = inputs
         self.outputs = outputs
+        self.output_type = output_type
 
 
 # =============================================================================
@@ -63,6 +64,7 @@ CREDIT_SCORE_WORKFLOW = MockWorkflow(
         {"id": "input_age_number", "name": "Age", "type": "number", "range": {"min": 18, "max": 120}},
     ],
     outputs=[{"name": "CreditScore", "type": "number"}],
+    output_type="number",
     tree={
         "start": {
             "id": "start",

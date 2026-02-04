@@ -47,7 +47,21 @@ const MIN_WIDTH = 280  // Minimum to show all 3 tabs comfortably
 
 export default function RightSidebar() {
   const { activeTab, setActiveTab, openModal } = useUIStore()
-  const { currentWorkflow, currentAnalysis, setAnalysis, selectedNodeId, selectedEdge, flowchart, updateNode, updateEdgeLabel, workflows, setWorkflows } = useWorkflowStore()
+  const { 
+    currentWorkflow, 
+    currentAnalysis, 
+    setAnalysis, 
+    selectedNodeId, 
+    selectedEdge, 
+    flowchart, 
+    updateNode, 
+    updateEdgeLabel, 
+    workflows, 
+    setWorkflows,
+    tabs,
+    activeTabId,
+    setTabInputValues
+  } = useWorkflowStore()
 
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -94,7 +108,10 @@ export default function RightSidebar() {
     setIsResizing(true)
   }, [])
 
-  const [inputValues, setInputValues] = useState<Record<string, unknown>>({})
+  // Get persisted input values for the active tab
+  const activeWorkflowTab = tabs.find(t => t.id === activeTabId)
+  const inputValues = activeWorkflowTab?.inputValues || {}
+
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -151,9 +168,9 @@ export default function RightSidebar() {
   // Handle input change
   const handleInputChange = useCallback(
     (name: string, value: unknown) => {
-      setInputValues((prev) => ({ ...prev, [name]: value }))
+      setTabInputValues(activeTabId, { ...inputValues, [name]: value })
     },
-    []
+    [activeTabId, inputValues, setTabInputValues]
   )
 
   const resetDraftInput = () => {
@@ -738,10 +755,9 @@ case 'number':
 
 /**
  * EndNodeConfig - Configuration panel for end (output) nodes.
- * Shows a variable selector dropdown (all workflow variables + "Static value").
- * When a variable is selected, output_variable is set.
- * When "Static value" is selected, a type-aware input is shown based on workflow output_type.
- * output_template textarea only shown for string workflow output_type.
+ * Shows a variable selector dropdown (filtered by workflow output type).
+ * For 'string' workflows, "Static value" is replaced by "Value Template" (f-string).
+ * For other types, "Static value" shows a type-aware input.
  */
 function EndNodeConfig({
   node,
@@ -754,17 +770,27 @@ function EndNodeConfig({
   workflowOutputType: string
   onUpdate: (updates: Partial<FlowNode>) => void
 }) {
-  // Determine current mode: variable reference or static value
-  const isVariableMode = Boolean(node.output_variable)
+  // Filter variables to only those matching the workflow output type
+  // Note: 'json' output type can accept 'json' variables
+  const filteredInputs = analysisInputs.filter(inp => inp.type === workflowOutputType)
 
-  // Handle switching to a variable
+  // Determine current mode
+  const isVariableMode = Boolean(node.output_variable)
+  
+  // For strings, the "static" option is actually a template
+  const isStringOutput = workflowOutputType === 'string'
+  const staticOptionLabel = isStringOutput ? 'Value Template (f-string)' : 'Static Value'
+  const staticOptionValue = isStringOutput ? '__template__' : '__static__'
+
+  // Handle switching source
   const handleSourceChange = (value: string) => {
-    if (value === '__static__') {
-      // Switch to static mode: clear output_variable
-      onUpdate({ output_variable: undefined, output_value: '' })
+    if (value === '__static__' || value === '__template__') {
+      // Switch to static/template mode: clear output_variable
+      onUpdate({ output_variable: undefined })
     } else {
-      // Switch to variable mode: set output_variable, clear static value
-      onUpdate({ output_variable: value, output_value: undefined })
+      // Switch to variable mode: set output_variable
+      // We don't strictly need to clear output_value/template but it keeps things clean
+      onUpdate({ output_variable: value, output_value: undefined, output_template: undefined })
     }
   }
 
@@ -804,15 +830,8 @@ function EndNodeConfig({
             rows={4}
           />
         )
-      default: // string
-        return (
-          <input
-            type="text"
-            value={String(node.output_value ?? '')}
-            onChange={(e) => onUpdate({ output_value: e.target.value })}
-            placeholder="Enter a value"
-          />
-        )
+      default:
+        return null
     }
   }
 
@@ -821,52 +840,64 @@ function EndNodeConfig({
       <div className="form-divider" />
       <h5>Output Configuration</h5>
       <p className="muted small">
-        Workflow output type: <strong>{workflowOutputType}</strong> (set in Save dialog)
+        Workflow output type: <strong>{workflowOutputType}</strong>
       </p>
 
-      {/* Variable / static selector */}
+      {/* Source selector */}
       <div className="form-group">
         <label>Output Source</label>
         <select
-          value={isVariableMode ? (node.output_variable || '') : '__static__'}
+          value={isVariableMode ? (node.output_variable || '') : staticOptionValue}
           onChange={(e) => handleSourceChange(e.target.value)}
         >
-          <option value="__static__">Static value</option>
-          {analysisInputs.map(inp => (
+          <option value={staticOptionValue}>{staticOptionLabel}</option>
+          {filteredInputs.map(inp => (
             <option key={inp.id} value={inp.name}>
-              {inp.name} ({inp.type})
+              {inp.name}
             </option>
           ))}
         </select>
+        
+        {/* Helper text */}
         <p className="muted small">
           {isVariableMode
             ? 'Returns the selected variable\'s value directly.'
-            : 'Returns a fixed value you specify below.'}
+            : isStringOutput
+              ? 'Returns a formatted string using a template.'
+              : 'Returns a fixed value you specify below.'}
         </p>
       </div>
 
-      {/* Static value input (only when not in variable mode) */}
+      {/* Inputs for non-variable mode */}
       {!isVariableMode && (
         <div className="form-group">
-          <label>Static Value</label>
-          {renderStaticInput()}
+          {isStringOutput ? (
+            <>
+              <label>Template</label>
+              <textarea
+                value={node.output_template || ''}
+                onChange={(e) => onUpdate({ output_template: e.target.value })}
+                placeholder="e.g. Result: {variable_name}"
+                rows={3}
+              />
+              <p className="muted small">
+                Use {'{variable}'} to insert input values.
+              </p>
+            </>
+          ) : (
+            <>
+              <label>Value</label>
+              {renderStaticInput()}
+            </>
+          )}
         </div>
       )}
-
-      {/* Output template (only for string workflow output_type) */}
-      {workflowOutputType === 'string' && (
-        <div className="form-group">
-          <label>Value Template (Optional)</label>
-          <textarea
-            value={node.output_template || ''}
-            onChange={(e) => onUpdate({ output_template: e.target.value })}
-            placeholder="e.g. Result: {variable_name}"
-            rows={3}
-          />
-          <p className="muted small">
-            Use {'{variable}'} to insert input values. Overrides static value if set.
-          </p>
-        </div>
+      
+      {/* Warning if variables are hidden */}
+      {analysisInputs.length > 0 && filteredInputs.length === 0 && (
+        <p className="muted small warning">
+          No variables match the workflow output type ({workflowOutputType}).
+        </p>
       )}
     </>
   )

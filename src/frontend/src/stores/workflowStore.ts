@@ -30,6 +30,8 @@ export interface WorkflowTab {
   // Chat state per tab — each workflow gets its own conversation
   conversationId: string | null
   messages: Message[]
+  // Persistent input values per tab
+  inputValues: Record<string, unknown>
 }
 
 interface WorkflowState {
@@ -79,6 +81,7 @@ interface WorkflowState {
   updateTabTitle: (tabId: string, title: string) => void
   getActiveTabConversationId: () => string | null
   setActiveTabConversationId: (conversationId: string) => void
+  setTabInputValues: (tabId: string, values: Record<string, unknown>) => void
 
   // Node operations
   selectNode: (nodeId: string | null) => void
@@ -175,6 +178,7 @@ const createInitialTab = (): WorkflowTab => {
     analysis: null,
     conversationId: null,  // Will be generated on first message
     messages: [],
+    inputValues: {},
   }
 }
 
@@ -295,6 +299,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       analysis: null,
       conversationId: null,  // New tab starts with no conversation
       messages: [],
+      inputValues: {},
     }
     // Save current tab's state (including chat) before switching
     const state = get()
@@ -432,6 +437,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set(state => ({
       tabs: state.tabs.map(tab =>
         tab.id === tabId ? { ...tab, title } : tab
+      ),
+    }))
+  },
+
+  setTabInputValues: (tabId, values) => {
+    set(state => ({
+      tabs: state.tabs.map(tab =>
+        tab.id === tabId ? { ...tab, inputValues: values } : tab
       ),
     }))
   },
