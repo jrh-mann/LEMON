@@ -220,6 +220,18 @@ class TreeInterpreter:
                 if node_type in ('output', 'end'):
                     # Reached terminal node - success!
                     output_val = self._resolve_output_value(current, context)
+                    # Emit end_reached event for logging
+                    if on_step is not None:
+                        try:
+                            on_step({
+                                "event_type": "end_reached",
+                                "node_id": node_id,
+                                "node_type": node_type,
+                                "node_label": node_label,
+                                "output": output_val,
+                            })
+                        except Exception as e:
+                            logger.warning(f"on_step callback error for end node '{node_id}': {e}")
                     return ExecutionResult(
                         success=True,
                         output=output_val,
@@ -230,7 +242,7 @@ class TreeInterpreter:
 
                 elif node_type == 'decision':
                     # Evaluate condition and branch
-                    current = self._handle_decision_node(current, context)
+                    current = self._handle_decision_node(current, context, on_step)
 
                 elif node_type == 'subprocess':
                     # Execute subworkflow and inject output as new input
@@ -238,9 +250,21 @@ class TreeInterpreter:
 
                 elif node_type == 'calculation':
                     # Execute calculation and inject result as new variable
-                    current = self._handle_calculation_node(current, context)
+                    current = self._handle_calculation_node(current, context, on_step)
 
                 elif node_type in ('start', 'action', 'process'):
+                    # Emit start_executed event for start nodes
+                    if node_type == 'start' and on_step is not None:
+                        try:
+                            on_step({
+                                "event_type": "start_executed",
+                                "node_id": node_id,
+                                "node_type": node_type,
+                                "node_label": node_label,
+                                "inputs": context.copy(),
+                            })
+                        except Exception as e:
+                            logger.warning(f"on_step callback error for start node '{node_id}': {e}")
                     # Pass through to first child
                     children = current.get('children', [])
                     if not children:
@@ -421,12 +445,28 @@ class TreeInterpreter:
             # Create wrapper that adds subflow context to each step
             def subflow_on_step(step_info: Dict[str, Any]) -> None:
                 try:
+                    # Preserve existing event type (e.g. start_executed, decision_evaluated)
+                    # defaulting to subflow_step only if generic
+                    event_type = step_info.get("event_type", "subflow_step")
+                    
+                    # Build subflow stack for nested indentation (Outer -> Inner)
+                    # We receive stack from inner wrapper (if any) and prepend current (outer)
+                    # Wait, no. We are the wrapper.
+                    # If we are Outer, and receiving from Inner:
+                    # Inner adds InnerID. passed to us. [InnerID]
+                    # We add OuterID. [OuterID, InnerID]
+                    # Correct for [Outer, Inner] order.
+                    
+                    current_stack = step_info.get("subworkflow_stack", [])
+                    new_stack = [subworkflow_id] + current_stack
+                    
                     on_step({
                         **step_info,
-                        "event_type": "subflow_step",
+                        "event_type": event_type,
                         "parent_node_id": node_id,
                         "subworkflow_id": subworkflow_id,
                         "subworkflow_name": subworkflow.name,
+                        "subworkflow_stack": new_stack
                     })
                 except Exception as e:
                     logger.warning(f"on_step subflow_step callback error: {e}")
@@ -487,7 +527,8 @@ class TreeInterpreter:
     def _handle_calculation_node(
         self,
         node: Dict[str, Any],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> Optional[Dict[str, Any]]:
         """Execute a calculation and inject its output as a new variable.
         
@@ -500,6 +541,7 @@ class TreeInterpreter:
         Args:
             node: Calculation node with calculation.output, operator, operands
             context: Workflow execution context
+            on_step: Optional callback for detailed execution logging
             
         Returns:
             Next node to execute
@@ -536,8 +578,10 @@ class TreeInterpreter:
                 f"Calculation node '{node_label}' missing operands"
             )
         
-        # Resolve operand values
+        # Resolve operand values and track for logging
         resolved_operands = []
+        operand_details = []  # For logging: [{name, kind, value}, ...]
+        
         for i, operand in enumerate(operands):
             kind = operand.get('kind')
             
@@ -548,6 +592,11 @@ class TreeInterpreter:
                         f"Calculation node '{node_label}': operand[{i}] has no value"
                     )
                 resolved_operands.append(float(value))
+                operand_details.append({
+                    "name": str(value),
+                    "kind": "literal",
+                    "value": float(value)
+                })
                 
             elif kind == 'variable':
                 ref = operand.get('ref')
@@ -559,6 +608,7 @@ class TreeInterpreter:
                 # Look up variable value in context
                 # ref can be either variable ID (var_weight_number) or variable name (Weight)
                 value = None
+                var_name = ref
                 if ref in context:
                     value = context[ref]
                 else:
@@ -566,6 +616,12 @@ class TreeInterpreter:
                     var_id = self.name_to_id.get(ref)
                     if var_id and var_id in context:
                         value = context[var_id]
+                
+                # Try to get human-readable name
+                for name, var_id in self.name_to_id.items():
+                    if var_id == ref:
+                        var_name = name
+                        break
                 
                 if value is None:
                     raise InterpreterError(
@@ -581,6 +637,11 @@ class TreeInterpreter:
                     )
                 
                 resolved_operands.append(float(value))
+                operand_details.append({
+                    "name": var_name,
+                    "kind": "variable",
+                    "value": float(value)
+                })
             else:
                 raise InterpreterError(
                     f"Calculation node '{node_label}': operand[{i}] has invalid kind '{kind}'"
@@ -597,6 +658,32 @@ class TreeInterpreter:
             raise InterpreterError(
                 f"Calculation node '{node_label}' failed: {e}"
             )
+        
+        # Emit detailed calculation info
+        if on_step is not None:
+            try:
+                # Build formula string for display
+                operator_symbols = {
+                    'add': '+', 'subtract': '-', 'multiply': '*', 'divide': '/',
+                    'power': '^', 'modulo': '%', 'min': 'min', 'max': 'max',
+                    'abs': 'abs', 'round': 'round', 'floor': 'floor', 'ceil': 'ceil'
+                }
+                op_sym = operator_symbols.get(operator_name, operator_name)
+                operand_strs = [f"{d['name']}={d['value']}" for d in operand_details]
+                formula = f"{output_name} = {' '.join([d['name'] for d in operand_details])} ({op_sym})"
+                
+                on_step({
+                    "event_type": "calculation_completed",
+                    "node_id": node_id,
+                    "node_label": node_label,
+                    "output_name": output_name,
+                    "operator": operator_name,
+                    "operands": operand_details,
+                    "result": result,
+                    "formula": formula,
+                })
+            except Exception as e:
+                logger.warning(f"on_step calculation callback error at node '{node_id}': {e}")
         
         # Inject result as new calculated variable in context
         self._inject_calculation_output(output_name, result, context)
@@ -1005,7 +1092,12 @@ Args:
                         f"Value error: {var_id} must be one of {allowed}, got '{value}'"
                     )
 
-    def _handle_decision_node(self, node: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _handle_decision_node(
+        self,
+        node: Dict[str, Any],
+        context: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> Optional[Dict[str, Any]]:
         """Handle decision node: evaluate structured condition and select branch.
 
         Decision nodes MUST have a 'condition' field with structured condition data:
@@ -1019,6 +1111,7 @@ Args:
         Args:
             node: Decision node with 'condition' field
             context: Current variable context (input_id -> value)
+            on_step: Optional callback for detailed execution logging
 
         Returns:
             Next node to visit based on condition result (True/False branch)
@@ -1037,6 +1130,34 @@ Args:
                 f"Decision nodes must have a structured 'condition' field."
             )
 
+        # Get the input value for logging
+        input_id = condition.get('input_id', '')
+        input_value = context.get(input_id)
+        comparator = condition.get('comparator', '')
+        compare_value = condition.get('value')
+        compare_value2 = condition.get('value2')
+
+        # Build a human-readable condition expression
+        comparator_symbols = {
+            'eq': '==', 'ne': '!=', 'lt': '<', 'lte': '<=',
+            'gt': '>', 'gte': '>=', 'between': 'between',
+            'contains': 'contains', 'startswith': 'starts with',
+            'endswith': 'ends with', 'in': 'in'
+        }
+        comparator_sym = comparator_symbols.get(comparator, comparator)
+        
+        # Try to get the variable name for display
+        input_name = input_id
+        for name, var_id in self.name_to_id.items():
+            if var_id == input_id:
+                input_name = name
+                break
+        
+        if comparator == 'between':
+            condition_expr = f"{input_name} between {compare_value} and {compare_value2}"
+        else:
+            condition_expr = f"{input_name} {comparator_sym} {compare_value}"
+
         # Evaluate the structured condition against execution context
         try:
             result = evaluate_condition(condition, context)
@@ -1053,6 +1174,25 @@ Args:
 
         # Convert result to boolean (should already be bool, but ensure)
         condition_result = bool(result)
+
+        # Emit detailed decision evaluation info
+        if on_step is not None:
+            try:
+                on_step({
+                    "event_type": "decision_evaluated",
+                    "node_id": node_id,
+                    "node_label": node_label,
+                    "condition_expression": condition_expr,
+                    "input_name": input_name,
+                    "input_value": input_value,
+                    "comparator": comparator,
+                    "compare_value": compare_value,
+                    "compare_value2": compare_value2,
+                    "result": condition_result,
+                    "branch_taken": "true" if condition_result else "false",
+                })
+            except Exception as e:
+                logger.warning(f"on_step decision callback error at node '{node_id}': {e}")
 
         # Find matching child based on edge label (True/False)
         children = node.get('children', [])

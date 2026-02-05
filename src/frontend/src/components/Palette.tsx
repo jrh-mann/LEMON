@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useRef, useState, useEffect, type ChangeEvent } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { generateNodeId } from '../utils/canvas'
@@ -70,6 +70,13 @@ export default function Palette() {
   const { openModal, devMode } = useUIStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [paletteMode, setPaletteMode] = useState<'build' | 'dev'>('build')
+
+  // Force build mode if dev tools disabled
+  useEffect(() => {
+    if (!devMode) setPaletteMode('build')
+  }, [devMode])
+
   const [showJsonInput, setShowJsonInput] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
@@ -244,91 +251,118 @@ export default function Palette() {
 
   return (
     <aside className="sidebar palette-sidebar">
-      <div className="sidebar-section">
-        <p className="eyebrow">BLOCKS</p>
-        <div className="block-palette">
-          {BLOCKS.map((block) => (
+      {/* Dev Mode Toggle */}
+      {devMode && (
+        <div className="sidebar-section">
+          <div className="sidebar-toggle-group">
             <button
-              key={block.type}
-              className="palette-block"
-              data-type={block.type}
-              draggable="true"
-              onDragStart={(e) => handleDragStart(e, block)}
-              onDragEnd={handleDragEnd}
-              onClick={() => handleClick(block)}
-              title={`Click to add ${block.label} block`}
+              className={`sidebar-toggle-btn ${paletteMode === 'build' ? 'active' : ''}`}
+              onClick={() => setPaletteMode('build')}
             >
-              <div className={`block-icon ${block.type}-icon`}>{block.icon}</div>
-              <span>{block.label}</span>
+              Build
             </button>
-          ))}
+            <button
+              className={`sidebar-toggle-btn ${paletteMode === 'dev' ? 'active' : ''}`}
+              onClick={() => setPaletteMode('dev')}
+            >
+              Dev Tools
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Run Workflow Button */}
-      <div className="sidebar-section">
-        <p className="eyebrow">EXECUTE</p>
-        <button
-          className="run-btn full-width"
-          onClick={handleRunClick}
-          disabled={flowchart.nodes.length === 0}
-          title="Run workflow with visual execution"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-          Run Workflow
-        </button>
-      </div>
+      {paletteMode === 'build' ? (
+        <>
+          <div className="sidebar-section">
+            <p className="eyebrow">BLOCKS</p>
+            <div className="block-palette">
+              {BLOCKS.map((block) => (
+                <button
+                  key={block.type}
+                  className="palette-block"
+                  data-type={block.type}
+                  draggable="true"
+                  onDragStart={(e) => handleDragStart(e, block)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => handleClick(block)}
+                  title={`Click to add ${block.label} block`}
+                >
+                  <div className={`block-icon ${block.type}-icon`}>{block.icon}</div>
+                  <span>{block.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="sidebar-section">
-        <p className="eyebrow">TIPS</p>
-        <ul className="tips-list">
-          <li>Click a block to add it to canvas</li>
-          <li>Double-click a node to start connecting</li>
-          <li>Press Delete to remove selected node</li>
-          <li>Cmd+Z to undo, Cmd+Shift+Z to redo</li>
-        </ul>
-      </div>
+          {/* Run Workflow Button */}
+          <div className="sidebar-section">
+            <p className="eyebrow">EXECUTE</p>
+            <button
+              className="run-btn full-width"
+              onClick={handleRunClick}
+              disabled={flowchart.nodes.length === 0}
+              title="Run workflow with visual execution"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Run Workflow
+            </button>
+          </div>
 
-      <div className="sidebar-section">
-        <p className="eyebrow">IMPORT</p>
-        <button
-          className="ghost full-width"
-          onClick={() => setShowJsonInput(true)}
-          title="Import flowchart from JSON"
-        >
-          Import JSON
-        </button>
-        <button
-          className="ghost full-width"
-          onClick={() => {
-            // Sample flowchart with proper English labels
-            const sampleFlowchart = {
-              nodes: [
-                { id: 'n1', type: 'start' as const, label: 'Patient Arrives', x: 400, y: 100, color: 'teal' as const },
-                { id: 'n2', type: 'process' as const, label: 'Check Vitals', x: 400, y: 220, color: 'teal' as const },
-                { id: 'n3', type: 'decision' as const, label: 'Temperature > 38C?', x: 400, y: 340, color: 'amber' as const },
-                { id: 'n4', type: 'process' as const, label: 'Administer Fever Medication', x: 200, y: 460, color: 'teal' as const },
-                { id: 'n5', type: 'process' as const, label: 'Continue Monitoring', x: 600, y: 460, color: 'teal' as const },
-                { id: 'n6', type: 'end' as const, label: 'Discharge Patient', x: 400, y: 580, color: 'green' as const },
-              ],
-              edges: [
-                { from: 'n1', to: 'n2', label: '' },
-                { from: 'n2', to: 'n3', label: '' },
-                { from: 'n3', to: 'n4', label: 'Yes' },
-                { from: 'n3', to: 'n5', label: 'No' },
-                { from: 'n4', to: 'n6', label: '' },
-                { from: 'n5', to: 'n6', label: '' },
-              ],
-            }
-            setFlowchart(sampleFlowchart)
-          }}
-          title="Load a sample flowchart to test frontend rendering"
-        >
-          Load Example
-        </button>
-      </div>
+          <div className="sidebar-section">
+            <p className="eyebrow">TIPS</p>
+            <ul className="tips-list">
+              <li>Click a block to add it to canvas</li>
+              <li>Double-click a node to start connecting</li>
+              <li>Press Delete to remove selected node</li>
+              <li>Cmd+Z to undo, Cmd+Shift+Z to redo</li>
+            </ul>
+          </div>
+
+          <div className="sidebar-section">
+            <p className="eyebrow">IMPORT</p>
+            <button
+              className="ghost full-width"
+              onClick={() => setShowJsonInput(true)}
+              title="Import flowchart from JSON"
+            >
+              Import JSON
+            </button>
+            <button
+              className="ghost full-width"
+              onClick={() => {
+                // Sample flowchart with proper English labels
+                const sampleFlowchart = {
+                  nodes: [
+                    { id: 'n1', type: 'start' as const, label: 'Patient Arrives', x: 400, y: 100, color: 'teal' as const },
+                    { id: 'n2', type: 'process' as const, label: 'Check Vitals', x: 400, y: 220, color: 'teal' as const },
+                    { id: 'n3', type: 'decision' as const, label: 'Temperature > 38C?', x: 400, y: 340, color: 'amber' as const },
+                    { id: 'n4', type: 'process' as const, label: 'Administer Fever Medication', x: 200, y: 460, color: 'teal' as const },
+                    { id: 'n5', type: 'process' as const, label: 'Continue Monitoring', x: 600, y: 460, color: 'teal' as const },
+                    { id: 'n6', type: 'end' as const, label: 'Discharge Patient', x: 400, y: 580, color: 'green' as const },
+                  ],
+                  edges: [
+                    { from: 'n1', to: 'n2', label: '' },
+                    { from: 'n2', to: 'n3', label: '' },
+                    { from: 'n3', to: 'n4', label: 'Yes' },
+                    { from: 'n3', to: 'n5', label: 'No' },
+                    { from: 'n4', to: 'n6', label: '' },
+                    { from: 'n5', to: 'n6', label: '' },
+                  ],
+                }
+                setFlowchart(sampleFlowchart)
+              }}
+              title="Load a sample flowchart to test frontend rendering"
+              style={{ marginTop: '8px' }}
+            >
+              Load Example
+            </button>
+          </div>
+        </>
+      ) : (
+        <DevToolsPanel />
+      )}
 
       {/* Hidden file input for JSON upload */}
       <input
@@ -338,9 +372,6 @@ export default function Palette() {
         style={{ display: 'none' }}
         onChange={handleFileUpload}
       />
-
-      {/* Developer Tools Panel - shown when devMode is on */}
-      {devMode && <DevToolsPanel />}
 
       {/* JSON Input Modal */}
       {showJsonInput && (

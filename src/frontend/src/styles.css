@@ -373,6 +373,15 @@ body {
   margin-bottom: 24px;
 }
 
+.palette-sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  padding: 16px;
+  overflow-y: auto;
+}
+
 .eyebrow {
   font-size: 11px;
   letter-spacing: 0.12em;
@@ -380,6 +389,40 @@ body {
   color: var(--muted);
   margin-bottom: 12px;
   font-weight: 500;
+}
+
+/* Sidebar Toggle (Build/Dev) */
+.sidebar-toggle-group {
+  display: flex;
+  background: var(--edge);
+  padding: 3px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  gap: 2px;
+}
+
+.sidebar-toggle-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sidebar-toggle-btn.active {
+  background: white;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-toggle-btn:hover:not(.active) {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* Block Palette */
@@ -3276,6 +3319,18 @@ body {
   font-family: monospace;
 }
 
+/* Failed tool calls */
+.tool-call.failed {
+  background: var(--rose-light);
+  border: 1px solid var(--rose);
+  color: var(--rose);
+}
+
+.tool-failed-badge {
+  margin-left: 4px;
+  font-weight: 600;
+}
+
 /* Error Toast */
 .error-toast {
   position: fixed;
@@ -5279,6 +5334,18 @@ button.primary.warning:hover {
    Tool Inspector Modal
    ============================================ */
 
+/* Generic modal overlay - used by ToolInspectorModal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modal-fade-in 0.2s ease;
+}
+
 .tool-inspector-modal {
   width: 90%;
   max-width: 700px;
@@ -5587,4 +5654,524 @@ button.primary.warning:hover {
   color: var(--muted);
   font-size: 0.8rem;
   padding: 20px;
+}
+
+/* ============ Execution Log Modal (Dev Tools) ============ */
+
+.execution-log-modal {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.execution-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--bg);
+}
+
+.execution-log-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.execution-log-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.execution-log-header .clear-btn {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  background: var(--edge);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.execution-log-header .clear-btn:hover:not(:disabled) {
+  background: var(--rose-light);
+  color: var(--rose);
+}
+
+.execution-log-header .clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.execution-log-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.execution-log-content .empty-logs {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.execution-log-content .empty-logs p {
+  margin-bottom: 8px;
+}
+
+.execution-log-content .empty-logs .hint {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.execution-log-content .log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.execution-log-entry {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  border-left: 3px solid var(--muted);
+}
+
+.execution-log-entry.decision {
+  border-left-color: var(--teal);
+}
+
+.execution-log-entry.calculation {
+  border-left-color: var(--purple);
+}
+
+.execution-log-entry .log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.execution-log-entry .log-icon {
+  font-size: 1rem;
+}
+
+.execution-log-entry .log-type {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--edge);
+  color: var(--muted);
+}
+
+.execution-log-entry.decision .log-type {
+  background: var(--teal-light);
+  color: var(--teal);
+}
+
+.execution-log-entry.calculation .log-type {
+  background: var(--purple-light);
+  color: var(--purple);
+}
+
+.execution-log-entry.subflow .log-type {
+  background: var(--blue-light, #e0f0ff);
+  color: var(--blue, #0070f3);
+}
+
+.execution-log-entry.subflow {
+  border-left: 3px solid var(--blue, #0070f3);
+}
+
+/* Subflow step - indented, shows nodes executed inside subflows */
+.execution-log-entry.subflow-step,
+.execution-log-entry.subflow-indented {
+  margin-left: 24px;
+  border-left: 2px solid var(--edge);
+  opacity: 0.85;
+}
+
+.execution-log-entry.subflow-step .log-type,
+.execution-log-entry.subflow-indented .log-type {
+  background: var(--edge);
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+/* Subflow complete - exit from subflow */
+.execution-log-entry.subflow-complete {
+  border-left: 3px solid var(--teal);
+}
+
+.execution-log-entry.subflow-complete .log-type {
+  background: var(--teal-light);
+  color: var(--teal);
+}
+
+.execution-log-entry.subflow-complete .log-icon {
+  color: var(--teal);
+}
+
+/* Start/End nodes */
+.execution-log-entry.start .log-type {
+  background: var(--emerald-light);
+  color: var(--emerald);
+}
+
+.execution-log-entry.start .log-icon {
+  color: var(--emerald);
+}
+
+.execution-log-entry.end .log-type {
+  background: var(--orange-light);
+  color: var(--orange);
+}
+
+.execution-log-entry.end .log-icon {
+  color: var(--orange);
+}
+
+.execution-log-entry .log-row.error .log-value {
+  color: var(--rose);
+}
+
+.execution-log-entry .log-node {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.execution-log-entry .log-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.execution-log-entry .log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.execution-log-entry .log-label {
+  color: var(--muted);
+  min-width: 70px;
+  font-weight: 500;
+}
+
+.execution-log-entry .log-value {
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.execution-log-entry .log-value.code {
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  font-size: 0.75rem;
+  background: var(--edge);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.execution-log-entry .log-row.result .log-value {
+  font-weight: 600;
+}
+
+.execution-log-entry .log-value.branch-true {
+  color: var(--green);
+}
+
+.execution-log-entry .log-value.branch-false {
+  color: var(--rose);
+}
+
+.execution-log-entry .log-value.result-value {
+  color: var(--purple);
+}
+
+.execution-log-entry .operand {
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  font-size: 0.75rem;
+}
+
+.execution-log-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--edge);
+  background: var(--bg);
+}
+
+.execution-log-footer .log-count {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Dev Tools Execution Log Button */
+.devtools-log-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--teal-light);
+  border: 1px solid var(--teal);
+  border-radius: var(--radius-sm);
+  color: var(--teal);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+}
+
+.devtools-log-btn:hover {
+  background: var(--teal);
+  color: white;
+}
+
+.devtools-log-btn .log-badge {
+  background: var(--teal);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Tools Tab - Tool List */
+.tools-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tools-inspector .loading-state,
+.tools-inspector .empty-state {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.tools-inspector .error-state {
+  text-align: center;
+  padding: 16px 0;
+}
+
+.tools-inspector .retry-btn {
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: var(--edge);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-item {
+  padding: 8px 10px;
+  background: var(--paper);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.tool-item:hover {
+  background: var(--edge);
+}
+
+.tool-item.selected {
+  border-color: var(--teal);
+  background: var(--teal-light);
+}
+
+.tool-item-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ink);
+  font-family: monospace;
+}
+
+.tool-item-desc {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tool Executor Modal */
+.tool-executor-modal {
+  background: var(--paper);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-executor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.tool-executor-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.tool-executor-content {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tool-description {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.tool-args {
+  margin-bottom: 16px;
+}
+
+.tool-args h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--ink);
+}
+
+.tool-args .no-args {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.arg-field {
+  margin-bottom: 12px;
+}
+
+.arg-field label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.arg-field .required {
+  color: var(--rose);
+}
+
+.arg-field .arg-type {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.arg-field .arg-description {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0 0 4px 0;
+}
+
+.arg-field input,
+.arg-field select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  background: var(--linen);
+}
+
+.arg-field input:focus,
+.arg-field select:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.execute-btn {
+  width: 100%;
+  padding: 10px 20px;
+  background: var(--teal);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: var(--teal-dark, #048a7a);
+}
+
+.execute-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tool-error {
+  margin-top: 16px;
+  padding: 10px;
+  background: var(--rose-light);
+  border: 1px solid var(--rose);
+  border-radius: var(--radius-sm);
+  color: var(--rose);
+  font-size: 0.85rem;
+}
+
+.tool-result {
+  margin-top: 16px;
+}
+
+.tool-result h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--ink);
+}
+
+.tool-result pre {
+  background: var(--linen);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  overflow-x: auto;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
 }

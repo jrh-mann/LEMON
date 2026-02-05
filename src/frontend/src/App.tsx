@@ -9,6 +9,7 @@ import Chat from './components/Chat'
 import Modals from './components/Modals'
 import SubflowExecutionModal from './components/SubflowExecutionModal'
 import ToolInspectorModal from './components/ToolInspectorModal'
+import { ExecutionLogModal } from './components/ExecutionLogModal'
 import AuthPage from './components/AuthPage'
 import { ApiError } from './api/client'
 import { getCurrentUser } from './api/auth'
@@ -71,6 +72,7 @@ function WorkspaceApp() {
       <Modals />
       <SubflowExecutionModal />
       <ToolInspectorModal />
+      <ExecutionLogModal />
 
       {/* Error toast */}
       {error && (

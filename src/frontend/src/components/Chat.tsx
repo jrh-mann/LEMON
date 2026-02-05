@@ -375,11 +375,12 @@ function MessageBubble({
               {message.tool_calls.map((tc, idx) => (
                 <div
                   key={idx}
-                  className={`tool-call ${devMode ? 'clickable' : ''}`}
+                  className={`tool-call ${devMode ? 'clickable' : ''} ${tc.success === false ? 'failed' : ''}`}
                   onClick={() => handleToolClick(tc)}
                   title={devMode ? 'Click to inspect tool call' : undefined}
                 >
                   <span className="tool-name">{tc.tool}</span>
+                  {tc.success === false && <span className="tool-failed-badge">✗</span>}
                 </div>
               ))}
             </div>
@@ -389,11 +390,12 @@ function MessageBubble({
             {message.tool_calls.map((tc, idx) => (
               <div
                 key={idx}
-                className={`tool-call ${devMode ? 'clickable' : ''}`}
+                className={`tool-call ${devMode ? 'clickable' : ''} ${tc.success === false ? 'failed' : ''}`}
                 onClick={() => handleToolClick(tc)}
                 title={devMode ? 'Click to inspect tool call' : undefined}
               >
                 <span className="tool-name">{tc.tool}</span>
+                {tc.success === false && <span className="tool-failed-badge">✗</span>}
               </div>
             ))}
           </div>

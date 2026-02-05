@@ -42,6 +42,9 @@ interface UIState {
   // Execution tracking
   trackExecution: boolean  // Auto-pan to follow executing node
 
+  // Execution log modal (dev tools)
+  executionLogModalOpen: boolean
+
   // Actions
   setStage: (stage: Stage) => void
   openModal: (modal: ModalType) => void
@@ -72,6 +75,9 @@ interface UIState {
   // Execution tracking
   setTrackExecution: (enabled: boolean) => void
 
+  // Execution log modal
+  setExecutionLogModalOpen: (open: boolean) => void
+
   // Reset
   reset: () => void
 }
@@ -97,6 +103,7 @@ export const useUIStore = create<UIState>((set) => ({
   devMode: typeof localStorage !== 'undefined' && localStorage.getItem('devMode') === 'true',
   selectedToolCall: null,
   trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
+  executionLogModalOpen: false,
 
   // Actions
   setStage: (stage) => set({ stage }),
@@ -169,6 +176,9 @@ export const useUIStore = create<UIState>((set) => ({
     }
     set({ trackExecution: enabled })
   },
+
+  // Execution log modal
+  setExecutionLogModalOpen: (open) => set({ executionLogModalOpen: open }),
 
   // Reset
   reset: () =>

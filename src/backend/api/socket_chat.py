@@ -178,6 +178,13 @@ class SocketChatTask:
             if isinstance(result, dict) and "success" in result:
                 success = bool(result.get("success"))
             self.tool_summary.note(tool, success=success)
+            # Store result in executed_tools so it's available in chat response
+            # Find the matching tool entry and add the result
+            for executed in reversed(self.executed_tools):
+                if executed.get("tool") == tool and "result" not in executed:
+                    executed["result"] = result
+                    executed["success"] = success
+                    break
         if event == "tool_batch_complete":
             self.flush_tool_summary()
         if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):

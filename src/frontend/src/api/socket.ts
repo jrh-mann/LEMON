@@ -626,6 +626,94 @@ export function connectSocket(): Socket {
     }
   })
 
+  // ============ Execution Log Events (Dev Tools) ============
+  // Detailed logging for decision evaluations, calculations, etc.
+
+  socket.on('execution_log', (data: {
+    execution_id: string
+    log_type: 'decision' | 'calculation' | 'subflow_start' | 'subflow_step' | 'subflow_complete' | 'start' | 'end'
+    node_id: string
+    node_label: string
+    // Decision-specific fields
+    condition_expression?: string
+    input_name?: string
+    input_value?: unknown
+    comparator?: string
+    compare_value?: unknown
+    compare_value2?: unknown
+    result?: boolean | unknown
+    branch_taken?: 'true' | 'false'
+    // Calculation-specific fields
+    output_name?: string
+    operator?: string
+    operands?: Array<{ name: string; kind: string; value: number }>
+    formula?: string
+    // Subflow-specific fields (can be on any log type if inside subflow)
+    subworkflow_id?: string
+    subworkflow_name?: string
+    parent_node_id?: string
+    node_type?: string
+    // Subflow complete fields
+    success?: boolean
+    output?: unknown
+    error?: string
+    // Start/End specific fields
+    inputs?: Record<string, unknown>
+    output_value?: unknown
+  }) => {
+    console.log('[Socket] execution_log:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    if (workflowStore.execution.executionId === data.execution_id) {
+      // Create log entry with unique ID and timestamp
+      const logEntry = {
+        id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: Date.now(),
+        execution_id: data.execution_id,
+        node_id: data.node_id,
+        node_label: data.node_label,
+        log_type: data.log_type,
+        // Subworkflow info (can be on any log type if node is in subflow)
+        subworkflow_id: data.subworkflow_id,
+        subworkflow_name: data.subworkflow_name,
+        // Include all fields directly based on log type
+        ...(data.log_type === 'decision' && {
+          condition_expression: data.condition_expression,
+          input_name: data.input_name,
+          input_value: data.input_value,
+          comparator: data.comparator,
+          compare_value: data.compare_value,
+          compare_value2: data.compare_value2,
+          result: data.result,
+          branch_taken: data.branch_taken,
+        }),
+        ...(data.log_type === 'calculation' && {
+          output_name: data.output_name,
+          operator: data.operator,
+          operands: data.operands,
+          result: data.result,
+          formula: data.formula,
+        }),
+        ...(data.log_type === 'subflow_step' && {
+          parent_node_id: data.parent_node_id,
+          node_type: data.node_type,
+        }),
+        ...(data.log_type === 'subflow_complete' && {
+          success: data.success,
+          output: data.output,
+          error: data.error,
+        }),
+        ...(data.log_type === 'start' && {
+          inputs: data.inputs,
+        }),
+        ...(data.log_type === 'end' && {
+          output_value: data.output,
+        }),
+      }
+      workflowStore.addExecutionLog(logEntry as any)
+    }
+  })
+
   // ============ Subflow Visualization Events ============
   // These events enable the popup modal for visualizing subflow execution
 

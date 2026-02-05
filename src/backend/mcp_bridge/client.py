@@ -29,6 +29,57 @@ def _get_mcp_headers() -> dict[str, str] | None:
     return {"Authorization": f"Bearer {token}"}
 
 
+def list_mcp_tools() -> list[dict[str, Any]]:
+    """List all available MCP tools with their schemas.
+    
+    Returns:
+        List of tool definitions, each containing:
+        - name: Tool name
+        - description: Tool description  
+        - inputSchema: JSON Schema for tool parameters
+    """
+    url = _get_mcp_url()
+
+    async def _list() -> list[dict[str, Any]]:
+        timeout_s = float(os.environ.get("LEMON_MCP_TIMEOUT", "30"))
+        headers = _get_mcp_headers()
+
+        async def run_session(http_client=None) -> list[dict[str, Any]]:
+            async with streamable_http_client(url, http_client=http_client) as (read_stream, write_stream, _):
+                async with ClientSession(
+                    read_stream,
+                    write_stream,
+                    read_timeout_seconds=timedelta(seconds=timeout_s),
+                ) as session:
+                    with anyio.fail_after(timeout_s):
+                        await session.initialize()
+                    with anyio.fail_after(timeout_s):
+                        result = await session.list_tools()
+                    
+                    # Convert tool objects to dictionaries
+                    tools = []
+                    for tool in result.tools:
+                        tools.append({
+                            "name": tool.name,
+                            "description": tool.description or "",
+                            "inputSchema": tool.inputSchema if hasattr(tool, 'inputSchema') else {},
+                        })
+                    return tools
+
+        if headers:
+            async with create_mcp_http_client(headers=headers) as http_client:
+                return await run_session(http_client=http_client)
+
+        return await run_session()
+
+    logger.info("Listing MCP tools url=%s", url)
+    try:
+        return anyio.run(_list)
+    except Exception as exc:
+        logger.exception("MCP list_tools failed: %s", exc)
+        raise
+
+
 def call_mcp_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     url = _get_mcp_url()
 

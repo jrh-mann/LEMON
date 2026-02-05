@@ -403,6 +403,88 @@ export interface ExecutionTrace {
   state_history: Record<string, unknown>[]
 }
 
+// ============ Execution Log Entry (for dev tools) ============
+
+export type ExecutionLogType = 'decision' | 'calculation' | 'step' | 'subflow'
+
+export interface ExecutionLogEntryBase {
+  id: string
+  timestamp: number
+  execution_id: string
+  node_id: string
+  node_label: string
+  // Subflow context
+  subworkflow_id?: string
+  subworkflow_name?: string
+  subworkflow_stack?: string[] // Stack of subworkflow IDs (outer -> inner)
+  error?: string
+}
+
+export interface DecisionLogEntry extends ExecutionLogEntryBase {
+  log_type: 'decision'
+  condition_expression: string
+  input_name: string
+  input_value: unknown
+  comparator: string
+  compare_value: unknown
+  compare_value2?: unknown
+  result: boolean
+  branch_taken: 'true' | 'false'
+}
+
+export interface CalculationLogEntry extends ExecutionLogEntryBase {
+  log_type: 'calculation'
+  output_name: string
+  operator: string
+  operands: Array<{ name: string; kind: string; value: number }>
+  result: number
+  formula: string
+}
+
+export interface StepLogEntry extends ExecutionLogEntryBase {
+  log_type: 'step'
+  node_type: string
+  step_index: number
+}
+
+export interface SubflowLogEntry extends ExecutionLogEntryBase {
+  log_type: 'subflow_start'
+  subworkflow_id: string
+  subworkflow_name: string
+}
+
+export interface SubflowStepLogEntry extends ExecutionLogEntryBase {
+  log_type: 'subflow_step'
+  // Fields like subworkflow_id inherited from Base now
+  node_type: string
+  parent_node_id?: string
+}
+
+export interface SubflowCompleteLogEntry extends ExecutionLogEntryBase {
+  log_type: 'subflow_complete'
+  subworkflow_id: string
+  subworkflow_name: string
+  success: boolean
+  output?: unknown
+  error?: string
+}
+
+export interface StartLogEntry extends ExecutionLogEntryBase {
+  log_type: 'start'
+  inputs?: Record<string, unknown>
+  subworkflow_id?: string
+  subworkflow_name?: string
+}
+
+export interface EndLogEntry extends ExecutionLogEntryBase {
+  log_type: 'end'
+  output_value?: unknown
+  subworkflow_id?: string
+  subworkflow_name?: string
+}
+
+export type ExecutionLogEntry = DecisionLogEntry | CalculationLogEntry | StepLogEntry | SubflowLogEntry | SubflowStepLogEntry | SubflowCompleteLogEntry | StartLogEntry | EndLogEntry
+
 // ============ Validation Models ============
 
 export interface ValidationCase {
@@ -452,6 +534,7 @@ export interface ToolCall {
   tool: string
   arguments?: Record<string, unknown>
   result?: Record<string, unknown>
+  success?: boolean  // false if tool failed, true/undefined if succeeded
 }
 
 export interface Message {

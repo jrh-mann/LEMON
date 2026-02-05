@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message, ExecutionLogEntry } from '../types'
 import { useChatStore } from './chatStore'
 import { patchWorkflow } from '../api/workflows'
 
@@ -14,6 +14,8 @@ export interface ExecutionState {
   executionSpeed: number     // Delay between steps in ms (100-2000)
   executionError: string | null
   executionOutput: any       // Final output of execution
+  executionLogs: ExecutionLogEntry[]  // Detailed execution logs for dev tools
+  logIndentationStack: string[] // Stack of subworkflow IDs to track indentation depth
 }
 
 // Subflow execution state for popup modal visualization
@@ -153,6 +155,10 @@ interface WorkflowState {
   setSubflowExecutingNode: (nodeId: string | null) => void
   markSubflowNodeExecuted: (nodeId: string) => void
   endSubflowExecution: () => void
+
+  // Execution log actions (dev tools)
+  addExecutionLog: (log: ExecutionLogEntry) => void
+  clearExecutionLogs: () => void
 }
 
 const emptyFlowchart: Flowchart = { nodes: [], edges: [] }
@@ -168,6 +174,8 @@ const initialExecutionState: ExecutionState = {
   executionSpeed: 500,  // Default 500ms between steps
   executionError: null,
   executionOutput: null,
+  executionLogs: [],
+  logIndentationStack: [],
 }
 
 // Generate unique tab ID
@@ -816,6 +824,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       executionPath: [],
       executionError: null,
       executionOutput: null,
+      logIndentationStack: [],
     },
   })),
 
@@ -936,5 +945,49 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   endSubflowExecution: () => set((state) => ({
     subflowStack: state.subflowStack.slice(0, -1),  // Pop top subflow
+  })),
+
+  // Execution log actions (dev tools)
+  // Execution log actions (dev tools)
+  addExecutionLog: (log) => set((state) => {
+    let currentStack = state.execution.logIndentationStack || [];
+    let entryStack: string[] = [];
+
+    if (log.log_type === 'subflow_start') {
+      // For start event, use parent stack for entry, then push
+      entryStack = [...currentStack];
+      // Only push if subworkflow_id is present
+      if (log.subworkflow_id) {
+        currentStack = [...currentStack, log.subworkflow_id];
+      }
+    } else if (log.log_type === 'subflow_complete') {
+      // For complete event, pop logic (return to parent level)
+      if (currentStack.length > 0) {
+        currentStack = currentStack.slice(0, -1);
+      }
+      entryStack = [...currentStack];
+    } else {
+      // For normal nodes, use current stack
+      entryStack = [...currentStack];
+    }
+
+    // Force override the stack with our client-side computed stack
+    // This ensures consistent indentation even if backend is stale/flaky
+    const newLog = { ...log, subworkflow_stack: entryStack };
+
+    return {
+      execution: {
+        ...state.execution,
+        logIndentationStack: currentStack,
+        executionLogs: [...state.execution.executionLogs, newLog],
+      },
+    };
+  }),
+
+  clearExecutionLogs: () => set((state) => ({
+    execution: {
+      ...state.execution,
+      executionLogs: [],
+    },
   })),
 }))
