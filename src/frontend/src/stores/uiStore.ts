@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Stage, ModalType, SidebarTab } from '../types'
+import type { Stage, ModalType, SidebarTab, ToolCall } from '../types'
 
 export type CanvasTab = 'workflow' | 'image'
 
@@ -35,6 +35,13 @@ interface UIState {
   // Chat panel height (for dynamic workspace sizing)
   chatHeight: number
 
+  // Developer mode
+  devMode: boolean
+  selectedToolCall: ToolCall | null  // For tool inspector modal
+
+  // Execution tracking
+  trackExecution: boolean  // Auto-pan to follow executing node
+
   // Actions
   setStage: (stage: Stage) => void
   openModal: (modal: ModalType) => void
@@ -56,6 +63,14 @@ interface UIState {
 
   // Chat
   setChatHeight: (height: number) => void
+
+  // Dev mode
+  setDevMode: (enabled: boolean) => void
+  toggleDevMode: () => void
+  setSelectedToolCall: (toolCall: ToolCall | null) => void
+
+  // Execution tracking
+  setTrackExecution: (enabled: boolean) => void
 
   // Reset
   reset: () => void
@@ -79,6 +94,9 @@ export const useUIStore = create<UIState>((set) => ({
   panX: 0,
   panY: 0,
   chatHeight: 280,
+  devMode: typeof localStorage !== 'undefined' && localStorage.getItem('devMode') === 'true',
+  selectedToolCall: null,
+  trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
 
   // Actions
   setStage: (stage) => set({ stage }),
@@ -125,6 +143,32 @@ export const useUIStore = create<UIState>((set) => ({
 
   // Chat
   setChatHeight: (height) => set({ chatHeight: height }),
+
+  // Dev mode
+  setDevMode: (enabled) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('devMode', String(enabled))
+    }
+    set({ devMode: enabled })
+  },
+
+  toggleDevMode: () => set((state) => {
+    const newValue = !state.devMode
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('devMode', String(newValue))
+    }
+    return { devMode: newValue }
+  }),
+
+  setSelectedToolCall: (toolCall) => set({ selectedToolCall: toolCall }),
+
+  // Execution tracking
+  setTrackExecution: (enabled) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('trackExecution', String(enabled))
+    }
+    set({ trackExecution: enabled })
+  },
 
   // Reset
   reset: () =>

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+﻿import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import {
@@ -80,7 +80,21 @@ export default function Canvas() {
     execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
 
-  const { zoom, setZoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab, canvasMode, toggleCanvasMode, setCanvasMode } = useUIStore()
+  const {
+    zoom,
+    setZoom,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    // setPan removed
+    canvasTab,
+    setCanvasTab,
+    canvasMode,
+    toggleCanvasMode,
+    setCanvasMode,
+    trackExecution,     // Import tracking state
+    setTrackExecution,  // Import tracking setter
+  } = useUIStore()
 
   // Zoom limits for wheel zoom - matches uiStore constants
   const MIN_ZOOM = 0.25
@@ -92,6 +106,7 @@ export default function Canvas() {
       setCanvasTab('image')
     }
   }, [pendingImage, setCanvasTab])
+
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false)
@@ -131,6 +146,33 @@ export default function Canvas() {
   // Zoom is applied via viewBox (not CSS transform) to maintain vector crispness at any zoom level
   const viewBox = calculateViewBox(flowchart.nodes)
   const viewBoxStr = `${viewBox.x - panOffset.x} ${viewBox.y - panOffset.y} ${viewBox.width / zoom} ${viewBox.height / zoom}`
+
+  // Auto-track executing node
+  useEffect(() => {
+    // Only track if enabled and we have an executing node
+    if (trackExecution && execution.isExecuting && execution.executingNodeId) {
+      const node = flowchart.nodes.find(n => n.id === execution.executingNodeId)
+      if (node) {
+        // Center on the node
+        // Target pan offset = viewBoxX + (viewBoxWidth / 2) - nodeX
+        // Because nodeX = viewBoxX + (viewBoxWidth / 2) - panOffset
+
+        // Use current viewbox (which is calculated from nodes)
+        // Note: viewBox.width is width relative to SVG user usage units.
+        // effective view width in user units = viewBox.width / zoom
+
+        const effectiveWidth = viewBox.width / zoom
+        const effectiveHeight = viewBox.height / zoom
+
+        const targetX = viewBox.x + (effectiveWidth / 2) - node.x
+        const targetY = viewBox.y + (effectiveHeight / 2) - node.y
+
+        // Smooth transition could be handled by CSS if we applied pan via CSS, 
+        // but here we use state. For now momentary jump is acceptable for "tracking".
+        setPanOffset({ x: targetX, y: targetY })
+      }
+    }
+  }, [trackExecution, execution.isExecuting, execution.executingNodeId, flowchart.nodes, zoom, viewBox.x, viewBox.y, viewBox.width, viewBox.height])
 
   // Convert screen coords to SVG coords
   const screenToSVG = useCallback(
@@ -951,7 +993,7 @@ export default function Canvas() {
     // Limit to 3 lines max, truncate last line if needed
     if (lines.length > 3) {
       lines.length = 3
-      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + '…'
+      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + 'â€¦'
     }
 
     return lines
@@ -995,7 +1037,7 @@ export default function Canvas() {
     let startNodes = nodes.filter(n =>
       !orphanNodeIds.has(n.id) &&
       (((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
-      n.type === 'start')
+        n.type === 'start')
     )
 
     // If no start nodes found, use first connected node
@@ -1284,7 +1326,7 @@ export default function Canvas() {
               }}
               title="Remove image"
             >
-              ×
+              Ã—
             </button>
           </div>
           <div className="image-preview-content">
@@ -1483,6 +1525,27 @@ export default function Canvas() {
           <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
             -
           </button>
+
+          <div style={{ width: 1, height: 16, background: 'var(--edge)', margin: '0 4px' }} />
+
+          <button
+            className={`zoom-btn ${trackExecution ? 'active' : ''}`}
+            onClick={() => setTrackExecution(!trackExecution)}
+            title="Track execution"
+            style={trackExecution ? { color: 'var(--rose)', borderColor: 'var(--rose)', background: 'var(--rose-light)' } : {}}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="3" fill="currentColor" />
+            </svg>
+          </button>
         </div>
 
         {/* Beautify control */}
@@ -1497,30 +1560,30 @@ export default function Canvas() {
               {/* Aura glow filter */}
               <defs>
                 <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
                   <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
                   </feMerge>
                 </filter>
                 <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9"/>
-                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6"/>
+                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6" />
                 </radialGradient>
                 <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor="var(--amber)"/>
-                  <stop offset="100%" stopColor="var(--rose)"/>
+                  <stop offset="0%" stopColor="var(--amber)" />
+                  <stop offset="100%" stopColor="var(--rose)" />
                 </radialGradient>
               </defs>
               {/* Outer petals */}
-              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)"/>
-              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)"/>
-              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)"/>
-              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)"/>
-              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)"/>
-              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)"/>
+              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)" />
+              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)" />
+              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)" />
+              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)" />
+              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)" />
+              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)" />
               {/* Center */}
-              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)"/>
+              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)" />
             </svg>
           </button>
         </div>

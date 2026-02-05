@@ -7,6 +7,8 @@ import Canvas from './components/Canvas'
 import RightSidebar from './components/RightSidebar'
 import Chat from './components/Chat'
 import Modals from './components/Modals'
+import SubflowExecutionModal from './components/SubflowExecutionModal'
+import ToolInspectorModal from './components/ToolInspectorModal'
 import AuthPage from './components/AuthPage'
 import { ApiError } from './api/client'
 import { getCurrentUser } from './api/auth'
@@ -67,6 +69,8 @@ function WorkspaceApp() {
 
       <Chat />
       <Modals />
+      <SubflowExecutionModal />
+      <ToolInspectorModal />
 
       {/* Error toast */}
       {error && (

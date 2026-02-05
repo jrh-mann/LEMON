@@ -213,17 +213,77 @@ class SteppedExecutionTask:
         """Callback for TreeInterpreter - called before each node.
         
         Handles:
-        1. Emitting step event to frontend
+        1. Emitting step event to frontend (parent or subflow)
         2. Checking for stop signal
         3. Waiting if paused
         4. Applying speed delay
+        
+        The step_info may contain an 'event_type' field for subflow events:
+        - 'subflow_start': Subflow execution is beginning
+        - 'subflow_step': A node within a subflow is executing
+        - 'subflow_complete': Subflow execution finished
+        - (none): Regular parent workflow step
         """
         # Check if stopped before processing
         if self.is_stopped():
             raise StoppedExecutionError("Execution stopped by user")
 
-        # Emit step event for UI highlighting
-        self.emit_step(step_info)
+        event_type = step_info.get("event_type")
+        
+        if event_type == "subflow_start":
+            # Emit subflow_start event with subflow nodes/edges for modal
+            self.socketio.emit(
+                "subflow_start",
+                {
+                    "execution_id": self.execution_id,
+                    "parent_node_id": step_info.get("parent_node_id"),
+                    "subworkflow_id": step_info.get("subworkflow_id"),
+                    "subworkflow_name": step_info.get("subworkflow_name"),
+                    "nodes": step_info.get("nodes", []),
+                    "edges": step_info.get("edges", []),
+                },
+                to=self.sid,
+            )
+            # No delay for lifecycle events
+            return
+        
+        elif event_type == "subflow_step":
+            # Emit subflow_step event for node highlighting in modal
+            self.socketio.emit(
+                "subflow_step",
+                {
+                    "execution_id": self.execution_id,
+                    "parent_node_id": step_info.get("parent_node_id"),
+                    "subworkflow_id": step_info.get("subworkflow_id"),
+                    "node_id": step_info.get("node_id"),
+                    "node_type": step_info.get("node_type"),
+                    "node_label": step_info.get("node_label"),
+                    "step_index": step_info.get("step_index"),
+                },
+                to=self.sid,
+            )
+        
+        elif event_type == "subflow_complete":
+            # Emit subflow_complete event to close modal
+            self.socketio.emit(
+                "subflow_complete",
+                {
+                    "execution_id": self.execution_id,
+                    "parent_node_id": step_info.get("parent_node_id"),
+                    "subworkflow_id": step_info.get("subworkflow_id"),
+                    "subworkflow_name": step_info.get("subworkflow_name"),
+                    "success": step_info.get("success"),
+                    "output": step_info.get("output"),
+                    "error": step_info.get("error"),
+                },
+                to=self.sid,
+            )
+            # No delay for lifecycle events
+            return
+        
+        else:
+            # Regular parent workflow step event
+            self.emit_step(step_info)
 
         # Check for pause and wait if needed
         pause_event = _get_pause_event(self.execution_id)

@@ -349,6 +349,13 @@ function MessageBubble({
 }) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
+  const { devMode, setSelectedToolCall } = useUIStore()
+
+  const handleToolClick = (tc: import('../types').ToolCall) => {
+    if (devMode) {
+      setSelectedToolCall(tc)
+    }
+  }
 
   return (
     <div className={`message ${message.role}`}>
@@ -366,7 +373,12 @@ function MessageBubble({
             </summary>
             <div className="tool-calls">
               {message.tool_calls.map((tc, idx) => (
-                <div key={idx} className="tool-call">
+                <div
+                  key={idx}
+                  className={`tool-call ${devMode ? 'clickable' : ''}`}
+                  onClick={() => handleToolClick(tc)}
+                  title={devMode ? 'Click to inspect tool call' : undefined}
+                >
                   <span className="tool-name">{tc.tool}</span>
                 </div>
               ))}
@@ -375,7 +387,12 @@ function MessageBubble({
         ) : (
           <div className="tool-calls">
             {message.tool_calls.map((tc, idx) => (
-              <div key={idx} className="tool-call">
+              <div
+                key={idx}
+                className={`tool-call ${devMode ? 'clickable' : ''}`}
+                onClick={() => handleToolClick(tc)}
+                title={devMode ? 'Click to inspect tool call' : undefined}
+              >
                 <span className="tool-name">{tc.tool}</span>
               </div>
             ))}

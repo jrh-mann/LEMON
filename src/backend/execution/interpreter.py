@@ -166,6 +166,9 @@ class TreeInterpreter:
             >>> def on_step(info): print(f"Executing: {info['node_label']}")
             >>> result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         """
+        # Store on_step callback for forwarding to subflows
+        self._on_step = on_step
+        
         # Validate inputs
         try:
             self._validate_inputs(input_values)
@@ -231,7 +234,7 @@ class TreeInterpreter:
 
                 elif node_type == 'subprocess':
                     # Execute subworkflow and inject output as new input
-                    current = self._handle_subprocess_node(current, context)
+                    current = self._handle_subprocess_node(current, context, on_step)
 
                 elif node_type == 'calculation':
                     # Execute calculation and inject result as new variable
@@ -289,7 +292,8 @@ class TreeInterpreter:
     def _handle_subprocess_node(
         self,
         node: Dict[str, Any],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> Optional[Dict[str, Any]]:
         """Execute a subworkflow and inject its output as a new input variable.
         
@@ -398,8 +402,52 @@ class TreeInterpreter:
             output_type=getattr(subworkflow, 'output_type', 'string'),
         )
         
-        # Execute subworkflow
-        sub_result = sub_interpreter.execute(sub_input_values)
+        # Create wrapper callback that adds subflow context for visualization
+        subflow_on_step = None
+        if on_step is not None:
+            # Emit subflow_start event with subworkflow details
+            try:
+                on_step({
+                    "event_type": "subflow_start",
+                    "parent_node_id": node_id,
+                    "subworkflow_id": subworkflow_id,
+                    "subworkflow_name": subworkflow.name,
+                    "nodes": subworkflow.nodes if hasattr(subworkflow, 'nodes') else [],
+                    "edges": subworkflow.edges if hasattr(subworkflow, 'edges') else [],
+                })
+            except Exception as e:
+                logger.warning(f"on_step subflow_start callback error: {e}")
+            
+            # Create wrapper that adds subflow context to each step
+            def subflow_on_step(step_info: Dict[str, Any]) -> None:
+                try:
+                    on_step({
+                        **step_info,
+                        "event_type": "subflow_step",
+                        "parent_node_id": node_id,
+                        "subworkflow_id": subworkflow_id,
+                        "subworkflow_name": subworkflow.name,
+                    })
+                except Exception as e:
+                    logger.warning(f"on_step subflow_step callback error: {e}")
+        
+        # Execute subworkflow with visualization callback
+        sub_result = sub_interpreter.execute(sub_input_values, on_step=subflow_on_step)
+        
+        # Emit subflow_complete event
+        if on_step is not None:
+            try:
+                on_step({
+                    "event_type": "subflow_complete",
+                    "parent_node_id": node_id,
+                    "subworkflow_id": subworkflow_id,
+                    "subworkflow_name": subworkflow.name,
+                    "success": sub_result.success,
+                    "output": sub_result.output,
+                    "error": sub_result.error,
+                })
+            except Exception as e:
+                logger.warning(f"on_step subflow_complete callback error: {e}")
         
         # Record subflow execution for debugging
         self.subflow_results.append({

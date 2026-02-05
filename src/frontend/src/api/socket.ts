@@ -4,12 +4,15 @@ import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { transformFlowchartFromBackend, transformNodeFromBackend } from '../utils/canvas'
+import { beautifyNodes } from '../utils/beautifyNodes'
 import type {
   SocketChatResponse,
   SocketAgentQuestion,
   SocketAgentComplete,
   SocketAgentError,
   WorkflowAnalysis,
+  FlowNode,
+  FlowEdge,
 } from '../types'
 
 let socket: Socket | null = null
@@ -471,7 +474,7 @@ export function connectSocket(): Socket {
     } else {
       console.log('[Socket] Workflow ID already matches:', data.workflow_id)
     }
-    
+
     // Update the tab title to match the workflow name
     const activeTabId = workflowStore.activeTabId
     if (activeTabId) {
@@ -620,6 +623,92 @@ export function connectSocket(): Socket {
       workflowStore.stopExecution()
       // Reopen the execute modal to show error to user
       uiStore.openModal('execute')
+    }
+  })
+
+  // ============ Subflow Visualization Events ============
+  // These events enable the popup modal for visualizing subflow execution
+
+  // Subflow start - opens popup modal with subflow canvas
+  socket.on('subflow_start', (data: {
+    execution_id: string
+    parent_node_id: string
+    subworkflow_id: string
+    subworkflow_name: string
+    nodes: FlowNode[]
+    edges: FlowEdge[]
+  }) => {
+    console.log('[Socket] subflow_start:', data)
+    const workflowStore = useWorkflowStore.getState()
+
+    if (workflowStore.execution.executionId === data.execution_id) {
+      // Beautify nodes before displaying for better layout
+      const beautified = beautifyNodes(data.nodes, data.edges)
+
+      workflowStore.startSubflowExecution(
+        data.parent_node_id,
+        data.subworkflow_id,
+        data.subworkflow_name,
+        beautified.nodes,
+        beautified.edges
+      )
+    }
+  })
+
+  // Subflow step - highlights node in subflow popup modal
+  socket.on('subflow_step', (data: {
+    execution_id: string
+    parent_node_id: string
+    subworkflow_id: string
+    node_id: string
+    node_type: string
+    node_label: string
+    step_index: number
+  }) => {
+    console.log('[Socket] subflow_step:', data)
+    const workflowStore = useWorkflowStore.getState()
+    const { subflowStack } = workflowStore
+
+    // Get top subflow from stack
+    const topSubflow = subflowStack.length > 0 ? subflowStack[subflowStack.length - 1] : null
+
+    // Only process if this is our current execution and matches top subflow
+    if (workflowStore.execution.executionId !== data.execution_id) return
+    if (!topSubflow || topSubflow.subworkflowId !== data.subworkflow_id) return
+
+    // Mark previous node as executed
+    if (topSubflow.executingNodeId) {
+      workflowStore.markSubflowNodeExecuted(topSubflow.executingNodeId)
+    }
+
+    // Set new executing node
+    workflowStore.setSubflowExecutingNode(data.node_id)
+  })
+
+  // Subflow complete - closes popup modal
+  socket.on('subflow_complete', (data: {
+    execution_id: string
+    parent_node_id: string
+    subworkflow_id: string
+    subworkflow_name: string
+    success: boolean
+    output?: unknown
+    error?: string
+  }) => {
+    console.log('[Socket] subflow_complete:', data)
+    const workflowStore = useWorkflowStore.getState()
+    const { subflowStack } = workflowStore
+    const topSubflow = subflowStack.length > 0 ? subflowStack[subflowStack.length - 1] : null
+
+    if (workflowStore.execution.executionId === data.execution_id && topSubflow) {
+      // Mark final subflow node as executed before closing
+      if (topSubflow.executingNodeId) {
+        workflowStore.markSubflowNodeExecuted(topSubflow.executingNodeId)
+      }
+      // Small delay so user can see the final state before modal closes
+      setTimeout(() => {
+        workflowStore.endSubflowExecution()
+      }, 500)
     }
   })
 

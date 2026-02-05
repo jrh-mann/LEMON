@@ -12,7 +12,7 @@ export default function Header() {
   const [isValidating, setIsValidating] = useState(false)
   const [showExportDropdown, setShowExportDropdown] = useState(false)
 
-  const { openModal, setError } = useUIStore()
+  const { openModal, setError, devMode, toggleDevMode } = useUIStore()
   const { currentWorkflow, flowchart, setPendingImage, currentAnalysis } = useWorkflowStore()
 
   // Close dropdown when clicking outside
@@ -428,6 +428,19 @@ export default function Header() {
               </button>
             </div>
           )}
+        </div>
+
+        {/* Dev Mode Toggle */}
+        <div className="dev-mode-toggle">
+          <label className="toggle-label">
+            <span className="toggle-text">DEV</span>
+            <input
+              type="checkbox"
+              checked={devMode}
+              onChange={toggleDevMode}
+            />
+            <span className="toggle-slider"></span>
+          </label>
         </div>
 
         <button className="ghost" onClick={handleLogout}>

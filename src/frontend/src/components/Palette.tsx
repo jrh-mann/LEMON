@@ -3,6 +3,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { generateNodeId } from '../utils/canvas'
 import type { FlowNodeType, FlowNode } from '../types'
+import DevToolsPanel from './DevToolsPanel'
 
 interface BlockConfig {
   type: FlowNodeType
@@ -66,7 +67,7 @@ const BLOCKS: BlockConfig[] = [
 
 export default function Palette() {
   const { addNode, flowchart, setFlowchart, setAnalysis } = useWorkflowStore()
-  const { openModal } = useUIStore()
+  const { openModal, devMode } = useUIStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showJsonInput, setShowJsonInput] = useState(false)
@@ -337,6 +338,9 @@ export default function Palette() {
         style={{ display: 'none' }}
         onChange={handleFileUpload}
       />
+
+      {/* Developer Tools Panel - shown when devMode is on */}
+      {devMode && <DevToolsPanel />}
 
       {/* JSON Input Modal */}
       {showJsonInput && (

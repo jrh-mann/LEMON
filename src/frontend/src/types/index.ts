@@ -271,7 +271,7 @@ export type VariableSource = 'input' | 'subprocess' | 'calculated' | 'constant'
 
 // Unified variable type - replaces the old WorkflowInput
 export interface WorkflowVariable {
-id: string                          // e.g., "var_patient_age_number", "var_creditscore_number"
+  id: string                          // e.g., "var_patient_age_number", "var_creditscore_number"
   name: string                        // Human-readable name, e.g., "Patient Age"
   type: InputType                     // "number", "bool", "string", "enum", "date"
   source: VariableSource              // Where this variable comes from
@@ -624,4 +624,4 @@ export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running'
 
 export type ModalType = 'library' | 'validation' | 'save' | 'execute' | 'none'
 
-export type SidebarTab = 'library' | 'variables' | 'properties'
+export type SidebarTab = 'library' | 'variables' | 'properties' | 'devtools'

@@ -16,6 +16,18 @@ export interface ExecutionState {
   executionOutput: any       // Final output of execution
 }
 
+// Subflow execution state for popup modal visualization
+export interface SubflowExecutionState {
+  isActive: boolean
+  parentNodeId: string | null       // The subprocess node in parent workflow
+  subworkflowId: string | null
+  subworkflowName: string | null
+  nodes: FlowNode[]                 // Subflow nodes for rendering
+  edges: FlowEdge[]                 // Subflow edges for rendering
+  executingNodeId: string | null    // Currently executing node in subflow
+  executedNodeIds: string[]         // Trail of executed nodes in subflow
+}
+
 // Tab interface
 export interface WorkflowTab {
   id: string
@@ -57,6 +69,9 @@ interface WorkflowState {
 
   // Execution state for visual workflow execution
   execution: ExecutionState
+
+  // Subflow execution stack for popup modal (supports nested subflows)
+  subflowStack: SubflowExecutionState[]
 
   // History for undo/redo (derived from active tab)
   history: Flowchart[]
@@ -132,6 +147,12 @@ interface WorkflowState {
   setExecutionError: (error: string | null) => void
   setExecutionOutput: (output: any) => void
   clearExecution: () => void
+
+  // Subflow execution actions
+  startSubflowExecution: (parentNodeId: string, subworkflowId: string, subworkflowName: string, nodes: FlowNode[], edges: FlowEdge[]) => void
+  setSubflowExecutingNode: (nodeId: string | null) => void
+  markSubflowNodeExecuted: (nodeId: string) => void
+  endSubflowExecution: () => void
 }
 
 const emptyFlowchart: Flowchart = { nodes: [], edges: [] }
@@ -223,6 +244,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Execution state
   execution: { ...initialExecutionState },
 
+  // Subflow execution stack for popup modal (supports nested)
+  subflowStack: [],
+
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
   setLoadingWorkflows: (loading) => set({ isLoadingWorkflows: loading }),
@@ -244,11 +268,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const workflow = state.currentWorkflow
       ? { ...state.currentWorkflow, id: workflowId }
       : {
-          id: workflowId,
-          metadata: { name: '' },
-          blocks: [],
-          connections: [],
-        } as unknown as Workflow
+        id: workflowId,
+        metadata: { name: '' },
+        blocks: [],
+        connections: [],
+      } as unknown as Workflow
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? { ...tab, workflow }
@@ -286,7 +310,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       blocks: [],
       connections: [],
     } as unknown as Workflow
-    
+
     const newTab: WorkflowTab = {
       id: generateTabId(),
       title,
@@ -307,13 +331,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? {
-            ...tab,
-            pendingImage: state.pendingImage,
-            pendingImageName: state.pendingImageName,
-            analysis: state.currentAnalysis,
-            conversationId: chatSnapshot.conversationId,
-            messages: chatSnapshot.messages,
-          }
+          ...tab,
+          pendingImage: state.pendingImage,
+          pendingImageName: state.pendingImageName,
+          analysis: state.currentAnalysis,
+          conversationId: chatSnapshot.conversationId,
+          messages: chatSnapshot.messages,
+        }
         : tab
     )
     set({
@@ -398,16 +422,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? {
-            ...tab,
-            flowchart: state.flowchart,
-            history: state.history,
-            historyIndex: state.historyIndex,
-            pendingImage: state.pendingImage,
-            pendingImageName: state.pendingImageName,
-            analysis: state.currentAnalysis,
-            conversationId: chatSnapshot.conversationId,
-            messages: chatSnapshot.messages,
-          }
+          ...tab,
+          flowchart: state.flowchart,
+          history: state.history,
+          historyIndex: state.historyIndex,
+          pendingImage: state.pendingImage,
+          pendingImageName: state.pendingImageName,
+          analysis: state.currentAnalysis,
+          conversationId: chatSnapshot.conversationId,
+          messages: chatSnapshot.messages,
+        }
         : tab
     )
 
@@ -593,12 +617,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const state = get()
     const sourceNode = state.flowchart.nodes.find((n) => n.id === from)
     const isDecisionEdge = sourceNode?.type === 'decision'
-    
+
     state.pushHistory()
-    
+
     // Compute new edges before setting state (for backend sync)
     let newEdges: FlowEdge[]
-    
+
     // For decision edges, auto-swap sibling edge labels to maintain true/false pair
     if (isDecisionEdge && (label === 'true' || label === 'false')) {
       const siblingLabel = label === 'true' ? 'false' : 'true'
@@ -618,7 +642,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         e.from === from && e.to === to ? { ...e, label } : e
       )
     }
-    
+
     // Update local state immediately
     set({
       flowchart: {
@@ -626,7 +650,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         edges: newEdges,
       },
     })
-    
+
     // Sync to backend asynchronously (fire-and-forget)
     const workflowId = state.currentWorkflow?.id
     syncEdgesToBackend(workflowId, newEdges)
@@ -637,7 +661,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const state = get()
     const edgesFromDecision = state.flowchart.edges.filter((e) => e.from === decisionNodeId)
     if (edgesFromDecision.length !== 2) return // Only swap if exactly 2 edges
-    
+
     state.pushHistory()
     set({
       flowchart: {
@@ -868,5 +892,49 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Clears all execution state (resets to initial)
   clearExecution: () => set({
     execution: { ...initialExecutionState },
+    subflowStack: [],  // Also clear subflow stack
   }),
+
+  // Subflow execution actions for popup modal visualization (stack-based)
+  startSubflowExecution: (parentNodeId, subworkflowId, subworkflowName, nodes, edges) => set((state) => ({
+    subflowStack: [
+      ...state.subflowStack,
+      {
+        isActive: true,
+        parentNodeId,
+        subworkflowId,
+        subworkflowName,
+        nodes,
+        edges,
+        executingNodeId: null,
+        executedNodeIds: [],
+      }
+    ],
+  })),
+
+  setSubflowExecutingNode: (nodeId) => set((state) => {
+    if (state.subflowStack.length === 0) return state
+    const newStack = [...state.subflowStack]
+    newStack[newStack.length - 1] = {
+      ...newStack[newStack.length - 1],
+      executingNodeId: nodeId,
+    }
+    return { subflowStack: newStack }
+  }),
+
+  markSubflowNodeExecuted: (nodeId) => set((state) => {
+    if (state.subflowStack.length === 0) return state
+    const topSubflow = state.subflowStack[state.subflowStack.length - 1]
+    if (topSubflow.executedNodeIds.includes(nodeId)) return state
+    const newStack = [...state.subflowStack]
+    newStack[newStack.length - 1] = {
+      ...topSubflow,
+      executedNodeIds: [...topSubflow.executedNodeIds, nodeId],
+    }
+    return { subflowStack: newStack }
+  }),
+
+  endSubflowExecution: () => set((state) => ({
+    subflowStack: state.subflowStack.slice(0, -1),  // Pop top subflow
+  })),
 }))
