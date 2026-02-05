@@ -478,6 +478,17 @@ The `ensure_workflow_analysis()` helper in `tools/workflow_input/helpers.py` aut
 
 ---
 
+## Recent Changes (2026-02-05)
+
+### Dev Tools & Experience
+1. **Dev Tools Sidebar**: Moved Developer Tools to a dedicated "Dev Mode" in the Left Sidebar, replacing the Palette when active.
+2. **Tool Inspector**: New "Tools" tab in Dev Tools to browse and execute MCP tools directly from the UI.
+3. **Execution Logging**: 
+    - Enhanced indentation for nested subflows (client-side stack tracking).
+    - Visual separation of "Entering Subflow" headers and indented content.
+    - Direct logging of Start (inputs) and End (outputs) nodes.
+4. **UI Refinements**: Failed tool calls in chat are now visually distinct.
+
 ## Recent Changes (2026-02-04)
 
 ### New Features
