@@ -324,6 +324,15 @@ export function connectSocket(): Socket {
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
 
+    // Filter updates for different workflows to prevent cross-tab contamination
+    const currentId = workflowStore.currentWorkflow?.id
+    const updatedId = data.data.workflow_id as string | undefined
+
+    if (updatedId && currentId && updatedId !== currentId) {
+      console.log('[Socket] Ignoring update for different workflow:', updatedId, 'current:', currentId)
+      return
+    }
+
     switch (data.action) {
       case 'add_node':
         // Single node added by orchestrator

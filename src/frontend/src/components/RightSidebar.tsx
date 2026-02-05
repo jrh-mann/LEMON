@@ -4,14 +4,14 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { executeWorkflow } from '../api/execution'
 import { listWorkflows } from '../api/workflows'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { 
-  SidebarTab, 
-  ExecutionResult, 
-  InputBlock, 
-  InputType, 
-  WorkflowAnalysis, 
-  WorkflowInput, 
-  FlowNode, 
+import type {
+  SidebarTab,
+  ExecutionResult,
+  InputBlock,
+  InputType,
+  WorkflowAnalysis,
+  WorkflowInput,
+  FlowNode,
   WorkflowSummary,
   DecisionCondition,
   Comparator,
@@ -47,16 +47,16 @@ const MIN_WIDTH = 280  // Minimum to show all 3 tabs comfortably
 
 export default function RightSidebar() {
   const { activeTab, setActiveTab, openModal } = useUIStore()
-  const { 
-    currentWorkflow, 
-    currentAnalysis, 
-    setAnalysis, 
-    selectedNodeId, 
-    selectedEdge, 
-    flowchart, 
-    updateNode, 
-    updateEdgeLabel, 
-    workflows, 
+  const {
+    currentWorkflow,
+    currentAnalysis,
+    setAnalysis,
+    selectedNodeId,
+    selectedEdge,
+    flowchart,
+    updateNode,
+    updateEdgeLabel,
+    workflows,
     setWorkflows,
     tabs,
     activeTabId,
@@ -257,9 +257,18 @@ export default function RightSidebar() {
     const enumValues = input.enum_values ?? []
     const range = input.range
     const hasRange = range && (range.min !== undefined || range.max !== undefined)
+    const isInput = input.source === 'input'
+
     return (
       <div className="input-card" key={input.id}>
-        <div className="input-card-name">{input.name}</div>
+        <div className="input-card-header">
+          <div className="input-card-name">{input.name}</div>
+          {!isInput && (
+            <span className={`input-source-tag ${input.source}`}>
+              {input.source === 'subprocess' ? 'Derived' : 'Calculated'}
+            </span>
+          )}
+        </div>
         <div className="input-card-type">{input.type}</div>
         {input.description && <div className="input-card-desc">{input.description}</div>}
         {Array.isArray(enumValues) && enumValues.length > 0 && (
@@ -273,6 +282,10 @@ export default function RightSidebar() {
       </div>
     )
   }
+
+  // Group variables for display (Inputs vs Expected)
+  const inputVariables = analysisInputs.filter(v => v.source === 'input')
+  const expectedVariables = analysisInputs.filter(v => v.source !== 'input')
 
   // Handle execute
   const handleExecute = useCallback(async () => {
@@ -401,7 +414,7 @@ export default function RightSidebar() {
                     value={draftType}
                     onChange={(e) => setDraftType(e.target.value as InputType)}
                   >
-<option value="string">string</option>
+                    <option value="string">string</option>
                     <option value="number">number</option>
                     <option value="bool">bool</option>
                     <option value="enum">enum</option>
@@ -472,7 +485,19 @@ export default function RightSidebar() {
               </div>
             ) : (
               <div className="inputs-list">
-                {analysisInputs.map(renderAnalysisInput)}
+                {inputVariables.length > 0 && (
+                  <div className="inputs-group">
+                    <h5 className="inputs-group-title">Inputs</h5>
+                    {inputVariables.map(renderAnalysisInput)}
+                  </div>
+                )}
+
+                {expectedVariables.length > 0 && (
+                  <div className="inputs-group">
+                    <h5 className="inputs-group-title">Expected Variables</h5>
+                    {expectedVariables.map(renderAnalysisInput)}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -552,7 +577,7 @@ export default function RightSidebar() {
               <h4>Properties</h4>
               <p className="muted small">{selectedNode.type} node</p>
             </div>
-            
+
             <div className="form-group">
               <label>Label</label>
               <input
@@ -698,7 +723,7 @@ function InputField({
         </div>
       )
 
-case 'number':
+    case 'number':
       return (
         <div className="input-field">
           <label htmlFor={inputId}>{input.name}</label>
@@ -776,7 +801,7 @@ function EndNodeConfig({
 
   // Determine current mode
   const isVariableMode = Boolean(node.output_variable)
-  
+
   // For strings, the "static" option is actually a template
   const isStringOutput = workflowOutputType === 'string'
   const staticOptionLabel = isStringOutput ? 'Value Template (f-string)' : 'Static Value'
@@ -857,7 +882,7 @@ function EndNodeConfig({
             </option>
           ))}
         </select>
-        
+
         {/* Helper text */}
         <p className="muted small">
           {isVariableMode
@@ -892,7 +917,7 @@ function EndNodeConfig({
           )}
         </div>
       )}
-      
+
       {/* Warning if variables are hidden */}
       {analysisInputs.length > 0 && filteredInputs.length === 0 && (
         <p className="muted small warning">
@@ -1118,12 +1143,12 @@ function DecisionConditionEditor({
 }) {
   // Get current condition or create empty one
   const condition = node.condition ?? { input_id: '', comparator: 'eq' as Comparator, value: '' }
-  
+
   // Find the selected input to determine available comparators
   const selectedInput = analysisInputs.find(inp => inp.id === condition.input_id)
   const inputType = selectedInput?.type ?? 'string'
   const availableComparators = COMPARATORS_BY_TYPE[inputType] ?? COMPARATORS_BY_TYPE.string
-  
+
   // Get enum values if input is enum type
   const enumValues = selectedInput?.enum_values ?? []
 
@@ -1141,23 +1166,23 @@ function DecisionConditionEditor({
     const newInput = analysisInputs.find(inp => inp.id === inputId)
     const newType = newInput?.type ?? 'string'
     const validComparators = COMPARATORS_BY_TYPE[newType] ?? COMPARATORS_BY_TYPE.string
-    
+
     // Reset comparator if current one is invalid for new type
-    const newComparator = validComparators.includes(condition.comparator as Comparator) 
-      ? condition.comparator 
+    const newComparator = validComparators.includes(condition.comparator as Comparator)
+      ? condition.comparator
       : validComparators[0]
 
-    updateCondition({ 
-      input_id: inputId, 
+    updateCondition({
+      input_id: inputId,
       comparator: newComparator,
       value: '',
-      value2: undefined 
+      value2: undefined
     })
   }
 
   // Check if comparator requires a second value (for range comparisons)
   const needsSecondValue = condition.comparator === 'within_range' || condition.comparator === 'date_between'
-  
+
   // Check if comparator doesn't need any value (boolean comparators)
   const noValueNeeded = condition.comparator === 'is_true' || condition.comparator === 'is_false'
 
@@ -1198,7 +1223,7 @@ function DecisionConditionEditor({
       )
     }
 
-// For numeric inputs
+    // For numeric inputs
     if (inputType === 'number') {
       return (
         <input
@@ -1261,11 +1286,11 @@ function DecisionConditionEditor({
               <label>Comparator</label>
               <select
                 value={condition.comparator}
-                onChange={(e) => updateCondition({ 
+                onChange={(e) => updateCondition({
                   comparator: e.target.value as Comparator,
                   // Reset value2 if switching away from range comparator
-                  value2: (e.target.value === 'within_range' || e.target.value === 'date_between') 
-                    ? condition.value2 
+                  value2: (e.target.value === 'within_range' || e.target.value === 'date_between')
+                    ? condition.value2
                     : undefined
                 })}
               >
@@ -1313,24 +1338,24 @@ function DecisionConditionEditor({
  */
 function formatConditionPreview(condition: DecisionCondition, inputs: WorkflowInput[]): string {
   if (!condition.input_id) return '(no condition set)'
-  
+
   const input = inputs.find(inp => inp.id === condition.input_id)
   const inputName = input?.name ?? condition.input_id
   const compLabel = COMPARATOR_LABELS[condition.comparator] ?? condition.comparator
-  
+
   // Boolean comparators don't need a value
   if (condition.comparator === 'is_true' || condition.comparator === 'is_false') {
     return `${inputName} ${compLabel}`
   }
-  
+
   // Range comparators
   if (condition.comparator === 'within_range' || condition.comparator === 'date_between') {
     return `${inputName} ${compLabel} [${condition.value ?? '?'}, ${condition.value2 ?? '?'}]`
   }
-  
+
   // Standard comparators
-  const valueStr = typeof condition.value === 'string' 
-    ? `"${condition.value}"` 
+  const valueStr = typeof condition.value === 'string'
+    ? `"${condition.value}"`
     : String(condition.value ?? '?')
   return `${inputName} ${compLabel} ${valueStr}`
 }
@@ -1362,7 +1387,7 @@ function CalculationConfigEditor({
   const maxOperands = selectedOperator?.maxArity ?? null // null = unlimited
 
   // Filter to only numeric variables
-  const numericVariables = analysisInputs.filter(v => 
+  const numericVariables = analysisInputs.filter(v =>
     v.type === 'number'
   )
 
@@ -1372,7 +1397,7 @@ function CalculationConfigEditor({
   // Validate the calculation configuration
   const validateCalculation = useCallback((calc: CalculationConfigType): string[] => {
     const errors: string[] = []
-    
+
     // Check output name
     if (!calc.output.name.trim()) {
       errors.push('Output variable name is required')
@@ -1450,12 +1475,12 @@ function CalculationConfigEditor({
 
     // Adjust operands array to meet new arity requirements
     let newOperands = [...calculation.operands]
-    
+
     // If we have fewer than min, add empty variable operands
     while (newOperands.length < newOp.minArity) {
       newOperands.push({ kind: 'variable', ref: '' })
     }
-    
+
     // If we have more than max (and max is not null), truncate
     if (newOp.maxArity !== null && newOperands.length > newOp.maxArity) {
       newOperands = newOperands.slice(0, newOp.maxArity)
@@ -1600,7 +1625,7 @@ function CalculationConfigEditor({
           {calculation.operands.map((operand, index) => (
             <div className="operand-row" key={index}>
               <span className="operand-index">{index + 1}.</span>
-              
+
               {/* Kind toggle button */}
               <button
                 className="operand-kind-toggle ghost"
@@ -1629,9 +1654,9 @@ function CalculationConfigEditor({
                   type="number"
                   className="operand-input"
                   value={operand.value ?? ''}
-                  onChange={(e) => updateOperand(index, { 
-                    kind: 'literal', 
-                    value: parseFloat(e.target.value) || 0 
+                  onChange={(e) => updateOperand(index, {
+                    kind: 'literal',
+                    value: parseFloat(e.target.value) || 0
                   })}
                   placeholder="Enter number"
                   step="any"
@@ -1693,7 +1718,7 @@ function CalculationConfigEditor({
 function formatCalculationPreview(calc: CalculationConfigType, inputs: WorkflowInput[]): string {
   const op = getOperator(calc.operator)
   if (!op) return '(invalid operator)'
-  
+
   // Format operands
   const formatOperand = (operand: Operand): string => {
     if (operand.kind === 'literal') {
@@ -1712,24 +1737,24 @@ function formatCalculationPreview(calc: CalculationConfigType, inputs: WorkflowI
     const arg = operandStrs[0] ?? '?'
     return `${outputName} = ${op.symbol.replace('x', arg)}`
   }
-  
+
   if (op.category === 'binary') {
     const [a, b] = operandStrs
     // Replace 'a' and 'b' in symbol
     let formula = op.symbol.replace('a', a ?? '?').replace('b', b ?? '?')
     return `${outputName} = ${formula}`
   }
-  
+
   // Variadic - join with symbol
   if (operandStrs.length === 0) {
     return `${outputName} = ${op.symbol}(?)`
   }
-  
+
   // Special formatting for function-style operators
   if (['min', 'max', 'sum', 'average', 'hypot', 'variance', 'std_dev', 'range', 'geometric_mean', 'harmonic_mean'].includes(op.name)) {
     return `${outputName} = ${op.name}(${operandStrs.join(', ')})`
   }
-  
+
   // Default: join with symbol
   return `${outputName} = ${operandStrs.join(` ${op.symbol} `)}`
 }

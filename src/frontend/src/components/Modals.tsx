@@ -675,7 +675,7 @@ function ExecuteWorkflowForm() {
               <small className="muted">{input.description}</small>
             )}
           </div>
-)
+        )
 
       // Unified numeric type - accepts both int and float
       case 'number':
@@ -816,20 +816,28 @@ function ExecuteWorkflowForm() {
     )
   }
 
+  // Filter inputs to only show those that require user input (source='input')
+  const userInputs = workflowInputs.filter(input => input.source === 'input')
+
   return (
     <div className="execute-form">
       {/* Input fields section */}
-      {workflowInputs.length > 0 ? (
+      {userInputs.length > 0 ? (
         <div className="inputs-section">
           <h4>Workflow Inputs</h4>
           <p className="muted small">Provide values for the workflow inputs</p>
-          {workflowInputs.map((input: WorkflowVariable) => (
+          {userInputs.map((input: WorkflowVariable) => (
             <div key={input.id}>{renderInputField(input)}</div>
           ))}
         </div>
       ) : (
         <div className="no-inputs-notice">
-          <p className="muted">This workflow has no defined inputs.</p>
+          <p className="muted">This workflow has no manual inputs.</p>
+          {workflowInputs.length > 0 && (
+            <p className="muted small">
+              ({workflowInputs.length} internal variables will be calculated automatically)
+            </p>
+          )}
         </div>
       )}
 

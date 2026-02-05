@@ -169,6 +169,52 @@ class BatchEditWorkflowTool(Tool):
                     elif condition:
                         # Allow condition on other node types for future proofing / type changes
                         new_node["condition"] = condition
+
+                    # Handle calculation node config (required for calculation nodes)
+                    calculation = op.get("calculation")
+                    if node_type == "calculation":
+                        if not calculation:
+                            raise ValueError(
+                                f"Calculation node '{op['label']}' requires a 'calculation' object. "
+                                f"Provide: {{output: {{name: 'VarName'}}, operator: 'add', operands: [...]}}"
+                            )
+                        
+                        # Validate calculation
+                        from .add_node import validate_calculation  # Import here to avoid circular dependencies if any
+                        calculation_error = validate_calculation(calculation, variables)
+                        if calculation_error:
+                            raise ValueError(f"Invalid calculation for node '{op['label']}': {calculation_error}")
+                        
+                        new_node["calculation"] = calculation
+                        
+                        # Auto-register the output variable as a calculated variable
+                        output_def = calculation["output"]
+                        output_name = output_def["name"]
+                        output_desc = output_def.get("description")
+                        
+                        existing_var_names = [
+                            normalize_variable_name(v.get("name", ""))
+                            for v in variables
+                        ]
+                        
+                        if normalize_variable_name(output_name) not in existing_var_names:
+                            # Calculate output is always 'number' type
+                            var_id = generate_variable_id(output_name, "number", "calculated")
+                            
+                            new_variable = {
+                                "id": var_id,
+                                "name": output_name,
+                                "type": "number",  # Calculation output is always number
+                                "source": "calculated",  # Derived from calculation
+                                "source_node_id": real_id,  # Which node produces this
+                                "description": output_desc or f"Calculated by '{op['label']}'",
+                            }
+                            
+                            variables.append(new_variable)
+                            variables_modified = True
+                    elif calculation:
+                        # Allow calculation on other node types (unlikely but consistent)
+                        new_node["calculation"] = calculation
                     
                     # Add output configuration for 'end' nodes
                     if node_type == "end":
@@ -266,6 +312,15 @@ class BatchEditWorkflowTool(Tool):
                             condition_error = validate_decision_condition(condition, variables)
                             if condition_error:
                                 raise ValueError(f"Invalid condition for decision node: {condition_error}")
+
+                    # Validate calculation if node is/becomes calculation type
+                    if updated_node.get("type") == "calculation":
+                        calculation = updated_node.get("calculation")
+                        if calculation:
+                            from .add_node import validate_calculation
+                            calculation_error = validate_calculation(calculation, variables)
+                            if calculation_error:
+                                raise ValueError(f"Invalid calculation for node: {calculation_error}")
                     
                     applied_operations.append(
                         {"op": "modify_node", "node_id": node_id, "updates": updates}

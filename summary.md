@@ -488,6 +488,10 @@ The `ensure_workflow_analysis()` helper in `tools/workflow_input/helpers.py` aut
     - Visual separation of "Entering Subflow" headers and indented content.
     - Direct logging of Start (inputs) and End (outputs) nodes.
 4. **UI Refinements**: Failed tool calls in chat are now visually distinct.
+5. **Variable Display**: Separated "Inputs" from "Expected Variables" (Calculated/Derived) in the sidebar with source tags.
+6. **Execution Safety**: Execution modal now restricts manual input to only variables with `source='input'`.
+7. **Calculation Node Persistence**: Fixed `batch_edit` tool to correctly handle and preserve calculation node metadata.
+8. **Cross-Workflow Safety**: Fixed socket event leakage where updates from background workflows would appear on unrelated tabs.
 
 ## Recent Changes (2026-02-04)
 

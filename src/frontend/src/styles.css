@@ -6175,3 +6175,44 @@ button.primary.warning:hover {
   max-height: 200px;
   overflow-y: auto;
 }
+/* Variable Display Improvements */
+.inputs-group {
+  margin-bottom: 24px;
+}
+
+.inputs-group-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding-left: 4px;
+}
+
+.input-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.input-source-tag {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.input-source-tag.calculated {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--emerald-600);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.input-source-tag.subprocess {
+  background-color: rgba(139, 92, 246, 0.1);
+  color: var(--violet-600);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
