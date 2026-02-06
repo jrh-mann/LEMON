@@ -57,40 +57,86 @@ Return ONLY a JSON object with this structure:
     "start": {
       "id": "start",
       "type": "start",
-      "label": "exact text from diagram",
+      "label": "Start",
       "children": [
         {
           "id": "n1",
-          "type": "decision|action|output",
+          "type": "decision",
           "label": "exact text from diagram",
           "input_ids": ["input_name_type"],
-          "edge_label": "Yes|No|optional",
-          "children": [ ... ]
+          "edge_label": "Yes|No|label from diagram",
+          "condition": {
+            "input_id": "input_name_type",
+            "comparator": "gte|gt|lte|lt|eq|enum_eq|is_true|is_false",
+            "value": 0
+          },
+          "children": [
+            {
+              "id": "n2",
+              "type": "output",
+              "label": "exact text from diagram",
+              "edge_label": "Yes",
+              "children": []
+            }
+          ]
         }
       ]
     }
   },
   "doubts": [
-    "question or ambiguity 1",
-    "question or ambiguity 2"
+    "question or ambiguity 1"
   ]
 }
 
 Rules:
-- Use exact text from the diagram.
-- If there are no doubts, return "doubts": [].
-- Every input must include an "id" computed as: input_{slug(name)}_{type}
+
+Inputs:
+- Each input is a data variable the workflow needs to make decisions.
+- Every input "id" is computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
-- If a decision/action depends on one or more inputs, include "input_ids" on that node
-  referencing the input ids.
-- Tree rules:
-  - This must be a single rooted tree starting at tree.start.
-  - Allowed node types: start, decision, action, output.
-  - Only decision nodes may have multiple children. Action/start nodes must have at most one child. Outputs have no children.
-  - Outputs MUST be leaf nodes (no children).
-  - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
-  - Every node id must be unique across the tree.
-- Return JSON only, no extra text.
+- Declare every variable that any decision node evaluates. If a node checks a numeric threshold,
+  declare a float/int input for it.
+
+Outputs:
+- List every distinct terminal outcome that appears in the diagram.
+- Each output name must match a leaf node label in the tree.
+
+Node types:
+- "start": single entry point, always the root.
+- "decision": a branching point with 2+ children. MUST include a "condition" object.
+- "action": an intermediate processing step with exactly one child. Only use "action" when
+  the node leads to further downstream steps.
+- "output": a terminal endpoint where the workflow ends. If a node is the final step in any
+  path with nothing after it, it MUST be type "output" with children: [].
+
+Conditions on decision nodes:
+- Every decision node MUST have a "condition" object with:
+  - "input_id": which input variable this decision evaluates.
+  - "comparator": one of "gte", "gt", "lte", "lt", "eq", "enum_eq", "is_true", "is_false".
+  - "value": the threshold or value to compare against (omit for is_true/is_false).
+- Derive condition thresholds from the edge labels on the branches. For example, if children
+  have edge_labels "> 10" and "≤ 10", the condition should use comparator "gt" with value 10.
+- For multi-way splits (e.g. 3+ branches from one point), chain binary decisions.
+
+Tree structure:
+- Identify the entry point: find the node in the diagram from which all other paths branch.
+  This is usually the first assessment or evaluation step — the one with the most downstream
+  nodes. Place it as the first child of "Start".
+- This must be a single rooted tree starting at tree.start.
+- Only decision nodes may have multiple children.
+- Outputs MUST be leaf nodes (children: []).
+- Every node id must be unique across the tree.
+- edge_label: use the exact text from the diagram's branch labels.
+
+Cycles and loops:
+- If the diagram contains loops (arrows pointing back to earlier steps), do NOT duplicate subtrees.
+- Instead, represent the loop endpoint as an output node and note the loop in "doubts".
+
+Labels:
+- Use exact text from the diagram for all labels.
+- If there are no doubts, return "doubts": [].
+
+Return JSON only, no extra text.
 
 Once you've received clarifications via feedback, adjust the analysis accordingly, preserving ids
 by recomputing them deterministically from name + type. Respond only with the updated JSON object.

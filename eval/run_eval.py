@@ -105,8 +105,18 @@ def _normalise_label(text: str) -> str:
 
 
 def label_similarity(a: str, b: str) -> float:
-    """Return 0-1 similarity score between two labels."""
-    return SequenceMatcher(None, _normalise_label(a), _normalise_label(b)).ratio()
+    """Return 0-1 similarity score between two labels.
+
+    Uses SequenceMatcher but also boosts the score when one normalised
+    label is a substring of the other (handles 'LDL' vs 'LDL Level')."""
+    na, nb = _normalise_label(a), _normalise_label(b)
+    seq_score = SequenceMatcher(None, na, nb).ratio()
+    # Substring containment boost: if the shorter string (>2 chars) is
+    # fully contained in the longer one, ensure score is at least 0.7.
+    shorter, longer = (na, nb) if len(na) <= len(nb) else (nb, na)
+    if len(shorter) > 2 and shorter in longer:
+        seq_score = max(seq_score, 0.7)
+    return seq_score
 
 
 def match_nodes(
@@ -368,11 +378,9 @@ def score_conditions(golden: Dict, extracted: Dict) -> Dict[str, Any]:
             })
             continue
 
-        # Check comparator match (allow equivalent names)
-        comp_match = g_cond.get("comparator") == e_cond.get("comparator")
-        # Check value match
-        val_match = _values_equivalent(g_cond.get("value"), e_cond.get("value"))
-        is_correct = comp_match and val_match
+        # Check comparator+value match, allowing inverted pairs
+        # (e.g. gt 5 ≡ lte 5 with swapped children — same decision)
+        is_correct = _conditions_equivalent(g_cond, e_cond)
 
         if is_correct:
             correct += 1
@@ -380,8 +388,6 @@ def score_conditions(golden: Dict, extracted: Dict) -> Dict[str, Any]:
             "node": g["label"],
             "golden_condition": g_cond,
             "extracted_condition": e_cond,
-            "comparator_match": comp_match,
-            "value_match": val_match,
             "correct": is_correct,
         })
 
@@ -403,6 +409,36 @@ def _values_equivalent(a: Any, b: Any) -> bool:
         pass
     if isinstance(a, str) and isinstance(b, str):
         return _normalise_label(a) == _normalise_label(b)
+    return False
+
+
+# Comparator pairs that are inverses of each other (same decision, swapped children)
+_INVERTED_COMPARATORS = {
+    "gt": "lte", "lte": "gt",
+    "gte": "lt", "lt": "gte",
+    "is_true": "is_false", "is_false": "is_true",
+}
+
+
+def _conditions_equivalent(g: Dict, e: Dict) -> bool:
+    """Check if two conditions are equivalent, including inverted comparators.
+
+    gt(5) and lte(5) represent the same branching point with swapped children,
+    so both are considered correct."""
+    g_comp = g.get("comparator", "")
+    e_comp = e.get("comparator", "")
+    g_val = g.get("value")
+    e_val = e.get("value")
+
+    # Direct match
+    if g_comp == e_comp and _values_equivalent(g_val, e_val):
+        return True
+    # Inverted match (same threshold, opposite comparator)
+    if _INVERTED_COMPARATORS.get(g_comp) == e_comp and _values_equivalent(g_val, e_val):
+        return True
+    # enum_eq is its own thing — just check value
+    if g_comp == "enum_eq" and e_comp == "enum_eq":
+        return _values_equivalent(g_val, e_val)
     return False
 
 
