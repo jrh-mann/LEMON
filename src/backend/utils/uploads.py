@@ -25,7 +25,8 @@ def decode_data_url(data_url: str) -> tuple[bytes, str]:
         ext = "gif"
     elif media_type == "image/bmp":
         ext = "bmp"
-    return base64.b64decode(b64), ext
+    # validate=True gives clearer failures for truncated/invalid base64 payloads.
+    return base64.b64decode(b64, validate=True), ext
 
 
 def save_uploaded_image(
@@ -37,8 +38,20 @@ def save_uploaded_image(
     raw, ext = decode_data_url(data_url)
     data_dir = lemon_data_dir(repo_root)
     uploads_dir = data_dir / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise PermissionError(
+            "Upload storage directory is not writable. "
+            "Set LEMON_DATA_DIR to a writable path (e.g. /tmp/lemon or /home/lemon) for this deployment."
+        ) from exc
     filename = f"{filename_prefix}{uuid4().hex}.{ext}"
     path = uploads_dir / filename
-    path.write_bytes(raw)
+    try:
+        path.write_bytes(raw)
+    except PermissionError as exc:
+        raise PermissionError(
+            "Upload storage path is not writable. "
+            "Set LEMON_DATA_DIR to a writable path (e.g. /tmp/lemon or /home/lemon) for this deployment."
+        ) from exc
     return str(path.relative_to(data_dir))

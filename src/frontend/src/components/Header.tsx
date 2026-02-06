@@ -6,6 +6,66 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { addAssistantMessage } from '../stores/chatStore'
 
+function estimateDataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(',')
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  let padding = 0
+  if (b64.endsWith('==')) padding = 2
+  else if (b64.endsWith('=')) padding = 1
+  return Math.max(0, Math.floor((b64.length * 3) / 4) - padding)
+}
+
+async function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Failed to load image for resizing'))
+    img.src = dataUrl
+  })
+}
+
+async function compressDataUrl(
+  dataUrl: string,
+  opts: {
+    maxBytes: number
+    maxDimension: number
+  }
+): Promise<{ dataUrl: string; didChange: boolean; bytes: number }> {
+  const { maxBytes, maxDimension } = opts
+  const originalBytes = estimateDataUrlBytes(dataUrl)
+  if (originalBytes <= maxBytes) {
+    return { dataUrl, didChange: false, bytes: originalBytes }
+  }
+
+  const img = await loadImage(dataUrl)
+  const w = img.naturalWidth || img.width
+  const h = img.naturalHeight || img.height
+  const scale = Math.min(1, maxDimension / Math.max(w, h))
+  const outW = Math.max(1, Math.round(w * scale))
+  const outH = Math.max(1, Math.round(h * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = outW
+  canvas.height = outH
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Failed to create canvas context for image resizing')
+
+  ctx.drawImage(img, 0, 0, outW, outH)
+
+  // Default to JPEG for large payloads: smaller and more likely to fit through Socket.IO polling limits.
+  let quality = 0.9
+  let next = canvas.toDataURL('image/jpeg', quality)
+  let nextBytes = estimateDataUrlBytes(next)
+
+  while (nextBytes > maxBytes && quality > 0.6) {
+    quality = Math.max(0.6, quality - 0.05)
+    next = canvas.toDataURL('image/jpeg', quality)
+    nextBytes = estimateDataUrlBytes(next)
+  }
+
+  return { dataUrl: next, didChange: true, bytes: nextBytes }
+}
+
 export default function Header() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const exportDropdownRef = useRef<HTMLDivElement>(null)
@@ -32,21 +92,47 @@ export default function Header() {
       const file = e.target.files?.[0]
       if (!file) return
 
-      // Read file as base64
+      // Read file as base64 data URL. This is later sent to backend inside the `chat` socket payload.
+      // In production (Azure), large payloads can be rejected by proxies/buffers; we proactively compress.
       const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = reader.result as string
+      reader.onload = async () => {
+        try {
+          const original = reader.result as string
 
-        // Store image in state for later use
-        setPendingImage(base64, file.name)
+          // Keep a conservative limit because the chat payload also includes workflow state.
+          const MAX_BYTES = 7 * 1024 * 1024
+          const MAX_DIMENSION = 2000
 
-        // Add assistant message prompting user to ask for analysis
-        addAssistantMessage(
-          `Image "${file.name}" uploaded. You can now ask me to analyse it, for example:\n\n` +
-          `- "Analyse this workflow image"\n` +
-          `- "Analyse this image, focus on the decision logic for diabetic patients"\n` +
-          `- "Extract the inputs and outputs from this flowchart"`
-        )
+          const { dataUrl, didChange, bytes } = await compressDataUrl(original, {
+            maxBytes: MAX_BYTES,
+            maxDimension: MAX_DIMENSION,
+          })
+
+          if (bytes > MAX_BYTES) {
+            setError(
+              `Image is too large to send (${(bytes / (1024 * 1024)).toFixed(1)}MB). ` +
+              `Try a smaller screenshot or export as JPG, then re-upload.`
+            )
+            return
+          }
+
+          // Store image in state for later use
+          setPendingImage(dataUrl, file.name)
+
+          const note = didChange
+            ? ` (resized/compressed to ${(bytes / (1024 * 1024)).toFixed(1)}MB)`
+            : ''
+
+          // Add assistant message prompting user to ask for analysis
+          addAssistantMessage(
+            `Image "${file.name}" uploaded${note}. You can now ask me to analyse it, for example:\n\n` +
+            `- "Analyse this workflow image"\n` +
+            `- "Analyse this image, focus on the decision logic for diabetic patients"\n` +
+            `- "Extract the inputs and outputs from this flowchart"`
+          )
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to process uploaded image')
+        }
       }
       reader.readAsDataURL(file)
 
@@ -55,7 +141,7 @@ export default function Header() {
         fileInputRef.current.value = ''
       }
     },
-    [setPendingImage]
+    [setPendingImage, setError]
   )
 
   // Handle JSON export
