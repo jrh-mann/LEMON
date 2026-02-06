@@ -78,3 +78,7 @@ publishprofile.xml
 .mcp.json
 .cursor/
 .claude/settings.local.json
+
+# Eval run outputs (keep golden solutions and runner)
+eval/*.json
+!eval/golden/*.json

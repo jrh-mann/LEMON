@@ -8,6 +8,8 @@ Fail loudly, do not have errors propagate, we are interested in knowing exactly 
 
 Work within the grand vision of the project, all components should be with reference to that.
 
+ALL CHANGES SHOULD BE PRS TO MAIN, NEVER PUSH TO PROD UNLESS EXPLICITLY INSTRUCTED TO
+
 ## No Backwards Compatibility
 
 This project is in active development with no production users or data. NEVER implement backwards compatibility:

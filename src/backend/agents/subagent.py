@@ -248,7 +248,6 @@ by recomputing them deterministically from name + type. Respond only with the up
         self.history.store_analysis(session_id, data)
         return data
 
-
     def _parse_json(
         self,
         raw: str,
