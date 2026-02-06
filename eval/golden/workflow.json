@@ -1,0 +1,696 @@
+{
+  "_meta": {
+    "source_image": "workflow.jpeg",
+    "title": "CKD Pathway - Proteinuria Measurement & GFR Classification",
+    "notes": [
+      "Matrix/grid layout: GFR rows (G1-G5) × ACR columns (A1, A2, A3 30-69, A3 ≥70, >300)",
+      "ACR A1/A2 boundary is sex-dependent: Males <2.5, Females <3.5 — golden uses 2.5 as threshold",
+      "G1/A1 and G2/A1 are green empty cells = No CKD diagnosis",
+      "Each cell contains a CKD code (e.g. 1Z1N) and treatment instructions",
+      "Monitoring frequency (1-4/year) shown in cells but not modeled as outputs",
+      "BP targets (<140/90 for A1-A2, <130/80 for A3+) are contextual, not separate decisions",
+      "Bottom row has referral criteria — informational, not part of decision tree",
+      "Right panel has CKD Journey steps and NICE guideline references — informational"
+    ]
+  },
+  "inputs": [
+    {
+      "id": "input_gfr_float",
+      "name": "GFR",
+      "type": "float",
+      "description": "Glomerular filtration rate in mL/min/1.73m2"
+    },
+    {
+      "id": "input_acr_float",
+      "name": "ACR",
+      "type": "float",
+      "description": "Albumin-to-Creatinine Ratio (protein measurement)"
+    },
+    {
+      "id": "input_sex_enum",
+      "name": "Sex",
+      "type": "enum",
+      "description": "Patient sex (Male or Female) — affects ACR A1/A2 threshold",
+      "enum_values": ["Male", "Female"]
+    }
+  ],
+  "outputs": [
+    {"name": "No CKD", "description": "No CKD diagnosis — normal GFR and normal ACR"},
+    {"name": "CKD G1A2/ 1Z1N", "description": "If Diabetic – Commence/titrate ACEi/ARB, If T2DM consider Empagliflozin, Empagliflozin if ACR ≥22.6 in non-diabetic if GFR ≥90"},
+    {"name": "CKD G1A3/ 1Z1P", "description": "If Diabetic/HTN – Commence/titrate ACEi/ARB, Commence Empagliflozin"},
+    {"name": "CKD G1A3/ 1Z1P (ACR ≥70)", "description": "Commence Atorvastatin 20mg, Commence/titrate ACEi/ARB, Commence Dapagliflozin or Empagliflozin, Should be under Nephrology"},
+    {"name": "CKD G2A2/ 1Z1R", "description": "If Diabetic – Commence/titrate ACEi/ARB, If T2DM consider SGLT2i, Dapagliflozin if GFR ≥75, Empagliflozin if GFR ≥90, Empagliflozin if ACR ≥22.6 in non-diabetic"},
+    {"name": "CKD G2A3/ 1Z1S", "description": "If Diabetic/HTN – Commence/titrate ACEi/ARB, Commence SGLT2i, Dapagliflozin if GFR ≥75, Empagliflozin if GFR ≥90"},
+    {"name": "CKD G2A3/ 1Z1S (ACR ≥70)", "description": "Commence Atorvastatin 20mg, Commence/titrate ACEi/ARB, Commence Dapagliflozin or Empagliflozin, Should be under Nephrology"},
+    {"name": "CKD G3aA1/ 1Z1T", "description": "Commence Atorvastatin 20mg"},
+    {"name": "CKD G3aA2/ 1Z1V", "description": "Commence Atorvastatin 20mg, If Diabetic – Commence/titrate ACEi/ARB, If T2DM consider Dapagliflozin or Empagliflozin, Empagliflozin if ACR ≥22.6 in non-diabetic"},
+    {"name": "CKD G3aA3/ 1Z1W", "description": "Commence Atorvastatin 20mg, If Diabetic/HTN – Commence/titrate ACEi/ARB, Commence Dapagliflozin or Empagliflozin"},
+    {"name": "CKD G3aA3/ 1Z1W (ACR ≥70)", "description": "Commence Atorvastatin 20mg, Commence/titrate ACEi/ARB, Commence Dapagliflozin or Empagliflozin, Should be under Nephrology"},
+    {"name": "CKD G3bA1/ 1Z1X", "description": "Commence Atorvastatin 20mg, CKD Alone – GFR 30-44 – Commence Empagliflozin"},
+    {"name": "CKD G3bA2/ 1Z1Y", "description": "Commence Atorvastatin 20mg, If Diabetic – Commence/titrate ACEi/ARB, If T2DM consider SGLT2i, CKD Alone – GFR 30-44 – Commence Empagliflozin"},
+    {"name": "CKD G3bA3/ 1Z1Z", "description": "Commence Atorvastatin 20mg, If Diabetic/HTN – Commence/titrate ACEi/ARB, Commence Dapagliflozin or Empagliflozin"},
+    {"name": "CKD G3bA3/ 1Z1Z (ACR ≥70)", "description": "Commence Atorvastatin 20mg, Commence/titrate ACEi/ARB, Commence Dapagliflozin or Empagliflozin, Should be under Nephrology"},
+    {"name": "CKD G4A1/ 1Z1a", "description": "Commence Atorvastatin 20mg, CKD Alone – GFR 20-29 – Commence Empagliflozin, Should be under Nephrology"},
+    {"name": "CKD G4A2/ 1Z1b", "description": "Commence Atorvastatin 20mg, If Diabetic – Commence/titrate ACEi/ARB, If T2DM consider SGLT2i, Dapagliflozin if GFR ≥25, Empagliflozin if GFR ≥20, CKD Alone – GFR 20-29 – Commence Empagliflozin, Should be under Nephrology"},
+    {"name": "CKD G4A3/ 1Z1c", "description": "Commence Atorvastatin 20mg, If Diabetic/HTN – Commence/titrate ACEi/ARB, Commence SGLT2i, Dapagliflozin if GFR ≥25, Empagliflozin if GFR ≥20, Should be under Nephrology"},
+    {"name": "CKD G4A3/ 1Z1c (ACR ≥70)", "description": "Commence Atorvastatin 20mg, Commence/titrate ACEi/ARB, Commence SGLT2i, Dapagliflozin if GFR ≥25, Empagliflozin if GFR ≥20, Should be under Nephrology"},
+    {"name": "CKD G5A1/ 1Z1d", "description": "Should be under Nephrology"},
+    {"name": "CKD G5A2/ 1Z1e", "description": "Should be under Nephrology"},
+    {"name": "CKD G5A3/ 1Z1f", "description": "Should be under Nephrology"},
+    {"name": "CKD G5A3/ 1Z1f (ACR ≥70)", "description": "Should be under Nephrology"},
+    {"name": ">300 Urgent Clinician Consultation within 48 hours if first occasion", "description": "ACR >300 requires urgent clinician consultation within 48 hours if first occasion"}
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "children": [
+        {
+          "id": "assess_gfr",
+          "type": "decision",
+          "label": "Assess GFR Category",
+          "input_ids": ["input_gfr_float"],
+          "condition": {
+            "input_id": "input_gfr_float",
+            "comparator": "gte",
+            "value": 90
+          },
+          "children": [
+            {
+              "id": "g1_assess_acr",
+              "type": "decision",
+              "label": "G1 (≥90) - Assess ACR",
+              "edge_label": "G1 ≥90",
+              "input_ids": ["input_acr_float"],
+              "condition": {
+                "input_id": "input_acr_float",
+                "comparator": "gt",
+                "value": 300
+              },
+              "children": [
+                {
+                  "id": "g1_acr_gt300",
+                  "type": "output",
+                  "label": ">300 Urgent Clinician Consultation within 48 hours if first occasion",
+                  "edge_label": ">300",
+                  "children": []
+                },
+                {
+                  "id": "g1_acr_le300",
+                  "type": "decision",
+                  "label": "G1 ACR ≤300 - Check ≥70",
+                  "edge_label": "≤300",
+                  "input_ids": ["input_acr_float"],
+                  "condition": {
+                    "input_id": "input_acr_float",
+                    "comparator": "gte",
+                    "value": 70
+                  },
+                  "children": [
+                    {
+                      "id": "g1_a3_gte70",
+                      "type": "output",
+                      "label": "CKD G1A3/ 1Z1P (ACR ≥70)",
+                      "edge_label": "≥70",
+                      "children": []
+                    },
+                    {
+                      "id": "g1_acr_lt70",
+                      "type": "decision",
+                      "label": "G1 ACR <70 - Check ≥30",
+                      "edge_label": "<70",
+                      "input_ids": ["input_acr_float"],
+                      "condition": {
+                        "input_id": "input_acr_float",
+                        "comparator": "gte",
+                        "value": 30
+                      },
+                      "children": [
+                        {
+                          "id": "g1_a3",
+                          "type": "output",
+                          "label": "CKD G1A3/ 1Z1P",
+                          "edge_label": "≥30",
+                          "children": []
+                        },
+                        {
+                          "id": "g1_acr_lt30",
+                          "type": "decision",
+                          "label": "G1 ACR <30 - A1 vs A2",
+                          "edge_label": "<30",
+                          "input_ids": ["input_acr_float", "input_sex_enum"],
+                          "condition": {
+                            "input_id": "input_acr_float",
+                            "comparator": "lt",
+                            "value": 2.5
+                          },
+                          "children": [
+                            {
+                              "id": "g1_a1",
+                              "type": "output",
+                              "label": "No CKD",
+                              "edge_label": "A1 (Males <2.5 / Females <3.5)",
+                              "children": []
+                            },
+                            {
+                              "id": "g1_a2",
+                              "type": "output",
+                              "label": "CKD G1A2/ 1Z1N",
+                              "edge_label": "A2",
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "gfr_lt90",
+              "type": "decision",
+              "label": "GFR <90 - Check G2",
+              "edge_label": "GFR <90",
+              "input_ids": ["input_gfr_float"],
+              "condition": {
+                "input_id": "input_gfr_float",
+                "comparator": "gte",
+                "value": 60
+              },
+              "children": [
+                {
+                  "id": "g2_assess_acr",
+                  "type": "decision",
+                  "label": "G2 (60-89) - Assess ACR",
+                  "edge_label": "G2 60-89",
+                  "input_ids": ["input_acr_float"],
+                  "condition": {
+                    "input_id": "input_acr_float",
+                    "comparator": "gt",
+                    "value": 300
+                  },
+                  "children": [
+                    {
+                      "id": "g2_acr_gt300",
+                      "type": "output",
+                      "label": ">300 Urgent Clinician Consultation within 48 hours if first occasion",
+                      "edge_label": ">300",
+                      "children": []
+                    },
+                    {
+                      "id": "g2_acr_le300",
+                      "type": "decision",
+                      "label": "G2 ACR ≤300 - Check ≥70",
+                      "edge_label": "≤300",
+                      "input_ids": ["input_acr_float"],
+                      "condition": {
+                        "input_id": "input_acr_float",
+                        "comparator": "gte",
+                        "value": 70
+                      },
+                      "children": [
+                        {
+                          "id": "g2_a3_gte70",
+                          "type": "output",
+                          "label": "CKD G2A3/ 1Z1S (ACR ≥70)",
+                          "edge_label": "≥70",
+                          "children": []
+                        },
+                        {
+                          "id": "g2_acr_lt70",
+                          "type": "decision",
+                          "label": "G2 ACR <70 - Check ≥30",
+                          "edge_label": "<70",
+                          "input_ids": ["input_acr_float"],
+                          "condition": {
+                            "input_id": "input_acr_float",
+                            "comparator": "gte",
+                            "value": 30
+                          },
+                          "children": [
+                            {
+                              "id": "g2_a3",
+                              "type": "output",
+                              "label": "CKD G2A3/ 1Z1S",
+                              "edge_label": "≥30",
+                              "children": []
+                            },
+                            {
+                              "id": "g2_acr_lt30",
+                              "type": "decision",
+                              "label": "G2 ACR <30 - A1 vs A2",
+                              "edge_label": "<30",
+                              "input_ids": ["input_acr_float", "input_sex_enum"],
+                              "condition": {
+                                "input_id": "input_acr_float",
+                                "comparator": "lt",
+                                "value": 2.5
+                              },
+                              "children": [
+                                {
+                                  "id": "g2_a1",
+                                  "type": "output",
+                                  "label": "No CKD",
+                                  "edge_label": "A1",
+                                  "children": []
+                                },
+                                {
+                                  "id": "g2_a2",
+                                  "type": "output",
+                                  "label": "CKD G2A2/ 1Z1R",
+                                  "edge_label": "A2",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "gfr_lt60",
+                  "type": "decision",
+                  "label": "GFR <60 - Check G3a",
+                  "edge_label": "GFR <60",
+                  "input_ids": ["input_gfr_float"],
+                  "condition": {
+                    "input_id": "input_gfr_float",
+                    "comparator": "gte",
+                    "value": 45
+                  },
+                  "children": [
+                    {
+                      "id": "g3a_assess_acr",
+                      "type": "decision",
+                      "label": "G3a (45-59) - Assess ACR",
+                      "edge_label": "G3a 45-59",
+                      "input_ids": ["input_acr_float"],
+                      "condition": {
+                        "input_id": "input_acr_float",
+                        "comparator": "gt",
+                        "value": 300
+                      },
+                      "children": [
+                        {
+                          "id": "g3a_acr_gt300",
+                          "type": "output",
+                          "label": ">300 Urgent Clinician Consultation within 48 hours if first occasion",
+                          "edge_label": ">300",
+                          "children": []
+                        },
+                        {
+                          "id": "g3a_acr_le300",
+                          "type": "decision",
+                          "label": "G3a ACR ≤300 - Check ≥70",
+                          "edge_label": "≤300",
+                          "input_ids": ["input_acr_float"],
+                          "condition": {
+                            "input_id": "input_acr_float",
+                            "comparator": "gte",
+                            "value": 70
+                          },
+                          "children": [
+                            {
+                              "id": "g3a_a3_gte70",
+                              "type": "output",
+                              "label": "CKD G3aA3/ 1Z1W (ACR ≥70)",
+                              "edge_label": "≥70",
+                              "children": []
+                            },
+                            {
+                              "id": "g3a_acr_lt70",
+                              "type": "decision",
+                              "label": "G3a ACR <70 - Check ≥30",
+                              "edge_label": "<70",
+                              "input_ids": ["input_acr_float"],
+                              "condition": {
+                                "input_id": "input_acr_float",
+                                "comparator": "gte",
+                                "value": 30
+                              },
+                              "children": [
+                                {
+                                  "id": "g3a_a3",
+                                  "type": "output",
+                                  "label": "CKD G3aA3/ 1Z1W",
+                                  "edge_label": "≥30",
+                                  "children": []
+                                },
+                                {
+                                  "id": "g3a_acr_lt30",
+                                  "type": "decision",
+                                  "label": "G3a ACR <30 - A1 vs A2",
+                                  "edge_label": "<30",
+                                  "input_ids": ["input_acr_float", "input_sex_enum"],
+                                  "condition": {
+                                    "input_id": "input_acr_float",
+                                    "comparator": "lt",
+                                    "value": 2.5
+                                  },
+                                  "children": [
+                                    {
+                                      "id": "g3a_a1",
+                                      "type": "output",
+                                      "label": "CKD G3aA1/ 1Z1T",
+                                      "edge_label": "A1",
+                                      "children": []
+                                    },
+                                    {
+                                      "id": "g3a_a2",
+                                      "type": "output",
+                                      "label": "CKD G3aA2/ 1Z1V",
+                                      "edge_label": "A2",
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "gfr_lt45",
+                      "type": "decision",
+                      "label": "GFR <45 - Check G3b",
+                      "edge_label": "GFR <45",
+                      "input_ids": ["input_gfr_float"],
+                      "condition": {
+                        "input_id": "input_gfr_float",
+                        "comparator": "gte",
+                        "value": 30
+                      },
+                      "children": [
+                        {
+                          "id": "g3b_assess_acr",
+                          "type": "decision",
+                          "label": "G3b (30-44) - Assess ACR",
+                          "edge_label": "G3b 30-44",
+                          "input_ids": ["input_acr_float"],
+                          "condition": {
+                            "input_id": "input_acr_float",
+                            "comparator": "gt",
+                            "value": 300
+                          },
+                          "children": [
+                            {
+                              "id": "g3b_acr_gt300",
+                              "type": "output",
+                              "label": ">300 Urgent Clinician Consultation within 48 hours if first occasion",
+                              "edge_label": ">300",
+                              "children": []
+                            },
+                            {
+                              "id": "g3b_acr_le300",
+                              "type": "decision",
+                              "label": "G3b ACR ≤300 - Check ≥70",
+                              "edge_label": "≤300",
+                              "input_ids": ["input_acr_float"],
+                              "condition": {
+                                "input_id": "input_acr_float",
+                                "comparator": "gte",
+                                "value": 70
+                              },
+                              "children": [
+                                {
+                                  "id": "g3b_a3_gte70",
+                                  "type": "output",
+                                  "label": "CKD G3bA3/ 1Z1Z (ACR ≥70)",
+                                  "edge_label": "≥70",
+                                  "children": []
+                                },
+                                {
+                                  "id": "g3b_acr_lt70",
+                                  "type": "decision",
+                                  "label": "G3b ACR <70 - Check ≥30",
+                                  "edge_label": "<70",
+                                  "input_ids": ["input_acr_float"],
+                                  "condition": {
+                                    "input_id": "input_acr_float",
+                                    "comparator": "gte",
+                                    "value": 30
+                                  },
+                                  "children": [
+                                    {
+                                      "id": "g3b_a3",
+                                      "type": "output",
+                                      "label": "CKD G3bA3/ 1Z1Z",
+                                      "edge_label": "≥30",
+                                      "children": []
+                                    },
+                                    {
+                                      "id": "g3b_acr_lt30",
+                                      "type": "decision",
+                                      "label": "G3b ACR <30 - A1 vs A2",
+                                      "edge_label": "<30",
+                                      "input_ids": ["input_acr_float", "input_sex_enum"],
+                                      "condition": {
+                                        "input_id": "input_acr_float",
+                                        "comparator": "lt",
+                                        "value": 2.5
+                                      },
+                                      "children": [
+                                        {
+                                          "id": "g3b_a1",
+                                          "type": "output",
+                                          "label": "CKD G3bA1/ 1Z1X",
+                                          "edge_label": "A1",
+                                          "children": []
+                                        },
+                                        {
+                                          "id": "g3b_a2",
+                                          "type": "output",
+                                          "label": "CKD G3bA2/ 1Z1Y",
+                                          "edge_label": "A2",
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "gfr_lt30",
+                          "type": "decision",
+                          "label": "GFR <30 - Check G4",
+                          "edge_label": "GFR <30",
+                          "input_ids": ["input_gfr_float"],
+                          "condition": {
+                            "input_id": "input_gfr_float",
+                            "comparator": "gte",
+                            "value": 15
+                          },
+                          "children": [
+                            {
+                              "id": "g4_assess_acr",
+                              "type": "decision",
+                              "label": "G4 (15-29) - Assess ACR",
+                              "edge_label": "G4 15-29",
+                              "input_ids": ["input_acr_float"],
+                              "condition": {
+                                "input_id": "input_acr_float",
+                                "comparator": "gt",
+                                "value": 300
+                              },
+                              "children": [
+                                {
+                                  "id": "g4_acr_gt300",
+                                  "type": "output",
+                                  "label": ">300 Urgent Clinician Consultation within 48 hours if first occasion",
+                                  "edge_label": ">300",
+                                  "children": []
+                                },
+                                {
+                                  "id": "g4_acr_le300",
+                                  "type": "decision",
+                                  "label": "G4 ACR ≤300 - Check ≥70",
+                                  "edge_label": "≤300",
+                                  "input_ids": ["input_acr_float"],
+                                  "condition": {
+                                    "input_id": "input_acr_float",
+                                    "comparator": "gte",
+                                    "value": 70
+                                  },
+                                  "children": [
+                                    {
+                                      "id": "g4_a3_gte70",
+                                      "type": "output",
+                                      "label": "CKD G4A3/ 1Z1c (ACR ≥70)",
+                                      "edge_label": "≥70",
+                                      "children": []
+                                    },
+                                    {
+                                      "id": "g4_acr_lt70",
+                                      "type": "decision",
+                                      "label": "G4 ACR <70 - Check ≥30",
+                                      "edge_label": "<70",
+                                      "input_ids": ["input_acr_float"],
+                                      "condition": {
+                                        "input_id": "input_acr_float",
+                                        "comparator": "gte",
+                                        "value": 30
+                                      },
+                                      "children": [
+                                        {
+                                          "id": "g4_a3",
+                                          "type": "output",
+                                          "label": "CKD G4A3/ 1Z1c",
+                                          "edge_label": "≥30",
+                                          "children": []
+                                        },
+                                        {
+                                          "id": "g4_acr_lt30",
+                                          "type": "decision",
+                                          "label": "G4 ACR <30 - A1 vs A2",
+                                          "edge_label": "<30",
+                                          "input_ids": ["input_acr_float", "input_sex_enum"],
+                                          "condition": {
+                                            "input_id": "input_acr_float",
+                                            "comparator": "lt",
+                                            "value": 2.5
+                                          },
+                                          "children": [
+                                            {
+                                              "id": "g4_a1",
+                                              "type": "output",
+                                              "label": "CKD G4A1/ 1Z1a",
+                                              "edge_label": "A1",
+                                              "children": []
+                                            },
+                                            {
+                                              "id": "g4_a2",
+                                              "type": "output",
+                                              "label": "CKD G4A2/ 1Z1b",
+                                              "edge_label": "A2",
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "id": "g5_assess_acr",
+                              "type": "decision",
+                              "label": "G5 (<15) - Assess ACR",
+                              "edge_label": "G5 <15",
+                              "input_ids": ["input_acr_float"],
+                              "condition": {
+                                "input_id": "input_acr_float",
+                                "comparator": "gt",
+                                "value": 300
+                              },
+                              "children": [
+                                {
+                                  "id": "g5_acr_gt300",
+                                  "type": "output",
+                                  "label": ">300 Urgent Clinician Consultation within 48 hours if first occasion",
+                                  "edge_label": ">300",
+                                  "children": []
+                                },
+                                {
+                                  "id": "g5_acr_le300",
+                                  "type": "decision",
+                                  "label": "G5 ACR ≤300 - Check ≥70",
+                                  "edge_label": "≤300",
+                                  "input_ids": ["input_acr_float"],
+                                  "condition": {
+                                    "input_id": "input_acr_float",
+                                    "comparator": "gte",
+                                    "value": 70
+                                  },
+                                  "children": [
+                                    {
+                                      "id": "g5_a3_gte70",
+                                      "type": "output",
+                                      "label": "CKD G5A3/ 1Z1f (ACR ≥70)",
+                                      "edge_label": "≥70",
+                                      "children": []
+                                    },
+                                    {
+                                      "id": "g5_acr_lt70",
+                                      "type": "decision",
+                                      "label": "G5 ACR <70 - Check ≥30",
+                                      "edge_label": "<70",
+                                      "input_ids": ["input_acr_float"],
+                                      "condition": {
+                                        "input_id": "input_acr_float",
+                                        "comparator": "gte",
+                                        "value": 30
+                                      },
+                                      "children": [
+                                        {
+                                          "id": "g5_a3",
+                                          "type": "output",
+                                          "label": "CKD G5A3/ 1Z1f",
+                                          "edge_label": "≥30",
+                                          "children": []
+                                        },
+                                        {
+                                          "id": "g5_acr_lt30",
+                                          "type": "decision",
+                                          "label": "G5 ACR <30 - A1 vs A2",
+                                          "edge_label": "<30",
+                                          "input_ids": ["input_acr_float", "input_sex_enum"],
+                                          "condition": {
+                                            "input_id": "input_acr_float",
+                                            "comparator": "lt",
+                                            "value": 2.5
+                                          },
+                                          "children": [
+                                            {
+                                              "id": "g5_a1",
+                                              "type": "output",
+                                              "label": "CKD G5A1/ 1Z1d",
+                                              "edge_label": "A1",
+                                              "children": []
+                                            },
+                                            {
+                                              "id": "g5_a2",
+                                              "type": "output",
+                                              "label": "CKD G5A2/ 1Z1e",
+                                              "edge_label": "A2",
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "This is a matrix/grid-based diagram (GFR rows × ACR columns), not a traditional flowchart. Tree structure inferred from grid coordinates.",
+    "ACR A1/A2 boundary is sex-dependent: Males <2.5, Females <3.5. Golden uses 2.5 as threshold.",
+    "G1/A1 and G2/A1 are empty green cells with no CKD code — modeled as 'No CKD' output.",
+    "Monitoring frequency (1-4/year) shown in cells is not modeled as outputs.",
+    "BP targets (<140/90 for A1-A2, <130/80 for A3+) are contextual notes, not separate decisions.",
+    "The '>300 Urgent Clinician Consultation' column applies to all GFR rows — deduplicated in outputs.",
+    "Bottom referral criteria row and right-side CKD Journey panel are informational, not part of decision tree."
+  ]
+}

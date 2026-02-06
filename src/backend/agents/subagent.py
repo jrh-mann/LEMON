@@ -43,9 +43,17 @@ class Subagent:
             return bool(should_cancel and should_cancel())
         if is_cancelled():
             raise CancellationError("Subagent cancelled before analysis.")
-        prompt = """Analyze this workflow diagram image.
+        # v12 prompt: Reverts v11's harmful "exact diagram text" variable naming
+        # (which caused QRISK/LDL variables to go missing). Keeps v11's multi-way
+        # split example and every-node-once rule. Adds clearer variable naming
+        # guidance: use the CONCEPT being evaluated, not the full node label.
+        prompt = """Analyze this workflow diagram image. Return ONLY a JSON object.
 
-Return ONLY a JSON object with this structure:
+Before writing JSON, mentally: (1) trace every arrow noting arrowhead direction — arrows
+can point up/down/left/right, do NOT assume top-to-bottom flow, (2) identify the entry
+point — the node with NO incoming arrows from other decision/action nodes, (3) list all
+numeric thresholds from edge labels.
+
 {
   "inputs": [
     {"id": "input_name_type", "name": "...", "type": "int|float|bool|string|enum|date", "description": "..."}
@@ -55,91 +63,63 @@ Return ONLY a JSON object with this structure:
   ],
   "tree": {
     "start": {
-      "id": "start",
-      "type": "start",
-      "label": "Start",
-      "children": [
-        {
-          "id": "n1",
-          "type": "decision",
-          "label": "exact text from diagram",
-          "input_ids": ["input_name_type"],
-          "edge_label": "Yes|No|label from diagram",
-          "condition": {
-            "input_id": "input_name_type",
-            "comparator": "gte|gt|lte|lt|eq|enum_eq|is_true|is_false",
-            "value": 0
-          },
-          "children": [
-            {
-              "id": "n2",
-              "type": "output",
-              "label": "exact text from diagram",
-              "edge_label": "Yes",
-              "children": []
-            }
-          ]
-        }
-      ]
+      "id": "start", "type": "start", "label": "Start",
+      "children": [{
+        "id": "n1", "type": "decision", "label": "exact text from diagram",
+        "input_ids": ["input_name_type"],
+        "edge_label": "label from arrow",
+        "condition": {"input_id": "input_name_type", "comparator": "gte|gt|lte|lt|eq|enum_eq|is_true|is_false", "value": 0},
+        "children": [{"id": "n2", "type": "output", "label": "exact text", "edge_label": "Yes", "children": []}]
+      }]
     }
   },
-  "doubts": [
-    "question or ambiguity 1"
-  ]
+  "doubts": ["ambiguity 1"]
 }
 
 Rules:
 
 Inputs:
-- Each input is a data variable the workflow needs to make decisions.
-- Every input "id" is computed as: input_{slug(name)}_{type}
-  - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
-- Declare every variable that any decision node evaluates. If a node checks a numeric threshold,
-  declare a float/int input for it.
+- Each input is a variable the workflow evaluates. ID format: input_{slug(name)}_{type}.
+- Name each input using the CONCEPT being evaluated, not the full node label
+  (e.g., node "Assess Total Cholesterol Result" → name: "Total Cholesterol";
+   node "Calculate QRISK2/3" → name: "QRISK2/3 Score").
+- Declare every variable used in any decision condition.
 
 Outputs:
-- List every distinct terminal outcome that appears in the diagram.
-- Each output name must match a leaf node label in the tree.
+- Every node with NO outgoing arrows is a terminal output.
+- outputs array and tree leaf nodes must match one-to-one.
+- The outputs array is a deduplicated set of unique endpoint actions. If the same
+  action appears at multiple tree locations, list it once. Use exact diagram text
+  for names — never append parenthetical qualifiers or path context.
+- Only include nodes that are part of the decision flow. Informational side panels,
+  annotations, and reference boxes are not outputs.
 
 Node types:
-- "start": single entry point, always the root.
-- "decision": a branching point with 2+ children. MUST include a "condition" object.
-- "action": an intermediate processing step with exactly one child. Only use "action" when
-  the node leads to further downstream steps.
-- "output": a terminal endpoint where the workflow ends. If a node is the final step in any
-  path with nothing after it, it MUST be type "output" with children: [].
+- "decision": 2+ outgoing arrows. MUST have "condition". Even if labelled "Calculate" or
+  "Assess", if it branches it is a decision.
+- "action": exactly 1 outgoing arrow to further steps. If a node has an outgoing arrow
+  to another node, it is NOT an output — it is an action (1 arrow) or decision (2+ arrows).
+- "output": NO outgoing arrows. Must have children: [].
 
-Conditions on decision nodes:
-- Every decision node MUST have a "condition" object with:
-  - "input_id": which input variable this decision evaluates.
-  - "comparator": one of "gte", "gt", "lte", "lt", "eq", "enum_eq", "is_true", "is_false".
-  - "value": the threshold or value to compare against (omit for is_true/is_false).
-- Derive condition thresholds from the edge labels on the branches. For example, if children
-  have edge_labels "> 10" and "≤ 10", the condition should use comparator "gt" with value 10.
-- For multi-way splits (e.g. 3+ branches from one point), chain binary decisions.
+Conditions:
+- "comparator": one of gte, gt, lte, lt, eq, enum_eq, is_true, is_false.
+- Read the comparison operator from edge labels EXACTLY: "≤" means lte, "<" means lt,
+  "≥" means gte, ">" means gt. Do not approximate — ≤ and < are different operators.
+- For 3+ branches from one node, chain binary decisions. Split on the LOWEST boundary
+  first, then split the remainder into a second decision.
+  Example: edges "LDL ≤2", "LDL 2-2.5", "LDL ≥2.6" →
+    decision(lte 2) → [child "≤2", decision(gte 2.6) → [child "≥2.6", child "2-2.5"]]
 
-Tree structure:
-- Identify the entry point: find the node in the diagram from which all other paths branch.
-  This is usually the first assessment or evaluation step — the one with the most downstream
-  nodes. Place it as the first child of "Start".
-- This must be a single rooted tree starting at tree.start.
-- Only decision nodes may have multiple children.
-- Outputs MUST be leaf nodes (children: []).
-- Every node id must be unique across the tree.
-- edge_label: use the exact text from the diagram's branch labels.
-
-Cycles and loops:
-- If the diagram contains loops (arrows pointing back to earlier steps), do NOT duplicate subtrees.
-- Instead, represent the loop endpoint as an output node and note the loop in "doubts".
-
-Labels:
-- Use exact text from the diagram for all labels.
-- If there are no doubts, return "doubts": [].
+Tree:
+- Entry point (first child of Start) = node with NO incoming arrows from other nodes.
+  Trace arrowheads, not visual position or layout.
+- EVERY node in the diagram must appear EXACTLY ONCE in the tree. Do not skip nodes and
+  do not duplicate them. Follow every outgoing arrow from each node to find its children.
+- Loops: represent the loop-back point as an output node, note in doubts.
+- edge_label: exact text from the diagram's arrows.
+- Use exact label text from the diagram for node labels. Every node id must be unique.
 
 Return JSON only, no extra text.
-
-Once you've received clarifications via feedback, adjust the analysis accordingly, preserving ids
-by recomputing them deterministically from name + type. Respond only with the updated JSON object.
 """
 
         history_messages = [

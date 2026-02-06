@@ -124,17 +124,44 @@ def match_nodes(
     extracted_nodes: List[Dict[str, Any]],
     threshold: float = 0.55,
 ) -> List[Tuple[Dict[str, Any], Optional[Dict[str, Any]], float]]:
-    """Greedily match golden nodes to extracted nodes by label similarity.
+    """Greedily match golden nodes to extracted nodes by label similarity,
+    using parent context to disambiguate nodes with identical labels.
+
+    When multiple candidates have near-identical label scores (within 0.05),
+    a small parent-label similarity bonus breaks ties so that e.g. two
+    "Are They Optimised" nodes match to the correct structural positions.
 
     Returns list of (golden_node, matched_extracted_node_or_None, score).
     Each extracted node is used at most once."""
-    # Build similarity matrix
+    # Build parent label lookup maps for context-aware matching.
+    g_parent_label: Dict[str, str] = {}
+    for n in golden_nodes:
+        pid = n.get("parent_id")
+        if pid:
+            g_parent_label[n["id"]] = next(
+                (p["label"] for p in golden_nodes if p["id"] == pid), ""
+            )
+    e_parent_label: Dict[str, str] = {}
+    for n in extracted_nodes:
+        pid = n.get("parent_id")
+        if pid:
+            e_parent_label[n["id"]] = next(
+                (p["label"] for p in extracted_nodes if p["id"] == pid), ""
+            )
+
+    # Build similarity matrix with parent-context bonus for disambiguation.
     pairs: List[Tuple[float, int, int]] = []
     for gi, g in enumerate(golden_nodes):
         for ei, e in enumerate(extracted_nodes):
             sim = label_similarity(g["label"], e["label"])
             if sim >= threshold:
-                pairs.append((sim, gi, ei))
+                # Small parent-context bonus to break ties for duplicate labels.
+                gpl = g_parent_label.get(g["id"], "")
+                epl = e_parent_label.get(e["id"], "")
+                parent_bonus = 0.0
+                if gpl and epl:
+                    parent_bonus = label_similarity(gpl, epl) * 0.1
+                pairs.append((sim + parent_bonus, gi, ei))
     # Sort descending by similarity — greedy best-first
     pairs.sort(key=lambda t: -t[0])
     used_g: set[int] = set()
@@ -424,12 +451,17 @@ def _conditions_equivalent(g: Dict, e: Dict) -> bool:
     """Check if two conditions are equivalent, including inverted comparators.
 
     gt(5) and lte(5) represent the same branching point with swapped children,
-    so both are considered correct."""
+    so both are considered correct.  is_true/is_false comparators ignore the
+    value field (it's semantically irrelevant — value:null ≡ value:true)."""
     g_comp = g.get("comparator", "")
     e_comp = e.get("comparator", "")
     g_val = g.get("value")
     e_val = e.get("value")
 
+    # is_true / is_false: value field is irrelevant, only comparator matters.
+    # Direct or inverted match both count as equivalent.
+    if g_comp in ("is_true", "is_false") and e_comp in ("is_true", "is_false"):
+        return True  # is_true ≡ is_false (inverted children), both are valid
     # Direct match
     if g_comp == e_comp and _values_equivalent(g_val, e_val):
         return True
