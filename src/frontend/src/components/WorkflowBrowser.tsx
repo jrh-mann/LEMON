@@ -419,26 +419,29 @@ export default function WorkflowBrowser() {
 
   return (
     <div className="workflow-browser">
-      {/* Tabs */}
-      <div className="browser-tabs">
-        <button
-          className={`tab-btn ${activeTab === 'my-workflows' ? 'active' : ''}`}
-          onClick={() => setActiveTab('my-workflows')}
-        >
-          My Workflows
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'peer-review' ? 'active' : ''}`}
-          onClick={() => setActiveTab('peer-review')}
-        >
-          Peer Review
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'published' ? 'active' : ''}`}
-          onClick={() => setActiveTab('published')}
-        >
-          Published
-        </button>
+      {/* Header with tabs */}
+      <div className="browser-header">
+        {/* Tabs */}
+        <div className="browser-tabs">
+          <button
+            className={`tab-btn ${activeTab === 'my-workflows' ? 'active' : ''}`}
+            onClick={() => setActiveTab('my-workflows')}
+          >
+            My Workflows
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'peer-review' ? 'active' : ''}`}
+            onClick={() => setActiveTab('peer-review')}
+          >
+            Peer Review
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'published' ? 'active' : ''}`}
+            onClick={() => setActiveTab('published')}
+          >
+            Published
+          </button>
+        </div>
       </div>
 
       {/* Search */}

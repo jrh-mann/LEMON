@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from flask import Flask, jsonify, request, make_response, g
+from flask import Flask, jsonify, request, make_response, g, redirect
 
 from .common import utc_now
 from .auth import (
@@ -237,6 +237,162 @@ def register_routes(
         if not user:
             return jsonify({"error": "Authentication required."}), 401
         response = make_response(jsonify({"user": serialize_user(user)}))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # =========================================================================
+    # MIRO INTEGRATION ENDPOINTS (OAuth 2.0)
+    # =========================================================================
+
+    @app.get("/api/auth/miro/status")
+    def miro_status() -> Any:
+        """Check if user has a Miro connection configured."""
+        from ..services.miro_oauth import is_token_expired
+
+        user_id = g.auth_user.id
+        integration = auth_store.get_integration_token(user_id, "miro")
+
+        response_data = {
+            "connected": integration is not None,
+            "service": "miro",
+        }
+
+        if integration:
+            response_data["connected_at"] = integration.created_at
+            # Check if token needs refresh
+            if integration.expires_at and is_token_expired(integration.expires_at):
+                response_data["needs_refresh"] = True
+
+        response = make_response(jsonify(response_data))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/api/auth/miro")
+    def miro_oauth_start() -> Any:
+        """Start Miro OAuth flow - redirects to Miro authorization page."""
+        from ..services.miro_oauth import get_authorization_url, MiroOAuthError
+        import secrets
+
+        try:
+            # Generate state for CSRF protection
+            state = secrets.token_urlsafe(32)
+            # Store state in session for verification on callback
+            # We'll use a simple approach: include user_id in state
+            user_id = g.auth_user.id
+            state_with_user = f"{user_id}:{state}"
+
+            auth_url = get_authorization_url(state=state_with_user)
+            return redirect(auth_url)
+
+        except MiroOAuthError as e:
+            logger.error("Failed to start Miro OAuth: %s", e)
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/auth/miro/callback")
+    def miro_oauth_callback() -> Any:
+        """Handle Miro OAuth callback - exchanges code for tokens."""
+        from ..services.miro_oauth import exchange_code_for_tokens, MiroOAuthError
+        from urllib.parse import quote
+
+        code = request.args.get("code")
+        state = request.args.get("state")
+        error = request.args.get("error")
+
+        # Handle OAuth errors from Miro
+        if error:
+            error_description = request.args.get("error_description", error)
+            logger.error("Miro OAuth error: %s", error_description)
+            return redirect(f"/#/miro-callback?error={quote(error_description)}")
+
+        if not code:
+            return redirect("/#/miro-callback?error=No+authorization+code+received")
+
+        # Verify state matches current user (CSRF protection)
+        if not state or ":" not in state:
+            return redirect("/#/miro-callback?error=Invalid+state+parameter")
+
+        state_user_id = state.split(":")[0]
+        current_user_id = g.auth_user.id if hasattr(g, "auth_user") and g.auth_user else None
+
+        if not current_user_id:
+            # Session expired during OAuth flow
+            return redirect("/#/miro-callback?error=Session+expired.+Please+login+and+try+again.")
+
+        if state_user_id != current_user_id:
+            # State mismatch - possible CSRF attack
+            logger.warning("Miro OAuth state mismatch: state=%s, current=%s", state_user_id, current_user_id)
+            return redirect("/#/miro-callback?error=Invalid+state.+Please+try+again.")
+
+        try:
+            # Exchange code for tokens
+            tokens = exchange_code_for_tokens(code)
+
+            # Store tokens
+            expires_at = tokens.expires_at.isoformat() if tokens.expires_at else None
+            auth_store.set_integration_token(
+                user_id=current_user_id,
+                service="miro",
+                access_token=tokens.access_token,
+                refresh_token=tokens.refresh_token,
+                expires_at=expires_at,
+            )
+
+            logger.info("Miro OAuth successful for user %s", current_user_id)
+            return redirect("/#/miro-callback?success=true")
+
+        except MiroOAuthError as e:
+            logger.error("Miro token exchange failed: %s", e)
+            return redirect(f"/#/miro-callback?error={quote(str(e))}")
+
+    @app.post("/api/auth/miro/refresh")
+    def miro_refresh_token() -> Any:
+        """Refresh an expired Miro access token."""
+        from ..services.miro_oauth import refresh_access_token, MiroOAuthError
+
+        user_id = g.auth_user.id
+        integration = auth_store.get_integration_token(user_id, "miro")
+
+        if not integration:
+            return jsonify({"error": "No Miro connection found"}), 404
+
+        if not integration.refresh_token:
+            return jsonify({"error": "No refresh token available. Please reconnect to Miro."}), 400
+
+        try:
+            tokens = refresh_access_token(integration.refresh_token)
+
+            # Update stored tokens
+            expires_at = tokens.expires_at.isoformat() if tokens.expires_at else None
+            auth_store.set_integration_token(
+                user_id=user_id,
+                service="miro",
+                access_token=tokens.access_token,
+                refresh_token=tokens.refresh_token,
+                expires_at=expires_at,
+            )
+
+            return jsonify({
+                "success": True,
+                "message": "Token refreshed successfully",
+            })
+
+        except MiroOAuthError as e:
+            logger.error("Miro token refresh failed: %s", e)
+            return jsonify({"error": str(e)}), 400
+
+    @app.delete("/api/auth/miro/token")
+    def miro_disconnect() -> Any:
+        """Disconnect Miro - removes stored tokens."""
+        user_id = g.auth_user.id
+        deleted = auth_store.delete_integration_token(user_id, "miro")
+
+        if not deleted:
+            return jsonify({"error": "No Miro connection found"}), 404
+
+        response = make_response(jsonify({
+            "success": True,
+            "message": "Miro disconnected successfully",
+        }))
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -1147,3 +1303,269 @@ def register_routes(
     @app.get("/api/validation/<session_id>")
     def validation_status(session_id: str) -> Any:
         return jsonify({"error": "Validation not implemented."}), 501
+
+    # =========================================================================
+    # MIRO IMPORT ENDPOINTS
+    # =========================================================================
+
+    @app.get("/api/import/miro/boards")
+    def list_miro_boards() -> Any:
+        """List Miro boards accessible to the user.
+
+        Requires Miro token to be configured.
+        """
+        from ..services.miro_client import MiroClient, MiroAPIError
+
+        user_id = g.auth_user.id
+        integration = auth_store.get_integration_token(user_id, "miro")
+
+        if not integration:
+            return jsonify({
+                "error": "Miro not connected. Please add your Miro access token first.",
+                "connected": False,
+            }), 401
+
+        try:
+            client = MiroClient(integration.access_token)
+            boards = client.get_user_boards(limit=50)
+
+            return jsonify({
+                "boards": [
+                    {
+                        "id": b.id,
+                        "name": b.name,
+                        "description": b.description,
+                        "modified_at": b.modified_at,
+                    }
+                    for b in boards
+                ],
+                "count": len(boards),
+            })
+
+        except MiroAPIError as e:
+            if e.status_code == 401:
+                return jsonify({
+                    "error": "Miro token is invalid or expired. Please reconnect.",
+                    "connected": False,
+                }), 401
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/import/miro")
+    def import_miro_board() -> Any:
+        """Import a Miro board as a LEMON workflow.
+
+        Request body:
+        {
+            "board_url": "https://miro.com/app/board/abc123=/",
+            // OR
+            "board_id": "abc123="
+        }
+
+        Returns a draft workflow with warnings/inferences for review.
+        The workflow is NOT saved until /api/import/miro/confirm is called.
+        """
+        from ..services.miro_client import MiroClient, MiroAPIError, extract_board_id
+        from ..services.miro_converter import MiroConverter, validate_miro_conventions
+
+        user_id = g.auth_user.id
+        integration = auth_store.get_integration_token(user_id, "miro")
+
+        if not integration:
+            return jsonify({
+                "error": "Miro not connected. Please add your Miro access token first.",
+                "connected": False,
+            }), 401
+
+        payload = request.get_json(force=True, silent=True) or {}
+        board_url = payload.get("board_url", "")
+        board_id = payload.get("board_id", "")
+
+        # Extract board ID from URL if provided
+        try:
+            if board_url:
+                board_id = extract_board_id(board_url)
+            elif not board_id:
+                return jsonify({"error": "Either board_url or board_id is required"}), 400
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+        try:
+            # Fetch board data from Miro
+            client = MiroClient(integration.access_token)
+            board = client.get_board(board_id)
+            shapes = client.get_shapes(board_id)
+            connectors = client.get_connectors(board_id)
+
+            logger.info(
+                "Importing Miro board %s: %d shapes, %d connectors",
+                board_id,
+                len(shapes),
+                len(connectors),
+            )
+
+            # Convert to LEMON format
+            converter = MiroConverter()
+            result = converter.convert(shapes, connectors, board.name)
+
+            if not result.success:
+                return jsonify({
+                    "success": False,
+                    "error": result.error or "Conversion failed",
+                    "warnings": [
+                        {"code": w.code, "message": w.message, "fix": w.fix_suggestion}
+                        for w in result.warnings
+                    ],
+                }), 400
+
+            # Additional validation
+            additional_warnings = validate_miro_conventions(result)
+            all_warnings = result.warnings + additional_warnings
+
+            # Build draft workflow response
+            draft_workflow = {
+                "name": board.name,
+                "description": f"Imported from Miro board: {board.name}",
+                "nodes": result.nodes,
+                "edges": result.edges,
+                "variables": result.variables,
+                "output_type": "string",  # Default
+                "miro_board_id": board_id,
+            }
+
+            return jsonify({
+                "success": True,
+                "workflow": draft_workflow,
+                "board": {
+                    "id": board.id,
+                    "name": board.name,
+                },
+                "stats": {
+                    "nodes": result.node_count,
+                    "edges": result.edge_count,
+                    "variables": result.variable_count,
+                },
+                "warnings": [
+                    {"code": w.code, "message": w.message, "fix": w.fix_suggestion}
+                    for w in all_warnings
+                ],
+                "inferences": [
+                    {
+                        "id": i.id,
+                        "type": i.type,
+                        "original_text": i.original_text,
+                        "inferred": i.inferred,
+                        "confidence": i.confidence,
+                    }
+                    for i in result.inferences
+                ],
+            })
+
+        except MiroAPIError as e:
+            if e.status_code == 401:
+                return jsonify({
+                    "error": "Miro token is invalid or expired. Please reconnect.",
+                    "connected": False,
+                }), 401
+            if e.status_code == 404:
+                return jsonify({
+                    "error": f"Board not found: {board_id}. Please check the URL.",
+                }), 404
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/import/miro/confirm")
+    def confirm_miro_import() -> Any:
+        """Save an imported Miro workflow.
+
+        Request body:
+        {
+            "workflow": { ...draft workflow from /api/import/miro... },
+            "accepted_inferences": ["inference_id_1", ...]  // optional
+        }
+
+        Creates a new workflow in the database.
+        """
+        user_id = g.auth_user.id
+        payload = request.get_json(force=True, silent=True) or {}
+        workflow_data = payload.get("workflow")
+
+        if not workflow_data:
+            return jsonify({"error": "workflow is required"}), 400
+
+        # Generate workflow ID
+        workflow_id = f"wf_{uuid4().hex}"
+
+        # Extract data
+        name = workflow_data.get("name", "Imported Workflow")
+        description = workflow_data.get("description", "")
+        nodes = workflow_data.get("nodes", [])
+        edges = workflow_data.get("edges", [])
+        variables = workflow_data.get("variables", [])
+        output_type = workflow_data.get("output_type", "string")
+        miro_board_id = workflow_data.get("miro_board_id")
+
+        # Clean up internal fields from nodes (like _miro_id)
+        for node in nodes:
+            node.pop("_miro_id", None)
+            node.pop("_miro_type", None)
+        for edge in edges:
+            edge.pop("_miro_id", None)
+
+        # Compute tree (may fail for cyclic graphs)
+        try:
+            tree = tree_from_flowchart(nodes, edges)
+            # Test JSON serialization to catch circular references early
+            import json
+            json.dumps(tree)
+        except (RecursionError, ValueError) as e:
+            logger.warning("Could not build tree for imported workflow (cyclic graph): %s", e)
+            tree = {}  # Empty tree for cyclic workflows
+
+        # Infer outputs from end nodes
+        outputs = _infer_outputs_from_nodes(nodes, output_type)
+
+        # Validate before saving
+        workflow_to_validate = {
+            "nodes": nodes,
+            "edges": edges,
+            "variables": variables,
+        }
+        is_valid, validation_errors = _workflow_validator.validate(
+            workflow_to_validate, strict=False  # Less strict for imports
+        )
+
+        # Save workflow (even if validation has warnings)
+        try:
+            workflow_store.create_workflow(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                name=name,
+                description=description,
+                domain="imported",
+                tags=["miro-import"],
+                nodes=nodes,
+                edges=edges,
+                inputs=variables,
+                outputs=outputs,
+                tree=tree,
+                doubts=[],
+                validation_score=0,
+                validation_count=0,
+                is_validated=False,
+                output_type=output_type,
+                is_published=False,
+            )
+        except sqlite3.IntegrityError as e:
+            logger.error("Failed to save imported workflow: %s", e)
+            return jsonify({"error": "Failed to save workflow"}), 500
+
+        return jsonify({
+            "success": True,
+            "workflow_id": workflow_id,
+            "name": name,
+            "miro_board_id": miro_board_id,
+            "message": "Workflow imported successfully",
+            "validation_warnings": [
+                {"code": e.code, "message": e.message}
+                for e in validation_errors
+            ] if validation_errors else [],
+        }), 201

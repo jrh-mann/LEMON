@@ -31,6 +31,20 @@ class AuthSession:
     last_used_at: str
 
 
+@dataclass(frozen=True)
+class Integration:
+    """External service integration credentials."""
+
+    id: str
+    user_id: str
+    service: str  # e.g., "miro", "figma"
+    access_token: str
+    refresh_token: Optional[str]
+    expires_at: Optional[str]  # ISO format timestamp
+    created_at: str
+    updated_at: str
+
+
 class AuthStore:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -66,6 +80,22 @@ class AuthStore:
 
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id
                     ON sessions(user_id);
+
+                CREATE TABLE IF NOT EXISTS integrations (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    service TEXT NOT NULL,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    expires_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE(user_id, service)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_integrations_user_service
+                    ON integrations(user_id, service);
                 """
             )
 
@@ -246,3 +276,136 @@ class AuthStore:
             created_at=row["created_at"],
             last_login_at=row["last_login_at"],
         )
+
+    # =========================================================================
+    # INTEGRATION TOKEN MANAGEMENT
+    # =========================================================================
+
+    def set_integration_token(
+        self,
+        user_id: str,
+        service: str,
+        access_token: str,
+        refresh_token: Optional[str] = None,
+        expires_at: Optional[str] = None,
+    ) -> Integration:
+        """Store or update an integration token for a user.
+
+        Args:
+            user_id: The user's ID
+            service: Service name (e.g., "miro")
+            access_token: The access token to store
+            refresh_token: Optional refresh token for OAuth
+            expires_at: Optional expiration timestamp (ISO format)
+
+        Returns:
+            The Integration object
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        integration_id = f"int_{service}_{user_id}"
+
+        with self._conn() as conn:
+            # Upsert: insert or update if exists
+            conn.execute(
+                """
+                INSERT INTO integrations (id, user_id, service, access_token, refresh_token, expires_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, service) DO UPDATE SET
+                    access_token = excluded.access_token,
+                    refresh_token = excluded.refresh_token,
+                    expires_at = excluded.expires_at,
+                    updated_at = excluded.updated_at
+                """,
+                (integration_id, user_id, service, access_token, refresh_token, expires_at, now, now),
+            )
+
+        self._logger.info("Set integration token for user=%s service=%s", user_id, service)
+        return Integration(
+            id=integration_id,
+            user_id=user_id,
+            service=service,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+            created_at=now,
+            updated_at=now,
+        )
+
+    def get_integration_token(self, user_id: str, service: str) -> Optional[Integration]:
+        """Get an integration token for a user.
+
+        Args:
+            user_id: The user's ID
+            service: Service name (e.g., "miro")
+
+        Returns:
+            Integration object if found, None otherwise
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id, user_id, service, access_token, refresh_token, expires_at, created_at, updated_at
+                FROM integrations
+                WHERE user_id = ? AND service = ?
+                """,
+                (user_id, service),
+            ).fetchone()
+
+        if not row:
+            return None
+
+        return Integration(
+            id=row["id"],
+            user_id=row["user_id"],
+            service=row["service"],
+            access_token=row["access_token"],
+            refresh_token=row["refresh_token"],
+            expires_at=row["expires_at"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def delete_integration_token(self, user_id: str, service: str) -> bool:
+        """Delete an integration token for a user.
+
+        Args:
+            user_id: The user's ID
+            service: Service name (e.g., "miro")
+
+        Returns:
+            True if deleted, False if not found
+        """
+        with self._conn() as conn:
+            result = conn.execute(
+                """
+                DELETE FROM integrations
+                WHERE user_id = ? AND service = ?
+                """,
+                (user_id, service),
+            )
+
+        deleted = result.rowcount > 0 if result else False
+        if deleted:
+            self._logger.info("Deleted integration token for user=%s service=%s", user_id, service)
+        return deleted
+
+    def has_integration(self, user_id: str, service: str) -> bool:
+        """Check if a user has an integration token.
+
+        Args:
+            user_id: The user's ID
+            service: Service name (e.g., "miro")
+
+        Returns:
+            True if token exists, False otherwise
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM integrations
+                WHERE user_id = ? AND service = ?
+                """,
+                (user_id, service),
+            ).fetchone()
+
+        return row is not None

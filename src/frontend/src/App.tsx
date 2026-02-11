@@ -17,6 +17,7 @@ import { useSession } from './hooks/useSession'
 import { useUIStore } from './stores/uiStore'
 
 const isAuthHash = () => window.location.hash === '#/auth' || window.location.hash === '#auth'
+const isMiroCallback = () => window.location.hash.startsWith('#/miro-callback')
 
 function WorkspaceApp() {
   const [authReady, setAuthReady] = useState(false)
@@ -87,12 +88,36 @@ function WorkspaceApp() {
 
 function App() {
   const [isAuthRoute, setIsAuthRoute] = useState(() => isAuthHash())
+  const { openModal, setError } = useUIStore()
 
   useEffect(() => {
     const handleHashChange = () => setIsAuthRoute(isAuthHash())
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
+
+  // Handle Miro OAuth callback
+  useEffect(() => {
+    if (isMiroCallback()) {
+      const hash = window.location.hash
+      const params = new URLSearchParams(hash.split('?')[1] || '')
+      const success = params.get('success')
+      const error = params.get('error')
+
+      // Clear the callback hash
+      window.location.hash = ''
+
+      if (success === 'true') {
+        // Successfully connected - open the import modal
+        setTimeout(() => {
+          openModal('miro-import')
+        }, 100)
+      } else if (error) {
+        // Show error
+        setError(`Miro connection failed: ${decodeURIComponent(error)}`)
+      }
+    }
+  }, [openModal, setError])
 
   return (
     <>

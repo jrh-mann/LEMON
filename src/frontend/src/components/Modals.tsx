@@ -11,6 +11,7 @@ import {
   stopWorkflowExecution,
 } from '../api/socket'
 import WorkflowBrowser from './WorkflowBrowser'
+import MiroImportModal from './MiroImportModal'
 import type { WorkflowInput, WorkflowVariable } from '../types'
 
 export default function Modals() {
@@ -36,6 +37,11 @@ export default function Modals() {
       {/* Execute Modal */}
       <Modal isOpen={modalOpen === 'execute'} onClose={closeModal} title="Run Workflow">
         <ExecuteWorkflowForm />
+      </Modal>
+
+      {/* Miro Import Modal */}
+      <Modal isOpen={modalOpen === 'miro-import'} onClose={closeModal} title="Import from Miro">
+        <MiroImportModal />
       </Modal>
     </>
   )

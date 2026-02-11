@@ -2,6 +2,10 @@
 """Run the LEMON API server."""
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 os.environ.setdefault("LEMON_LOG_PREFIX", "backend")
 
