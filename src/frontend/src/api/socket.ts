@@ -551,12 +551,11 @@ export function disconnectSocket(): void {
     socket = null
   }
 }
-
-// Send chat message via socket (includes workflow atomically in payload)
 export function sendChatMessage(
   message: string,
   conversationId?: string | null,
-  image?: string
+  image?: string,
+  annotations?: unknown[]
 ): void {
   const sock = getSocket()
   if (!sock?.connected) {
@@ -587,6 +586,7 @@ export function sendChatMessage(
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
     image,
+    annotations: annotations && annotations.length > 0 ? annotations : undefined,
     task_id: taskId,
     current_workflow_id: currentWorkflowId,
     workflow: {

@@ -18,7 +18,7 @@ from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
-from ..utils.uploads import save_uploaded_image
+from ..utils.uploads import save_uploaded_image, save_annotations
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -112,6 +112,7 @@ class SocketChatTask:
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
     did_stream: bool = False
     convo: Optional[Conversation] = None
+    annotations: Optional[list[dict[str, Any]]] = None
 
     def is_cancelled(self) -> bool:
         return _is_task_cancelled(self.sid, self.task_id)
@@ -215,7 +216,10 @@ class SocketChatTask:
         if not isinstance(self.image_data, str) or not self.image_data.strip():
             return True
         try:
-            save_uploaded_image(self.image_data, repo_root=self.repo_root)
+            rel_path = save_uploaded_image(self.image_data, repo_root=self.repo_root)
+            # Save annotations alongside the image if provided
+            if self.annotations and isinstance(self.annotations, list):
+                save_annotations(rel_path, self.annotations, repo_root=self.repo_root)
         except Exception as exc:
             logger.exception("Failed to save uploaded image")
             self.emit_error(f"Invalid image: {exc}")
@@ -328,6 +332,7 @@ def handle_socket_chat(
         image_data=payload.get("image"),
         workflow=payload.get("workflow"),
         analysis=payload.get("analysis"),
+        annotations=payload.get("annotations"),
     )
     socketio.start_background_task(task.run)
 

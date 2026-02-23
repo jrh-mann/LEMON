@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis } from '../types'
+import type { Annotation } from '../components/ImageAnnotator'
 
 // Execution state for visual workflow execution
 export interface ExecutionState {
@@ -24,6 +25,7 @@ export interface WorkflowTab {
   historyIndex: number
   pendingImage: string | null
   pendingImageName: string | null
+  pendingAnnotations: Annotation[]
   analysis: WorkflowAnalysis | null
 }
 
@@ -57,6 +59,7 @@ interface WorkflowState {
   // Pending image (per-tab)
   pendingImage: string | null
   pendingImageName: string | null
+  pendingAnnotations: Annotation[]
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
@@ -101,6 +104,8 @@ interface WorkflowState {
   // Pending image (per-tab)
   setPendingImage: (image: string | null, name?: string | null) => void
   clearPendingImage: () => void
+  setPendingAnnotations: (annotations: Annotation[]) => void
+  clearPendingAnnotations: () => void
 
   // Reset
   reset: () => void
@@ -146,6 +151,7 @@ const createInitialTab = (): WorkflowTab => ({
   historyIndex: -1,
   pendingImage: null,
   pendingImageName: null,
+  pendingAnnotations: [],
   analysis: null,
 })
 
@@ -172,6 +178,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   historyIndex: -1,
   pendingImage: null,
   pendingImageName: null,
+  pendingAnnotations: [],
 
   // Execution state
   execution: { ...initialExecutionState },
@@ -219,6 +226,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      pendingAnnotations: [],
       analysis: null,
     }
     // Save current tab's pending image before switching
@@ -226,11 +234,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? {
-            ...tab,
-            pendingImage: state.pendingImage,
-            pendingImageName: state.pendingImageName,
-            analysis: state.currentAnalysis,
-          }
+          ...tab,
+          pendingImage: state.pendingImage,
+          pendingImageName: state.pendingImageName,
+          pendingAnnotations: state.pendingAnnotations,
+          analysis: state.currentAnalysis,
+        }
         : tab
     )
     set({
@@ -247,6 +256,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      pendingAnnotations: [],
     })
     return newTab.id
   },
@@ -268,6 +278,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         historyIndex: -1,
         pendingImage: null,
         pendingImageName: null,
+        pendingAnnotations: [],
       })
       return
     }
@@ -295,6 +306,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeIds: [],
       pendingImage: activeTab.pendingImage,
       pendingImageName: activeTab.pendingImageName,
+      pendingAnnotations: activeTab.pendingAnnotations,
     })
   },
 
@@ -306,14 +318,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const tabs = state.tabs.map(tab =>
       tab.id === state.activeTabId
         ? {
-            ...tab,
-            flowchart: state.flowchart,
-            history: state.history,
-            historyIndex: state.historyIndex,
-            pendingImage: state.pendingImage,
-            pendingImageName: state.pendingImageName,
-            analysis: state.currentAnalysis,
-          }
+          ...tab,
+          flowchart: state.flowchart,
+          history: state.history,
+          historyIndex: state.historyIndex,
+          pendingImage: state.pendingImage,
+          pendingImageName: state.pendingImageName,
+          pendingAnnotations: state.pendingAnnotations,
+          analysis: state.currentAnalysis,
+        }
         : tab
     )
 
@@ -334,6 +347,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       connectFromId: null,
       pendingImage: newTab.pendingImage,
       pendingImageName: newTab.pendingImageName,
+      pendingAnnotations: newTab.pendingAnnotations,
     })
   },
 
@@ -526,8 +540,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
   // Pending image (per-tab)
-  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name }),
-  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null }),
+  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name, pendingAnnotations: [] }),
+  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null, pendingAnnotations: [] }),
+  setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
+  clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
 
   // Reset
   reset: () =>
@@ -543,6 +559,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      pendingAnnotations: [],
       execution: { ...initialExecutionState },
     }),
 
