@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
+import ImageAnnotator from './ImageAnnotator'
 import {
   getNodeSize,
   getNodeColor,
@@ -71,6 +72,8 @@ export default function Canvas() {
     pushHistory,
     pendingImage,
     pendingImageName,
+    pendingAnnotations,
+    setPendingAnnotations,
     clearPendingImage,
     execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
@@ -966,7 +969,7 @@ export default function Canvas() {
     let startNodes = nodes.filter(n =>
       !orphanNodeIds.has(n.id) &&
       (((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
-      n.type === 'start')
+        n.type === 'start')
     )
 
     // If no start nodes found, use first connected node
@@ -1242,7 +1245,7 @@ export default function Canvas() {
         )}
       </div>
 
-      {/* Image preview tab */}
+      {/* Image preview tab with annotation canvas */}
       {canvasTab === 'image' && pendingImage && (
         <div className="image-preview-container">
           <div className="image-preview-header">
@@ -1258,12 +1261,11 @@ export default function Canvas() {
               ×
             </button>
           </div>
-          <div className="image-preview-content">
-            <img src={pendingImage} alt="Uploaded workflow" />
-          </div>
-          <div className="image-preview-hint">
-            Ask the orchestrator to analyse this image in the chat below
-          </div>
+          <ImageAnnotator
+            imageSrc={pendingImage}
+            annotations={pendingAnnotations}
+            onChange={setPendingAnnotations}
+          />
         </div>
       )}
 
@@ -1473,30 +1475,30 @@ export default function Canvas() {
               {/* Aura glow filter */}
               <defs>
                 <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
                   <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
                   </feMerge>
                 </filter>
                 <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9"/>
-                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6"/>
+                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6" />
                 </radialGradient>
                 <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor="var(--amber)"/>
-                  <stop offset="100%" stopColor="var(--rose)"/>
+                  <stop offset="0%" stopColor="var(--amber)" />
+                  <stop offset="100%" stopColor="var(--rose)" />
                 </radialGradient>
               </defs>
               {/* Outer petals */}
-              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)"/>
-              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)"/>
-              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)"/>
-              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)"/>
-              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)"/>
-              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)"/>
+              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)" />
+              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)" />
+              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)" />
+              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)" />
+              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)" />
+              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)" />
               {/* Center */}
-              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)"/>
+              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)" />
             </svg>
           </button>
         </div>

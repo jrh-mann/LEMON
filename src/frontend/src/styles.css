@@ -46,7 +46,8 @@ body {
 .app-layout {
   display: grid;
   grid-template-rows: auto 1fr;
-  height: calc(100vh - var(--chat-height, 280px)); /* Dynamically adjust for chat dock height */
+  height: calc(100vh - var(--chat-height, 280px));
+  /* Dynamically adjust for chat dock height */
 }
 
 /* Header */
@@ -200,7 +201,8 @@ body {
 }
 
 /* Buttons */
-.primary, .ghost {
+.primary,
+.ghost {
   border: none;
   padding: 10px 18px;
   border-radius: 999px;
@@ -424,7 +426,7 @@ body {
 
 .sidebar-tab:hover {
   color: var(--ink);
-  background: rgba(0,0,0,0.02);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .sidebar-tab.active {
@@ -654,7 +656,7 @@ body {
 }
 
 .browser-card.selected .browser-card-meta {
-  color: rgba(255,255,255,0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .browser-card-name {
@@ -676,7 +678,7 @@ body {
 }
 
 .browser-card.selected .browser-card-desc {
-  color: rgba(255,255,255,0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .browser-card-meta {
@@ -696,7 +698,7 @@ body {
 }
 
 .browser-card.selected .browser-card-domain {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
   color: white;
 }
 
@@ -705,7 +707,7 @@ body {
 }
 
 .browser-card.selected .browser-card-score {
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .browser-empty {
@@ -749,7 +751,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .semantic-query {
@@ -890,7 +894,8 @@ body {
   flex-direction: column;
   background: var(--bg);
   position: relative;
-  min-width: 0;  /* Allow shrinking in grid */
+  min-width: 0;
+  /* Allow shrinking in grid */
   overflow: hidden;
 }
 
@@ -905,7 +910,8 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   flex-shrink: 0;
-  min-width: 0;  /* Allow shrinking */
+  min-width: 0;
+  /* Allow shrinking */
   scrollbar-width: thin;
   scrollbar-color: var(--edge) transparent;
 }
@@ -933,7 +939,8 @@ body {
   gap: 8px;
   padding: 8px 12px;
   background: var(--bg);
-  flex-shrink: 0;  /* Don't shrink - scroll instead */
+  flex-shrink: 0;
+  /* Don't shrink - scroll instead */
   border: 1px solid var(--edge);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
@@ -1264,25 +1271,58 @@ body {
   animation: petal-breathe 1s ease-in-out infinite;
 }
 
-.beautify-btn:hover .petal-1 { animation-delay: 0s; }
-.beautify-btn:hover .petal-2 { animation-delay: 0.1s; }
-.beautify-btn:hover .petal-3 { animation-delay: 0.2s; }
-.beautify-btn:hover .petal-4 { animation-delay: 0.3s; }
-.beautify-btn:hover .petal-5 { animation-delay: 0.4s; }
-.beautify-btn:hover .petal-6 { animation-delay: 0.5s; }
+.beautify-btn:hover .petal-1 {
+  animation-delay: 0s;
+}
+
+.beautify-btn:hover .petal-2 {
+  animation-delay: 0.1s;
+}
+
+.beautify-btn:hover .petal-3 {
+  animation-delay: 0.2s;
+}
+
+.beautify-btn:hover .petal-4 {
+  animation-delay: 0.3s;
+}
+
+.beautify-btn:hover .petal-5 {
+  animation-delay: 0.4s;
+}
+
+.beautify-btn:hover .petal-6 {
+  animation-delay: 0.5s;
+}
 
 @keyframes wibble {
-  0%, 100% { transform: rotate(0deg) scale(1); }
-  25% { transform: rotate(-8deg) scale(1.05); }
-  50% { transform: rotate(0deg) scale(1); }
-  75% { transform: rotate(8deg) scale(1.05); }
+
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+
+  25% {
+    transform: rotate(-8deg) scale(1.05);
+  }
+
+  50% {
+    transform: rotate(0deg) scale(1);
+  }
+
+  75% {
+    transform: rotate(8deg) scale(1.05);
+  }
 }
 
 @keyframes aura-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.6;
     transform: scale(1.2);
   }
+
   50% {
     opacity: 1;
     transform: scale(1.5);
@@ -1290,8 +1330,15 @@ body {
 }
 
 @keyframes petal-breathe {
-  0%, 100% { opacity: 0.8; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Meta button (tidy, etc) */
@@ -1336,7 +1383,7 @@ body {
 #flowchartCanvas {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(255,250,240,0.5), rgba(246,241,231,0.8));
+  background: linear-gradient(135deg, rgba(255, 250, 240, 0.5), rgba(246, 241, 231, 0.8));
 }
 
 #flowchartCanvas.edge-drawing {
@@ -1407,7 +1454,7 @@ body {
 }
 
 .workflow-name-input:hover {
-  background: rgba(0,0,0,0.03);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .workflow-name-input:focus {
@@ -1619,7 +1666,7 @@ body {
 .message.assistant .message-content {
   background: white;
   border: 1px solid var(--edge);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .message.user .message-content {
@@ -1890,10 +1937,14 @@ body {
 }
 
 @keyframes typing-bounce {
-  0%, 60%, 100% {
+
+  0%,
+  60%,
+  100% {
     transform: translateY(0);
     opacity: 0.4;
   }
+
   30% {
     transform: translateY(-6px);
     opacity: 1;
@@ -1919,10 +1970,13 @@ body {
 }
 
 @keyframes status-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.4;
     transform: scale(0.8);
   }
+
   50% {
     opacity: 1;
     transform: scale(1);
@@ -2084,9 +2138,12 @@ body {
 
 /* Pulse animation for listening state */
 @keyframes voicePulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(180, 83, 61, 0.4);
   }
+
   50% {
     box-shadow: 0 0 0 8px rgba(180, 83, 61, 0);
   }
@@ -2098,12 +2155,16 @@ body {
 }
 
 @keyframes voiceWobble {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: rotate(0deg);
   }
+
   25% {
     transform: rotate(-3deg);
   }
+
   75% {
     transform: rotate(3deg);
   }
@@ -2591,7 +2652,9 @@ body {
 
 /* Animations */
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes slideUp {
@@ -2599,6 +2662,7 @@ body {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -2610,6 +2674,7 @@ body {
     opacity: 0;
     transform: scale(0.95) translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -2843,12 +2908,27 @@ body {
   animation: typing 1.4s infinite ease-in-out both;
 }
 
-.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes typing {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
-  40% { transform: scale(1); opacity: 1; }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* Pending Question */
@@ -3345,7 +3425,7 @@ details summary {
   pointer-events: none;
 }
 
-.auth-shell > * {
+.auth-shell>* {
   position: relative;
   z-index: 1;
 }
@@ -3679,6 +3759,7 @@ details summary {
     opacity: 0;
     transform: translateY(16px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -3690,6 +3771,7 @@ details summary {
     opacity: 0;
     transform: translateY(14px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -3701,6 +3783,7 @@ details summary {
     opacity: 0;
     transform: translateY(12px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -3746,6 +3829,7 @@ details summary {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .auth-shell,
   .auth-hero,
   .auth-panel,
@@ -4110,10 +4194,13 @@ button.primary.warning:hover {
 
 /* Pulsing animation for executing node */
 @keyframes executingPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     stroke-width: 3px;
     filter: brightness(1);
   }
+
   50% {
     stroke-width: 4px;
     filter: brightness(1.1);
@@ -4125,6 +4212,7 @@ button.primary.warning:hover {
   0% {
     stroke-dashoffset: 20;
   }
+
   100% {
     stroke-dashoffset: 0;
   }
@@ -4446,3 +4534,226 @@ button.primary.warning:hover {
   border-top: 1px solid var(--edge);
 }
 
+/* ── Image Annotator ─────────────────────────────────── */
+
+/* Source Image tab container */
+.image-preview-container {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  inset: 40px 0 0 0;
+  /* below workspace tabs */
+  overflow: hidden;
+  background: var(--bg-dark);
+}
+
+.image-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.image-preview-header .image-name {
+  font-weight: 500;
+}
+
+.image-preview-header .clear-image-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.image-preview-header .clear-image-btn:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Full-size annotator */
+.image-annotator-full {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Toolbar */
+.annotator-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.annotator-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.annotator-tool:hover {
+  color: var(--text);
+  border-color: var(--teal);
+}
+
+.annotator-tool.active {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+}
+
+.annotator-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--edge);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.annotator-zoom-level {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  min-width: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.annotator-info {
+  font-size: 0.65rem;
+  color: var(--text-faint);
+  padding: 2px 6px;
+  background: var(--surface);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.annotator-count {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.annotator-clear {
+  padding: 2px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.annotator-clear:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Content area — relative anchor for the absolute viewport */
+.annotator-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Viewport — absolute inset to fill relative parent */
+.annotator-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Canvas is absolute so it doesn't affect viewport layout */
+.annotator-viewport>.annotator-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+}
+
+/* Annotation edit modal — reuses standard .modal system */
+.annotation-modal {
+  max-width: 400px;
+}
+
+.annotation-modal textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Hint / status bar */
+.annotator-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  border-top: 1px solid var(--edge);
+  flex-shrink: 0;
+  background: var(--bg);
+  font-size: 0.65rem;
+  color: var(--text-faint);
+  gap: 16px;
+}
+
+.annotator-coords {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.annotator-shortcuts {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.annotator-shortcut {
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  letter-spacing: 0.02em;
+}
+
+.annotator-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
