@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..storage.history import HistoryStore
 from ..llm import call_llm, call_llm_stream
@@ -29,6 +29,7 @@ class Subagent:
         image_path: Path,
         session_id: str,
         feedback: Optional[str] = None,
+        annotations: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
@@ -143,10 +144,14 @@ by recomputing them deterministically from name + type. Respond only with the up
                 encode_ms,
                 len(data_url.encode("utf-8")),
             )
+            # Inject user-provided annotations into the prompt
+            full_prompt = prompt
+            if annotations:
+                full_prompt += _format_annotations(annotations)
             user_msg = {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": full_prompt},
                     {"type": "image_url", "image_url": {"url": data_url}},
                 ],
             }
@@ -301,3 +306,27 @@ def _wants_json(feedback: str) -> bool:
         "json object",
     )
     return any(t in text for t in triggers)
+
+
+def _format_annotations(annotations: List[Dict[str, Any]]) -> str:
+    """Format user annotations into a prompt section for the LLM."""
+    if not annotations:
+        return ""
+    lines = [
+        "\n\nThe user has provided the following annotations on the image to help clarify it."
+        " Coordinates are in native image pixels (origin top-left):"
+    ]
+    for i, ann in enumerate(annotations, 1):
+        ann_type = ann.get("type", "unknown")
+        if ann_type == "label":
+            dot_x, dot_y = ann.get("dotX", 0), ann.get("dotY", 0)
+            text = ann.get("text", "")
+            lines.append(f'{i}. Label at ({dot_x}, {dot_y}): "{text}"')
+        else:
+            lines.append(f"{i}. Annotation: {ann}")
+    lines.append(
+        "Use these annotations to resolve ambiguities in the diagram. "
+        "Give priority to user-provided labels over OCR when they conflict."
+    )
+    return "\n".join(lines)
+
