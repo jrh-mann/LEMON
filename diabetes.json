@@ -1,0 +1,533 @@
+{
+  "id": "draft",
+  "metadata": {
+    "name": "Draft Workflow",
+    "description": "",
+    "tags": [],
+    "created_at": "2026-02-23T21:45:56.225Z",
+    "updated_at": "2026-02-23T21:45:56.225Z",
+    "validation_score": 0,
+    "validation_count": 0,
+    "is_validated": false
+  },
+  "flowchart": {
+    "nodes": [
+      {
+        "id": "o1",
+        "type": "end",
+        "label": "Admit via A&E/Medics",
+        "x": -210,
+        "y": 612,
+        "color": "green"
+      },
+      {
+        "id": "o2",
+        "type": "end",
+        "label": "Start Gliclazide or Insulin",
+        "x": 50,
+        "y": 612,
+        "color": "green"
+      },
+      {
+        "id": "d2",
+        "type": "decision",
+        "label": "Admission required?",
+        "x": -80,
+        "y": 470,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_new_a1c_float",
+          "comparator": "gt",
+          "value": 58
+        }
+      },
+      {
+        "id": "o6",
+        "type": "end",
+        "label": "Switch to SGLT2i Monotherapy",
+        "x": 310,
+        "y": 932,
+        "color": "green"
+      },
+      {
+        "id": "o3",
+        "type": "end",
+        "label": "Continue Metformin + SGLT2i",
+        "x": 570,
+        "y": 1252,
+        "color": "green"
+      },
+      {
+        "id": "o4",
+        "type": "end",
+        "label": "Continue Metformin + SGLT2i + GLP-1",
+        "x": 830,
+        "y": 1572,
+        "color": "green"
+      },
+      {
+        "id": "o5",
+        "type": "end",
+        "label": "Refer to Insulin Initiator",
+        "x": 1090,
+        "y": 1572,
+        "color": "green"
+      },
+      {
+        "id": "d6",
+        "type": "decision",
+        "label": "A1c controlled on maximally tolerated dose?",
+        "x": 960,
+        "y": 1430,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_glp1_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a3",
+        "type": "process",
+        "label": "Add GLP-1 agonist (Ozempic) - titrate to full dose with 3 monthly A1c monitoring",
+        "x": 970,
+        "y": 1260,
+        "color": "teal"
+      },
+      {
+        "id": "d5",
+        "type": "decision",
+        "label": "A1c controlled?",
+        "x": 765,
+        "y": 1110,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_sglt2i_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a2",
+        "type": "process",
+        "label": "Add SGLT2i",
+        "x": 775,
+        "y": 940,
+        "color": "teal"
+      },
+      {
+        "id": "d4",
+        "type": "decision",
+        "label": "Metformin tolerated after 4 weeks?",
+        "x": 537.5,
+        "y": 790,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_metformin_tolerated_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a1",
+        "type": "process",
+        "label": "Start Metformin",
+        "x": 547.5,
+        "y": 620,
+        "color": "teal"
+      },
+      {
+        "id": "node_47640dc8",
+        "type": "end",
+        "label": "Continue Metformin",
+        "x": 1230,
+        "y": 932,
+        "color": "green",
+        "output_type": "string",
+        "output_value": "Continue Metformin"
+      },
+      {
+        "id": "node_7012edff",
+        "type": "end",
+        "label": "Continue Dual Therapy",
+        "x": 1490,
+        "y": 1252,
+        "color": "green",
+        "output_type": "string",
+        "output_value": "Continue Dual Therapy"
+      },
+      {
+        "id": "o9_dup3",
+        "type": "end",
+        "label": "Continue Triple Therapy",
+        "x": 1750,
+        "y": 1572,
+        "color": "green"
+      },
+      {
+        "id": "o10_dup13",
+        "type": "end",
+        "label": "Continue current regimen with Ozempic",
+        "x": 2010,
+        "y": 2212,
+        "color": "green"
+      },
+      {
+        "id": "o11_dup12",
+        "type": "end",
+        "label": "Refer to Insulin Initiator",
+        "x": 2270,
+        "y": 2212,
+        "color": "green"
+      },
+      {
+        "id": "d12_dup9",
+        "type": "decision",
+        "label": "A1c >58 despite max tolerated Ozempic?",
+        "x": 2140,
+        "y": 2070,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_glp1_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a8_dup7",
+        "type": "process",
+        "label": "Prescribe Ozempic - titrate to maximally tolerated dose with 3 monthly A1c",
+        "x": 2150,
+        "y": 1900,
+        "color": "teal"
+      },
+      {
+        "id": "o12_dup11",
+        "type": "end",
+        "label": "Continue current regimen with Mounjaro",
+        "x": 2490,
+        "y": 2212,
+        "color": "green"
+      },
+      {
+        "id": "o13_dup10",
+        "type": "end",
+        "label": "Refer to Insulin Initiator",
+        "x": 2750,
+        "y": 2212,
+        "color": "green"
+      },
+      {
+        "id": "d13_dup8",
+        "type": "decision",
+        "label": "A1c >58 despite max tolerated Mounjaro?",
+        "x": 2620,
+        "y": 2070,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_glp1_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a9_dup6",
+        "type": "process",
+        "label": "Prescribe Mounjaro - titrate to maximally tolerated dose with 3 monthly A1c",
+        "x": 2630,
+        "y": 1900,
+        "color": "teal"
+      },
+      {
+        "id": "d11_dup5",
+        "type": "decision",
+        "label": "High prognostic value?",
+        "x": 2380,
+        "y": 1750,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_prognostic_value_enum",
+          "comparator": "enum_eq",
+          "value": "High"
+        }
+      },
+      {
+        "id": "a7_dup4",
+        "type": "process",
+        "label": "Add GLP-1 agonist",
+        "x": 2390,
+        "y": 1580,
+        "color": "teal"
+      },
+      {
+        "id": "d10_dup2",
+        "type": "decision",
+        "label": "A1c controlled on triple therapy?",
+        "x": 2065,
+        "y": 1430,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_triple_therapy_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a6_dup1",
+        "type": "process",
+        "label": "Start Triple Therapy: Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)",
+        "x": 2075,
+        "y": 1260,
+        "color": "teal"
+      },
+      {
+        "id": "node_0ee9520c",
+        "type": "decision",
+        "label": "A1c controlled on Dual Therapy?",
+        "x": 1777.5,
+        "y": 1110,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_dual_therapy_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "a5",
+        "type": "process",
+        "label": "Start Dual Therapy: Metformin + (Gliptin OR Pioglitazone OR Gliclazide)",
+        "x": 1787.5,
+        "y": 940,
+        "color": "teal"
+      },
+      {
+        "id": "node_70b9092b",
+        "type": "decision",
+        "label": "A1c controlled on Metformin?",
+        "x": 1503.75,
+        "y": 790,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_a1c_controlled_after_metformin_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "node_2bdd426d",
+        "type": "process",
+        "label": "Start Metformin",
+        "x": 1513.75,
+        "y": 620,
+        "color": "slate"
+      },
+      {
+        "id": "node_80280072",
+        "type": "decision",
+        "label": "Patient at risk of CVD?",
+        "x": 1020.625,
+        "y": 470,
+        "color": "amber",
+        "condition": {
+          "input_id": "var_at_risk_of_cvd_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "d1",
+        "type": "decision",
+        "label": "Symptoms present AND New A1c >58?",
+        "x": 470.3125,
+        "y": 310,
+        "color": "amber",
+        "condition": {
+          "input_id": "input_symptoms_present_bool",
+          "comparator": "is_true",
+          "value": true
+        }
+      },
+      {
+        "id": "start",
+        "type": "start",
+        "label": "Type 2 Diabetes Treatment Algorithm",
+        "x": 470.3125,
+        "y": 132,
+        "color": "teal"
+      }
+    ],
+    "edges": [
+      {
+        "from": "d2",
+        "to": "o1",
+        "label": "true"
+      },
+      {
+        "from": "d2",
+        "to": "o2",
+        "label": "false"
+      },
+      {
+        "from": "d1",
+        "to": "d2",
+        "label": "true"
+      },
+      {
+        "from": "d4",
+        "to": "o6",
+        "label": "false"
+      },
+      {
+        "from": "d5",
+        "to": "o3",
+        "label": "true"
+      },
+      {
+        "from": "d6",
+        "to": "o4",
+        "label": "true"
+      },
+      {
+        "from": "d6",
+        "to": "o5",
+        "label": "false"
+      },
+      {
+        "from": "a3",
+        "to": "d6",
+        "label": "Node"
+      },
+      {
+        "from": "d5",
+        "to": "a3",
+        "label": "false"
+      },
+      {
+        "from": "a2",
+        "to": "d5",
+        "label": "Node"
+      },
+      {
+        "from": "d4",
+        "to": "a2",
+        "label": "true"
+      },
+      {
+        "from": "a1",
+        "to": "d4",
+        "label": "Node"
+      },
+      {
+        "from": "node_80280072",
+        "to": "a1",
+        "label": "true"
+      },
+      {
+        "from": "node_70b9092b",
+        "to": "node_47640dc8",
+        "label": "true"
+      },
+      {
+        "from": "node_0ee9520c",
+        "to": "node_7012edff",
+        "label": "true"
+      },
+      {
+        "from": "d10_dup2",
+        "to": "o9_dup3",
+        "label": "true"
+      },
+      {
+        "from": "d12_dup9",
+        "to": "o10_dup13",
+        "label": "true"
+      },
+      {
+        "from": "d12_dup9",
+        "to": "o11_dup12",
+        "label": "false"
+      },
+      {
+        "from": "a8_dup7",
+        "to": "d12_dup9",
+        "label": "Node"
+      },
+      {
+        "from": "d11_dup5",
+        "to": "a8_dup7",
+        "label": "true"
+      },
+      {
+        "from": "d13_dup8",
+        "to": "o12_dup11",
+        "label": "true"
+      },
+      {
+        "from": "d13_dup8",
+        "to": "o13_dup10",
+        "label": "false"
+      },
+      {
+        "from": "a9_dup6",
+        "to": "d13_dup8",
+        "label": "Node"
+      },
+      {
+        "from": "d11_dup5",
+        "to": "a9_dup6",
+        "label": "false"
+      },
+      {
+        "from": "a7_dup4",
+        "to": "d11_dup5",
+        "label": "Node"
+      },
+      {
+        "from": "d10_dup2",
+        "to": "a7_dup4",
+        "label": "false"
+      },
+      {
+        "from": "a6_dup1",
+        "to": "d10_dup2",
+        "label": "Node"
+      },
+      {
+        "from": "node_0ee9520c",
+        "to": "a6_dup1",
+        "label": "false"
+      },
+      {
+        "from": "a5",
+        "to": "node_0ee9520c",
+        "label": "Node"
+      },
+      {
+        "from": "node_70b9092b",
+        "to": "a5",
+        "label": "false"
+      },
+      {
+        "from": "node_2bdd426d",
+        "to": "node_70b9092b",
+        "label": "Node"
+      },
+      {
+        "from": "node_80280072",
+        "to": "node_2bdd426d",
+        "label": "false"
+      },
+      {
+        "from": "d1",
+        "to": "node_80280072",
+        "label": "false"
+      },
+      {
+        "from": "start",
+        "to": "d1",
+        "label": "Node"
+      }
+    ]
+  }
+}
