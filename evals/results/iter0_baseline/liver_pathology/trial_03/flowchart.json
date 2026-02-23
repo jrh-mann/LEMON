@@ -1,0 +1,503 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Liver Pathology Suspected & Work up Initiated",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n27",
+      "type": "process",
+      "label": "Repeat Liver U/S if not done since abnormal LFT have been noted",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n28",
+      "type": "process",
+      "label": "Phase 3",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n35",
+      "type": "process",
+      "label": "Autoimmune Hepatitis Type 1 Screen - ANA - ASMA Autoimmune Hepatitis Type 2 Screen - LKM-1 - SLA (not on EMIS)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n34",
+      "type": "process",
+      "label": "Primary Biliary Cirrhosis Screen - AMA",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n33",
+      "type": "process",
+      "label": "Transferrin Saturation or Ferritin Haemochromatosis Gene Test",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n29",
+      "type": "process",
+      "label": "Wilsons Disease Screen or Ceruloplasmin Alpha 1 Antitrypsin (A1AT) Screen - A1AT",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n30",
+      "type": "process",
+      "label": "Normal Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n31",
+      "type": "process",
+      "label": "Telephone Consultation",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n32",
+      "type": "output",
+      "label": "No Concern, or escalation required",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n1",
+      "type": "process",
+      "label": "Baseline & Phase 2 Bloods: LFT, FBC, U+E, HbA1C (To allow FIB4 Calculation)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n2",
+      "type": "decision",
+      "label": "Tests normalise or notably improve?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "label": "ALT remains abnormal, worsens and/or additional signs or abnormal labs",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n7",
+      "type": "process",
+      "label": "FIB 4 Score & NAFLD Fibrosis Score",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n8",
+      "type": "decision",
+      "label": "Need to rationalise which additional tests should be done for rare conditions",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n17",
+      "type": "decision",
+      "label": "NAFLD Fibrosis Score Categories",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n22",
+      "type": "decision",
+      "label": "FIB 4 categories",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n24",
+      "type": "decision",
+      "label": "Fibroscan Scan if available",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n25",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n26",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at high (red) risk",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n23",
+      "type": "output",
+      "label": "Manage risk factors and co-morbidities. Annual Screening",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n19",
+      "type": "decision",
+      "label": "Fibroscan Scan if available",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n20",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n21",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at high (red) risk",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n18",
+      "type": "output",
+      "label": "Manage risk factors and co-morbidities. Annual Screening",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n9",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n13",
+      "type": "process",
+      "label": "Indeterminate Score",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n14",
+      "type": "process",
+      "label": "F3-F4 (Severe fibrosis or Cirrhosis)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n15",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n16",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at high (red) risk",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n11",
+      "type": "process",
+      "label": "Conditional Testing",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n12",
+      "type": "process",
+      "label": "Requires MRCP via Gastroenterology",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n10",
+      "type": "process",
+      "label": "Mandatory Testing",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n5",
+      "type": "process",
+      "label": "Recheck Baseline Liver Profile in appropriate timeframe",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n6",
+      "type": "output",
+      "label": "Patient needs consultation for liver pathology and consent for further testing",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n3",
+      "type": "output",
+      "label": "Code as normal LFTs result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n1",
+      "label": "",
+      "id": "start->n1"
+    },
+    {
+      "from": "start",
+      "to": "n27",
+      "label": "",
+      "id": "start->n27"
+    },
+    {
+      "from": "n27",
+      "to": "n28",
+      "label": "",
+      "id": "n27->n28"
+    },
+    {
+      "from": "n28",
+      "to": "n29",
+      "label": "",
+      "id": "n28->n29"
+    },
+    {
+      "from": "n28",
+      "to": "n33",
+      "label": "",
+      "id": "n28->n33"
+    },
+    {
+      "from": "n28",
+      "to": "n34",
+      "label": "",
+      "id": "n28->n34"
+    },
+    {
+      "from": "n28",
+      "to": "n35",
+      "label": "",
+      "id": "n28->n35"
+    },
+    {
+      "from": "n29",
+      "to": "n30",
+      "label": "",
+      "id": "n29->n30"
+    },
+    {
+      "from": "n30",
+      "to": "n31",
+      "label": "",
+      "id": "n30->n31"
+    },
+    {
+      "from": "n31",
+      "to": "n32",
+      "label": "",
+      "id": "n31->n32"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "",
+      "id": "n1->n2"
+    },
+    {
+      "from": "n2",
+      "to": "n3",
+      "label": "Yes",
+      "id": "n2->n3"
+    },
+    {
+      "from": "n2",
+      "to": "n4",
+      "label": "No",
+      "id": "n2->n4"
+    },
+    {
+      "from": "n4",
+      "to": "n5",
+      "label": "No (Remains present for 3-6 month)",
+      "id": "n4->n5"
+    },
+    {
+      "from": "n4",
+      "to": "n7",
+      "label": "Yes (findings present)",
+      "id": "n4->n7"
+    },
+    {
+      "from": "n7",
+      "to": "n8",
+      "label": "",
+      "id": "n7->n8"
+    },
+    {
+      "from": "n8",
+      "to": "n9",
+      "label": "Yes",
+      "id": "n8->n9"
+    },
+    {
+      "from": "n8",
+      "to": "n17",
+      "label": "No",
+      "id": "n8->n17"
+    },
+    {
+      "from": "n17",
+      "to": "n18",
+      "label": "F0-F2 (no to moderate fibrosis)",
+      "id": "n17->n18"
+    },
+    {
+      "from": "n17",
+      "to": "n19",
+      "label": "Indeterminate or High Risk",
+      "id": "n17->n19"
+    },
+    {
+      "from": "n17",
+      "to": "n22",
+      "label": "High Risk",
+      "id": "n17->n22"
+    },
+    {
+      "from": "n22",
+      "to": "n23",
+      "label": "Low Risk",
+      "id": "n22->n23"
+    },
+    {
+      "from": "n22",
+      "to": "n24",
+      "label": "Intermediate or High Risk",
+      "id": "n22->n24"
+    },
+    {
+      "from": "n24",
+      "to": "n25",
+      "label": "",
+      "id": "n24->n25"
+    },
+    {
+      "from": "n25",
+      "to": "n26",
+      "label": "",
+      "id": "n25->n26"
+    },
+    {
+      "from": "n19",
+      "to": "n20",
+      "label": "",
+      "id": "n19->n20"
+    },
+    {
+      "from": "n20",
+      "to": "n21",
+      "label": "",
+      "id": "n20->n21"
+    },
+    {
+      "from": "n9",
+      "to": "n10",
+      "label": "",
+      "id": "n9->n10"
+    },
+    {
+      "from": "n9",
+      "to": "n11",
+      "label": "",
+      "id": "n9->n11"
+    },
+    {
+      "from": "n9",
+      "to": "n13",
+      "label": "",
+      "id": "n9->n13"
+    },
+    {
+      "from": "n13",
+      "to": "n14",
+      "label": "",
+      "id": "n13->n14"
+    },
+    {
+      "from": "n14",
+      "to": "n15",
+      "label": "",
+      "id": "n14->n15"
+    },
+    {
+      "from": "n15",
+      "to": "n16",
+      "label": "",
+      "id": "n15->n16"
+    },
+    {
+      "from": "n11",
+      "to": "n12",
+      "label": "",
+      "id": "n11->n12"
+    },
+    {
+      "from": "n5",
+      "to": "n6",
+      "label": "",
+      "id": "n5->n6"
+    }
+  ]
+}

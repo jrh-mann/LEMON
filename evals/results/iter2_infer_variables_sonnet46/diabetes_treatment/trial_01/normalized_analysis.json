@@ -1,0 +1,368 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "Start Gliclazide or Insulin",
+      "description": "Start patient on Gliclazide or Insulin (no admission required)"
+    },
+    {
+      "name": "Admit via A&E/Medics",
+      "description": "Admit patient via A&E/Medics"
+    },
+    {
+      "name": "Metformin (CVD pathway)",
+      "description": "Start Metformin for CVD known or risk patient, then add SGLT2i"
+    },
+    {
+      "name": "SGLT2i",
+      "description": "Add SGLT2i as tolerated add-on after 4 weeks on Metformin (CVD pathway)"
+    },
+    {
+      "name": "Ozempic titrate to full dose with 3 monthly A1c's",
+      "description": "Titrate Ozempic to full dose with 3 monthly A1c monitoring (A1c not controlled on SGLT2i)"
+    },
+    {
+      "name": "Refer to Insulin Initiator",
+      "description": "Refer patient to Insulin Initiator (A1c not controlled on Ozempic)"
+    },
+    {
+      "name": "Metformin (non-CVD pathway)",
+      "description": "Start Metformin - patient not at risk of CVD"
+    },
+    {
+      "name": "Gliptin Or Pioglitazone Or Gliclazide",
+      "description": "Start dual therapy: Gliptin or Pioglitazone or Gliclazide added to Metformin"
+    },
+    {
+      "name": "Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)",
+      "description": "Triple therapy: Metformin + Gliptin/Pioglitazone/Gliclazide, consider SGLT2i"
+    },
+    {
+      "name": "Add GLP",
+      "description": "Add GLP to triple therapy"
+    },
+    {
+      "name": "Ozempic (high prognostic value)",
+      "description": "Prescribe Ozempic for high prognostic value patients"
+    },
+    {
+      "name": "Mounjaro",
+      "description": "Prescribe Mounjaro for low prognostic value patients"
+    },
+    {
+      "name": "Refer to Insulin Initiator (optimisation failure)",
+      "description": "Refer to Insulin Initiator despite optimisation and maximally tolerated dose with A1c >58"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Treatment Algorithm",
+      "children": [
+        {
+          "id": "n1",
+          "type": "decision",
+          "label": "*CVD Known or Risk",
+          "input_ids": [
+            "input_cvd_known_or_risk_bool"
+          ],
+          "condition": {
+            "input_id": "input_cvd_known_or_risk_bool",
+            "comparator": "is_true"
+          },
+          "edge_label": "",
+          "children": [
+            {
+              "id": "n2",
+              "type": "action",
+              "label": "Metformin",
+              "input_ids": [],
+              "edge_label": "true",
+              "children": [
+                {
+                  "id": "n3",
+                  "type": "decision",
+                  "label": "Tolerated add-on after 4 weeks",
+                  "input_ids": [
+                    "input_metformin_tolerated_bool"
+                  ],
+                  "condition": {
+                    "input_id": "input_metformin_tolerated_bool",
+                    "comparator": "is_true"
+                  },
+                  "edge_label": "",
+                  "children": [
+                    {
+                      "id": "n4",
+                      "type": "output",
+                      "label": "SGLT2i",
+                      "edge_label": "true",
+                      "children": []
+                    },
+                    {
+                      "id": "n5",
+                      "type": "action",
+                      "label": "Not tolerated** switch to",
+                      "edge_label": "false",
+                      "children": [
+                        {
+                          "id": "n6",
+                          "type": "decision",
+                          "label": "A1c not controlled",
+                          "input_ids": [
+                            "input_sglt2i_a1c_controlled_bool"
+                          ],
+                          "condition": {
+                            "input_id": "input_sglt2i_a1c_controlled_bool",
+                            "comparator": "is_false"
+                          },
+                          "edge_label": "",
+                          "children": [
+                            {
+                              "id": "n7",
+                              "type": "action",
+                              "label": "Ozempic titrate to full dose with 3 monthly A1c's",
+                              "edge_label": "true",
+                              "children": [
+                                {
+                                  "id": "n8",
+                                  "type": "decision",
+                                  "label": "A1c not controlled",
+                                  "input_ids": [
+                                    "input_ozempic_a1c_controlled_bool"
+                                  ],
+                                  "condition": {
+                                    "input_id": "input_ozempic_a1c_controlled_bool",
+                                    "comparator": "is_false"
+                                  },
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n9",
+                                      "type": "output",
+                                      "label": "Refer to Insulin Initiator",
+                                      "edge_label": "true",
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "n10",
+              "type": "action",
+              "label": "Metformin",
+              "edge_label": "false",
+              "children": [
+                {
+                  "id": "n11",
+                  "type": "decision",
+                  "label": "A1c not controlled\nStart Dual Therapy",
+                  "input_ids": [
+                    "input_a1c_controlled_on_metformin_bool"
+                  ],
+                  "condition": {
+                    "input_id": "input_a1c_controlled_on_metformin_bool",
+                    "comparator": "is_false"
+                  },
+                  "edge_label": "",
+                  "children": [
+                    {
+                      "id": "n12",
+                      "type": "action",
+                      "label": "Gliptin Or Pioglitazone Or Gliclazide",
+                      "edge_label": "true",
+                      "children": [
+                        {
+                          "id": "n13",
+                          "type": "decision",
+                          "label": "A1c Not Controlled\nStart Triple Therapy",
+                          "input_ids": [
+                            "input_a1c_controlled_on_dual_therapy_bool"
+                          ],
+                          "condition": {
+                            "input_id": "input_a1c_controlled_on_dual_therapy_bool",
+                            "comparator": "is_false"
+                          },
+                          "edge_label": "",
+                          "children": [
+                            {
+                              "id": "n14",
+                              "type": "action",
+                              "label": "Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)",
+                              "edge_label": "true",
+                              "children": [
+                                {
+                                  "id": "n15",
+                                  "type": "decision",
+                                  "label": "A1c not controlled on triple therapy",
+                                  "input_ids": [
+                                    "input_a1c_controlled_on_triple_therapy_bool"
+                                  ],
+                                  "condition": {
+                                    "input_id": "input_a1c_controlled_on_triple_therapy_bool",
+                                    "comparator": "is_false"
+                                  },
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n16",
+                                      "type": "action",
+                                      "label": "Add GLP",
+                                      "edge_label": "true",
+                                      "children": [
+                                        {
+                                          "id": "n17",
+                                          "type": "decision",
+                                          "label": "High prognostic value",
+                                          "input_ids": [
+                                            "input_high_prognostic_value_bool"
+                                          ],
+                                          "condition": {
+                                            "input_id": "input_high_prognostic_value_bool",
+                                            "comparator": "is_true"
+                                          },
+                                          "edge_label": "",
+                                          "children": [
+                                            {
+                                              "id": "n18",
+                                              "type": "output",
+                                              "label": "Ozempic",
+                                              "edge_label": "true",
+                                              "children": []
+                                            },
+                                            {
+                                              "id": "n19",
+                                              "type": "output",
+                                              "label": "Mounjaro",
+                                              "edge_label": "false",
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "id": "n20",
+                                      "type": "decision",
+                                      "label": "Despite Optimisation and maximally tolerated dose A1C >58",
+                                      "input_ids": [
+                                        "input_a1c_after_optimisation_float"
+                                      ],
+                                      "condition": {
+                                        "input_id": "input_a1c_after_optimisation_float",
+                                        "comparator": "gt",
+                                        "value": 58
+                                      },
+                                      "edge_label": "false",
+                                      "children": [
+                                        {
+                                          "id": "n21",
+                                          "type": "output",
+                                          "label": "Refer to Insulin Initiator",
+                                          "edge_label": "true",
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The diagram shows 'Symptoms & New A1c >58' leading to 'Admission required?' which leads to 'Start Gliclazide or Insulin' or 'Admit via A&E/Medics'. This appears to be a separate sub-flow; it's unclear how it connects to the main Treatment Algorithm start node.",
+    "The 'Not tolerated** switch to' branch from Metformin (CVD pathway) \u2014 it's unclear what medication is switched to before reaching the Ozempic/Insulin Initiator path. The diagram may imply switching to SGLT2i alternative.",
+    "The 'Minimum BMI for GLP Initiation is 23' note \u2014 it's unclear if this is a hard decision gate in the workflow or just an informational note.",
+    "The 'Despite Optimisation and maximally tolerated dose A1C >58' box on the right side \u2014 it's ambiguous whether this refers to the CVD pathway (after Ozempic) or the non-CVD triple therapy pathway, or both.",
+    "The dual therapy branch (Gliptin Or Pioglitazone Or Gliclazide) is presented as 'Or' choices but the diagram doesn't specify the decision criteria for choosing among them within the workflow.",
+    "The SGLT2i 'A1c not controlled' decision in the CVD pathway: it's unclear if this applies after SGLT2i or after the 'not tolerated switch to' path.",
+    "The diagram's right-side column (Ozempic titrate -> A1c not controlled -> Refer to Insulin Initiator) appears to connect to the CVD/SGLT2i pathway but also possibly to the non-CVD triple therapy path via 'Despite Optimisation' box."
+  ],
+  "variables": [
+    {
+      "id": "input_cvd_known_or_risk_bool",
+      "name": "cvd_known_or_risk",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_metformin_tolerated_bool",
+      "name": "metformin_tolerated",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_sglt2i_a1c_controlled_bool",
+      "name": "sglt2i_a1c_controlled",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_ozempic_a1c_controlled_bool",
+      "name": "ozempic_a1c_controlled",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_a1c_controlled_on_metformin_bool",
+      "name": "a1c_controlled_on_metformin",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_a1c_controlled_on_dual_therapy_bool",
+      "name": "a1c_controlled_on_dual_therapy",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_a1c_controlled_on_triple_therapy_bool",
+      "name": "a1c_controlled_on_triple_therapy",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_high_prognostic_value_bool",
+      "name": "high_prognostic_value",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_a1c_after_optimisation_float",
+      "name": "a1c_after_optimisation",
+      "type": "float",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    }
+  ]
+}

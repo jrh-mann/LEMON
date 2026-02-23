@@ -1,0 +1,454 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "No Further Action",
+      "description": "No further action required for the patient (normal cholesterol path)"
+    },
+    {
+      "name": "Mark as Satisfactory",
+      "description": "Mark cholesterol result as satisfactory"
+    },
+    {
+      "name": "Mark as \"No Further Action\"",
+      "description": "Mark as no further action (raised, on therapy, optimised)"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (not on therapy)",
+      "description": "Send lipid lowering therapy AccuRx message - patient not on therapy"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (primary, not maximally tolerated)",
+      "description": "Send lipid lowering therapy AccuRx message - primary prevention, not on maximally tolerated statin"
+    },
+    {
+      "name": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+      "description": "Send high cholesterol low QRISK AccuRx message"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (secondary QRISK)",
+      "description": "Send lipid lowering therapy AccuRx message - secondary prevention high QRISK"
+    },
+    {
+      "name": "No Further Action (LDL \u22642)",
+      "description": "No further action - LDL is at target (\u22642)"
+    },
+    {
+      "name": "Initiate Inclisiran",
+      "description": "Initiate Inclisiran treatment for LDL \u2265 2.6"
+    },
+    {
+      "name": "Add in Ezetimibe",
+      "description": "Add Ezetimibe after 6 months of Inclisiran"
+    },
+    {
+      "name": "Repeat Lipids at 3 months",
+      "description": "Repeat lipid test at 3 months - LDL >2.0 but hasn't had 6 months Inclisiran"
+    },
+    {
+      "name": "Consider Lipid Clinic Referral",
+      "description": "Consider referral to lipid clinic"
+    },
+    {
+      "name": "Refer to specialist",
+      "description": "Refer to specialist"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (not optimised upper)",
+      "description": "Send lipid lowering therapy AccuRx - not optimised on treatment (upper path, secondary)"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Lipid Results - Management Guide",
+      "children": [
+        {
+          "id": "n_assess_total_cholesterol",
+          "type": "action",
+          "label": "Assess Total Cholesterol Result",
+          "input_ids": [
+            "input_total_cholesterol_result_float"
+          ],
+          "edge_label": "",
+          "children": [
+            {
+              "id": "n_cholesterol_level",
+              "type": "decision",
+              "label": "> 7.5 or \u2264 7.5?",
+              "input_ids": [
+                "input_total_cholesterol_result_float"
+              ],
+              "condition": {
+                "input_id": "input_total_cholesterol_result_float",
+                "comparator": "gt",
+                "value": 7.5
+              },
+              "children": [
+                {
+                  "id": "n_under_specialist_high",
+                  "type": "decision",
+                  "label": "Under Specialist Clinic?",
+                  "input_ids": [
+                    "input_under_specialist_clinic_bool"
+                  ],
+                  "condition": {
+                    "input_id": "input_under_specialist_clinic_bool",
+                    "comparator": "is_true"
+                  },
+                  "edge_label": "true",
+                  "children": [
+                    {
+                      "id": "n_no_further_action_specialist",
+                      "type": "output",
+                      "label": "No Further Action",
+                      "edge_label": "true",
+                      "children": []
+                    },
+                    {
+                      "id": "n_primary_secondary_upper",
+                      "type": "decision",
+                      "label": "Primary/Secondary Treatment",
+                      "input_ids": [
+                        "input_prevention_type_enum",
+                        "input_under_specialist_clinic_bool"
+                      ],
+                      "condition": {
+                        "input_id": "input_under_specialist_clinic_bool",
+                        "comparator": "is_false"
+                      },
+                      "edge_label": "false",
+                      "children": [
+                        {
+                          "id": "n_optimised_upper",
+                          "type": "decision",
+                          "label": "Are They Optimised on treatment?",
+                          "input_ids": [
+                            "input_optimised_on_treatment_bool"
+                          ],
+                          "condition": {
+                            "input_id": "input_optimised_on_treatment_bool",
+                            "comparator": "is_true"
+                          },
+                          "edge_label": "",
+                          "children": [
+                            {
+                              "id": "n_consider_lipid_clinic",
+                              "type": "output",
+                              "label": "Consider Lipid Clinic Referral",
+                              "edge_label": "true",
+                              "children": []
+                            },
+                            {
+                              "id": "n_refer_specialist",
+                              "type": "output",
+                              "label": "Refer to specilaist",
+                              "edge_label": "",
+                              "children": []
+                            },
+                            {
+                              "id": "n_send_llt_upper_not_optimised",
+                              "type": "output",
+                              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                              "edge_label": "false",
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "n_normal_or_raised",
+                  "type": "decision",
+                  "label": "Normal or Raised?",
+                  "input_ids": [
+                    "input_normal_or_raised_enum"
+                  ],
+                  "condition": {
+                    "input_id": "input_normal_or_raised_enum",
+                    "comparator": "enum_eq",
+                    "value": "Normal"
+                  },
+                  "edge_label": "false",
+                  "children": [
+                    {
+                      "id": "n_mark_satisfactory",
+                      "type": "output",
+                      "label": "Mark as Satisfactory",
+                      "edge_label": "true",
+                      "children": []
+                    },
+                    {
+                      "id": "n_taking_llt",
+                      "type": "decision",
+                      "label": "Taking Lipid Lowering Therapy?",
+                      "input_ids": [
+                        "input_taking_lipid_lowering_therapy_bool"
+                      ],
+                      "condition": {
+                        "input_id": "input_taking_lipid_lowering_therapy_bool",
+                        "comparator": "is_true"
+                      },
+                      "edge_label": "false",
+                      "children": [
+                        {
+                          "id": "n_optimised_lower",
+                          "type": "decision",
+                          "label": "Are They Optimised on treatment?",
+                          "input_ids": [
+                            "input_optimised_on_treatment_bool"
+                          ],
+                          "condition": {
+                            "input_id": "input_optimised_on_treatment_bool",
+                            "comparator": "is_true"
+                          },
+                          "edge_label": "true",
+                          "children": [
+                            {
+                              "id": "n_mark_no_further_action",
+                              "type": "output",
+                              "label": "Mark as \"No Further Action\"",
+                              "edge_label": "true",
+                              "children": []
+                            },
+                            {
+                              "id": "n_send_llt_not_optimised",
+                              "type": "output",
+                              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                              "edge_label": "false",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "id": "n_primary_or_secondary",
+                          "type": "decision",
+                          "label": "Primary or Secondary Prevention?",
+                          "input_ids": [
+                            "input_prevention_type_enum"
+                          ],
+                          "condition": {
+                            "input_id": "input_prevention_type_enum",
+                            "comparator": "enum_eq",
+                            "value": "Primary"
+                          },
+                          "edge_label": "false",
+                          "children": [
+                            {
+                              "id": "n_calculate_qrisk",
+                              "type": "action",
+                              "label": "Calculate QRISK2/3",
+                              "input_ids": [
+                                "input_qrisk_score_float"
+                              ],
+                              "edge_label": "true",
+                              "children": [
+                                {
+                                  "id": "n_qrisk_threshold",
+                                  "type": "decision",
+                                  "label": "\u2265 10% or < 10%?",
+                                  "input_ids": [
+                                    "input_qrisk_score_float"
+                                  ],
+                                  "condition": {
+                                    "input_id": "input_qrisk_score_float",
+                                    "comparator": "gte",
+                                    "value": 10
+                                  },
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n_send_llt_high_qrisk",
+                                      "type": "output",
+                                      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                                      "edge_label": "true",
+                                      "children": []
+                                    },
+                                    {
+                                      "id": "n_send_high_chol_low_qrisk",
+                                      "type": "output",
+                                      "label": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+                                      "edge_label": "false",
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "id": "n_taking_max_statin",
+                              "type": "decision",
+                              "label": "Taking Maximally Tolerated Statin?",
+                              "input_ids": [
+                                "input_taking_maximally_tolerated_statin_bool"
+                              ],
+                              "condition": {
+                                "input_id": "input_taking_maximally_tolerated_statin_bool",
+                                "comparator": "is_true"
+                              },
+                              "edge_label": "false",
+                              "children": [
+                                {
+                                  "id": "n_assess_ldl",
+                                  "type": "action",
+                                  "label": "Assess LDL",
+                                  "input_ids": [
+                                    "input_ldl_float"
+                                  ],
+                                  "edge_label": "true",
+                                  "children": [
+                                    {
+                                      "id": "n_ldl_decision",
+                                      "type": "decision",
+                                      "label": "LDL \u22642, LDL 2-2.5, or LDL \u2265 2.6?",
+                                      "input_ids": [
+                                        "input_ldl_float"
+                                      ],
+                                      "condition": {
+                                        "input_id": "input_ldl_float",
+                                        "comparator": "lte",
+                                        "value": 2
+                                      },
+                                      "edge_label": "",
+                                      "children": [
+                                        {
+                                          "id": "n_no_further_action_ldl",
+                                          "type": "output",
+                                          "label": "No Further Action",
+                                          "edge_label": "true",
+                                          "children": []
+                                        },
+                                        {
+                                          "id": "n_ldl_2_2_5",
+                                          "type": "decision",
+                                          "label": "LDL 2-2.5",
+                                          "input_ids": [
+                                            "input_ldl_float"
+                                          ],
+                                          "condition": {
+                                            "input_id": "input_ldl_float",
+                                            "comparator": "within_range",
+                                            "value": 2,
+                                            "value2": 2.5
+                                          },
+                                          "edge_label": "false",
+                                          "children": [
+                                            {
+                                              "id": "n_send_llt_ldl_2_2_5",
+                                              "type": "output",
+                                              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                                              "edge_label": "true",
+                                              "children": []
+                                            },
+                                            {
+                                              "id": "n_initiate_inclisiran",
+                                              "type": "output",
+                                              "label": "Initiate Inclisiran",
+                                              "edge_label": "false",
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "id": "n_send_llt_not_max_statin",
+                                  "type": "output",
+                                  "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                                  "edge_label": "false",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The diagram has two separate 'Are They Optimised on treatment?' decision nodes (one in the upper >7.5 path and one in the lower raised path) - the upper one leads to 'Consider Lipid Clinic Referral', 'Refer to specilaist', and 'Send Lipid Lowering Therapy AccuRx'; the relationship between these three outputs from the upper optimised node is ambiguous.",
+    "The 'Inclisiran' sub-path (Has had 6 months of Inclisiran \u2192 Add in Ezetimibe; Hasn't had 6 months \u2192 Repeat Lipids at 3 months; LDL >2.0) seems to branch off after 'Initiate Inclisiran' but it is unclear if this is a follow-up visit loop or part of the same flow - it could not be represented as a tree without duplication.",
+    "The 'Primary/Secondary Treatment' label appears twice in the diagram (upper path and lower path) as yellow sticky notes - it is unclear if these are entry points from outside the diagram or decision labels.",
+    "The 'not coded, assume no' sticky note suggests that the 'Under Specialist Clinic?' decision defaults to No when not coded - this assumption is noted but may affect clinical implementation.",
+    "The 'Consultation' label near the upper 'Send Lipid Lowering Therapy AccuRx' box is unclear - it may be a separate output or a note.",
+    "The LDL \u2265 2.6 branch from Assess LDL goes to 'Initiate Inclisiran' but also the diagram shows a path involving 'Has had 6 months of Inclisiran' leading to 'Add in Ezetimibe' - this cyclical/follow-up path cannot be represented in a strict tree without revisiting nodes."
+  ],
+  "variables": [
+    {
+      "id": "input_total_cholesterol_result_float",
+      "name": "total_cholesterol_result",
+      "type": "float",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_under_specialist_clinic_bool",
+      "name": "under_specialist_clinic",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_prevention_type_enum",
+      "name": "prevention_type",
+      "type": "enum",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_optimised_on_treatment_bool",
+      "name": "optimised_on_treatment",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_normal_or_raised_enum",
+      "name": "normal_or_raised",
+      "type": "enum",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_taking_lipid_lowering_therapy_bool",
+      "name": "taking_lipid_lowering_therapy",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_qrisk_score_float",
+      "name": "qrisk_score",
+      "type": "float",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_taking_maximally_tolerated_statin_bool",
+      "name": "taking_maximally_tolerated_statin",
+      "type": "bool",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    },
+    {
+      "id": "input_ldl_float",
+      "name": "ldl",
+      "type": "float",
+      "description": "Inferred from workflow conditions.",
+      "source": "inferred"
+    }
+  ]
+}

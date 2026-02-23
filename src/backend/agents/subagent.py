@@ -81,8 +81,19 @@ Rules:
 - If there are no doubts, return "doubts": [].
 - Every input must include an "id" computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
+- Input "name" should be canonical and reusable (short snake_case concept), not a long sentence.
+  Example: "A1c after metformin" -> "a1c_after_metformin".
 - If a decision/action depends on one or more inputs, include "input_ids" on that node
   referencing the input ids.
+- Every DECISION node MUST include a structured "condition" object:
+  {"input_id": "...", "comparator": "...", "value": ..., "value2": ... optional}
+  - int/float comparators: eq, neq, lt, lte, gt, gte, within_range
+  - bool comparators: is_true, is_false
+  - string comparators: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
+  - enum comparators: enum_eq, enum_neq
+  - date comparators: date_eq, date_before, date_after, date_between
+- For binary branches, set child edge_label to EXACTLY "true" or "false".
+  Do not use "Yes"/"No" in output JSON.
 - Tree rules:
   - This must be a single rooted tree starting at tree.start.
   - Allowed node types: start, decision, action, output.
@@ -190,6 +201,9 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+        include_raw = os.environ.get("LEMON_INCLUDE_RAW_ANALYSIS", "").lower() in {"1", "true", "yes"}
+        if include_raw and isinstance(data, dict):
+            data["_raw_model_output"] = raw
         if is_cancelled():
             raise CancellationError("Subagent cancelled before persisting history.")
 

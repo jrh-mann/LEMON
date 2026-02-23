@@ -1,0 +1,316 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "Mark as Normal if satisfactory",
+      "description": "Patient tests are satisfactory and marked as normal"
+    },
+    {
+      "name": "Recheck Baseline Liver Profile in appropriate timeframe",
+      "description": "The repeat test should meet 3 month criteria (from when concern was first identified)"
+    },
+    {
+      "name": "Patient needs consultation for liver pathology and consent for further testing",
+      "description": "Patient requires consultation with specialist for liver pathology"
+    },
+    {
+      "name": "Code as normal LFTs repeat",
+      "description": "Code patient as normal LFTs if not done since abnormal LFT have been noted"
+    },
+    {
+      "name": "Telephone Consultation",
+      "description": "Conduct telephone consultation with patient"
+    },
+    {
+      "name": "No Concern, or escalation required",
+      "description": "No concerns identified or escalation to secondary care required"
+    },
+    {
+      "name": "Manage risk factors and co-morbidities. Annual Screening",
+      "description": "Continue managing risk factors and comorbidities with annual screening"
+    },
+    {
+      "name": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at/risks (typical)",
+      "description": "Refer patient to secondary care once bloods return"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Liver Pathology Suspected & Work up Initiated",
+      "children": [
+        {
+          "id": "n1",
+          "type": "action",
+          "label": "Baseline & Phase 2 Bloods: LFT, U+E, TSH, AST, GGT (To allow FIB4 Calculation)",
+          "input_ids": [],
+          "children": [
+            {
+              "id": "n2",
+              "type": "decision",
+              "label": "Tests normalise or notably improve",
+              "input_ids": [],
+              "children": [
+                {
+                  "id": "n3",
+                  "type": "output",
+                  "label": "Mark as Normal if satisfactory",
+                  "input_ids": [],
+                  "edge_label": "Yes"
+                },
+                {
+                  "id": "n4",
+                  "type": "decision",
+                  "label": "ALT remains abnormal, worsens and/or additional tests vs. abnormal risk",
+                  "input_ids": [],
+                  "edge_label": "No",
+                  "children": [
+                    {
+                      "id": "n5",
+                      "type": "output",
+                      "label": "Recheck Baseline Liver Profile in appropriate timeframe",
+                      "input_ids": [],
+                      "edge_label": "Recheck present for 3+ months"
+                    },
+                    {
+                      "id": "n6",
+                      "type": "output",
+                      "label": "Patient needs consultation for liver pathology and consent for further testing",
+                      "input_ids": [],
+                      "edge_label": "Significant & persisting abnormalities"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "n7",
+          "type": "action",
+          "label": "FIB 4 Score & NAFLD Fibrosis Score",
+          "input_ids": [],
+          "children": [
+            {
+              "id": "n8",
+              "type": "decision",
+              "label": "Need to rationalise which additional tests should be done for rare conditions",
+              "input_ids": [],
+              "children": [
+                {
+                  "id": "n9",
+                  "type": "action",
+                  "label": "Mandatory Testing",
+                  "input_ids": [],
+                  "edge_label": "Yes",
+                  "children": [
+                    {
+                      "id": "n10",
+                      "type": "action",
+                      "label": "Phase 4 Bloods",
+                      "input_ids": [],
+                      "children": [
+                        {
+                          "id": "n11",
+                          "type": "action",
+                          "label": "Conditional Testing",
+                          "input_ids": [],
+                          "children": [
+                            {
+                              "id": "n12",
+                              "type": "action",
+                              "label": "Requires MRCP via Gastroenterology",
+                              "input_ids": [],
+                              "children": [
+                                {
+                                  "id": "n13",
+                                  "type": "action",
+                                  "label": "Indeterminate Score",
+                                  "input_ids": [],
+                                  "children": [
+                                    {
+                                      "id": "n14",
+                                      "type": "decision",
+                                      "label": "FIB-4 categories",
+                                      "input_ids": [],
+                                      "children": [
+                                        {
+                                          "id": "n15",
+                                          "type": "action",
+                                          "label": "Low Risk",
+                                          "input_ids": [],
+                                          "edge_label": "FO F2 (no to moderate fibrosis)",
+                                          "children": [
+                                            {
+                                              "id": "n16",
+                                              "type": "action",
+                                              "label": "Manage risk factors and co-morbidities. Annual Screening",
+                                              "input_ids": [],
+                                              "children": [
+                                                {
+                                                  "id": "n17",
+                                                  "type": "action",
+                                                  "label": "Intermediate or High Risk",
+                                                  "input_ids": [],
+                                                  "children": [
+                                                    {
+                                                      "id": "n18",
+                                                      "type": "decision",
+                                                      "label": "Fibroscan available",
+                                                      "input_ids": [],
+                                                      "children": [
+                                                        {
+                                                          "id": "n19",
+                                                          "type": "action",
+                                                          "label": "Phase 4 Bloods",
+                                                          "input_ids": [],
+                                                          "edge_label": "Yes",
+                                                          "children": [
+                                                            {
+                                                              "id": "n20",
+                                                              "type": "output",
+                                                              "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at/risks (typical)",
+                                                              "input_ids": []
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "id": "n21",
+                                                          "type": "action",
+                                                          "label": "High Risk",
+                                                          "input_ids": [],
+                                                          "edge_label": "No",
+                                                          "children": [
+                                                            {
+                                                              "id": "n22",
+                                                              "type": "output",
+                                                              "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at/risks (typical)",
+                                                              "input_ids": []
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "id": "n23",
+                                      "type": "action",
+                                      "label": "F3-F4 (Severe fibrosis or Cirrhosis)",
+                                      "input_ids": [],
+                                      "children": [
+                                        {
+                                          "id": "n24",
+                                          "type": "output",
+                                          "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if at/risks (typical)",
+                                          "input_ids": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "n25",
+                      "type": "action",
+                      "label": "Wilsons Disease Screen or Caeruloplasmin Alpha 1 Antitrypsin (A1AT) Screen AAMA",
+                      "input_ids": [],
+                      "children": [
+                        {
+                          "id": "n26",
+                          "type": "action",
+                          "label": "USS Renal",
+                          "input_ids": [],
+                          "children": [
+                            {
+                              "id": "n27",
+                              "type": "action",
+                              "label": "Telephone Consultation",
+                              "input_ids": [],
+                              "children": [
+                                {
+                                  "id": "n28",
+                                  "type": "output",
+                                  "label": "No Concern, or escalation required",
+                                  "input_ids": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "n29",
+                      "type": "action",
+                      "label": "Transferrin % sat, Iron or Ferritin",
+                      "input_ids": [],
+                      "children": []
+                    },
+                    {
+                      "id": "n30",
+                      "type": "action",
+                      "label": "Haemochromatosis Gene Test",
+                      "input_ids": [],
+                      "children": []
+                    },
+                    {
+                      "id": "n31",
+                      "type": "action",
+                      "label": "Primary Biliary Cirrhosis Screen AMA",
+                      "input_ids": [],
+                      "children": []
+                    },
+                    {
+                      "id": "n32",
+                      "type": "action",
+                      "label": "Autoimmune Hepatitis Type 1 Screen ANA ASMA SLA Autoimmune Hepatitis Type 2 Screen LKM-1 SLA (Hep on EMS)",
+                      "input_ids": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "id": "n33",
+                  "type": "action",
+                  "label": "Code as normal LFTs repeat",
+                  "input_ids": [],
+                  "edge_label": "Request Liver USS if not done since abnormal LFT have been noted",
+                  "children": [
+                    {
+                      "id": "n34",
+                      "type": "output",
+                      "label": "Code as normal LFTs repeat",
+                      "input_ids": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The workflow has multiple parallel paths that eventually converge, but the image structure suggests some actions (like Mandatory Testing, Conditional Testing, and various screening tests) may run in parallel or have dependencies that aren't clearly shown by single-parent tree structure.",
+    "The exact branching logic for 'Need to rationalise which additional tests should be done for rare conditions' is unclear - it appears to have a Yes path and an alternate path, but the conditions aren't explicitly labeled.",
+    "The flow from 'Manage risk factors and co-morbidities. Annual Screening' to 'Intermediate or High Risk' suggests a sequential relationship, but it's unclear if this is a decision point or a continuation.",
+    "Multiple testing nodes (Wilsons Disease Screen, Transferrin test, Haemochromatosis, Primary Biliary Cirrhosis, Autoimmune Hepatitis screens) appear to be parallel actions under Mandatory Testing, but the tree structure requires sequential representation.",
+    "The 'NAFLD Fibrosis Score Categories' decision appears to have multiple outcomes but the exact branching structure and how it relates to FIB-4 categories is ambiguous.",
+    "Some nodes like 'USS Renal' appear disconnected from clear parent nodes in the workflow."
+  ],
+  "variables": []
+}

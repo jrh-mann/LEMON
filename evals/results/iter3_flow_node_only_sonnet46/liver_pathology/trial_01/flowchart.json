@@ -1,0 +1,683 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Liver Pathology Suspected & Work up Initiated",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n1",
+      "type": "process",
+      "label": "Baseline & Phase 2 Bloods: LFT, FBC, AST, GGT (to allow FIB4 Calculation)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_baseline_phase2_bloods_enum"
+      ]
+    },
+    {
+      "id": "n2",
+      "type": "decision",
+      "label": "Tests normalise or notably improve?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_baseline_phase2_bloods_enum"
+      ]
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "label": "ALT remains abnormal, worsens and/or additional tests are abnormal too?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_alt_status_enum"
+      ]
+    },
+    {
+      "id": "n5",
+      "type": "decision",
+      "label": "Findings present for how long?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_findings_duration_enum"
+      ]
+    },
+    {
+      "id": "n18",
+      "type": "output",
+      "label": "Code as normal USS and file",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n6",
+      "type": "process",
+      "label": "Recheck Baseline Liver Profile in appropriate timeframe",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_recheck_result_enum"
+      ]
+    },
+    {
+      "id": "n7",
+      "type": "decision",
+      "label": "Sustained or worsening abnormalities?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_recheck_result_enum"
+      ]
+    },
+    {
+      "id": "n9",
+      "type": "process",
+      "label": "FIB 4 Score & NAFLD Fibrosis Score",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_score_float",
+        "input_nafld_fibrosis_score_float"
+      ]
+    },
+    {
+      "id": "n10",
+      "type": "decision",
+      "label": "Liver USS done since abnormal LFT noted?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_liver_uss_done_bool"
+      ]
+    },
+    {
+      "id": "n17",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_category_enum",
+        "input_nafld_category_enum"
+      ]
+    },
+    {
+      "id": "n11",
+      "type": "process",
+      "label": "Request Liver USS if not done since abnormal LFT have been noted",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n12",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_category_enum",
+        "input_nafld_category_enum"
+      ]
+    },
+    {
+      "id": "n15",
+      "type": "decision",
+      "label": "Transferrin Sat >=45% or Raised Ferritin?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_transferrin_sat_bool"
+      ]
+    },
+    {
+      "id": "n_cond_test",
+      "type": "process",
+      "label": "Conditional Testing",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_panca_dec",
+      "type": "decision",
+      "label": "Ulcerative Colitis or P-ANCA positive?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_ulcerative_colitis_or_panca_bool"
+      ]
+    },
+    {
+      "id": "n_nafld_dec",
+      "type": "decision",
+      "label": "NAFLD Fibrosis Score Category",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_nafld_category_enum"
+      ]
+    },
+    {
+      "id": "n_indet_dec",
+      "type": "decision",
+      "label": "NAFLD Score Indeterminate?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_nafld_category_enum"
+      ]
+    },
+    {
+      "id": "n_f3f4",
+      "type": "process",
+      "label": "F3-F4 (Severe fibrosis or Cirrhosis)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_phase4b",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_refer2",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_fib4_dec",
+      "type": "decision",
+      "label": "FIB4 Categories",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_category_enum"
+      ]
+    },
+    {
+      "id": "n_int_high",
+      "type": "process",
+      "label": "Intermediate or High Risk",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_fibrous",
+      "type": "output",
+      "label": "Fibrous Scan if available",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_low_risk",
+      "type": "process",
+      "label": "Low Risk",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_annual2",
+      "type": "output",
+      "label": "manage risk factors and co-morbidities - Annual Screening",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_annual",
+      "type": "output",
+      "label": "manage risk factors and co-morbidities - Annual Screening",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_mrcp",
+      "type": "output",
+      "label": "Requires MRCP via Gastroenterology",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n16",
+      "type": "process",
+      "label": "Haemachromatosis Gene Test",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_raised_igm_dec",
+      "type": "decision",
+      "label": "Raised IgM?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_raised_igm_bool"
+      ]
+    },
+    {
+      "id": "n_review4",
+      "type": "process",
+      "label": "Review Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_review_result_enum"
+      ]
+    },
+    {
+      "id": "n_pbc",
+      "type": "process",
+      "label": "Primary Biliary Cirrhosis Screen: AMA",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_raised_igg_dec",
+      "type": "decision",
+      "label": "Raised IgG?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_raised_igg_bool"
+      ]
+    },
+    {
+      "id": "n_review3",
+      "type": "process",
+      "label": "Review Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_review_result_enum"
+      ]
+    },
+    {
+      "id": "n_aih",
+      "type": "process",
+      "label": "Autoimmune Hepatitis Type 1 Screen: ANA, SMA / Autoimmune Hepatitis Type 2 Screen: LKM-1, SLA (not on EMIS)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_review2",
+      "type": "process",
+      "label": "Review Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_review_result_enum"
+      ]
+    },
+    {
+      "id": "n13",
+      "type": "process",
+      "label": "Mandatory Testing",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n14",
+      "type": "process",
+      "label": "Wilsons Disease Screen: Ceruloplasmin, Alpha 1 Antitrypsin (A1AT) Screen, A1AT",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_review1",
+      "type": "process",
+      "label": "Review Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_review_result_enum"
+      ]
+    },
+    {
+      "id": "n_review_dec",
+      "type": "decision",
+      "label": "Review Result abnormal?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_review_result_enum"
+      ]
+    },
+    {
+      "id": "n_no_concern2",
+      "type": "output",
+      "label": "No Concern, or escalation required",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_tel",
+      "type": "process",
+      "label": "Telephone Consultation",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_referral_dec",
+      "type": "decision",
+      "label": "Referral required to secondary care?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_referral_required_bool"
+      ]
+    },
+    {
+      "id": "n_no_concern",
+      "type": "output",
+      "label": "No Concern, or escalation required",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_refer_sec",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n8",
+      "type": "output",
+      "label": "Patient needs consultation for liver pathology and consent for further testing",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n3",
+      "type": "output",
+      "label": "Mark as Normal / Satisfactory",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n1",
+      "label": "",
+      "id": "start->n1"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "",
+      "id": "n1->n2"
+    },
+    {
+      "from": "n2",
+      "to": "n3",
+      "label": "true",
+      "id": "n2->n3"
+    },
+    {
+      "from": "n2",
+      "to": "n4",
+      "label": "false",
+      "id": "n2->n4"
+    },
+    {
+      "from": "n4",
+      "to": "n5",
+      "label": "",
+      "id": "n4->n5"
+    },
+    {
+      "from": "n5",
+      "to": "n6",
+      "label": "false",
+      "id": "n5->n6"
+    },
+    {
+      "from": "n5",
+      "to": "n18",
+      "label": "true",
+      "id": "n5->n18"
+    },
+    {
+      "from": "n6",
+      "to": "n7",
+      "label": "",
+      "id": "n6->n7"
+    },
+    {
+      "from": "n7",
+      "to": "n8",
+      "label": "true",
+      "id": "n7->n8"
+    },
+    {
+      "from": "n7",
+      "to": "n9",
+      "label": "false",
+      "id": "n7->n9"
+    },
+    {
+      "from": "n9",
+      "to": "n10",
+      "label": "",
+      "id": "n9->n10"
+    },
+    {
+      "from": "n10",
+      "to": "n11",
+      "label": "true",
+      "id": "n10->n11"
+    },
+    {
+      "from": "n10",
+      "to": "n17",
+      "label": "false",
+      "id": "n10->n17"
+    },
+    {
+      "from": "n11",
+      "to": "n12",
+      "label": "",
+      "id": "n11->n12"
+    },
+    {
+      "from": "n12",
+      "to": "n13",
+      "label": "",
+      "id": "n12->n13"
+    },
+    {
+      "from": "n12",
+      "to": "n15",
+      "label": "",
+      "id": "n12->n15"
+    },
+    {
+      "from": "n15",
+      "to": "n16",
+      "label": "true",
+      "id": "n15->n16"
+    },
+    {
+      "from": "n15",
+      "to": "n_cond_test",
+      "label": "false",
+      "id": "n15->n_cond_test"
+    },
+    {
+      "from": "n_cond_test",
+      "to": "n_panca_dec",
+      "label": "",
+      "id": "n_cond_test->n_panca_dec"
+    },
+    {
+      "from": "n_panca_dec",
+      "to": "n_mrcp",
+      "label": "true",
+      "id": "n_panca_dec->n_mrcp"
+    },
+    {
+      "from": "n_panca_dec",
+      "to": "n_nafld_dec",
+      "label": "false",
+      "id": "n_panca_dec->n_nafld_dec"
+    },
+    {
+      "from": "n_nafld_dec",
+      "to": "n_annual",
+      "label": "true",
+      "id": "n_nafld_dec->n_annual"
+    },
+    {
+      "from": "n_nafld_dec",
+      "to": "n_indet_dec",
+      "label": "false",
+      "id": "n_nafld_dec->n_indet_dec"
+    },
+    {
+      "from": "n_indet_dec",
+      "to": "n_fib4_dec",
+      "label": "true",
+      "id": "n_indet_dec->n_fib4_dec"
+    },
+    {
+      "from": "n_indet_dec",
+      "to": "n_f3f4",
+      "label": "false",
+      "id": "n_indet_dec->n_f3f4"
+    },
+    {
+      "from": "n_f3f4",
+      "to": "n_phase4b",
+      "label": "",
+      "id": "n_f3f4->n_phase4b"
+    },
+    {
+      "from": "n_phase4b",
+      "to": "n_refer2",
+      "label": "",
+      "id": "n_phase4b->n_refer2"
+    },
+    {
+      "from": "n_fib4_dec",
+      "to": "n_low_risk",
+      "label": "true",
+      "id": "n_fib4_dec->n_low_risk"
+    },
+    {
+      "from": "n_fib4_dec",
+      "to": "n_int_high",
+      "label": "false",
+      "id": "n_fib4_dec->n_int_high"
+    },
+    {
+      "from": "n_int_high",
+      "to": "n_fibrous",
+      "label": "",
+      "id": "n_int_high->n_fibrous"
+    },
+    {
+      "from": "n_low_risk",
+      "to": "n_annual2",
+      "label": "",
+      "id": "n_low_risk->n_annual2"
+    },
+    {
+      "from": "n16",
+      "to": "n_raised_igm_dec",
+      "label": "",
+      "id": "n16->n_raised_igm_dec"
+    },
+    {
+      "from": "n_raised_igm_dec",
+      "to": "n_pbc",
+      "label": "true",
+      "id": "n_raised_igm_dec->n_pbc"
+    },
+    {
+      "from": "n_raised_igm_dec",
+      "to": "n_review4",
+      "label": "false",
+      "id": "n_raised_igm_dec->n_review4"
+    },
+    {
+      "from": "n_pbc",
+      "to": "n_raised_igg_dec",
+      "label": "",
+      "id": "n_pbc->n_raised_igg_dec"
+    },
+    {
+      "from": "n_raised_igg_dec",
+      "to": "n_aih",
+      "label": "true",
+      "id": "n_raised_igg_dec->n_aih"
+    },
+    {
+      "from": "n_raised_igg_dec",
+      "to": "n_review3",
+      "label": "false",
+      "id": "n_raised_igg_dec->n_review3"
+    },
+    {
+      "from": "n_aih",
+      "to": "n_review2",
+      "label": "",
+      "id": "n_aih->n_review2"
+    },
+    {
+      "from": "n13",
+      "to": "n14",
+      "label": "",
+      "id": "n13->n14"
+    },
+    {
+      "from": "n14",
+      "to": "n_review1",
+      "label": "",
+      "id": "n14->n_review1"
+    },
+    {
+      "from": "n_review1",
+      "to": "n_review_dec",
+      "label": "",
+      "id": "n_review1->n_review_dec"
+    },
+    {
+      "from": "n_review_dec",
+      "to": "n_tel",
+      "label": "true",
+      "id": "n_review_dec->n_tel"
+    },
+    {
+      "from": "n_review_dec",
+      "to": "n_no_concern2",
+      "label": "false",
+      "id": "n_review_dec->n_no_concern2"
+    },
+    {
+      "from": "n_tel",
+      "to": "n_referral_dec",
+      "label": "",
+      "id": "n_tel->n_referral_dec"
+    },
+    {
+      "from": "n_referral_dec",
+      "to": "n_refer_sec",
+      "label": "true",
+      "id": "n_referral_dec->n_refer_sec"
+    },
+    {
+      "from": "n_referral_dec",
+      "to": "n_no_concern",
+      "label": "false",
+      "id": "n_referral_dec->n_no_concern"
+    }
+  ]
+}

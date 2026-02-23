@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.08888888888888889,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 0.14285714285714285,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 8.89,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 14.29,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.03650793650793651,
+  "composite_score": 3.65,
+  "details": {
+    "node": {
+      "matched": 2,
+      "predicted_total": 29,
+      "reference_total": 16,
+      "precision": 0.06896551724137931,
+      "recall": 0.125
+    },
+    "edge": {
+      "matched": 0,
+      "predicted_total": 32,
+      "reference_total": 18,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 13,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 1,
+      "predicted_total": 7,
+      "reference_total": 7,
+      "precision": 0.14285714285714285,
+      "recall": 0.14285714285714285
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 8,
+      "success_rate": 0.0,
+      "execution_failures": 8,
+      "mapping_coverage": 0.0,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "Execution error: Decision node 'Tests normalise or notably improve?' (id: n2) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Mark as Normal / Satisfactory"
+        },
+        {
+          "test_index": 1,
+          "error": "Execution error: Decision node 'Tests normalise or notably improve?' (id: n2) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Recheck Baseline Liver Profile in appropriate timeframe"
+        },
+        {
+          "test_index": 2,
+          "error": "Execution error: Decision node 'Tests normalise or notably improve?' (id: n2) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Manage risk factors and co-morbidities - Annual Screening"
+        },
+        {
+          "test_index": 3,
+          "error": "Execution error: Decision node 'Tests normalise or notably improve?' (id: n2) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal"
+        },
+        {
+          "test_index": 4,
+          "error": "Execution error: Decision node 'Tests normalise or notably improve?' (id: n2) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Fibroscan if available"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 29,
+      "errors": [
+        "Invalid node type 'output' for node n32",
+        "Decision node 'Tests normalise or notably improve?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'ALT remains abnormal, worsens and/or additional signs or abnormal labs' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Need to rationalise which additional tests should be done for rare conditions' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'NAFLD Fibrosis Score Categories' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'FIB 4 categories' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Fibroscan Scan if available' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n26",
+        "Invalid node type 'output' for node n23",
+        "Decision node 'Fibroscan Scan if available' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 10,
+    "node_type_overlap_count": 12,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

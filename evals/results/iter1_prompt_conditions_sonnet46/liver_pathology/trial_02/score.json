@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.14035087719298248,
+    "edge_f1": 0.031746031746031744,
+    "variable_f1": 0.0,
+    "output_f1": 0.5,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 14.04,
+    "edge_f1": 3.17,
+    "variable_f1": 0.0,
+    "output_f1": 50.0,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.09302422723475356,
+  "composite_score": 9.3,
+  "details": {
+    "node": {
+      "matched": 4,
+      "predicted_total": 41,
+      "reference_total": 16,
+      "precision": 0.0975609756097561,
+      "recall": 0.25
+    },
+    "edge": {
+      "matched": 1,
+      "predicted_total": 45,
+      "reference_total": 18,
+      "precision": 0.022222222222222223,
+      "recall": 0.05555555555555555
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 13,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 3,
+      "predicted_total": 5,
+      "reference_total": 7,
+      "precision": 0.6,
+      "recall": 0.42857142857142855
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 8,
+      "success_rate": 0.0,
+      "execution_failures": 8,
+      "mapping_coverage": 0.0,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Tests normalise or notably improve' (id: n_alt_normal_decision): Input 'input_alt_status_enum' not found in execution context",
+          "expected": "Mark as Normal / Satisfactory"
+        },
+        {
+          "test_index": 1,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Tests normalise or notably improve' (id: n_alt_normal_decision): Input 'input_alt_status_enum' not found in execution context",
+          "expected": "Recheck Baseline Liver Profile in appropriate timeframe"
+        },
+        {
+          "test_index": 2,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Tests normalise or notably improve' (id: n_alt_normal_decision): Input 'input_alt_status_enum' not found in execution context",
+          "expected": "Manage risk factors and co-morbidities - Annual Screening"
+        },
+        {
+          "test_index": 3,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Tests normalise or notably improve' (id: n_alt_normal_decision): Input 'input_alt_status_enum' not found in execution context",
+          "expected": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal"
+        },
+        {
+          "test_index": 4,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Tests normalise or notably improve' (id: n_alt_normal_decision): Input 'input_alt_status_enum' not found in execution context",
+          "expected": "Fibroscan if available"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 29,
+      "errors": [
+        "Decision node 'Tests normalise or notably improve' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'ALT remains abnormal, worsens and/or additional tests are abnormal too' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Tests normalise or notably improve after recheck' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'USS result normal' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Review result abnormal' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Transferrin Sat >=45% Or Raised Ferritin' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Raised IgM' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Ulcerative Colitis or P-ANCA positive' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Raised IgG' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'NAFLD Fibrosis Score Categories' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 10,
+    "node_type_overlap_count": 14,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

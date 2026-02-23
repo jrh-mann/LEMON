@@ -12,6 +12,7 @@ from ...storage.history import HistoryStore
 from ...utils.analysis import normalize_analysis
 from ...utils.cancellation import CancellationError
 from ...utils.flowchart import flowchart_from_tree
+from ...utils.paths import lemon_data_dir
 from ..core import Tool, ToolParameter
 
 
@@ -37,7 +38,7 @@ class AnalyzeWorkflowTool(Tool):
 
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
-        history_db = repo_root / ".lemon" / "history.sqlite"
+        history_db = lemon_data_dir(repo_root) / "history.sqlite"
         self.history = HistoryStore(history_db)
         self.subagent = Subagent(self.history)
         self._logger = logging.getLogger(__name__)
@@ -68,7 +69,9 @@ class AnalyzeWorkflowTool(Tool):
             if not image_name:
                 return self._missing_image_response()
 
-        image_path = self.repo_root / image_name
+        image_path = Path(image_name)
+        if not image_path.is_absolute():
+            image_path = self.repo_root / image_name
         if not image_path.exists():
             return self._missing_image_response()
 
@@ -99,7 +102,7 @@ class AnalyzeWorkflowTool(Tool):
         }
 
     def _latest_uploaded_image(self) -> Optional[str]:
-        uploads_dir = self.repo_root / ".lemon" / "uploads"
+        uploads_dir = lemon_data_dir(self.repo_root) / "uploads"
         if not uploads_dir.exists():
             return None
         candidates = [
@@ -113,7 +116,7 @@ class AnalyzeWorkflowTool(Tool):
         try:
             return str(latest.relative_to(self.repo_root))
         except ValueError:
-            return None
+            return str(latest)
 
     def _missing_image_response(self) -> Dict[str, Any]:
         return {

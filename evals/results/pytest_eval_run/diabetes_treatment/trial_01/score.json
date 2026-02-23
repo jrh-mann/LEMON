@@ -1,0 +1,94 @@
+{
+  "metrics": {
+    "node_f1": 0.0,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 0.0,
+    "semantic_score": 0.0,
+    "validity_score": 1.0
+  },
+  "percentage_metrics": {
+    "node_f1": 0.0,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 0.0,
+    "semantic_score": 0.0,
+    "validity_score": 100.0
+  },
+  "composite_raw": 0.05,
+  "composite_score": 5.0,
+  "details": {
+    "node": {
+      "matched": 0,
+      "predicted_total": 2,
+      "reference_total": 20,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "edge": {
+      "matched": 0,
+      "predicted_total": 1,
+      "reference_total": 24,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 1,
+      "reference_total": 12,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 0,
+      "predicted_total": 2,
+      "reference_total": 12,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 12,
+      "success_rate": 0.0,
+      "execution_failures": 12,
+      "mapping_coverage": 0.08333333333333333,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "input_age_int must be int, got str",
+          "expected": "Admit via A&E/Medics"
+        },
+        {
+          "test_index": 1,
+          "error": "input_age_int must be int, got str",
+          "expected": "Start Gliclazide or Insulin"
+        },
+        {
+          "test_index": 2,
+          "error": "input_age_int must be int, got str",
+          "expected": "Metformin (continue and review in 3 months)"
+        },
+        {
+          "test_index": 3,
+          "error": "input_age_int must be int, got str",
+          "expected": "SGLT2i (continue and review in 3 months)"
+        },
+        {
+          "test_index": 4,
+          "error": "input_age_int must be int, got str",
+          "expected": "Ozempic titrate to full dose with 3 monthly A1c's"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": true,
+      "error_count": 0,
+      "errors": []
+    },
+    "node_label_mismatch_count": 2,
+    "node_type_overlap_count": 2,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

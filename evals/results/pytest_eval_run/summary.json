@@ -1,0 +1,181 @@
+{
+  "run_id": "pytest_eval_run",
+  "generated_at": "2026-02-23T20:19:00.643051+00:00",
+  "cases_selected": [
+    "workflow_test",
+    "diabetes_treatment",
+    "liver_pathology"
+  ],
+  "trials_per_case": 1,
+  "total_trials": 3,
+  "transport": "direct",
+  "eval_data_dir": "/tmp/lemon_eval_pytest_eval_run",
+  "history_db_path": "/tmp/lemon_eval_pytest_eval_run/history.sqlite",
+  "weights": {
+    "node_f1": 0.25,
+    "edge_f1": 0.25,
+    "variable_f1": 0.15,
+    "output_f1": 0.1,
+    "semantic_score": 0.2,
+    "validity_score": 0.05
+  },
+  "aggregate": {
+    "node_f1": 0.0,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 0.0,
+    "semantic_score": 0.0,
+    "validity_score": 1.0,
+    "composite_raw": 0.05,
+    "composite_score": 5.0,
+    "percentage_metrics": {
+      "node_f1": 0.0,
+      "edge_f1": 0.0,
+      "variable_f1": 0.0,
+      "output_f1": 0.0,
+      "semantic_score": 0.0,
+      "validity_score": 100.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "workflow_test",
+      "image_path": "workflow_test.jpeg",
+      "ground_truth_module": "evals.ground_truth.workflow_test_ground_truth",
+      "trial_count": 1,
+      "aggregate": {
+        "node_f1": 0.0,
+        "edge_f1": 0.0,
+        "variable_f1": 0.0,
+        "output_f1": 0.0,
+        "semantic_score": 0.0,
+        "validity_score": 1.0,
+        "composite_raw": 0.05,
+        "composite_score": 5.0,
+        "percentage_metrics": {
+          "node_f1": 0.0,
+          "edge_f1": 0.0,
+          "variable_f1": 0.0,
+          "output_f1": 0.0,
+          "semantic_score": 0.0,
+          "validity_score": 100.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "mock_1",
+          "composite_score": 5.0,
+          "percentage_metrics": {
+            "node_f1": 0.0,
+            "edge_f1": 0.0,
+            "variable_f1": 0.0,
+            "output_f1": 0.0,
+            "semantic_score": 0.0,
+            "validity_score": 100.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/workflow_test/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/workflow_test/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/workflow_test/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/workflow_test/trial_01/score.json"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "diabetes_treatment",
+      "image_path": "Diabetes Treatment .png",
+      "ground_truth_module": "evals.ground_truth.diabetes_ground_truth",
+      "trial_count": 1,
+      "aggregate": {
+        "node_f1": 0.0,
+        "edge_f1": 0.0,
+        "variable_f1": 0.0,
+        "output_f1": 0.0,
+        "semantic_score": 0.0,
+        "validity_score": 1.0,
+        "composite_raw": 0.05,
+        "composite_score": 5.0,
+        "percentage_metrics": {
+          "node_f1": 0.0,
+          "edge_f1": 0.0,
+          "variable_f1": 0.0,
+          "output_f1": 0.0,
+          "semantic_score": 0.0,
+          "validity_score": 100.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "mock_2",
+          "composite_score": 5.0,
+          "percentage_metrics": {
+            "node_f1": 0.0,
+            "edge_f1": 0.0,
+            "variable_f1": 0.0,
+            "output_f1": 0.0,
+            "semantic_score": 0.0,
+            "validity_score": 100.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/diabetes_treatment/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/diabetes_treatment/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/diabetes_treatment/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/diabetes_treatment/trial_01/score.json"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "liver_pathology",
+      "image_path": "Liver Pathology .png",
+      "ground_truth_module": "evals.ground_truth.liver_ground_truth",
+      "trial_count": 1,
+      "aggregate": {
+        "node_f1": 0.0,
+        "edge_f1": 0.0,
+        "variable_f1": 0.0,
+        "output_f1": 0.0,
+        "semantic_score": 0.0,
+        "validity_score": 1.0,
+        "composite_raw": 0.05,
+        "composite_score": 5.0,
+        "percentage_metrics": {
+          "node_f1": 0.0,
+          "edge_f1": 0.0,
+          "variable_f1": 0.0,
+          "output_f1": 0.0,
+          "semantic_score": 0.0,
+          "validity_score": 100.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "mock_3",
+          "composite_score": 5.0,
+          "percentage_metrics": {
+            "node_f1": 0.0,
+            "edge_f1": 0.0,
+            "variable_f1": 0.0,
+            "output_f1": 0.0,
+            "semantic_score": 0.0,
+            "validity_score": 100.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/liver_pathology/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/liver_pathology/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/liver_pathology/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/liver_pathology/trial_01/score.json"
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": {
+    "failures_jsonl": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/failures.jsonl",
+    "report_md": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_eval_run/report.md"
+  }
+}

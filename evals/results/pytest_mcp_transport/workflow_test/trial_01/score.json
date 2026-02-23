@@ -1,0 +1,70 @@
+{
+  "metrics": {
+    "node_f1": 0.0,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 0.0,
+    "semantic_score": 0.0,
+    "validity_score": 1.0
+  },
+  "percentage_metrics": {
+    "node_f1": 0.0,
+    "edge_f1": 0.0,
+    "variable_f1": 0.0,
+    "output_f1": 0.0,
+    "semantic_score": 0.0,
+    "validity_score": 100.0
+  },
+  "composite_raw": 0.05,
+  "composite_score": 5.0,
+  "details": {
+    "node": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 21,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "edge": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 24,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 1,
+      "reference_total": 9,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 0,
+      "predicted_total": 1,
+      "reference_total": 9,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 13,
+      "success_rate": 0.0,
+      "execution_failures": 13,
+      "mapping_coverage": 0.0,
+      "errors": [
+        "Predicted analysis does not contain an executable tree."
+      ]
+    },
+    "validity": {
+      "is_valid": true,
+      "error_count": 0,
+      "errors": []
+    },
+    "node_label_mismatch_count": 0,
+    "node_type_overlap_count": 0,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

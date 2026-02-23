@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './styles.css'
 import Header from './components/Header'
 import TabBar from './components/TabBar'
@@ -10,14 +10,20 @@ import Modals from './components/Modals'
 import AuthPage from './components/AuthPage'
 import { ApiError } from './api/client'
 import { getCurrentUser } from './api/auth'
+import { getWorkflow } from './api/workflows'
 import { useSession } from './hooks/useSession'
 import { useUIStore } from './stores/uiStore'
+import { useWorkflowStore } from './stores/workflowStore'
+import { transformFlowchartFromBackend } from './utils/canvas'
+import type { WorkflowAnalysis, Workflow } from './types'
 
 const isAuthHash = () => window.location.hash === '#/auth' || window.location.hash === '#auth'
 
 function WorkspaceApp() {
   const [authReady, setAuthReady] = useState(false)
   const { error, clearError, chatHeight, setError } = useUIStore()
+  const { setCurrentWorkflow, setFlowchart, setAnalysis } = useWorkflowStore()
+  const loadedWorkflowIdRef = useRef<string | null>(null)
 
   // Initialize session and socket connection
   useSession(authReady)
@@ -43,6 +49,54 @@ function WorkspaceApp() {
       isActive = false
     }
   }, [setError])
+
+  // Optional deep-link: /?workflow_id=<id>
+  // Loads a saved workflow directly onto canvas after auth.
+  useEffect(() => {
+    if (!authReady) return
+    const workflowId = new URLSearchParams(window.location.search).get('workflow_id')
+    if (!workflowId) return
+    if (loadedWorkflowIdRef.current === workflowId) return
+
+    let isActive = true
+    const loadWorkflowFromUrl = async () => {
+      try {
+        const workflowData: any = await getWorkflow(workflowId)
+        if (!isActive) return
+
+        const workflow: Workflow = {
+          id: workflowData.id,
+          metadata: workflowData.metadata,
+          blocks: [],
+          connections: [],
+        }
+        setCurrentWorkflow(workflow)
+
+        const flowchart = transformFlowchartFromBackend({
+          nodes: workflowData.nodes || [],
+          edges: workflowData.edges || [],
+        })
+        setFlowchart(flowchart)
+
+        const analysis: WorkflowAnalysis = {
+          variables: workflowData.inputs || [],
+          outputs: workflowData.outputs || [],
+          tree: workflowData.tree || {},
+          doubts: workflowData.doubts || [],
+        }
+        setAnalysis(analysis)
+        loadedWorkflowIdRef.current = workflowId
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        setError(`Failed to load workflow from URL (${workflowId}): ${msg}`)
+      }
+    }
+
+    loadWorkflowFromUrl()
+    return () => {
+      isActive = false
+    }
+  }, [authReady, setAnalysis, setCurrentWorkflow, setError, setFlowchart])
 
   // Show error toast
   useEffect(() => {

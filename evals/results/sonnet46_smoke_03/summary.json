@@ -1,0 +1,85 @@
+{
+  "run_id": "sonnet46_smoke_03",
+  "generated_at": "2026-02-23T19:42:26.825874+00:00",
+  "cases_selected": [
+    "workflow_test"
+  ],
+  "trials_per_case": 1,
+  "total_trials": 1,
+  "transport": "mcp",
+  "eval_data_dir": "/tmp/lemon_eval_sonnet46_smoke_03",
+  "history_db_path": "/tmp/lemon_eval_sonnet46_smoke_03/history.sqlite",
+  "weights": {
+    "node_f1": 0.25,
+    "edge_f1": 0.25,
+    "variable_f1": 0.15,
+    "output_f1": 0.1,
+    "semantic_score": 0.2,
+    "validity_score": 0.05
+  },
+  "aggregate": {
+    "node_f1": 0.5416666666666666,
+    "edge_f1": 0.14285714285714288,
+    "variable_f1": 0.39999999999999997,
+    "output_f1": 0.9473684210526316,
+    "semantic_score": 0.6153846153846154,
+    "validity_score": 0.0,
+    "composite_raw": 0.44894471756313864,
+    "composite_score": 44.89,
+    "percentage_metrics": {
+      "node_f1": 54.17,
+      "edge_f1": 14.29,
+      "variable_f1": 40.0,
+      "output_f1": 94.74,
+      "semantic_score": 61.54,
+      "validity_score": 0.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "workflow_test",
+      "image_path": "workflow_test.jpeg",
+      "ground_truth_module": "evals.ground_truth.workflow_test_ground_truth",
+      "trial_count": 1,
+      "aggregate": {
+        "node_f1": 0.5416666666666666,
+        "edge_f1": 0.14285714285714288,
+        "variable_f1": 0.39999999999999997,
+        "output_f1": 0.9473684210526316,
+        "semantic_score": 0.6153846153846154,
+        "validity_score": 0.0,
+        "composite_raw": 0.44894471756313864,
+        "composite_score": 44.89,
+        "percentage_metrics": {
+          "node_f1": 54.17,
+          "edge_f1": 14.29,
+          "variable_f1": 40.0,
+          "output_f1": 94.74,
+          "semantic_score": 61.54,
+          "validity_score": 0.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "3facb6e00eea4653928b58d11eba38dd",
+          "composite_score": 44.89,
+          "percentage_metrics": {
+            "node_f1": 54.17,
+            "edge_f1": 14.29,
+            "variable_f1": 40.0,
+            "output_f1": 94.74,
+            "semantic_score": 61.54,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/sonnet46_smoke_03/workflow_test/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/sonnet46_smoke_03/workflow_test/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/sonnet46_smoke_03/workflow_test/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/sonnet46_smoke_03/workflow_test/trial_01/score.json"
+          }
+        }
+      ]
+    }
+  ]
+}

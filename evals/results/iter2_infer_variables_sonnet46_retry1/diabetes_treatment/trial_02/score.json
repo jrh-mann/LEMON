@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.375,
+    "edge_f1": 0.1509433962264151,
+    "variable_f1": 0.5,
+    "output_f1": 0.32,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 37.5,
+    "edge_f1": 15.09,
+    "variable_f1": 50.0,
+    "output_f1": 32.0,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.23848584905660378,
+  "composite_score": 23.85,
+  "details": {
+    "node": {
+      "matched": 9,
+      "predicted_total": 28,
+      "reference_total": 20,
+      "precision": 0.32142857142857145,
+      "recall": 0.45
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 29,
+      "reference_total": 24,
+      "precision": 0.13793103448275862,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 6,
+      "predicted_total": 12,
+      "reference_total": 12,
+      "precision": 0.5,
+      "recall": 0.5
+    },
+    "output": {
+      "matched": 4,
+      "predicted_total": 13,
+      "reference_total": 12,
+      "precision": 0.3076923076923077,
+      "recall": 0.3333333333333333
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 12,
+      "success_rate": 0.0,
+      "execution_failures": 12,
+      "mapping_coverage": 0.5833333333333334,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "input_prognostic_value_enum must be string, got bool",
+          "expected": "Admit via A&E/Medics"
+        },
+        {
+          "test_index": 1,
+          "error": "input_prognostic_value_enum must be string, got bool",
+          "expected": "Start Gliclazide or Insulin"
+        },
+        {
+          "test_index": 2,
+          "error": "input_prognostic_value_enum must be string, got bool",
+          "expected": "Metformin (continue and review in 3 months)"
+        },
+        {
+          "test_index": 3,
+          "error": "input_prognostic_value_enum must be string, got bool",
+          "expected": "SGLT2i (continue and review in 3 months)"
+        },
+        {
+          "test_index": 4,
+          "error": "input_prognostic_value_enum must be string, got bool",
+          "expected": "Ozempic titrate to full dose with 3 monthly A1c's"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 30,
+      "errors": [
+        "Decision node '*CVD Known or Risk' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Symptoms & New A1c >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'A1c not controlled\nStart Dual Therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'A1c Not Controlled\nStart Triple Therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'High prognostic value' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n29",
+        "Decision node 'Despite Optimisation and maximally tolerated dose A1C >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n28",
+        "Decision node 'Dual therapy drug choice' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Pioglitazone or Gliclazide?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 11,
+    "node_type_overlap_count": 20,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

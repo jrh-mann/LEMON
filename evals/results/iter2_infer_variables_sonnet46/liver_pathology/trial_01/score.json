@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.14814814814814814,
+    "edge_f1": 0.03448275862068966,
+    "variable_f1": 0.3076923076923077,
+    "output_f1": 0.6,
+    "semantic_score": 0.125,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 14.81,
+    "edge_f1": 3.45,
+    "variable_f1": 30.77,
+    "output_f1": 60.0,
+    "semantic_score": 12.5,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.17681157284605561,
+  "composite_score": 17.68,
+  "details": {
+    "node": {
+      "matched": 4,
+      "predicted_total": 38,
+      "reference_total": 16,
+      "precision": 0.10526315789473684,
+      "recall": 0.25
+    },
+    "edge": {
+      "matched": 1,
+      "predicted_total": 40,
+      "reference_total": 18,
+      "precision": 0.025,
+      "recall": 0.05555555555555555
+    },
+    "variable": {
+      "matched": 4,
+      "predicted_total": 13,
+      "reference_total": 13,
+      "precision": 0.3076923076923077,
+      "recall": 0.3076923076923077
+    },
+    "output": {
+      "matched": 3,
+      "predicted_total": 3,
+      "reference_total": 7,
+      "precision": 1.0,
+      "recall": 0.42857142857142855
+    },
+    "semantic": {
+      "score": 0.125,
+      "matched": 1,
+      "total": 8,
+      "success_rate": 0.125,
+      "execution_failures": 7,
+      "mapping_coverage": 0.46153846153846156,
+      "failures": [
+        {
+          "test_index": 1,
+          "error": "Node 'n_request_liver_uss' has no children",
+          "expected": "Recheck Baseline Liver Profile in appropriate timeframe"
+        },
+        {
+          "test_index": 2,
+          "error": "Node 'n_request_liver_uss' has no children",
+          "expected": "Manage risk factors and co-morbidities - Annual Screening"
+        },
+        {
+          "test_index": 3,
+          "error": "Node 'n_request_liver_uss' has no children",
+          "expected": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal"
+        },
+        {
+          "test_index": 4,
+          "error": "Node 'n_request_liver_uss' has no children",
+          "expected": "Fibroscan if available"
+        },
+        {
+          "test_index": 5,
+          "error": "Node 'n_request_liver_uss' has no children",
+          "expected": "Phase 4 Bloods"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 37,
+      "errors": [
+        "Decision node 'Tests normalise or notably improve' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'ALT remains abnormal, worsens and/or additional tests are abnormal too' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Sustained or worsening abnormalities' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'FIB 4 Categories' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Intermediate or High Risk' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'NAFLD Fibrosis Score Categories' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Indeterminate Score' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n_refer_secondary_f3f4",
+        "Decision node 'Ulcerative Colitis or P-ANCA positive' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Raised IgG' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 8,
+    "node_type_overlap_count": 12,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

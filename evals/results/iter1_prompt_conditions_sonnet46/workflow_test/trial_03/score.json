@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.48000000000000004,
+    "edge_f1": 0.14545454545454548,
+    "variable_f1": 0.0,
+    "output_f1": 0.6956521739130435,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 48.0,
+    "edge_f1": 14.55,
+    "variable_f1": 0.0,
+    "output_f1": 69.57,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.2259288537549407,
+  "composite_score": 22.59,
+  "details": {
+    "node": {
+      "matched": 12,
+      "predicted_total": 29,
+      "reference_total": 21,
+      "precision": 0.41379310344827586,
+      "recall": 0.5714285714285714
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 31,
+      "reference_total": 24,
+      "precision": 0.12903225806451613,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 9,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 8,
+      "predicted_total": 14,
+      "reference_total": 9,
+      "precision": 0.5714285714285714,
+      "recall": 0.8888888888888888
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 13,
+      "success_rate": 0.0,
+      "execution_failures": 13,
+      "mapping_coverage": 0.0,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Normal or Raised?' (id: n2): Input 'input_total_cholesterol_result_float' not found in execution context",
+          "expected": "No Further Action"
+        },
+        {
+          "test_index": 1,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Normal or Raised?' (id: n2): Input 'input_total_cholesterol_result_float' not found in execution context",
+          "expected": "Consider Lipid Clinic Referral"
+        },
+        {
+          "test_index": 2,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Normal or Raised?' (id: n2): Input 'input_total_cholesterol_result_float' not found in execution context",
+          "expected": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+        },
+        {
+          "test_index": 3,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Normal or Raised?' (id: n2): Input 'input_total_cholesterol_result_float' not found in execution context",
+          "expected": "Mark as Satisfactory"
+        },
+        {
+          "test_index": 4,
+          "error": "Execution error: Failed to evaluate condition at decision node 'Normal or Raised?' (id: n2): Input 'input_total_cholesterol_result_float' not found in execution context",
+          "expected": "Mark as \"No Further Action\""
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 28,
+      "errors": [
+        "Decision node 'Normal or Raised?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Under Specialist Clinic?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Lipid Lowering Therapy?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Primary or Secondary Prevention?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Maximally Tolerated Statin?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n31",
+        "Decision node 'Assess LDL' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'LDL 2-2.5?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n30",
+        "Invalid node type 'output' for node n29"
+      ]
+    },
+    "node_label_mismatch_count": 9,
+    "node_type_overlap_count": 21,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "metrics": {
+    "node_f1": 0.5,
+    "edge_f1": 0.15686274509803924,
+    "variable_f1": 0.4444444444444444,
+    "output_f1": 0.6956521739130435,
+    "semantic_score": 0.6923076923076923,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 50.0,
+    "edge_f1": 15.69,
+    "variable_f1": 44.44,
+    "output_f1": 69.57,
+    "semantic_score": 69.23,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.4389091087940193,
+  "composite_score": 43.89,
+  "details": {
+    "node": {
+      "matched": 11,
+      "predicted_total": 23,
+      "reference_total": 21,
+      "precision": 0.4782608695652174,
+      "recall": 0.5238095238095238
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 27,
+      "reference_total": 24,
+      "precision": 0.14814814814814814,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 4,
+      "predicted_total": 9,
+      "reference_total": 9,
+      "precision": 0.4444444444444444,
+      "recall": 0.4444444444444444
+    },
+    "output": {
+      "matched": 8,
+      "predicted_total": 14,
+      "reference_total": 9,
+      "precision": 0.5714285714285714,
+      "recall": 0.8888888888888888
+    },
+    "semantic": {
+      "score": 0.6923076923076923,
+      "matched": 9,
+      "total": 13,
+      "success_rate": 0.6923076923076923,
+      "execution_failures": 0,
+      "mapping_coverage": 0.7777777777777778,
+      "failures": [
+        {
+          "test_index": 3,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Mark as Satisfactory"
+        },
+        {
+          "test_index": 6,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+        },
+        {
+          "test_index": 10,
+          "predicted": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+          "expected": "Add in Ezetimibe"
+        },
+        {
+          "test_index": 12,
+          "predicted": "Initiate Inclisiran",
+          "expected": "Repeat Lipids at 3 months"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 27,
+      "errors": [
+        "Decision node '> 7.5 or \u2264 7.5?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Normal or Raised?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Lipid Lowering Therapy?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Primary or Secondary Prevention?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Maximally Tolerated Statin?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n_send_llt_not_max_statin",
+        "Decision node 'LDL \u22642, LDL 2-2.5, or LDL \u2265 2.6?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'LDL 2-2.5' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n_initiate_inclisiran",
+        "Invalid node type 'output' for node n_send_llt_ldl_2_2_5"
+      ]
+    },
+    "node_label_mismatch_count": 9,
+    "node_type_overlap_count": 20,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

@@ -1,0 +1,432 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Lipid Results - Management Guide",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n1",
+      "type": "process",
+      "label": "Assess Total Cholesterol Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n27",
+      "type": "decision",
+      "label": "Are They Optimised on treatment?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n31",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n28",
+      "type": "decision",
+      "label": "Primary or Secondary Prevention? (upper)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n30",
+      "type": "output",
+      "label": "Refer to specilaist",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n29",
+      "type": "output",
+      "label": "Consider Lipid Clinic Referral",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n2",
+      "type": "decision",
+      "label": "Under Specialist Clinic?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "label": "Normal or Raised?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n6",
+      "type": "decision",
+      "label": "Taking Lipid Lowering Therapy?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n10",
+      "type": "decision",
+      "label": "Primary or Secondary Prevention?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n15",
+      "type": "decision",
+      "label": "Taking Maximally Tolerated Statin?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n26",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n16",
+      "type": "process",
+      "label": "Assess LDL",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n17",
+      "type": "decision",
+      "label": "LDL \u2265 2.6",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n19",
+      "type": "decision",
+      "label": "LDL 2-2.5",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n25",
+      "type": "output",
+      "label": "No Further Action",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n20",
+      "type": "decision",
+      "label": "Has had 6 months of Inclisiran",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n24",
+      "type": "output",
+      "label": "Repeat Lipids at 3 months",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n21",
+      "type": "decision",
+      "label": "LDL >2.0",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n23",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n22",
+      "type": "output",
+      "label": "Add in Ezetimibe",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n18",
+      "type": "output",
+      "label": "Initiate Inclisiran",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n11",
+      "type": "process",
+      "label": "Calculate QRISK2/3",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n12",
+      "type": "decision",
+      "label": "\u2265 10%",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n14",
+      "type": "output",
+      "label": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n13",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n7",
+      "type": "decision",
+      "label": "Are They Optimised on treatment?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n9",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n8",
+      "type": "output",
+      "label": "Mark as \"No Further Action\"",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n5",
+      "type": "output",
+      "label": "Mark as Satisfactory",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n3",
+      "type": "output",
+      "label": "No Further Action",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n1",
+      "label": "",
+      "id": "start->n1"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "",
+      "id": "n1->n2"
+    },
+    {
+      "from": "n1",
+      "to": "n27",
+      "label": "",
+      "id": "n1->n27"
+    },
+    {
+      "from": "n27",
+      "to": "n28",
+      "label": "true",
+      "id": "n27->n28"
+    },
+    {
+      "from": "n27",
+      "to": "n31",
+      "label": "false",
+      "id": "n27->n31"
+    },
+    {
+      "from": "n28",
+      "to": "n29",
+      "label": "true",
+      "id": "n28->n29"
+    },
+    {
+      "from": "n28",
+      "to": "n30",
+      "label": "false",
+      "id": "n28->n30"
+    },
+    {
+      "from": "n2",
+      "to": "n3",
+      "label": "true",
+      "id": "n2->n3"
+    },
+    {
+      "from": "n2",
+      "to": "n4",
+      "label": "false",
+      "id": "n2->n4"
+    },
+    {
+      "from": "n4",
+      "to": "n5",
+      "label": "true",
+      "id": "n4->n5"
+    },
+    {
+      "from": "n4",
+      "to": "n6",
+      "label": "false",
+      "id": "n4->n6"
+    },
+    {
+      "from": "n6",
+      "to": "n7",
+      "label": "true",
+      "id": "n6->n7"
+    },
+    {
+      "from": "n6",
+      "to": "n10",
+      "label": "false",
+      "id": "n6->n10"
+    },
+    {
+      "from": "n10",
+      "to": "n11",
+      "label": "true",
+      "id": "n10->n11"
+    },
+    {
+      "from": "n10",
+      "to": "n15",
+      "label": "false",
+      "id": "n10->n15"
+    },
+    {
+      "from": "n15",
+      "to": "n16",
+      "label": "true",
+      "id": "n15->n16"
+    },
+    {
+      "from": "n15",
+      "to": "n26",
+      "label": "false",
+      "id": "n15->n26"
+    },
+    {
+      "from": "n16",
+      "to": "n17",
+      "label": "",
+      "id": "n16->n17"
+    },
+    {
+      "from": "n17",
+      "to": "n18",
+      "label": "true",
+      "id": "n17->n18"
+    },
+    {
+      "from": "n17",
+      "to": "n19",
+      "label": "false",
+      "id": "n17->n19"
+    },
+    {
+      "from": "n19",
+      "to": "n20",
+      "label": "true",
+      "id": "n19->n20"
+    },
+    {
+      "from": "n19",
+      "to": "n25",
+      "label": "false",
+      "id": "n19->n25"
+    },
+    {
+      "from": "n20",
+      "to": "n21",
+      "label": "true",
+      "id": "n20->n21"
+    },
+    {
+      "from": "n20",
+      "to": "n24",
+      "label": "false",
+      "id": "n20->n24"
+    },
+    {
+      "from": "n21",
+      "to": "n22",
+      "label": "true",
+      "id": "n21->n22"
+    },
+    {
+      "from": "n21",
+      "to": "n23",
+      "label": "false",
+      "id": "n21->n23"
+    },
+    {
+      "from": "n11",
+      "to": "n12",
+      "label": "",
+      "id": "n11->n12"
+    },
+    {
+      "from": "n12",
+      "to": "n13",
+      "label": "true",
+      "id": "n12->n13"
+    },
+    {
+      "from": "n12",
+      "to": "n14",
+      "label": "false",
+      "id": "n12->n14"
+    },
+    {
+      "from": "n7",
+      "to": "n8",
+      "label": "true",
+      "id": "n7->n8"
+    },
+    {
+      "from": "n7",
+      "to": "n9",
+      "label": "false",
+      "id": "n7->n9"
+    }
+  ]
+}

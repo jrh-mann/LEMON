@@ -1,0 +1,295 @@
+{
+  "run_id": "iter1_prompt_conditions_sonnet46",
+  "generated_at": "2026-02-23T19:33:30.991448+00:00",
+  "cases_selected": [
+    "workflow_test",
+    "diabetes_treatment",
+    "liver_pathology"
+  ],
+  "trials_per_case": 3,
+  "total_trials": 9,
+  "transport": "mcp",
+  "eval_data_dir": "/tmp/lemon_eval_iter1_prompt_conditions_sonnet46",
+  "history_db_path": "/tmp/lemon_eval_iter1_prompt_conditions_sonnet46/history.sqlite",
+  "weights": {
+    "node_f1": 0.25,
+    "edge_f1": 0.25,
+    "variable_f1": 0.15,
+    "output_f1": 0.1,
+    "semantic_score": 0.2,
+    "validity_score": 0.05
+  },
+  "aggregate": {
+    "node_f1": 0.36647332279342804,
+    "edge_f1": 0.10785465509553405,
+    "variable_f1": 0.0,
+    "output_f1": 0.6122392735665046,
+    "semantic_score": 0.0,
+    "validity_score": 0.0,
+    "composite_raw": 0.179805921828891,
+    "composite_score": 17.98,
+    "percentage_metrics": {
+      "node_f1": 36.65,
+      "edge_f1": 10.79,
+      "variable_f1": 0.0,
+      "output_f1": 61.22,
+      "semantic_score": 0.0,
+      "validity_score": 0.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "workflow_test",
+      "image_path": "workflow_test.jpeg",
+      "ground_truth_module": "evals.ground_truth.workflow_test_ground_truth",
+      "trial_count": 3,
+      "aggregate": {
+        "node_f1": 0.5287943262411348,
+        "edge_f1": 0.1463524130190797,
+        "variable_f1": 0.0,
+        "output_f1": 0.7597947437764372,
+        "semantic_score": 0.0,
+        "validity_score": 0.0,
+        "composite_raw": 0.24476615919269734,
+        "composite_score": 24.48,
+        "percentage_metrics": {
+          "node_f1": 52.88,
+          "edge_f1": 14.64,
+          "variable_f1": 0.0,
+          "output_f1": 75.98,
+          "semantic_score": 0.0,
+          "validity_score": 0.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "fa6cae460110401488d569a246ef5e49",
+          "composite_score": 23.83,
+          "percentage_metrics": {
+            "node_f1": 55.32,
+            "edge_f1": 14.55,
+            "variable_f1": 0.0,
+            "output_f1": 63.64,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_01/score.json"
+          }
+        },
+        {
+          "trial_index": 2,
+          "session_id": "933be9f316f74ec9b7a33a579fc20076",
+          "composite_score": 27.01,
+          "percentage_metrics": {
+            "node_f1": 55.32,
+            "edge_f1": 14.81,
+            "variable_f1": 0.0,
+            "output_f1": 94.74,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_02/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_02/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_02/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_02/score.json"
+          }
+        },
+        {
+          "trial_index": 3,
+          "session_id": "18269657a0c249199102a10dac8eb5fe",
+          "composite_score": 22.59,
+          "percentage_metrics": {
+            "node_f1": 48.0,
+            "edge_f1": 14.55,
+            "variable_f1": 0.0,
+            "output_f1": 69.57,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_03/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_03/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_03/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/workflow_test/trial_03/score.json"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "diabetes_treatment",
+      "image_path": "Diabetes Treatment .png",
+      "ground_truth_module": "evals.ground_truth.diabetes_ground_truth",
+      "trial_count": 3,
+      "aggregate": {
+        "node_f1": 0.4068469425165295,
+        "edge_f1": 0.14626262626262626,
+        "variable_f1": 0.0,
+        "output_f1": 0.5,
+        "semantic_score": 0.0,
+        "validity_score": 0.0,
+        "composite_raw": 0.18827739219478892,
+        "composite_score": 18.83,
+        "percentage_metrics": {
+          "node_f1": 40.68,
+          "edge_f1": 14.63,
+          "variable_f1": 0.0,
+          "output_f1": 50.0,
+          "semantic_score": 0.0,
+          "validity_score": 0.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "c55ea6097e9b44f2824003dc09076d07",
+          "composite_score": 19.95,
+          "percentage_metrics": {
+            "node_f1": 43.14,
+            "edge_f1": 13.33,
+            "variable_f1": 0.0,
+            "output_f1": 58.33,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_01/score.json"
+          }
+        },
+        {
+          "trial_index": 2,
+          "session_id": "f445c69814944f4b9038ff9570791ffd",
+          "composite_score": 17.26,
+          "percentage_metrics": {
+            "node_f1": 36.36,
+            "edge_f1": 16.0,
+            "variable_f1": 0.0,
+            "output_f1": 41.67,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_02/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_02/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_02/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_02/score.json"
+          }
+        },
+        {
+          "trial_index": 3,
+          "session_id": "48e2ffd22cc041bb8ac3be6faaa9876a",
+          "composite_score": 19.27,
+          "percentage_metrics": {
+            "node_f1": 42.55,
+            "edge_f1": 14.55,
+            "variable_f1": 0.0,
+            "output_f1": 50.0,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_03/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_03/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_03/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/diabetes_treatment/trial_03/score.json"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "liver_pathology",
+      "image_path": "Liver Pathology .png",
+      "ground_truth_module": "evals.ground_truth.liver_ground_truth",
+      "trial_count": 3,
+      "aggregate": {
+        "node_f1": 0.16377869962261976,
+        "edge_f1": 0.030948926004896155,
+        "variable_f1": 0.0,
+        "output_f1": 0.5769230769230769,
+        "semantic_score": 0.0,
+        "validity_score": 0.0,
+        "composite_raw": 0.10637421409918668,
+        "composite_score": 10.64,
+        "percentage_metrics": {
+          "node_f1": 16.38,
+          "edge_f1": 3.09,
+          "variable_f1": 0.0,
+          "output_f1": 57.69,
+          "semantic_score": 0.0,
+          "validity_score": 0.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "ab3915bd92504ec28c5897c156c04361",
+          "composite_score": 11.4,
+          "percentage_metrics": {
+            "node_f1": 17.86,
+            "edge_f1": 3.12,
+            "variable_f1": 0.0,
+            "output_f1": 61.54,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_01/score.json"
+          }
+        },
+        {
+          "trial_index": 2,
+          "session_id": "57612b7b40314f65b2901a73be818ada",
+          "composite_score": 9.3,
+          "percentage_metrics": {
+            "node_f1": 14.04,
+            "edge_f1": 3.17,
+            "variable_f1": 0.0,
+            "output_f1": 50.0,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_02/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_02/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_02/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_02/score.json"
+          }
+        },
+        {
+          "trial_index": 3,
+          "session_id": "bbae2972743f4cb98c6bae55049a7452",
+          "composite_score": 11.21,
+          "percentage_metrics": {
+            "node_f1": 17.24,
+            "edge_f1": 2.99,
+            "variable_f1": 0.0,
+            "output_f1": 61.54,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_03/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_03/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_03/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/liver_pathology/trial_03/score.json"
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": {
+    "failures_jsonl": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/failures.jsonl",
+    "report_md": "/Users/jeetthakwani/dev/LEMON/evals/results/iter1_prompt_conditions_sonnet46/report.md"
+  }
+}

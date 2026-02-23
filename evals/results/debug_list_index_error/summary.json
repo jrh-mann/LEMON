@@ -1,0 +1,85 @@
+{
+  "run_id": "debug_list_index_error",
+  "generated_at": "2026-02-23T19:55:38.608252+00:00",
+  "cases_selected": [
+    "diabetes_treatment"
+  ],
+  "trials_per_case": 1,
+  "total_trials": 1,
+  "transport": "direct",
+  "eval_data_dir": "/tmp/lemon_eval_debug_list_index_error",
+  "history_db_path": "/tmp/lemon_eval_debug_list_index_error/history.sqlite",
+  "weights": {
+    "node_f1": 0.25,
+    "edge_f1": 0.25,
+    "variable_f1": 0.15,
+    "output_f1": 0.1,
+    "semantic_score": 0.2,
+    "validity_score": 0.05
+  },
+  "aggregate": {
+    "node_f1": 0.23809523809523808,
+    "edge_f1": 0.0425531914893617,
+    "variable_f1": 0.2,
+    "output_f1": 0.17391304347826086,
+    "semantic_score": 0.0,
+    "validity_score": 0.0,
+    "composite_raw": 0.11755341174397603,
+    "composite_score": 11.76,
+    "percentage_metrics": {
+      "node_f1": 23.81,
+      "edge_f1": 4.26,
+      "variable_f1": 20.0,
+      "output_f1": 17.39,
+      "semantic_score": 0.0,
+      "validity_score": 0.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "diabetes_treatment",
+      "image_path": "Diabetes Treatment .png",
+      "ground_truth_module": "evals.ground_truth.diabetes_ground_truth",
+      "trial_count": 1,
+      "aggregate": {
+        "node_f1": 0.23809523809523808,
+        "edge_f1": 0.0425531914893617,
+        "variable_f1": 0.2,
+        "output_f1": 0.17391304347826086,
+        "semantic_score": 0.0,
+        "validity_score": 0.0,
+        "composite_raw": 0.11755341174397603,
+        "composite_score": 11.76,
+        "percentage_metrics": {
+          "node_f1": 23.81,
+          "edge_f1": 4.26,
+          "variable_f1": 20.0,
+          "output_f1": 17.39,
+          "semantic_score": 0.0,
+          "validity_score": 0.0
+        }
+      },
+      "trials": [
+        {
+          "trial_index": 1,
+          "session_id": "ac77b49d62f542aabb385003cae83272",
+          "composite_score": 11.76,
+          "percentage_metrics": {
+            "node_f1": 23.81,
+            "edge_f1": 4.26,
+            "variable_f1": 20.0,
+            "output_f1": 17.39,
+            "semantic_score": 0.0,
+            "validity_score": 0.0
+          },
+          "artifacts": {
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/debug_list_index_error/diabetes_treatment/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/debug_list_index_error/diabetes_treatment/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/debug_list_index_error/diabetes_treatment/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/debug_list_index_error/diabetes_treatment/trial_01/score.json"
+          }
+        }
+      ]
+    }
+  ]
+}

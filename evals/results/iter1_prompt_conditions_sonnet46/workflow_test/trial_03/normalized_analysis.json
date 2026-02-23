@@ -1,0 +1,387 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "No Further Action",
+      "description": "No further action required (satisfactory cholesterol)"
+    },
+    {
+      "name": "Mark as Satisfactory",
+      "description": "Mark the result as satisfactory"
+    },
+    {
+      "name": "Mark as \"No Further Action\"",
+      "description": "Mark as no further action (patient on lipid lowering therapy and optimised)"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (lower branch)",
+      "description": "Send lipid lowering therapy AccuRx message - patient not on therapy"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (secondary not maximally tolerated)",
+      "description": "Send lipid lowering therapy AccuRx message - secondary prevention not on maximally tolerated statin"
+    },
+    {
+      "name": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+      "description": "Send high cholesterol low QRISK AccuRx message"
+    },
+    {
+      "name": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (upper optimised no)",
+      "description": "Send lipid lowering therapy AccuRx - upper branch not optimised on treatment"
+    },
+    {
+      "name": "No Further Action (LDL \u22642)",
+      "description": "No further action as LDL is at target (\u22642)"
+    },
+    {
+      "name": "Initiate Inclisiran",
+      "description": "Initiate Inclisiran therapy"
+    },
+    {
+      "name": "Repeat Lipids at 3 months",
+      "description": "Repeat lipid test at 3 months"
+    },
+    {
+      "name": "Add in Ezetimibe",
+      "description": "Add Ezetimibe to treatment"
+    },
+    {
+      "name": "Consider Lipid Clinic Referral",
+      "description": "Consider referral to lipid clinic"
+    },
+    {
+      "name": "Refer to specialist",
+      "description": "Refer patient to specialist"
+    },
+    {
+      "name": "Consultation",
+      "description": "Consultation required"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Lipid Results - Management Guide",
+      "children": [
+        {
+          "id": "n1",
+          "type": "action",
+          "label": "Assess Total Cholesterol Result",
+          "input_ids": [],
+          "edge_label": "",
+          "children": [
+            {
+              "id": "n2",
+              "type": "decision",
+              "label": "Normal or Raised?",
+              "input_ids": [],
+              "condition": {
+                "input_id": "input_total_cholesterol_result_float",
+                "comparator": "lte",
+                "value": 5
+              },
+              "children": [
+                {
+                  "id": "n3",
+                  "type": "output",
+                  "label": "Mark as Satisfactory",
+                  "edge_label": "Normal",
+                  "children": []
+                },
+                {
+                  "id": "n4",
+                  "type": "decision",
+                  "label": "Under Specialist Clinic?",
+                  "input_ids": [],
+                  "condition": {
+                    "input_id": "input_under_specialist_clinic_bool",
+                    "comparator": "is_true"
+                  },
+                  "edge_label": "Raised",
+                  "children": [
+                    {
+                      "id": "n5",
+                      "type": "decision",
+                      "label": "Are They Optimised on treatment?",
+                      "input_ids": [],
+                      "condition": {
+                        "input_id": "input_optimised_on_treatment_upper_bool",
+                        "comparator": "is_true"
+                      },
+                      "edge_label": "true",
+                      "children": [
+                        {
+                          "id": "n6",
+                          "type": "decision",
+                          "label": "Are They Optimised on treatment? (upper Yes branch)",
+                          "input_ids": [],
+                          "condition": {
+                            "input_id": "input_optimised_on_treatment_upper_bool",
+                            "comparator": "is_true"
+                          },
+                          "edge_label": "true",
+                          "children": [
+                            {
+                              "id": "n7",
+                              "type": "output",
+                              "label": "Consider Lipid Clinic Referral",
+                              "edge_label": "true",
+                              "children": []
+                            },
+                            {
+                              "id": "n8",
+                              "type": "output",
+                              "label": "Refer to specialist",
+                              "edge_label": "false",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "id": "n9",
+                          "type": "action",
+                          "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                          "edge_label": "false",
+                          "children": [
+                            {
+                              "id": "n10",
+                              "type": "output",
+                              "label": "Consultation",
+                              "edge_label": "",
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "n11",
+                      "type": "decision",
+                      "label": "Taking Lipid Lowering Therapy?",
+                      "input_ids": [],
+                      "condition": {
+                        "input_id": "input_taking_lipid_lowering_therapy_bool",
+                        "comparator": "is_true"
+                      },
+                      "edge_label": "false",
+                      "children": [
+                        {
+                          "id": "n12",
+                          "type": "decision",
+                          "label": "Are They Optimised on treatment?",
+                          "input_ids": [],
+                          "condition": {
+                            "input_id": "input_optimised_on_treatment_bool",
+                            "comparator": "is_true"
+                          },
+                          "edge_label": "true",
+                          "children": [
+                            {
+                              "id": "n13",
+                              "type": "output",
+                              "label": "Mark as \"No Further Action\"",
+                              "edge_label": "true",
+                              "children": []
+                            },
+                            {
+                              "id": "n14",
+                              "type": "output",
+                              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (lower branch)",
+                              "edge_label": "false",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "id": "n15",
+                          "type": "decision",
+                          "label": "Primary or Secondary Prevention?",
+                          "input_ids": [],
+                          "condition": {
+                            "input_id": "input_prevention_type_enum",
+                            "comparator": "enum_eq",
+                            "value": "Primary"
+                          },
+                          "edge_label": "false",
+                          "children": [
+                            {
+                              "id": "n16",
+                              "type": "action",
+                              "label": "Calculate QRISK2/3",
+                              "input_ids": [],
+                              "edge_label": "true",
+                              "children": [
+                                {
+                                  "id": "n17",
+                                  "type": "decision",
+                                  "label": "QRISK2/3 \u2265 10%?",
+                                  "input_ids": [],
+                                  "condition": {
+                                    "input_id": "input_qrisk_score_float",
+                                    "comparator": "gte",
+                                    "value": 10
+                                  },
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n18",
+                                      "type": "output",
+                                      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                                      "edge_label": "true",
+                                      "children": []
+                                    },
+                                    {
+                                      "id": "n19",
+                                      "type": "output",
+                                      "label": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+                                      "edge_label": "false",
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "id": "n20",
+                              "type": "decision",
+                              "label": "Taking Maximally Tolerated Statin?",
+                              "input_ids": [],
+                              "condition": {
+                                "input_id": "input_taking_maximally_tolerated_statin_bool",
+                                "comparator": "is_true"
+                              },
+                              "edge_label": "false",
+                              "children": [
+                                {
+                                  "id": "n21",
+                                  "type": "decision",
+                                  "label": "Assess LDL",
+                                  "input_ids": [],
+                                  "condition": {
+                                    "input_id": "input_ldl_float",
+                                    "comparator": "gte",
+                                    "value": 2.6
+                                  },
+                                  "edge_label": "true",
+                                  "children": [
+                                    {
+                                      "id": "n22",
+                                      "type": "action",
+                                      "label": "Initiate Inclisiran",
+                                      "edge_label": "true",
+                                      "children": [
+                                        {
+                                          "id": "n23",
+                                          "type": "decision",
+                                          "label": "Has had 6 months of Inclisiran",
+                                          "input_ids": [],
+                                          "condition": {
+                                            "input_id": "input_had_6_months_inclisiran_bool",
+                                            "comparator": "is_true"
+                                          },
+                                          "edge_label": "",
+                                          "children": [
+                                            {
+                                              "id": "n24",
+                                              "type": "decision",
+                                              "label": "LDL >2.0",
+                                              "input_ids": [],
+                                              "condition": {
+                                                "input_id": "input_ldl_float",
+                                                "comparator": "gt",
+                                                "value": 2.0
+                                              },
+                                              "edge_label": "true",
+                                              "children": [
+                                                {
+                                                  "id": "n25",
+                                                  "type": "output",
+                                                  "label": "Add in Ezetimibe",
+                                                  "edge_label": "true",
+                                                  "children": []
+                                                },
+                                                {
+                                                  "id": "n26",
+                                                  "type": "output",
+                                                  "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                                                  "edge_label": "false",
+                                                  "children": []
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "id": "n27",
+                                              "type": "output",
+                                              "label": "Repeat Lipids at 3 months",
+                                              "edge_label": "false",
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "id": "n28",
+                                      "type": "decision",
+                                      "label": "LDL 2-2.5?",
+                                      "input_ids": [],
+                                      "condition": {
+                                        "input_id": "input_ldl_float",
+                                        "comparator": "within_range",
+                                        "value": 2.0,
+                                        "value2": 2.5
+                                      },
+                                      "edge_label": "false",
+                                      "children": [
+                                        {
+                                          "id": "n29",
+                                          "type": "output",
+                                          "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+                                          "edge_label": "true",
+                                          "children": []
+                                        },
+                                        {
+                                          "id": "n30",
+                                          "type": "output",
+                                          "label": "No Further Action (LDL \u22642)",
+                                          "edge_label": "false",
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "id": "n31",
+                                  "type": "output",
+                                  "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (secondary not maximally tolerated)",
+                                  "edge_label": "false",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The upper 'Are They Optimised on treatment?' branch (under specialist clinic) has two sub-paths leading to 'Consider Lipid Clinic Referral' and 'Refer to specialist' - the exact conditions distinguishing these two outputs are not clearly labeled in the diagram.",
+    "The 'not coded, assume no' label near the 'Under Specialist Clinic?' decision is ambiguous - it is unclear if this is a default assumption or a separate branch condition.",
+    "The 'Primary/Secondary Treatment' label appears twice in the diagram (bottom-left corner) as a loopback reference - it is unclear which exact node this loops back to.",
+    "The 'No' branch from 'Are They Optimised on treatment?' (upper/specialist branch) leads to a 'Send Lipid Lowering Therapy AccuRx' followed by 'Consultation' - but the flow continues in an unclear way after consultation.",
+    "The boundary between LDL 2-2.5 and LDL \u22652.6 paths from 'Assess LDL' could be more precisely defined (inclusive/exclusive boundaries).",
+    "The 'Assess LDL' node seems to serve as both a decision node with three branches (LDL \u22642, LDL 2-2.5, LDL \u22652.6) but the diagram representation makes it ambiguous whether it is one three-way decision or two sequential decisions.",
+    "It is unclear from the diagram whether 'Repeat Lipids at 3 months' loops back into the workflow or is a terminal output."
+  ],
+  "variables": []
+}

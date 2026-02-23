@@ -1,0 +1,212 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "No Further Action",
+      "description": "Patient does not require further action at this time"
+    },
+    {
+      "name": "Consider Lipid Clinic Referral",
+      "description": "Refer patient to specialist lipid clinic"
+    },
+    {
+      "name": "Send 'Lipid Lowering Therapy' AccuRx with self booking link (Primary/Secondary)",
+      "description": "Send AccuRx message for lipid lowering therapy with self booking link to patient in primary or secondary prevention context"
+    },
+    {
+      "name": "Send 'Lipid Lowering - Acute' with self booking link (QRISK \u226510%)",
+      "description": "Send AccuRx message for lipid lowering acute consultation with self booking link for patients with QRISK \u226510%"
+    },
+    {
+      "name": "Send 'Lipid Lowering Therapy' Acute with self booking link (LDL 2.6+)",
+      "description": "Send AccuRx message for lipid lowering therapy acute consultation with self booking link for patients with LDL \u22652.6"
+    },
+    {
+      "name": "Send 'High Cholesterol - Low QRISK' Acute with self booking link",
+      "description": "Send AccuRx message for high cholesterol low QRISK acute consultation with self booking link"
+    },
+    {
+      "name": "Mark as Satisfactory",
+      "description": "Mark the lipid results as satisfactory, no further action needed"
+    },
+    {
+      "name": "Mark as 'No Further Action'",
+      "description": "Mark as no further action required for optimised patients"
+    },
+    {
+      "name": "Add in Ezetimibe",
+      "description": "Add Ezetimibe to the patient's treatment regimen (Secondary prevention, LDL \u22652.0)"
+    },
+    {
+      "name": "Initiate Inclisiran",
+      "description": "Initiate Inclisiran treatment (Secondary prevention, LDL \u22652.6 after 6 months on maximally tolerated statin)"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Assess Total Cholesterol Result",
+      "children": [
+        {
+          "id": "n1",
+          "type": "decision",
+          "label": "Normal or Raised?",
+          "input_ids": [],
+          "edge_label": "",
+          "children": [
+            {
+              "id": "n2",
+              "type": "decision",
+              "label": "Taking Lipid Lowering Therapy?",
+              "input_ids": [],
+              "edge_label": "Normal",
+              "children": [
+                {
+                  "id": "n3",
+                  "type": "output",
+                  "label": "Mark as Satisfactory",
+                  "edge_label": "No"
+                },
+                {
+                  "id": "n4",
+                  "type": "decision",
+                  "label": "Are They Optimised on treatment?",
+                  "input_ids": [],
+                  "edge_label": "Yes",
+                  "children": [
+                    {
+                      "id": "n5",
+                      "type": "output",
+                      "label": "Mark as 'No Further Action'",
+                      "edge_label": "Yes"
+                    },
+                    {
+                      "id": "n6",
+                      "type": "output",
+                      "label": "Send 'Lipid Lowering Therapy' AccuRx with self booking link",
+                      "edge_label": "No"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "n7",
+              "type": "decision",
+              "label": "Primary or Secondary Prevention?",
+              "input_ids": [],
+              "edge_label": "Raised",
+              "children": [
+                {
+                  "id": "n8",
+                  "type": "action",
+                  "label": "Calculate QRISK2/3",
+                  "input_ids": [],
+                  "edge_label": "Primary",
+                  "children": [
+                    {
+                      "id": "n9",
+                      "type": "decision",
+                      "label": "QRISK2/3 threshold",
+                      "input_ids": [],
+                      "edge_label": "",
+                      "children": [
+                        {
+                          "id": "n10",
+                          "type": "output",
+                          "label": "Send 'Lipid Lowering - Acute' with self booking link",
+                          "edge_label": "\u226510%"
+                        },
+                        {
+                          "id": "n11",
+                          "type": "output",
+                          "label": "Send 'High Cholesterol - Low QRISK' Acute with self booking link",
+                          "edge_label": "<10%"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "n12",
+                  "type": "decision",
+                  "label": "Taking Maximally Tolerated Statin?",
+                  "input_ids": [],
+                  "edge_label": "Secondary",
+                  "children": [
+                    {
+                      "id": "n13",
+                      "type": "output",
+                      "label": "Send 'Lipid Lowering Therapy' AccuRx with self booking link",
+                      "edge_label": "No"
+                    },
+                    {
+                      "id": "n14",
+                      "type": "action",
+                      "label": "Assess LDL",
+                      "input_ids": [],
+                      "edge_label": "Yes",
+                      "children": [
+                        {
+                          "id": "n15",
+                          "type": "decision",
+                          "label": "LDL threshold",
+                          "input_ids": [],
+                          "edge_label": "",
+                          "children": [
+                            {
+                              "id": "n16",
+                              "type": "output",
+                              "label": "Send 'Lipid Lowering Therapy' Acute with self booking link",
+                              "edge_label": "LDL 2-2.5"
+                            },
+                            {
+                              "id": "n17",
+                              "type": "decision",
+                              "label": "LDL \u22652.0",
+                              "input_ids": [],
+                              "edge_label": "LDL \u22652.6",
+                              "children": [
+                                {
+                                  "id": "n18",
+                                  "type": "output",
+                                  "label": "Initiate Inclisiran",
+                                  "edge_label": "Had 6 months of Inclisiran"
+                                },
+                                {
+                                  "id": "n19",
+                                  "type": "output",
+                                  "label": "Add in Ezetimibe",
+                                  "edge_label": "LDL \u22652.0 (has not had 6 months Inclisiran)"
+                                }
+                              ]
+                            },
+                            {
+                              "id": "n20",
+                              "type": "output",
+                              "label": "No Further Action",
+                              "edge_label": "LDL <2"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The exact threshold for 'Normal' total cholesterol is stated as \u22645 or below but noted to vary from clinic to clinic. The precise value used in decision logic is unclear.",
+    "The diagram shows 'Under Specialist Clinic?' leading to either 'No Further Action' (Yes branch) or to 'Primary/Secondary Treatment' (No branch). It is unclear at what point in the workflow this decision occurs relative to 'Assess Total Cholesterol Result'\u2014it appears to be a preliminary check but spatial layout suggests it might be evaluated in parallel or after initial assessment.",
+    "The workflow references 'Are They Optimised on treatment?' in both Primary and Secondary prevention contexts. The diagram shows this decision branching differently depending on context, but the exact input or measurement criteria for 'optimised' is not explicitly defined.",
+    "The node 'Assess LDL' leads to multiple LDL-based decisions (LDL 2-2.5, LDL \u22652.6, LDL <2, LDL \u22652.0). The exact branching logic and order of evaluation for these thresholds is ambiguous and may overlap.",
+    "The 'Initiate Inclisiran' output depends on the patient having had 6 months of Inclisiran, but the workflow does not specify an input for this time-based condition. It is unclear if this is an implicit state or requires an additional input."
+  ],
+  "variables": []
+}
