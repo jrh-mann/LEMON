@@ -189,6 +189,15 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
+        if tool == "add_image_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            self.socketio.emit(
+                "annotations_update",
+                {
+                    "annotations": result.get("annotations", [])
+                },
+                to=self.sid,
+            )
+
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             if tool in WORKFLOW_EDIT_TOOLS:
                 self.socketio.emit(
