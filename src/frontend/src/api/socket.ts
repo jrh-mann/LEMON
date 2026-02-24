@@ -432,6 +432,13 @@ export function connectSocket(): Socket {
     console.log('[Socket] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
   })
 
+  // Annotations update (from orchestrator image questions)
+  socket.on('annotations_update', (data: { annotations: unknown[] }) => {
+    console.log('[Socket] annotations_update:', data)
+    const workflowStore = useWorkflowStore.getState()
+    workflowStore.setPendingAnnotations(data.annotations as any)
+  })
+
   // ===== Execution Events =====
   // These events handle visual workflow execution (highlighting nodes as they execute)
 
