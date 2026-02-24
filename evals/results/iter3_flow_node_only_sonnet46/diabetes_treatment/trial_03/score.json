@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.37209302325581395,
+    "edge_f1": 0.16326530612244897,
+    "variable_f1": 0.4761904761904762,
+    "output_f1": 0.2608695652173913,
+    "semantic_score": 0.08333333333333333,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 37.21,
+    "edge_f1": 16.33,
+    "variable_f1": 47.62,
+    "output_f1": 26.09,
+    "semantic_score": 8.33,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.24802177696154293,
+  "composite_score": 24.8,
+  "details": {
+    "node": {
+      "matched": 8,
+      "predicted_total": 23,
+      "reference_total": 20,
+      "precision": 0.34782608695652173,
+      "recall": 0.4
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 25,
+      "reference_total": 24,
+      "precision": 0.16,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 5,
+      "predicted_total": 9,
+      "reference_total": 12,
+      "precision": 0.5555555555555556,
+      "recall": 0.4166666666666667
+    },
+    "output": {
+      "matched": 3,
+      "predicted_total": 11,
+      "reference_total": 12,
+      "precision": 0.2727272727272727,
+      "recall": 0.25
+    },
+    "semantic": {
+      "score": 0.08333333333333333,
+      "matched": 1,
+      "total": 12,
+      "success_rate": 0.08333333333333333,
+      "execution_failures": 0,
+      "mapping_coverage": 0.4166666666666667,
+      "failures": [
+        {
+          "test_index": 0,
+          "predicted": "Ozempic titrate to full dose with 3 monthly A1c's",
+          "expected": "Admit via A&E/Medics"
+        },
+        {
+          "test_index": 2,
+          "predicted": "Ozempic titrate to full dose with 3 monthly A1c's",
+          "expected": "Metformin (continue and review in 3 months)"
+        },
+        {
+          "test_index": 3,
+          "predicted": "Ozempic titrate to full dose with 3 monthly A1c's",
+          "expected": "SGLT2i (continue and review in 3 months)"
+        },
+        {
+          "test_index": 4,
+          "predicted": "Refer to Insulin Initiator",
+          "expected": "Ozempic titrate to full dose with 3 monthly A1c's"
+        },
+        {
+          "test_index": 5,
+          "predicted": "Ozempic titrate to full dose with 3 monthly A1c's",
+          "expected": "Refer to Insulin Initiator"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 28,
+      "errors": [
+        "Decision node '*CVD Known or Risk' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Symptoms & New A1c >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'A1c not controlled - Start Dual Therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'A1c Not Controlled - Start Triple Therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'High prognostic value' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Despite Optimisation and maximally tolerated dose A1C >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n26",
+        "Decision node 'Despite Optimisation and maximally tolerated dose A1C >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n23",
+        "Decision node 'Admission required?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 8,
+    "node_type_overlap_count": 16,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

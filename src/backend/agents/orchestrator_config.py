@@ -92,6 +92,39 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "add_image_question",
+                "description": (
+                    "Place a question dot on the user's workflow image at specific coordinates. "
+                    "Use this when you have a question about a specific part of the image, "
+                    "typically driven by doubts raised by the visual analysis."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image_name": {
+                            "type": "string",
+                            "description": "The name of the uploaded image file (e.g. diagram.png).",
+                        },
+                        "x": {
+                            "type": "integer",
+                            "description": "The X coordinate on the image where the question applies.",
+                        },
+                        "y": {
+                            "type": "integer",
+                            "description": "The Y coordinate on the image where the question applies.",
+                        },
+                        "question": {
+                            "type": "string",
+                            "description": "The specific question you want to ask the user.",
+                        },
+                    },
+                    "required": ["image_name", "x", "y", "question"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "get_current_workflow",
                 "description": (
                     "Get a workflow's current state as JSON (nodes and edges). "

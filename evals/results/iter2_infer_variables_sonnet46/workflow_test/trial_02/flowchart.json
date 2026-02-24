@@ -1,0 +1,493 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Lipid Results - Management Guide",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_assess_total_cholesterol",
+      "type": "process",
+      "label": "Assess Total Cholesterol Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_total_cholesterol_result_float"
+      ]
+    },
+    {
+      "id": "n_chol_threshold",
+      "type": "decision",
+      "label": "Total Cholesterol > 7.5 or \u2264 7.5?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_total_cholesterol_result_float"
+      ]
+    },
+    {
+      "id": "n_normal_or_raised",
+      "type": "decision",
+      "label": "Normal or Raised?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_cholesterol_normal_or_raised_enum"
+      ]
+    },
+    {
+      "id": "n_taking_lipid_lowering",
+      "type": "decision",
+      "label": "Taking Lipid Lowering Therapy?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_taking_lipid_lowering_therapy_bool"
+      ]
+    },
+    {
+      "id": "n_primary_secondary_prevention",
+      "type": "decision",
+      "label": "Primary or Secondary Prevention?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_prevention_type_enum"
+      ]
+    },
+    {
+      "id": "n_calculate_qrisk",
+      "type": "process",
+      "label": "Calculate QRISK2/3",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_qrisk_score_float"
+      ]
+    },
+    {
+      "id": "n_qrisk_threshold",
+      "type": "decision",
+      "label": "QRISK2/3 \u2265 10% or < 10%?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_qrisk_score_float"
+      ]
+    },
+    {
+      "id": "n_send_high_chol_low_qrisk",
+      "type": "output",
+      "label": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_send_lipid_high_qrisk",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (qrisk-high)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_taking_max_statin",
+      "type": "decision",
+      "label": "Taking Maximally Tolerated Statin?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_taking_maximally_tolerated_statin_bool"
+      ]
+    },
+    {
+      "id": "n_send_lipid_statin_no",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (statin-no)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_assess_ldl",
+      "type": "process",
+      "label": "Assess LDL",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_ldl_float"
+      ]
+    },
+    {
+      "id": "n_ldl_branch",
+      "type": "decision",
+      "label": "LDL level?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_ldl_float"
+      ]
+    },
+    {
+      "id": "n_ldl_2_25",
+      "type": "decision",
+      "label": "LDL 2-2.5 or LDL \u2265 2.6?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_ldl_float"
+      ]
+    },
+    {
+      "id": "n_initiate_inclisiran",
+      "type": "output",
+      "label": "Initiate Inclisiran",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_had_6_months_inclisiran",
+      "type": "decision",
+      "label": "Has had 6 months of Inclisiran / Hasn't had 6 months of Inclisiran",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_had_6_months_inclisiran_bool"
+      ]
+    },
+    {
+      "id": "n_repeat_lipids",
+      "type": "process",
+      "label": "Repeat Lipids at 3 months",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_ldl_gt2",
+      "type": "decision",
+      "label": "LDL >2.0",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_ldl_float"
+      ]
+    },
+    {
+      "id": "n_initiate_inclisiran_repeat",
+      "type": "output",
+      "label": "Initiate Inclisiran",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_send_lipid_qrisk_high",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (qrisk-high)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_add_ezetimibe",
+      "type": "output",
+      "label": "Add in Ezetimibe",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_no_further_action_ldl",
+      "type": "output",
+      "label": "No Further Action (LDL<=2)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_optimised_lower",
+      "type": "decision",
+      "label": "Are They Optimised on treatment?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_optimised_on_treatment_bool"
+      ]
+    },
+    {
+      "id": "n_send_lipid_not_optimised_lower",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link (optimised-no)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_mark_no_further_action",
+      "type": "output",
+      "label": "Mark as \"No Further Action\"",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_mark_satisfactory",
+      "type": "output",
+      "label": "Mark as Satisfactory",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_under_specialist",
+      "type": "decision",
+      "label": "Under Specialist Clinic?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_under_specialist_clinic_bool"
+      ]
+    },
+    {
+      "id": "n_optimised_upper",
+      "type": "decision",
+      "label": "Are They Optimised on treatment?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_optimised_on_treatment_secondary_bool"
+      ]
+    },
+    {
+      "id": "n_send_lipid_not_optimised_upper",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_primary_secondary_treatment_upper",
+      "type": "decision",
+      "label": "Primary/Secondary Treatment",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_prevention_type_enum"
+      ]
+    },
+    {
+      "id": "n_refer_specialist",
+      "type": "output",
+      "label": "Refer to specilaist",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_consider_lipid_referral",
+      "type": "output",
+      "label": "Consider Lipid Clinic Referral",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_no_further_action_specialist",
+      "type": "output",
+      "label": "No Further Action",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n_assess_total_cholesterol",
+      "label": "",
+      "id": "start->n_assess_total_cholesterol"
+    },
+    {
+      "from": "n_assess_total_cholesterol",
+      "to": "n_chol_threshold",
+      "label": "",
+      "id": "n_assess_total_cholesterol->n_chol_threshold"
+    },
+    {
+      "from": "n_chol_threshold",
+      "to": "n_under_specialist",
+      "label": "true",
+      "id": "n_chol_threshold->n_under_specialist"
+    },
+    {
+      "from": "n_chol_threshold",
+      "to": "n_normal_or_raised",
+      "label": "false",
+      "id": "n_chol_threshold->n_normal_or_raised"
+    },
+    {
+      "from": "n_normal_or_raised",
+      "to": "n_mark_satisfactory",
+      "label": "true",
+      "id": "n_normal_or_raised->n_mark_satisfactory"
+    },
+    {
+      "from": "n_normal_or_raised",
+      "to": "n_taking_lipid_lowering",
+      "label": "false",
+      "id": "n_normal_or_raised->n_taking_lipid_lowering"
+    },
+    {
+      "from": "n_taking_lipid_lowering",
+      "to": "n_optimised_lower",
+      "label": "true",
+      "id": "n_taking_lipid_lowering->n_optimised_lower"
+    },
+    {
+      "from": "n_taking_lipid_lowering",
+      "to": "n_primary_secondary_prevention",
+      "label": "false",
+      "id": "n_taking_lipid_lowering->n_primary_secondary_prevention"
+    },
+    {
+      "from": "n_primary_secondary_prevention",
+      "to": "n_taking_max_statin",
+      "label": "true",
+      "id": "n_primary_secondary_prevention->n_taking_max_statin"
+    },
+    {
+      "from": "n_primary_secondary_prevention",
+      "to": "n_calculate_qrisk",
+      "label": "false",
+      "id": "n_primary_secondary_prevention->n_calculate_qrisk"
+    },
+    {
+      "from": "n_calculate_qrisk",
+      "to": "n_qrisk_threshold",
+      "label": "",
+      "id": "n_calculate_qrisk->n_qrisk_threshold"
+    },
+    {
+      "from": "n_qrisk_threshold",
+      "to": "n_send_lipid_high_qrisk",
+      "label": "true",
+      "id": "n_qrisk_threshold->n_send_lipid_high_qrisk"
+    },
+    {
+      "from": "n_qrisk_threshold",
+      "to": "n_send_high_chol_low_qrisk",
+      "label": "false",
+      "id": "n_qrisk_threshold->n_send_high_chol_low_qrisk"
+    },
+    {
+      "from": "n_taking_max_statin",
+      "to": "n_assess_ldl",
+      "label": "true",
+      "id": "n_taking_max_statin->n_assess_ldl"
+    },
+    {
+      "from": "n_taking_max_statin",
+      "to": "n_send_lipid_statin_no",
+      "label": "false",
+      "id": "n_taking_max_statin->n_send_lipid_statin_no"
+    },
+    {
+      "from": "n_assess_ldl",
+      "to": "n_ldl_branch",
+      "label": "",
+      "id": "n_assess_ldl->n_ldl_branch"
+    },
+    {
+      "from": "n_ldl_branch",
+      "to": "n_no_further_action_ldl",
+      "label": "true",
+      "id": "n_ldl_branch->n_no_further_action_ldl"
+    },
+    {
+      "from": "n_ldl_branch",
+      "to": "n_ldl_2_25",
+      "label": "false",
+      "id": "n_ldl_branch->n_ldl_2_25"
+    },
+    {
+      "from": "n_ldl_2_25",
+      "to": "n_had_6_months_inclisiran",
+      "label": "true",
+      "id": "n_ldl_2_25->n_had_6_months_inclisiran"
+    },
+    {
+      "from": "n_ldl_2_25",
+      "to": "n_initiate_inclisiran",
+      "label": "false",
+      "id": "n_ldl_2_25->n_initiate_inclisiran"
+    },
+    {
+      "from": "n_had_6_months_inclisiran",
+      "to": "n_add_ezetimibe",
+      "label": "true",
+      "id": "n_had_6_months_inclisiran->n_add_ezetimibe"
+    },
+    {
+      "from": "n_had_6_months_inclisiran",
+      "to": "n_repeat_lipids",
+      "label": "false",
+      "id": "n_had_6_months_inclisiran->n_repeat_lipids"
+    },
+    {
+      "from": "n_repeat_lipids",
+      "to": "n_ldl_gt2",
+      "label": "",
+      "id": "n_repeat_lipids->n_ldl_gt2"
+    },
+    {
+      "from": "n_ldl_gt2",
+      "to": "n_send_lipid_qrisk_high",
+      "label": "false",
+      "id": "n_ldl_gt2->n_send_lipid_qrisk_high"
+    },
+    {
+      "from": "n_ldl_gt2",
+      "to": "n_initiate_inclisiran_repeat",
+      "label": "true",
+      "id": "n_ldl_gt2->n_initiate_inclisiran_repeat"
+    },
+    {
+      "from": "n_optimised_lower",
+      "to": "n_mark_no_further_action",
+      "label": "true",
+      "id": "n_optimised_lower->n_mark_no_further_action"
+    },
+    {
+      "from": "n_optimised_lower",
+      "to": "n_send_lipid_not_optimised_lower",
+      "label": "false",
+      "id": "n_optimised_lower->n_send_lipid_not_optimised_lower"
+    },
+    {
+      "from": "n_under_specialist",
+      "to": "n_no_further_action_specialist",
+      "label": "true",
+      "id": "n_under_specialist->n_no_further_action_specialist"
+    },
+    {
+      "from": "n_under_specialist",
+      "to": "n_optimised_upper",
+      "label": "false",
+      "id": "n_under_specialist->n_optimised_upper"
+    },
+    {
+      "from": "n_optimised_upper",
+      "to": "n_primary_secondary_treatment_upper",
+      "label": "true",
+      "id": "n_optimised_upper->n_primary_secondary_treatment_upper"
+    },
+    {
+      "from": "n_optimised_upper",
+      "to": "n_send_lipid_not_optimised_upper",
+      "label": "false",
+      "id": "n_optimised_upper->n_send_lipid_not_optimised_upper"
+    },
+    {
+      "from": "n_primary_secondary_treatment_upper",
+      "to": "n_consider_lipid_referral",
+      "label": "true",
+      "id": "n_primary_secondary_treatment_upper->n_consider_lipid_referral"
+    },
+    {
+      "from": "n_primary_secondary_treatment_upper",
+      "to": "n_refer_specialist",
+      "label": "false",
+      "id": "n_primary_secondary_treatment_upper->n_refer_specialist"
+    }
+  ]
+}

@@ -32,6 +32,7 @@ export default function Chat() {
   const {
     pendingImage,
     pendingImageName,
+    pendingAnnotations,
     clearPendingImage,
   } = useWorkflowStore()
 
@@ -122,8 +123,13 @@ export default function Chat() {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending image if available
-    sendChatMessage(trimmed, conversationId, pendingImage || undefined)
+    // Send via socket - include pending image and annotations if available
+    sendChatMessage(
+      trimmed,
+      conversationId,
+      pendingImage || undefined,
+      pendingAnnotations.length > 0 ? pendingAnnotations : undefined
+    )
 
     // Keep pending image around so user can reference it in Source Image tab
     // Image is only cleared when user explicitly clicks x or uploads a new one

@@ -1,6 +1,7 @@
 ﻿import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
+import ImageAnnotator from './ImageAnnotator'
 import {
   getNodeSize,
   getNodeColor,
@@ -76,6 +77,8 @@ export default function Canvas() {
     pushHistory,
     pendingImage,
     pendingImageName,
+    pendingAnnotations,
+    setPendingAnnotations,
     clearPendingImage,
     execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
@@ -1313,7 +1316,7 @@ export default function Canvas() {
         )}
       </div>
 
-      {/* Image preview tab */}
+      {/* Image preview tab with annotation canvas */}
       {canvasTab === 'image' && pendingImage && (
         <div className="image-preview-container">
           <div className="image-preview-header">
@@ -1329,12 +1332,11 @@ export default function Canvas() {
               Ã—
             </button>
           </div>
-          <div className="image-preview-content">
-            <img src={pendingImage} alt="Uploaded workflow" />
-          </div>
-          <div className="image-preview-hint">
-            Ask the orchestrator to analyse this image in the chat below
-          </div>
+          <ImageAnnotator
+            imageSrc={pendingImage}
+            annotations={pendingAnnotations}
+            onChange={setPendingAnnotations}
+          />
         </div>
       )}
 

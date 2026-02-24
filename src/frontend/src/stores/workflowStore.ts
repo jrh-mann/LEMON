@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message, ExecutionLogEntry } from '../types'
+import type { Annotation } from '../components/ImageAnnotator'
 import { useChatStore } from './chatStore'
 import { patchWorkflow } from '../api/workflows'
 
@@ -40,6 +41,7 @@ export interface WorkflowTab {
   historyIndex: number
   pendingImage: string | null
   pendingImageName: string | null
+  pendingAnnotations: Annotation[]
   analysis: WorkflowAnalysis | null
   // Chat state per tab — each workflow gets its own conversation
   conversationId: string | null
@@ -82,6 +84,7 @@ interface WorkflowState {
   // Pending image (per-tab)
   pendingImage: string | null
   pendingImageName: string | null
+  pendingAnnotations: Annotation[]
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
@@ -134,6 +137,8 @@ interface WorkflowState {
   // Pending image (per-tab)
   setPendingImage: (image: string | null, name?: string | null) => void
   clearPendingImage: () => void
+  setPendingAnnotations: (annotations: Annotation[]) => void
+  clearPendingAnnotations: () => void
 
   // Reset
   reset: () => void
@@ -204,6 +209,7 @@ const createInitialTab = (): WorkflowTab => {
     historyIndex: -1,
     pendingImage: null,
     pendingImageName: null,
+    pendingAnnotations: [],
     analysis: null,
     conversationId: null,  // Will be generated on first message
     messages: [],
@@ -248,6 +254,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   historyIndex: -1,
   pendingImage: null,
   pendingImageName: null,
+  pendingAnnotations: [],
 
   // Execution state
   execution: { ...initialExecutionState },
@@ -328,6 +335,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      pendingAnnotations: [],
       analysis: null,
       conversationId: null,  // New tab starts with no conversation
       messages: [],
@@ -342,6 +350,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           ...tab,
           pendingImage: state.pendingImage,
           pendingImageName: state.pendingImageName,
+          pendingAnnotations: state.pendingAnnotations,
           analysis: state.currentAnalysis,
           conversationId: chatSnapshot.conversationId,
           messages: chatSnapshot.messages,
@@ -362,6 +371,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      pendingAnnotations: [],
     })
     // Reset chat for the new tab (fresh conversation)
     useChatStore.getState().reset()
@@ -385,6 +395,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         historyIndex: -1,
         pendingImage: null,
         pendingImageName: null,
+        pendingAnnotations: [],
       })
       // Reset chat for the fresh tab
       useChatStore.getState().reset()
@@ -414,6 +425,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeIds: [],
       pendingImage: activeTab.pendingImage,
       pendingImageName: activeTab.pendingImageName,
+      pendingAnnotations: activeTab.pendingAnnotations,
     })
     // Restore chat state from the tab we're switching to
     if (tabId === state.activeTabId) {
@@ -436,6 +448,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           historyIndex: state.historyIndex,
           pendingImage: state.pendingImage,
           pendingImageName: state.pendingImageName,
+          pendingAnnotations: state.pendingAnnotations,
           analysis: state.currentAnalysis,
           conversationId: chatSnapshot.conversationId,
           messages: chatSnapshot.messages,
@@ -460,6 +473,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       connectFromId: null,
       pendingImage: newTab.pendingImage,
       pendingImageName: newTab.pendingImageName,
+      pendingAnnotations: newTab.pendingAnnotations,
     })
     // Restore chat state from the incoming tab
     useChatStore.getState().restoreState(newTab.conversationId, newTab.messages)
@@ -791,8 +805,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
   // Pending image (per-tab)
-  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name }),
-  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null }),
+  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name, pendingAnnotations: [] }),
+  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null, pendingAnnotations: [] }),
+  setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
+  clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
 
   // Reset
   reset: () =>
@@ -808,6 +824,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingImage: null,
       pendingImageName: null,
+      pendingAnnotations: [],
       execution: { ...initialExecutionState },
     }),
 

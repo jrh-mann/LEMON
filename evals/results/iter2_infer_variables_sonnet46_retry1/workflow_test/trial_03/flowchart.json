@@ -1,0 +1,262 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Lipid Results - Management Guide",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n1",
+      "type": "process",
+      "label": "Assess Total Cholesterol Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_total_cholesterol_result_float"
+      ]
+    },
+    {
+      "id": "n2",
+      "type": "decision",
+      "label": "Under Specialist Clinic?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_under_specialist_clinic_bool"
+      ]
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "label": "Normal or Raised?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_total_cholesterol_result_float",
+        "input_normal_or_raised_enum"
+      ]
+    },
+    {
+      "id": "n6",
+      "type": "decision",
+      "label": "Taking Lipid Lowering Therapy?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_taking_lipid_lowering_therapy_bool"
+      ]
+    },
+    {
+      "id": "n10",
+      "type": "decision",
+      "label": "Primary or Secondary Prevention?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_primary_or_secondary_enum"
+      ]
+    },
+    {
+      "id": "n12",
+      "type": "decision",
+      "label": "Taking Maximally Tolerated Statin?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_taking_maximally_tolerated_statin_bool"
+      ]
+    },
+    {
+      "id": "n14",
+      "type": "process",
+      "label": "Calculate QRISK2/3",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_qrisk_score_float"
+      ]
+    },
+    {
+      "id": "n15",
+      "type": "decision",
+      "label": "QRISK2/3 \u2265 10%?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_qrisk_score_float"
+      ]
+    },
+    {
+      "id": "n17",
+      "type": "output",
+      "label": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n16",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n13",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n11",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n7",
+      "type": "decision",
+      "label": "Are They Optimised on treatment?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_optimised_on_treatment_bool"
+      ]
+    },
+    {
+      "id": "n9",
+      "type": "output",
+      "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n8",
+      "type": "output",
+      "label": "Mark as \"No Further Action\"",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n5",
+      "type": "output",
+      "label": "Mark as Satisfactory",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n3",
+      "type": "output",
+      "label": "No Further Action",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n1",
+      "label": "",
+      "id": "start->n1"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "",
+      "id": "n1->n2"
+    },
+    {
+      "from": "n2",
+      "to": "n3",
+      "label": "true",
+      "id": "n2->n3"
+    },
+    {
+      "from": "n2",
+      "to": "n4",
+      "label": "false",
+      "id": "n2->n4"
+    },
+    {
+      "from": "n4",
+      "to": "n5",
+      "label": "true",
+      "id": "n4->n5"
+    },
+    {
+      "from": "n4",
+      "to": "n6",
+      "label": "false",
+      "id": "n4->n6"
+    },
+    {
+      "from": "n6",
+      "to": "n7",
+      "label": "true",
+      "id": "n6->n7"
+    },
+    {
+      "from": "n6",
+      "to": "n10",
+      "label": "false",
+      "id": "n6->n10"
+    },
+    {
+      "from": "n10",
+      "to": "n11",
+      "label": "true",
+      "id": "n10->n11"
+    },
+    {
+      "from": "n10",
+      "to": "n12",
+      "label": "false",
+      "id": "n10->n12"
+    },
+    {
+      "from": "n12",
+      "to": "n13",
+      "label": "false",
+      "id": "n12->n13"
+    },
+    {
+      "from": "n12",
+      "to": "n14",
+      "label": "true",
+      "id": "n12->n14"
+    },
+    {
+      "from": "n14",
+      "to": "n15",
+      "label": "",
+      "id": "n14->n15"
+    },
+    {
+      "from": "n15",
+      "to": "n16",
+      "label": "true",
+      "id": "n15->n16"
+    },
+    {
+      "from": "n15",
+      "to": "n17",
+      "label": "false",
+      "id": "n15->n17"
+    },
+    {
+      "from": "n7",
+      "to": "n8",
+      "label": "true",
+      "id": "n7->n8"
+    },
+    {
+      "from": "n7",
+      "to": "n9",
+      "label": "false",
+      "id": "n7->n9"
+    }
+  ]
+}

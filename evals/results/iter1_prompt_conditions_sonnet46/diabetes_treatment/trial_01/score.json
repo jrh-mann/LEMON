@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.43137254901960786,
+    "edge_f1": 0.13333333333333333,
+    "variable_f1": 0.0,
+    "output_f1": 0.5833333333333334,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 43.14,
+    "edge_f1": 13.33,
+    "variable_f1": 0.0,
+    "output_f1": 58.33,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.19950980392156864,
+  "composite_score": 19.95,
+  "details": {
+    "node": {
+      "matched": 11,
+      "predicted_total": 31,
+      "reference_total": 20,
+      "precision": 0.3548387096774194,
+      "recall": 0.55
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 36,
+      "reference_total": 24,
+      "precision": 0.1111111111111111,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 12,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 7,
+      "predicted_total": 12,
+      "reference_total": 12,
+      "precision": 0.5833333333333334,
+      "recall": 0.5833333333333334
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 12,
+      "success_rate": 0.0,
+      "execution_failures": 12,
+      "mapping_coverage": 0.0,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "Execution error: Failed to evaluate condition at decision node '*CVD Known or Risk' (id: n1_cvd_risk): Input 'input_cvd_known_or_risk_bool' not found in execution context",
+          "expected": "Admit via A&E/Medics"
+        },
+        {
+          "test_index": 1,
+          "error": "Execution error: Failed to evaluate condition at decision node '*CVD Known or Risk' (id: n1_cvd_risk): Input 'input_cvd_known_or_risk_bool' not found in execution context",
+          "expected": "Start Gliclazide or Insulin"
+        },
+        {
+          "test_index": 2,
+          "error": "Execution error: Failed to evaluate condition at decision node '*CVD Known or Risk' (id: n1_cvd_risk): Input 'input_cvd_known_or_risk_bool' not found in execution context",
+          "expected": "Metformin (continue and review in 3 months)"
+        },
+        {
+          "test_index": 3,
+          "error": "Execution error: Failed to evaluate condition at decision node '*CVD Known or Risk' (id: n1_cvd_risk): Input 'input_cvd_known_or_risk_bool' not found in execution context",
+          "expected": "SGLT2i (continue and review in 3 months)"
+        },
+        {
+          "test_index": 4,
+          "error": "Execution error: Failed to evaluate condition at decision node '*CVD Known or Risk' (id: n1_cvd_risk): Input 'input_cvd_known_or_risk_bool' not found in execution context",
+          "expected": "Ozempic titrate to full dose with 3 monthly A1c's"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 27,
+      "errors": [
+        "Decision node '*CVD Known or Risk' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Symptoms & New A1c >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'A1c not controlled\nStart Dual Therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n28_mono_controlled",
+        "Decision node 'A1c Not Controlled\nStart Triple Therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n27_dual_controlled",
+        "Decision node 'A1c not controlled on triple therapy' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n26_triple_controlled",
+        "Decision node 'Minimum BMI for GLP Initiation is 23' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Despite Optimisation and maximally tolerated dose A1C >58' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 9,
+    "node_type_overlap_count": 20,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

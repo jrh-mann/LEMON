@@ -1,0 +1,456 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "Mark as Normal / Satisfactory",
+      "description": "Tests have normalised or notably improved; mark as normal/satisfactory"
+    },
+    {
+      "name": "Code as normal USS and file",
+      "description": "Findings normal; code as normal USS and file"
+    },
+    {
+      "name": "No Concern, or escalation required",
+      "description": "No further concern or escalation required"
+    },
+    {
+      "name": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+      "description": "Refer patient to secondary care"
+    },
+    {
+      "name": "Requires MRCP via Gastroenterology",
+      "description": "Patient requires MRCP referral via Gastroenterology"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Liver Pathology Suspected & Work up Initiated",
+      "children": [
+        {
+          "id": "n_phase1_bloods",
+          "type": "action",
+          "label": "Baseline & Phase 2 Bloods: LFT, FBC, AST, GGT (To allow FIB4 Calculation)",
+          "edge_label": "",
+          "children": [
+            {
+              "id": "n_alt_normal_decision",
+              "type": "decision",
+              "label": "Tests normalise or notably improve",
+              "input_ids": [],
+              "condition": {
+                "input_id": "input_alt_status_enum",
+                "comparator": "enum_eq",
+                "value": "normalise_or_improve"
+              },
+              "children": [
+                {
+                  "id": "n_mark_normal",
+                  "type": "output",
+                  "label": "Mark as Normal / Satisfactory",
+                  "edge_label": "true",
+                  "children": []
+                },
+                {
+                  "id": "n_alt_abnormal_decision",
+                  "type": "decision",
+                  "label": "ALT remains abnormal, worsens and/or additional tests are abnormal too",
+                  "input_ids": [],
+                  "condition": {
+                    "input_id": "input_findings_duration_enum",
+                    "comparator": "enum_eq",
+                    "value": "less_than_3_months"
+                  },
+                  "edge_label": "false",
+                  "children": [
+                    {
+                      "id": "n_recheck_baseline",
+                      "type": "action",
+                      "label": "Recheck Baseline Liver Profile in appropriate timeframe",
+                      "edge_label": "true",
+                      "children": [
+                        {
+                          "id": "n_recheck_result_decision",
+                          "type": "decision",
+                          "label": "Tests normalise or notably improve after recheck",
+                          "input_ids": [],
+                          "condition": {
+                            "input_id": "input_recheck_result_enum",
+                            "comparator": "enum_eq",
+                            "value": "normalise"
+                          },
+                          "children": [
+                            {
+                              "id": "n_mark_normal_2",
+                              "type": "output",
+                              "label": "Mark as Normal / Satisfactory",
+                              "edge_label": "true",
+                              "children": []
+                            },
+                            {
+                              "id": "n_sustained_worsening",
+                              "type": "action",
+                              "label": "Patient needs consultation for liver pathology and consent for further testing",
+                              "edge_label": "false",
+                              "children": [
+                                {
+                                  "id": "n_fib4_nafld",
+                                  "type": "action",
+                                  "label": "FIB 4 Score & NAFLD Fibrosis Score",
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n_request_uss",
+                                      "type": "action",
+                                      "label": "Request Liver USS if not done since abnormal LFT have been noted",
+                                      "edge_label": "",
+                                      "children": [
+                                        {
+                                          "id": "n_uss_result_decision",
+                                          "type": "decision",
+                                          "label": "USS result normal",
+                                          "input_ids": [],
+                                          "condition": {
+                                            "input_id": "input_review_result_enum",
+                                            "comparator": "enum_eq",
+                                            "value": "normal"
+                                          },
+                                          "children": [
+                                            {
+                                              "id": "n_code_normal",
+                                              "type": "output",
+                                              "label": "Code as normal USS and file",
+                                              "edge_label": "true",
+                                              "children": []
+                                            },
+                                            {
+                                              "id": "n_phase4_bloods",
+                                              "type": "action",
+                                              "label": "Phase 4 Bloods",
+                                              "edge_label": "false",
+                                              "children": [
+                                                {
+                                                  "id": "n_mandatory_testing",
+                                                  "type": "action",
+                                                  "label": "Mandatory Testing",
+                                                  "edge_label": "",
+                                                  "children": [
+                                                    {
+                                                      "id": "n_wilsons",
+                                                      "type": "action",
+                                                      "label": "Wilsons Disease Screen: Ceruloplasmin, Alpha 1 Antitrypsin (A1AT) Screen: A1AT",
+                                                      "edge_label": "",
+                                                      "children": [
+                                                        {
+                                                          "id": "n_review_result_mandatory",
+                                                          "type": "action",
+                                                          "label": "Review Result",
+                                                          "edge_label": "",
+                                                          "children": [
+                                                            {
+                                                              "id": "n_review_abnormal_decision",
+                                                              "type": "decision",
+                                                              "label": "Review result abnormal",
+                                                              "input_ids": [],
+                                                              "condition": {
+                                                                "input_id": "input_review_result_enum",
+                                                                "comparator": "enum_eq",
+                                                                "value": "abnormal"
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "id": "n_telephone_consult",
+                                                                  "type": "action",
+                                                                  "label": "Telephone Consultation",
+                                                                  "edge_label": "true",
+                                                                  "children": [
+                                                                    {
+                                                                      "id": "n_referral_decision",
+                                                                      "type": "decision",
+                                                                      "label": "Referral required to secondary care",
+                                                                      "input_ids": [],
+                                                                      "condition": {
+                                                                        "input_id": "input_referral_required_bool",
+                                                                        "comparator": "is_true"
+                                                                      },
+                                                                      "children": [
+                                                                        {
+                                                                          "id": "n_no_concern",
+                                                                          "type": "output",
+                                                                          "label": "No Concern, or escalation required",
+                                                                          "edge_label": "false",
+                                                                          "children": []
+                                                                        },
+                                                                        {
+                                                                          "id": "n_refer_secondary",
+                                                                          "type": "output",
+                                                                          "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+                                                                          "edge_label": "true",
+                                                                          "children": []
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  ]
+                                                                },
+                                                                {
+                                                                  "id": "n_conditional_testing",
+                                                                  "type": "action",
+                                                                  "label": "Conditional Testing",
+                                                                  "edge_label": "false",
+                                                                  "children": [
+                                                                    {
+                                                                      "id": "n_transferrin_decision",
+                                                                      "type": "decision",
+                                                                      "label": "Transferrin Sat >=45% Or Raised Ferritin",
+                                                                      "input_ids": [],
+                                                                      "condition": {
+                                                                        "input_id": "input_transferrin_sat_bool",
+                                                                        "comparator": "is_true"
+                                                                      },
+                                                                      "children": [
+                                                                        {
+                                                                          "id": "n_haemochromatosis",
+                                                                          "type": "action",
+                                                                          "label": "Haemochromatosis Gene Test",
+                                                                          "edge_label": "true",
+                                                                          "children": [
+                                                                            {
+                                                                              "id": "n_raised_igm_decision",
+                                                                              "type": "decision",
+                                                                              "label": "Raised IgM",
+                                                                              "input_ids": [],
+                                                                              "condition": {
+                                                                                "input_id": "input_raised_igm_bool",
+                                                                                "comparator": "is_true"
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "id": "n_primary_biliary",
+                                                                                  "type": "action",
+                                                                                  "label": "Primary Biliary Cirrhosis Screen: AMA",
+                                                                                  "edge_label": "true",
+                                                                                  "children": []
+                                                                                },
+                                                                                {
+                                                                                  "id": "n_uc_panca_decision",
+                                                                                  "type": "decision",
+                                                                                  "label": "Ulcerative Colitis or P-ANCA positive",
+                                                                                  "input_ids": [],
+                                                                                  "condition": {
+                                                                                    "input_id": "input_ulcerative_colitis_or_panca_bool",
+                                                                                    "comparator": "is_true"
+                                                                                  },
+                                                                                  "edge_label": "false",
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "id": "n_mrcp",
+                                                                                      "type": "output",
+                                                                                      "label": "Requires MRCP via Gastroenterology",
+                                                                                      "edge_label": "true",
+                                                                                      "children": []
+                                                                                    },
+                                                                                    {
+                                                                                      "id": "n_raised_igg_decision",
+                                                                                      "type": "decision",
+                                                                                      "label": "Raised IgG",
+                                                                                      "input_ids": [],
+                                                                                      "condition": {
+                                                                                        "input_id": "input_raised_igg_bool",
+                                                                                        "comparator": "is_true"
+                                                                                      },
+                                                                                      "edge_label": "false",
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "id": "n_autoimmune",
+                                                                                          "type": "action",
+                                                                                          "label": "Autoimmune Hepatitis Type 1 Screen: ANA, SMA\nAutoimmune Hepatitis Type 2 Screen: LKM-1, SLA (not on EMIS)",
+                                                                                          "edge_label": "true",
+                                                                                          "children": []
+                                                                                        },
+                                                                                        {
+                                                                                          "id": "n_nafld_categories",
+                                                                                          "type": "decision",
+                                                                                          "label": "NAFLD Fibrosis Score Categories",
+                                                                                          "input_ids": [],
+                                                                                          "condition": {
+                                                                                            "input_id": "input_nafld_fibrosis_score_float",
+                                                                                            "comparator": "lt",
+                                                                                            "value": -1.455
+                                                                                          },
+                                                                                          "edge_label": "false",
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "id": "n_f0f2",
+                                                                                              "type": "action",
+                                                                                              "label": "F0-F2 (no to moderate fibrosis)",
+                                                                                              "edge_label": "true",
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "id": "n_manage_risk",
+                                                                                                  "type": "action",
+                                                                                                  "label": "manage risk factors and co-morbidities - Annual Screening",
+                                                                                                  "edge_label": "",
+                                                                                                  "children": []
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "id": "n_nafld_indeterminate_decision",
+                                                                                              "type": "decision",
+                                                                                              "label": "NAFLD score -1.455 to 0.675 (Indeterminate Score)",
+                                                                                              "input_ids": [],
+                                                                                              "condition": {
+                                                                                                "input_id": "input_nafld_fibrosis_score_float",
+                                                                                                "comparator": "within_range",
+                                                                                                "value": -1.455,
+                                                                                                "value2": 0.675
+                                                                                              },
+                                                                                              "edge_label": "false",
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "id": "n_indeterminate",
+                                                                                                  "type": "action",
+                                                                                                  "label": "Indeterminate Score",
+                                                                                                  "edge_label": "true",
+                                                                                                  "children": [
+                                                                                                    {
+                                                                                                      "id": "n_fib4_categories",
+                                                                                                      "type": "decision",
+                                                                                                      "label": "FIB 4 Categories",
+                                                                                                      "input_ids": [],
+                                                                                                      "condition": {
+                                                                                                        "input_id": "input_fib4_score_float",
+                                                                                                        "comparator": "lt",
+                                                                                                        "value": 1.3
+                                                                                                      },
+                                                                                                      "children": [
+                                                                                                        {
+                                                                                                          "id": "n_low_risk",
+                                                                                                          "type": "action",
+                                                                                                          "label": "Low Risk",
+                                                                                                          "edge_label": "true",
+                                                                                                          "children": [
+                                                                                                            {
+                                                                                                              "id": "n_manage_risk_2",
+                                                                                                              "type": "action",
+                                                                                                              "label": "manage risk factors and co-morbidities - Annual Screening",
+                                                                                                              "edge_label": "",
+                                                                                                              "children": []
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        },
+                                                                                                        {
+                                                                                                          "id": "n_intermediate_high_risk",
+                                                                                                          "type": "action",
+                                                                                                          "label": "Intermediate or High Risk",
+                                                                                                          "edge_label": "false",
+                                                                                                          "children": [
+                                                                                                            {
+                                                                                                              "id": "n_fibrous_scan",
+                                                                                                              "type": "action",
+                                                                                                              "label": "Fibrous Scan if available",
+                                                                                                              "edge_label": "",
+                                                                                                              "children": []
+                                                                                                            }
+                                                                                                          ]
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    }
+                                                                                                  ]
+                                                                                                },
+                                                                                                {
+                                                                                                  "id": "n_f3f4",
+                                                                                                  "type": "action",
+                                                                                                  "label": "F3-F4 (Severe fibrosis or Cirrhosis)",
+                                                                                                  "edge_label": "false",
+                                                                                                  "children": [
+                                                                                                    {
+                                                                                                      "id": "n_phase4_bloods_2",
+                                                                                                      "type": "action",
+                                                                                                      "label": "Phase 4 Bloods",
+                                                                                                      "edge_label": "",
+                                                                                                      "children": [
+                                                                                                        {
+                                                                                                          "id": "n_refer_secondary_2",
+                                                                                                          "type": "output",
+                                                                                                          "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+                                                                                                          "edge_label": "",
+                                                                                                          "children": []
+                                                                                                        }
+                                                                                                      ]
+                                                                                                    }
+                                                                                                  ]
+                                                                                                }
+                                                                                              ]
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "id": "n_no_transferrin",
+                                                                          "type": "action",
+                                                                          "label": "Need to rationalise which Additional tests should be done for rare conditions",
+                                                                          "edge_label": "false",
+                                                                          "children": []
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "n_findings_3months",
+                          "type": "action",
+                          "label": "Patient needs consultation for liver pathology and consent for further testing",
+                          "edge_label": "false",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The workflow contains cycles (e.g., Phase 4 Bloods feeds back into Telephone Consultation, and the NAFLD/FIB-4 branches also loop back). A strict tree representation cannot capture these loops without duplicating nodes; duplicate leaf stubs have been added where cycles occur.",
+    "The 'Mandatory Testing' and 'Conditional Testing' branches run in parallel in the diagram, but a tree can only represent sequential/branching paths. The mandatory testing (Wilsons/A1AT) and conditional testing branches have been serialized here.",
+    "The FIB-4 age-specific thresholds (e.g., <1.3 or <2.0 if age >65; >2.67 at any age; >1.3 or >2.0 if age >65 = Intermediate/High Risk) are collapsed into simple FIB-4 score comparisons without the age interaction in the condition object.",
+    "The 'High Risk' FIB-4 category (>2.67) and its path to Phase 4 Bloods and secondary care referral is referenced but not fully distinct from the Intermediate risk path in the diagram; both appear to lead to Fibrous Scan or Phase 4 Bloods.",
+    "The 'Review Result' node appears to be a merge/join point receiving results from multiple test branches (Wilsons, Haemochromatosis, PBC, Autoimmune), which cannot be modeled as a tree without duplication.",
+    "The 'manage risk factors and co-morbidities - Annual Screening' nodes have no explicit output/end state shown in the diagram.",
+    "It is unclear whether 'Fibrous Scan if available' leads directly to Phase 4 Bloods/secondary care or back to Telephone Consultation."
+  ],
+  "variables": []
+}

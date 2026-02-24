@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.4878048780487805,
+    "edge_f1": 0.0909090909090909,
+    "variable_f1": 0.0,
+    "output_f1": 0.631578947368421,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 48.78,
+    "edge_f1": 9.09,
+    "variable_f1": 0.0,
+    "output_f1": 63.16,
+    "semantic_score": 0.0,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.20783638697630996,
+  "composite_score": 20.78,
+  "details": {
+    "node": {
+      "matched": 10,
+      "predicted_total": 20,
+      "reference_total": 21,
+      "precision": 0.5,
+      "recall": 0.47619047619047616
+    },
+    "edge": {
+      "matched": 2,
+      "predicted_total": 20,
+      "reference_total": 24,
+      "precision": 0.1,
+      "recall": 0.08333333333333333
+    },
+    "variable": {
+      "matched": 0,
+      "predicted_total": 0,
+      "reference_total": 9,
+      "precision": 0.0,
+      "recall": 0.0
+    },
+    "output": {
+      "matched": 6,
+      "predicted_total": 10,
+      "reference_total": 9,
+      "precision": 0.6,
+      "recall": 0.6666666666666666
+    },
+    "semantic": {
+      "score": 0.0,
+      "matched": 0,
+      "total": 13,
+      "success_rate": 0.0,
+      "execution_failures": 13,
+      "mapping_coverage": 0.0,
+      "failures": [
+        {
+          "test_index": 0,
+          "error": "Execution error: Decision node 'Normal or Raised?' (id: n1) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "No Further Action"
+        },
+        {
+          "test_index": 1,
+          "error": "Execution error: Decision node 'Normal or Raised?' (id: n1) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Consider Lipid Clinic Referral"
+        },
+        {
+          "test_index": 2,
+          "error": "Execution error: Decision node 'Normal or Raised?' (id: n1) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+        },
+        {
+          "test_index": 3,
+          "error": "Execution error: Decision node 'Normal or Raised?' (id: n1) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Mark as Satisfactory"
+        },
+        {
+          "test_index": 4,
+          "error": "Execution error: Decision node 'Normal or Raised?' (id: n1) has no condition. Decision nodes must have a structured 'condition' field.",
+          "expected": "Mark as \"No Further Action\""
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 26,
+      "errors": [
+        "Decision node 'Normal or Raised?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Primary or Secondary Prevention?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Maximally Tolerated Statin?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'LDL threshold' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n20",
+        "Decision node 'LDL \u22652.0' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n19",
+        "Invalid node type 'output' for node n18",
+        "Invalid node type 'output' for node n16",
+        "Invalid node type 'output' for node n13"
+      ]
+    },
+    "node_label_mismatch_count": 8,
+    "node_type_overlap_count": 18,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

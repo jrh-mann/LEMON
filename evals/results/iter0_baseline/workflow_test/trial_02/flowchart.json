@@ -1,0 +1,284 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Lipid Results - Management Guide",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n1",
+      "type": "decision",
+      "label": "Under Specialist Clinic?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n3",
+      "type": "process",
+      "label": "Assess Total Cholesterol Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "label": "Normal or Raised?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n6",
+      "type": "decision",
+      "label": "Taking Lipid Lowering Therapy?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n8",
+      "type": "decision",
+      "label": "Are They Optimised on treatment?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n10",
+      "type": "process",
+      "label": "Primary or Secondary Prevention?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n11",
+      "type": "process",
+      "label": "Calculate QRISK2/3",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n12",
+      "type": "decision",
+      "label": "Taking Maximally Tolerated Statin?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n20",
+      "type": "output",
+      "label": "Send 'Lipid Lowering Therapy' AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n13",
+      "type": "process",
+      "label": "Assess LDL",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n14",
+      "type": "process",
+      "label": "Initiate Inclisiran",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n15",
+      "type": "decision",
+      "label": "Has had 6 months of Inclisiran",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n19",
+      "type": "process",
+      "label": "Add in Ezetimibe",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n16",
+      "type": "process",
+      "label": "Repeat Lipids at 3 months",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n17",
+      "type": "process",
+      "label": "LDL \u22652.0",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n18",
+      "type": "process",
+      "label": "Add in Ezetimibe",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n9",
+      "type": "output",
+      "label": "Send 'Lipid Lowering - Therapy' AccuRx with self booking link",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n7",
+      "type": "output",
+      "label": "Mark as 'No Further Action'",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n5",
+      "type": "output",
+      "label": "Mark as Satisfactory",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n2",
+      "type": "output",
+      "label": "No Further Action",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n1",
+      "label": "",
+      "id": "start->n1"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "label": "Yes",
+      "id": "n1->n2"
+    },
+    {
+      "from": "n1",
+      "to": "n3",
+      "label": "No",
+      "id": "n1->n3"
+    },
+    {
+      "from": "n3",
+      "to": "n4",
+      "label": "",
+      "id": "n3->n4"
+    },
+    {
+      "from": "n4",
+      "to": "n5",
+      "label": "Normal",
+      "id": "n4->n5"
+    },
+    {
+      "from": "n4",
+      "to": "n6",
+      "label": "Raised",
+      "id": "n4->n6"
+    },
+    {
+      "from": "n6",
+      "to": "n7",
+      "label": "No",
+      "id": "n6->n7"
+    },
+    {
+      "from": "n6",
+      "to": "n8",
+      "label": "Yes",
+      "id": "n6->n8"
+    },
+    {
+      "from": "n8",
+      "to": "n9",
+      "label": "No",
+      "id": "n8->n9"
+    },
+    {
+      "from": "n8",
+      "to": "n10",
+      "label": "Yes",
+      "id": "n8->n10"
+    },
+    {
+      "from": "n10",
+      "to": "n11",
+      "label": "",
+      "id": "n10->n11"
+    },
+    {
+      "from": "n11",
+      "to": "n12",
+      "label": "",
+      "id": "n11->n12"
+    },
+    {
+      "from": "n12",
+      "to": "n13",
+      "label": "Yes",
+      "id": "n12->n13"
+    },
+    {
+      "from": "n12",
+      "to": "n20",
+      "label": "No",
+      "id": "n12->n20"
+    },
+    {
+      "from": "n13",
+      "to": "n14",
+      "label": "",
+      "id": "n13->n14"
+    },
+    {
+      "from": "n14",
+      "to": "n15",
+      "label": "",
+      "id": "n14->n15"
+    },
+    {
+      "from": "n15",
+      "to": "n16",
+      "label": "No",
+      "id": "n15->n16"
+    },
+    {
+      "from": "n15",
+      "to": "n19",
+      "label": "Yes",
+      "id": "n15->n19"
+    },
+    {
+      "from": "n16",
+      "to": "n17",
+      "label": "",
+      "id": "n16->n17"
+    },
+    {
+      "from": "n17",
+      "to": "n18",
+      "label": "",
+      "id": "n17->n18"
+    }
+  ]
+}

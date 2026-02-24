@@ -1,0 +1,17 @@
+{
+  "variables": [
+    {
+      "id": "input_age_int",
+      "name": "age",
+      "type": "int",
+      "source": "input"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Adult"
+    }
+  ],
+  "tree": {},
+  "doubts": []
+}

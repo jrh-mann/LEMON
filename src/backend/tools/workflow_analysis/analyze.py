@@ -13,6 +13,7 @@ from ...utils.analysis import normalize_analysis
 from ...utils.cancellation import CancellationError
 from ...utils.flowchart import flowchart_from_tree
 from ...utils.paths import lemon_data_dir
+from ...utils.uploads import load_annotations
 from ..core import Tool, ToolParameter
 
 
@@ -73,7 +74,9 @@ class AnalyzeWorkflowTool(Tool):
                 return self._missing_image_response()
 
         # image_name is stored relative to self.data_dir (see _latest_uploaded_image()).
-        image_path = self.data_dir / image_name
+        image_path = Path(image_name)
+        if not image_path.is_absolute():
+            image_path = self.data_dir / image_name
         if not image_path.exists():
             return self._missing_image_response()
 
@@ -81,10 +84,14 @@ class AnalyzeWorkflowTool(Tool):
             session_id = uuid4().hex
             self.history.create_session(session_id, image_name)
 
+        # Load annotations stored alongside the image (Option B sidecar)
+        annotations = load_annotations(image_path, repo_root=self.repo_root)
+
         data = self.subagent.analyze(
             image_path=image_path,
             session_id=session_id,
             feedback=feedback,
+            annotations=annotations or None,
             stream=stream,
             should_cancel=should_cancel,
         )
@@ -118,7 +125,7 @@ class AnalyzeWorkflowTool(Tool):
         try:
             return str(latest.relative_to(self.data_dir))
         except ValueError:
-            return None
+            return str(latest)
 
     def _missing_image_response(self) -> Dict[str, Any]:
         return {

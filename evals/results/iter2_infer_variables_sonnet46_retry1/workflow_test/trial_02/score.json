@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.5,
+    "edge_f1": 0.17391304347826086,
+    "variable_f1": 0.4444444444444444,
+    "output_f1": 0.9473684210526316,
+    "semantic_score": 0.5384615384615384,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 50.0,
+    "edge_f1": 17.39,
+    "variable_f1": 44.44,
+    "output_f1": 94.74,
+    "semantic_score": 53.85,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.43757407733380277,
+  "composite_score": 43.76,
+  "details": {
+    "node": {
+      "matched": 10,
+      "predicted_total": 19,
+      "reference_total": 21,
+      "precision": 0.5263157894736842,
+      "recall": 0.47619047619047616
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 22,
+      "reference_total": 24,
+      "precision": 0.18181818181818182,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 4,
+      "predicted_total": 9,
+      "reference_total": 9,
+      "precision": 0.4444444444444444,
+      "recall": 0.4444444444444444
+    },
+    "output": {
+      "matched": 9,
+      "predicted_total": 10,
+      "reference_total": 9,
+      "precision": 0.9,
+      "recall": 1.0
+    },
+    "semantic": {
+      "score": 0.5384615384615384,
+      "matched": 7,
+      "total": 13,
+      "success_rate": 0.5384615384615384,
+      "execution_failures": 0,
+      "mapping_coverage": 0.7777777777777778,
+      "failures": [
+        {
+          "test_index": 1,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Consider Lipid Clinic Referral"
+        },
+        {
+          "test_index": 2,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+        },
+        {
+          "test_index": 3,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Mark as Satisfactory"
+        },
+        {
+          "test_index": 6,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+        },
+        {
+          "test_index": 10,
+          "predicted": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+          "expected": "Add in Ezetimibe"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 19,
+      "errors": [
+        "Decision node 'Under Specialist Clinic?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Normal or Raised?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Lipid Lowering Therapy?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Primary or Secondary Prevention?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Maximally Tolerated Statin?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n22",
+        "Decision node 'Assess LDL' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Assess LDL (2-2.5 vs \u22642)' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n21",
+        "Invalid node type 'output' for node n20"
+      ]
+    },
+    "node_label_mismatch_count": 6,
+    "node_type_overlap_count": 16,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

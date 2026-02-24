@@ -1,0 +1,105 @@
+{
+  "metrics": {
+    "node_f1": 0.48979591836734687,
+    "edge_f1": 0.14285714285714288,
+    "variable_f1": 0.39999999999999997,
+    "output_f1": 0.8888888888888888,
+    "semantic_score": 0.6153846153846154,
+    "validity_score": 0.0
+  },
+  "percentage_metrics": {
+    "node_f1": 48.98,
+    "edge_f1": 14.29,
+    "variable_f1": 40.0,
+    "output_f1": 88.89,
+    "semantic_score": 61.54,
+    "validity_score": 0.0
+  },
+  "composite_raw": 0.4301290772719344,
+  "composite_score": 43.01,
+  "details": {
+    "node": {
+      "matched": 12,
+      "predicted_total": 28,
+      "reference_total": 21,
+      "precision": 0.42857142857142855,
+      "recall": 0.5714285714285714
+    },
+    "edge": {
+      "matched": 4,
+      "predicted_total": 32,
+      "reference_total": 24,
+      "precision": 0.125,
+      "recall": 0.16666666666666666
+    },
+    "variable": {
+      "matched": 4,
+      "predicted_total": 11,
+      "reference_total": 9,
+      "precision": 0.36363636363636365,
+      "recall": 0.4444444444444444
+    },
+    "output": {
+      "matched": 8,
+      "predicted_total": 9,
+      "reference_total": 9,
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888
+    },
+    "semantic": {
+      "score": 0.6153846153846154,
+      "matched": 8,
+      "total": 13,
+      "success_rate": 0.6153846153846154,
+      "execution_failures": 0,
+      "mapping_coverage": 0.7777777777777778,
+      "failures": [
+        {
+          "test_index": 1,
+          "predicted": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+          "expected": "Consider Lipid Clinic Referral"
+        },
+        {
+          "test_index": 3,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Mark as Satisfactory"
+        },
+        {
+          "test_index": 6,
+          "predicted": "Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link",
+          "expected": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+        },
+        {
+          "test_index": 10,
+          "predicted": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+          "expected": "Add in Ezetimibe"
+        },
+        {
+          "test_index": 12,
+          "predicted": "Initiate Inclisiran",
+          "expected": "Repeat Lipids at 3 months"
+        }
+      ]
+    },
+    "validity": {
+      "is_valid": false,
+      "error_count": 27,
+      "errors": [
+        "Decision node '> 7.5 or \u2264 7.5?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Normal or Raised?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Lipid Lowering Therapy?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Primary or Secondary Prevention?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Taking Maximally Tolerated Statin?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Invalid node type 'output' for node n_send_lipid_lowering_no_statin",
+        "Decision node 'LDL level?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'LDL 2-2.5 or LDL \u2265 2.6?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'Has had 6 months of Inclisiran / Hasn't had 6 months of Inclisiran?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}",
+        "Decision node 'LDL >2.0?' requires a structured condition. Use add_node or modify_node with condition={input_id, comparator, value}"
+      ]
+    },
+    "node_label_mismatch_count": 9,
+    "node_type_overlap_count": 21,
+    "edge_direction_mismatch_count": 0,
+    "edge_label_mismatch_count": 0
+  }
+}

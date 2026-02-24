@@ -1,0 +1,218 @@
+{
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "Admit via A&E/Medics",
+      "description": "Patient requires admission via A&E or medical services"
+    },
+    {
+      "name": "SGLT2i",
+      "description": "Prescribe SGLT2i medication (after metformin is tolerated)"
+    },
+    {
+      "name": "Gliptin",
+      "description": "Start Gliptin as part of dual therapy with metformin"
+    },
+    {
+      "name": "Pioglitazone",
+      "description": "Start Pioglitazone as part of dual therapy with metformin"
+    },
+    {
+      "name": "Gliclazide",
+      "description": "Start Gliclazide as part of dual therapy with metformin"
+    },
+    {
+      "name": "Refer to Insulin Initiator",
+      "description": "Refer patient to insulin initiator service"
+    },
+    {
+      "name": "Ozempic",
+      "description": "Prescribe Ozempic for high prognostic value patients"
+    },
+    {
+      "name": "Mounjaro",
+      "description": "Prescribe Mounjaro for low prognostic value patients"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Start Gliclazide or Insulin",
+      "children": [
+        {
+          "id": "n1",
+          "type": "decision",
+          "label": "Admission required?",
+          "input_ids": [],
+          "edge_label": "",
+          "children": [
+            {
+              "id": "n2",
+              "type": "output",
+              "label": "Admit via A&E/Medics",
+              "edge_label": "Yes"
+            },
+            {
+              "id": "n3",
+              "type": "action",
+              "label": "Treatment Algorithm",
+              "edge_label": "No",
+              "children": [
+                {
+                  "id": "n4",
+                  "type": "decision",
+                  "label": "*CVD Known or Risk",
+                  "input_ids": [],
+                  "edge_label": "",
+                  "children": [
+                    {
+                      "id": "n5",
+                      "type": "action",
+                      "label": "Metformin",
+                      "edge_label": "Not at risk of CVD",
+                      "children": [
+                        {
+                          "id": "n6",
+                          "type": "decision",
+                          "label": "A1c not controlled Start Dual Therapy",
+                          "input_ids": [],
+                          "edge_label": "",
+                          "children": [
+                            {
+                              "id": "n7",
+                              "type": "output",
+                              "label": "Gliptin",
+                              "edge_label": ""
+                            },
+                            {
+                              "id": "n8",
+                              "type": "output",
+                              "label": "Pioglitazone",
+                              "edge_label": ""
+                            },
+                            {
+                              "id": "n9",
+                              "type": "output",
+                              "label": "Gliclazide",
+                              "edge_label": ""
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "n10",
+                      "type": "action",
+                      "label": "Metformin",
+                      "edge_label": "*CVD Known or Risk",
+                      "children": [
+                        {
+                          "id": "n11",
+                          "type": "decision",
+                          "label": "Tolerated add-on after 4 weeks",
+                          "input_ids": [],
+                          "edge_label": "",
+                          "children": [
+                            {
+                              "id": "n12",
+                              "type": "action",
+                              "label": "SGLT2i",
+                              "edge_label": "Tolerated add-on after 4 weeks",
+                              "children": [
+                                {
+                                  "id": "n13",
+                                  "type": "decision",
+                                  "label": "A1c not controlled",
+                                  "input_ids": [],
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n14",
+                                      "type": "action",
+                                      "label": "Ozempic titrate to full dose with 3 monthly A1cs",
+                                      "edge_label": "",
+                                      "children": [
+                                        {
+                                          "id": "n15",
+                                          "type": "decision",
+                                          "label": "A1c not controlled",
+                                          "input_ids": [],
+                                          "edge_label": "",
+                                          "children": [
+                                            {
+                                              "id": "n16",
+                                              "type": "output",
+                                              "label": "Refer to Insulin Initiator",
+                                              "edge_label": ""
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "id": "n17",
+                              "type": "action",
+                              "label": "SGLT2i",
+                              "edge_label": "Not tolerated** switch to",
+                              "children": [
+                                {
+                                  "id": "n18",
+                                  "type": "decision",
+                                  "label": "A1c not controlled",
+                                  "input_ids": [],
+                                  "edge_label": "",
+                                  "children": [
+                                    {
+                                      "id": "n19",
+                                      "type": "action",
+                                      "label": "Ozempic titrate to full dose with 3 monthly A1cs",
+                                      "edge_label": "",
+                                      "children": [
+                                        {
+                                          "id": "n20",
+                                          "type": "decision",
+                                          "label": "A1c not controlled",
+                                          "input_ids": [],
+                                          "edge_label": "",
+                                          "children": [
+                                            {
+                                              "id": "n21",
+                                              "type": "output",
+                                              "label": "Refer to Insulin Initiator",
+                                              "edge_label": ""
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "doubts": [
+    "The diagram shows 'A1c Not Controlled Start Triple Therapy' followed by triple therapy options (Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)), then 'Add GLP'. The path then splits to 'High prognostic value' \u2192 Ozempic and 'Low prognostic Value' \u2192 Mounjaro. After this point, the diagram shows 'Despite Optimisation and maximally tolerated dose A1C >58' \u2192 Refer to Insulin Initiator. It is unclear whether the prognostic value decision and Ozempic/Mounjaro prescriptions are part of the triple therapy flow or if they represent alternative endpoints. The tree structure is ambiguous here.",
+    "The 'Or' connectors between Gliptin, Pioglitazone, and Gliclazide suggest mutually exclusive choices, but the diagram does not clearly indicate if all three are outputs or if one must be selected via an upstream decision.",
+    "It is unclear if the 'A1c Not Controlled Start Triple Therapy' node should lead to multiple medication outputs (Metformin + Gliptin/Pioglitazone/Gliclazide), or if there should be a decision node to choose among them.",
+    "The 'Add GLP' action followed by prognostic value decision suggests that GLP (Ozempic or Mounjaro) is added on top of triple therapy if A1c is still not controlled. However, the diagram does not explicitly show this as a conditional branch, making the exact workflow unclear.",
+    "The two separate SGLT2i nodes (one for tolerated metformin and one for not tolerated) both lead to the same Ozempic titration flow, but it's unclear if they should be represented as distinct paths in the tree or consolidated."
+  ],
+  "variables": []
+}

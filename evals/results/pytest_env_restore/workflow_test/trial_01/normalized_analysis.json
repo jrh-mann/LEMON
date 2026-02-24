@@ -1,0 +1,34 @@
+{
+  "variables": [
+    {
+      "id": "input_age_int",
+      "name": "age",
+      "type": "int",
+      "source": "input"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Adult"
+    },
+    {
+      "name": "Minor"
+    }
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "children": [
+        {
+          "id": "out_adult",
+          "type": "output",
+          "label": "Adult",
+          "children": []
+        }
+      ]
+    }
+  },
+  "doubts": []
+}

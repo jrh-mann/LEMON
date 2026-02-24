@@ -1,0 +1,19 @@
+{
+  "variables": [
+    {
+      "id": "input_x_int",
+      "name": "x",
+      "type": "int",
+      "source": "input"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Unknown"
+    }
+  ],
+  "tree": {},
+  "doubts": [
+    "could not resolve boxes"
+  ]
+}

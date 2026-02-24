@@ -5071,6 +5071,7 @@ button.primary.warning:hover {
   border-top: 1px solid var(--edge);
 }
 
+<<<<<<< HEAD
 /* ============================================
    Subflow Execution Modal
    Shows subflow canvas in popup during execution
@@ -6175,6 +6176,7 @@ button.primary.warning:hover {
   max-height: 200px;
   overflow-y: auto;
 }
+
 /* Variable Display Improvements */
 .inputs-group {
   margin-bottom: 24px;
@@ -6216,3 +6218,230 @@ button.primary.warning:hover {
   color: var(--violet-600);
   border: 1px solid rgba(139, 92, 246, 0.2);
 }
+
+=======
+/* ── Image Annotator ─────────────────────────────────── */
+
+/* Source Image tab container */
+.image-preview-container {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  inset: 40px 0 0 0;
+  /* below workspace tabs */
+  overflow: hidden;
+  background: var(--bg-dark);
+}
+
+.image-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.image-preview-header .image-name {
+  font-weight: 500;
+}
+
+.image-preview-header .clear-image-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.image-preview-header .clear-image-btn:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Full-size annotator */
+.image-annotator-full {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Toolbar */
+.annotator-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.annotator-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.annotator-tool:hover {
+  color: var(--text);
+  border-color: var(--teal);
+}
+
+.annotator-tool.active {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+}
+
+.annotator-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--edge);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.annotator-zoom-level {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  min-width: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.annotator-info {
+  font-size: 0.65rem;
+  color: var(--text-faint);
+  padding: 2px 6px;
+  background: var(--surface);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.annotator-count {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.annotator-clear {
+  padding: 2px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.annotator-clear:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Content area — relative anchor for the absolute viewport */
+.annotator-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Viewport — absolute inset to fill relative parent */
+.annotator-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Canvas is absolute so it doesn't affect viewport layout */
+.annotator-viewport>.annotator-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+}
+
+/* Annotation edit modal — reuses standard .modal system */
+.annotation-modal {
+  max-width: 400px;
+}
+
+.annotation-modal textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Hint / status bar */
+.annotator-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  border-top: 1px solid var(--edge);
+  flex-shrink: 0;
+  background: var(--bg);
+  font-size: 0.65rem;
+  color: var(--text-faint);
+  gap: 16px;
+}
+
+.annotator-coords {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.annotator-shortcuts {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.annotator-shortcut {
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  letter-spacing: 0.02em;
+}
+
+.annotator-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
+
+>>>>>>>docs/eval-plan

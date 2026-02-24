@@ -1,0 +1,515 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Treatment Algorithm",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n1",
+      "type": "decision",
+      "label": "*CVD Known or Risk",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_cvd_known_or_risk_bool"
+      ]
+    },
+    {
+      "id": "n1_false",
+      "type": "process",
+      "label": "Metformin",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n6",
+      "type": "decision",
+      "label": "A1c not controlled Start Dual Therapy",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_controlled_on_metformin_bool"
+      ]
+    },
+    {
+      "id": "n6_false",
+      "type": "output",
+      "label": "Metformin (Not at risk of CVD - monotherapy)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n6_true",
+      "type": "process",
+      "label": "Gliptin Or Pioglitazone Or Gliclazide",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n7",
+      "type": "decision",
+      "label": "A1c Not Controlled Start Triple Therapy",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_controlled_on_dual_therapy_bool"
+      ]
+    },
+    {
+      "id": "n7_false",
+      "type": "output",
+      "label": "Dual Therapy: Gliptin or Pioglitazone or Gliclazide",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n7_true",
+      "type": "process",
+      "label": "Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n8",
+      "type": "process",
+      "label": "Add GLP",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n9",
+      "type": "decision",
+      "label": "High prognostic value",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_high_prognostic_value_bool"
+      ]
+    },
+    {
+      "id": "n9_false",
+      "type": "process",
+      "label": "Low prognostic Value",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n9_false_mounjaro",
+      "type": "process",
+      "label": "Mounjaro",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n11",
+      "type": "decision",
+      "label": "Despite Optimisation and maximally tolerated dose A1C >58",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_gt58_despite_optimisation_bool"
+      ]
+    },
+    {
+      "id": "n11_false",
+      "type": "output",
+      "label": "Mounjaro",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n11_true",
+      "type": "output",
+      "label": "Refer to Insulin Initiator",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n9_true",
+      "type": "process",
+      "label": "High prognostic value",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n9_true_ozempic",
+      "type": "process",
+      "label": "Ozempic",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n10",
+      "type": "decision",
+      "label": "Despite Optimisation and maximally tolerated dose A1C >58",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_gt58_despite_optimisation_bool"
+      ]
+    },
+    {
+      "id": "n10_false",
+      "type": "output",
+      "label": "Ozempic",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n10_true",
+      "type": "output",
+      "label": "Refer to Insulin Initiator",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n1_true",
+      "type": "process",
+      "label": "Metformin",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n2",
+      "type": "decision",
+      "label": "Tolerated add-on after 4 weeks",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_metformin_tolerated_bool"
+      ]
+    },
+    {
+      "id": "n2_false",
+      "type": "process",
+      "label": "Not tolerated** switch to",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n2_false_bmi",
+      "type": "decision",
+      "label": "Minimum BMI for GLP Initiation is 23",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_bmi_float"
+      ]
+    },
+    {
+      "id": "n2_false_bmi_false",
+      "type": "output",
+      "label": "Metformin (Not at risk of CVD - monotherapy)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n2_false_bmi_true",
+      "type": "process",
+      "label": "Ozempic titrate to full dose with 3 monthly A1c's",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n5",
+      "type": "decision",
+      "label": "A1c not controlled",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_controlled_after_ozempic_bool"
+      ]
+    },
+    {
+      "id": "n5_false",
+      "type": "output",
+      "label": "Ozempic titrate to full dose with 3 monthly A1c's",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n5_true",
+      "type": "output",
+      "label": "Refer to Insulin Initiator",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n2_true",
+      "type": "process",
+      "label": "SGLT2i",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n3",
+      "type": "decision",
+      "label": "A1c not controlled",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_controlled_after_sglt2i_bool"
+      ]
+    },
+    {
+      "id": "n3_false",
+      "type": "output",
+      "label": "Metformin + SGLT2i (CVD/Risk pathway)",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n3_true",
+      "type": "process",
+      "label": "Ozempic titrate to full dose with 3 monthly A1c's",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "label": "A1c not controlled",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_a1c_controlled_after_ozempic_bool"
+      ]
+    },
+    {
+      "id": "n4_false",
+      "type": "output",
+      "label": "Ozempic titrate to full dose with 3 monthly A1c's",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n4_true",
+      "type": "output",
+      "label": "Refer to Insulin Initiator",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n1",
+      "label": "",
+      "id": "start->n1"
+    },
+    {
+      "from": "n1",
+      "to": "n1_true",
+      "label": "true",
+      "id": "n1->n1_true"
+    },
+    {
+      "from": "n1",
+      "to": "n1_false",
+      "label": "false",
+      "id": "n1->n1_false"
+    },
+    {
+      "from": "n1_false",
+      "to": "n6",
+      "label": "",
+      "id": "n1_false->n6"
+    },
+    {
+      "from": "n6",
+      "to": "n6_true",
+      "label": "true",
+      "id": "n6->n6_true"
+    },
+    {
+      "from": "n6",
+      "to": "n6_false",
+      "label": "false",
+      "id": "n6->n6_false"
+    },
+    {
+      "from": "n6_true",
+      "to": "n7",
+      "label": "",
+      "id": "n6_true->n7"
+    },
+    {
+      "from": "n7",
+      "to": "n7_true",
+      "label": "true",
+      "id": "n7->n7_true"
+    },
+    {
+      "from": "n7",
+      "to": "n7_false",
+      "label": "false",
+      "id": "n7->n7_false"
+    },
+    {
+      "from": "n7_true",
+      "to": "n8",
+      "label": "",
+      "id": "n7_true->n8"
+    },
+    {
+      "from": "n8",
+      "to": "n9",
+      "label": "",
+      "id": "n8->n9"
+    },
+    {
+      "from": "n9",
+      "to": "n9_true",
+      "label": "true",
+      "id": "n9->n9_true"
+    },
+    {
+      "from": "n9",
+      "to": "n9_false",
+      "label": "false",
+      "id": "n9->n9_false"
+    },
+    {
+      "from": "n9_false",
+      "to": "n9_false_mounjaro",
+      "label": "",
+      "id": "n9_false->n9_false_mounjaro"
+    },
+    {
+      "from": "n9_false_mounjaro",
+      "to": "n11",
+      "label": "",
+      "id": "n9_false_mounjaro->n11"
+    },
+    {
+      "from": "n11",
+      "to": "n11_true",
+      "label": "true",
+      "id": "n11->n11_true"
+    },
+    {
+      "from": "n11",
+      "to": "n11_false",
+      "label": "false",
+      "id": "n11->n11_false"
+    },
+    {
+      "from": "n9_true",
+      "to": "n9_true_ozempic",
+      "label": "",
+      "id": "n9_true->n9_true_ozempic"
+    },
+    {
+      "from": "n9_true_ozempic",
+      "to": "n10",
+      "label": "",
+      "id": "n9_true_ozempic->n10"
+    },
+    {
+      "from": "n10",
+      "to": "n10_true",
+      "label": "true",
+      "id": "n10->n10_true"
+    },
+    {
+      "from": "n10",
+      "to": "n10_false",
+      "label": "false",
+      "id": "n10->n10_false"
+    },
+    {
+      "from": "n1_true",
+      "to": "n2",
+      "label": "",
+      "id": "n1_true->n2"
+    },
+    {
+      "from": "n2",
+      "to": "n2_true",
+      "label": "true",
+      "id": "n2->n2_true"
+    },
+    {
+      "from": "n2",
+      "to": "n2_false",
+      "label": "false",
+      "id": "n2->n2_false"
+    },
+    {
+      "from": "n2_false",
+      "to": "n2_false_bmi",
+      "label": "",
+      "id": "n2_false->n2_false_bmi"
+    },
+    {
+      "from": "n2_false_bmi",
+      "to": "n2_false_bmi_true",
+      "label": "true",
+      "id": "n2_false_bmi->n2_false_bmi_true"
+    },
+    {
+      "from": "n2_false_bmi",
+      "to": "n2_false_bmi_false",
+      "label": "false",
+      "id": "n2_false_bmi->n2_false_bmi_false"
+    },
+    {
+      "from": "n2_false_bmi_true",
+      "to": "n5",
+      "label": "",
+      "id": "n2_false_bmi_true->n5"
+    },
+    {
+      "from": "n5",
+      "to": "n5_true",
+      "label": "true",
+      "id": "n5->n5_true"
+    },
+    {
+      "from": "n5",
+      "to": "n5_false",
+      "label": "false",
+      "id": "n5->n5_false"
+    },
+    {
+      "from": "n2_true",
+      "to": "n3",
+      "label": "",
+      "id": "n2_true->n3"
+    },
+    {
+      "from": "n3",
+      "to": "n3_true",
+      "label": "true",
+      "id": "n3->n3_true"
+    },
+    {
+      "from": "n3",
+      "to": "n3_false",
+      "label": "false",
+      "id": "n3->n3_false"
+    },
+    {
+      "from": "n3_true",
+      "to": "n4",
+      "label": "",
+      "id": "n3_true->n4"
+    },
+    {
+      "from": "n4",
+      "to": "n4_true",
+      "label": "true",
+      "id": "n4->n4_true"
+    },
+    {
+      "from": "n4",
+      "to": "n4_false",
+      "label": "false",
+      "id": "n4->n4_false"
+    }
+  ]
+}

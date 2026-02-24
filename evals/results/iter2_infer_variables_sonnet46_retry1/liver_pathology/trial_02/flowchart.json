@@ -1,0 +1,845 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Liver Pathology Suspected & Work up Initiated",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_phase1_action",
+      "type": "process",
+      "label": "Phase 1: Send Acutis Template & request alcohol info",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_phase2_action",
+      "type": "process",
+      "label": "Phase 2: Baseline & Phase 2 Bloods: LFT, FBC, AST, GGT (To allow FIB4 Calculation)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_tests_normalise",
+      "type": "decision",
+      "label": "Tests normalise or notably improve?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_tests_normalise_bool"
+      ]
+    },
+    {
+      "id": "n_alt_abnormal",
+      "type": "decision",
+      "label": "ALT remains abnormal, worsens and/or additional tests are abnormal too?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_alt_status_enum"
+      ]
+    },
+    {
+      "id": "n_findings_lt3months",
+      "type": "process",
+      "label": "Findings present for <3 months",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_code_normal",
+      "type": "output",
+      "label": "Code as normal USS and file",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_findings_duration",
+      "type": "decision",
+      "label": "Findings present for >=3 months?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_findings_duration_enum"
+      ]
+    },
+    {
+      "id": "n_phase3_action",
+      "type": "process",
+      "label": "Phase 3: FIB 4 Score & NAFLD Fibrosis Score",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_patient_consultation",
+      "type": "process",
+      "label": "Patient needs consultation for liver pathology and consent for further testing",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_recheck_baseline",
+      "type": "process",
+      "label": "Recheck Baseline Liver Profile in appropriate timeframe",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_repeat_3month",
+      "type": "decision",
+      "label": "Repeat test meets 3 month criteria (from when concern was first identified)?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_repeat_test_3month_bool"
+      ]
+    },
+    {
+      "id": "n_wait_recheck",
+      "type": "process",
+      "label": "Continue monitoring / recheck",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_back_to_phase3",
+      "type": "process",
+      "label": "Proceed to Phase 3 assessment",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_abnormalities_sustained",
+      "type": "decision",
+      "label": "Sustained or worsening abnormalities?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_abnormalities_sustained_bool"
+      ]
+    },
+    {
+      "id": "n_request_liver_uss",
+      "type": "process",
+      "label": "Request Liver USS if not done since abnormal LFT have been noted",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_mandatory_testing",
+      "type": "process",
+      "label": "Mandatory Testing",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_wilsons_action",
+      "type": "process",
+      "label": "Wilsons Disease Screen: Ceruloplasmin; Alpha 1 Antitrypsin (A1AT) Screen: A1AT",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_transferrin_sat",
+      "type": "decision",
+      "label": "Transferrin Sat >=45% Or Raised Ferritin?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_transferrin_sat_bool"
+      ]
+    },
+    {
+      "id": "n_no_transferrin",
+      "type": "process",
+      "label": "No raised transferrin/ferritin - proceed",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_haemochromatosis",
+      "type": "process",
+      "label": "Haemochromatosis Gene Test",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_raised_igm",
+      "type": "decision",
+      "label": "Raised IgM?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_raised_igm_bool"
+      ]
+    },
+    {
+      "id": "n_no_igm",
+      "type": "process",
+      "label": "No Raised IgM - proceed to review",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_pbc_screen",
+      "type": "process",
+      "label": "Primary Biliary Cirrhosis Screen: AMA",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_review_result",
+      "type": "process",
+      "label": "Review Result",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_review_abnormal",
+      "type": "decision",
+      "label": "Review result abnormal?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_review_result_enum"
+      ]
+    },
+    {
+      "id": "n_phase4_bloods_main",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_rationalise_additional",
+      "type": "process",
+      "label": "Need to rationalise which Additional tests should be done for rare conditions",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_uc_panca",
+      "type": "decision",
+      "label": "Ulcerative Colitis or P-ANCA positive?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_ulcerative_colitis_or_panca_bool"
+      ]
+    },
+    {
+      "id": "n_raised_igg",
+      "type": "decision",
+      "label": "Raised IgG?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_raised_igg_bool"
+      ]
+    },
+    {
+      "id": "n_no_conditional_match",
+      "type": "process",
+      "label": "No conditional test triggered",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_autoimmune_screen",
+      "type": "process",
+      "label": "Autoimmune Hepatitis Type 1 Screen: ANA, SMA; Autoimmune Hepatitis Type 2 Screen: LKM-1, SLA (not on EMIS)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_mrcp",
+      "type": "output",
+      "label": "Requires MRCP via Gastroenterology",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_conditional_testing",
+      "type": "process",
+      "label": "Conditional Testing",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_nafld_categories",
+      "type": "process",
+      "label": "NAFLD Fibrosis Score Categories",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_nafld_fibrosis_score_float"
+      ]
+    },
+    {
+      "id": "n_nafld_score_decision",
+      "type": "decision",
+      "label": "NAFLD Fibrosis Score value?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_nafld_fibrosis_score_float"
+      ]
+    },
+    {
+      "id": "n_nafld_indeterminate",
+      "type": "decision",
+      "label": "NAFLD Fibrosis Score -1.455 to 0.675 (Indeterminate)?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_nafld_fibrosis_score_float"
+      ]
+    },
+    {
+      "id": "n_nafld_f3f4",
+      "type": "decision",
+      "label": "NAFLD Fibrosis Score >0.675 (F3-F4 Severe fibrosis or Cirrhosis)?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_nafld_fibrosis_score_float"
+      ]
+    },
+    {
+      "id": "n_no_match_nafld",
+      "type": "process",
+      "label": "Review Result (no matching NAFLD category)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_f3f4_action",
+      "type": "process",
+      "label": "F3-F4 (Severe fibrosis or Cirrhosis)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_phase4_bloods_f3f4",
+      "type": "process",
+      "label": "Phase 4 Bloods",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_refer_secondary_f3f4",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_indeterminate_score",
+      "type": "process",
+      "label": "Indeterminate Score",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_fibrous_scan",
+      "type": "process",
+      "label": "Fibrous Scan if available",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_fib4_categories",
+      "type": "process",
+      "label": "FIB 4 Categories",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_score_float",
+        "input_age_gte65_bool"
+      ]
+    },
+    {
+      "id": "n_fib4_low_risk",
+      "type": "decision",
+      "label": "FIB-4 <1.3 (or <2.0 if age >=65) - Low Risk?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_score_float",
+        "input_age_gte65_bool"
+      ]
+    },
+    {
+      "id": "n_fib4_intermediate",
+      "type": "decision",
+      "label": "FIB-4 >=1.3 to <2.67 (or >=2.0 if age >=65) - Intermediate or High Risk?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_score_float",
+        "input_age_gte65_bool"
+      ]
+    },
+    {
+      "id": "n_fib4_high_risk",
+      "type": "process",
+      "label": "High Risk (FIB-4 >=2.67 at any age)",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_fib4_score_float"
+      ]
+    },
+    {
+      "id": "n_intermediate_high_risk",
+      "type": "process",
+      "label": "Intermediate or High Risk",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_fibrous_scan2",
+      "type": "process",
+      "label": "Fibrous Scan if available",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_low_risk_action",
+      "type": "process",
+      "label": "Low Risk",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_manage_risk_factors",
+      "type": "process",
+      "label": "manage risk factors and co-morbidities - Annual Screening",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_f0f2",
+      "type": "output",
+      "label": "manage risk factors and co-morbidities - Annual Screening",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_telephone_consultation",
+      "type": "process",
+      "label": "Telephone Consultation",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": []
+    },
+    {
+      "id": "n_referral_required",
+      "type": "decision",
+      "label": "Referral required to secondary care?",
+      "x": 0.0,
+      "y": 0.0,
+      "input_ids": [
+        "input_referral_required_bool"
+      ]
+    },
+    {
+      "id": "n_no_concern",
+      "type": "output",
+      "label": "No Concern, or escalation required",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_refer_secondary_care",
+      "type": "output",
+      "label": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal",
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": "n_mark_normal",
+      "type": "output",
+      "label": "Mark as Normal / Satisfactory",
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "n_phase1_action",
+      "label": "",
+      "id": "start->n_phase1_action"
+    },
+    {
+      "from": "n_phase1_action",
+      "to": "n_phase2_action",
+      "label": "",
+      "id": "n_phase1_action->n_phase2_action"
+    },
+    {
+      "from": "n_phase2_action",
+      "to": "n_tests_normalise",
+      "label": "",
+      "id": "n_phase2_action->n_tests_normalise"
+    },
+    {
+      "from": "n_tests_normalise",
+      "to": "n_mark_normal",
+      "label": "true",
+      "id": "n_tests_normalise->n_mark_normal"
+    },
+    {
+      "from": "n_tests_normalise",
+      "to": "n_alt_abnormal",
+      "label": "false",
+      "id": "n_tests_normalise->n_alt_abnormal"
+    },
+    {
+      "from": "n_alt_abnormal",
+      "to": "n_findings_duration",
+      "label": "true",
+      "id": "n_alt_abnormal->n_findings_duration"
+    },
+    {
+      "from": "n_alt_abnormal",
+      "to": "n_findings_lt3months",
+      "label": "false",
+      "id": "n_alt_abnormal->n_findings_lt3months"
+    },
+    {
+      "from": "n_findings_lt3months",
+      "to": "n_code_normal",
+      "label": "",
+      "id": "n_findings_lt3months->n_code_normal"
+    },
+    {
+      "from": "n_findings_duration",
+      "to": "n_phase3_action",
+      "label": "true",
+      "id": "n_findings_duration->n_phase3_action"
+    },
+    {
+      "from": "n_phase3_action",
+      "to": "n_patient_consultation",
+      "label": "",
+      "id": "n_phase3_action->n_patient_consultation"
+    },
+    {
+      "from": "n_patient_consultation",
+      "to": "n_abnormalities_sustained",
+      "label": "",
+      "id": "n_patient_consultation->n_abnormalities_sustained"
+    },
+    {
+      "from": "n_patient_consultation",
+      "to": "n_recheck_baseline",
+      "label": "false",
+      "id": "n_patient_consultation->n_recheck_baseline"
+    },
+    {
+      "from": "n_recheck_baseline",
+      "to": "n_repeat_3month",
+      "label": "",
+      "id": "n_recheck_baseline->n_repeat_3month"
+    },
+    {
+      "from": "n_repeat_3month",
+      "to": "n_back_to_phase3",
+      "label": "true",
+      "id": "n_repeat_3month->n_back_to_phase3"
+    },
+    {
+      "from": "n_repeat_3month",
+      "to": "n_wait_recheck",
+      "label": "false",
+      "id": "n_repeat_3month->n_wait_recheck"
+    },
+    {
+      "from": "n_abnormalities_sustained",
+      "to": "n_request_liver_uss",
+      "label": "true",
+      "id": "n_abnormalities_sustained->n_request_liver_uss"
+    },
+    {
+      "from": "n_request_liver_uss",
+      "to": "n_mandatory_testing",
+      "label": "",
+      "id": "n_request_liver_uss->n_mandatory_testing"
+    },
+    {
+      "from": "n_mandatory_testing",
+      "to": "n_wilsons_action",
+      "label": "",
+      "id": "n_mandatory_testing->n_wilsons_action"
+    },
+    {
+      "from": "n_wilsons_action",
+      "to": "n_transferrin_sat",
+      "label": "",
+      "id": "n_wilsons_action->n_transferrin_sat"
+    },
+    {
+      "from": "n_transferrin_sat",
+      "to": "n_haemochromatosis",
+      "label": "true",
+      "id": "n_transferrin_sat->n_haemochromatosis"
+    },
+    {
+      "from": "n_transferrin_sat",
+      "to": "n_no_transferrin",
+      "label": "false",
+      "id": "n_transferrin_sat->n_no_transferrin"
+    },
+    {
+      "from": "n_haemochromatosis",
+      "to": "n_raised_igm",
+      "label": "",
+      "id": "n_haemochromatosis->n_raised_igm"
+    },
+    {
+      "from": "n_raised_igm",
+      "to": "n_pbc_screen",
+      "label": "true",
+      "id": "n_raised_igm->n_pbc_screen"
+    },
+    {
+      "from": "n_raised_igm",
+      "to": "n_no_igm",
+      "label": "false",
+      "id": "n_raised_igm->n_no_igm"
+    },
+    {
+      "from": "n_pbc_screen",
+      "to": "n_review_result",
+      "label": "",
+      "id": "n_pbc_screen->n_review_result"
+    },
+    {
+      "from": "n_review_result",
+      "to": "n_review_abnormal",
+      "label": "",
+      "id": "n_review_result->n_review_abnormal"
+    },
+    {
+      "from": "n_review_abnormal",
+      "to": "n_telephone_consultation",
+      "label": "true",
+      "id": "n_review_abnormal->n_telephone_consultation"
+    },
+    {
+      "from": "n_review_abnormal",
+      "to": "n_phase4_bloods_main",
+      "label": "false",
+      "id": "n_review_abnormal->n_phase4_bloods_main"
+    },
+    {
+      "from": "n_phase4_bloods_main",
+      "to": "n_rationalise_additional",
+      "label": "",
+      "id": "n_phase4_bloods_main->n_rationalise_additional"
+    },
+    {
+      "from": "n_rationalise_additional",
+      "to": "n_conditional_testing",
+      "label": "",
+      "id": "n_rationalise_additional->n_conditional_testing"
+    },
+    {
+      "from": "n_rationalise_additional",
+      "to": "n_uc_panca",
+      "label": "",
+      "id": "n_rationalise_additional->n_uc_panca"
+    },
+    {
+      "from": "n_uc_panca",
+      "to": "n_mrcp",
+      "label": "true",
+      "id": "n_uc_panca->n_mrcp"
+    },
+    {
+      "from": "n_uc_panca",
+      "to": "n_raised_igg",
+      "label": "false",
+      "id": "n_uc_panca->n_raised_igg"
+    },
+    {
+      "from": "n_raised_igg",
+      "to": "n_autoimmune_screen",
+      "label": "true",
+      "id": "n_raised_igg->n_autoimmune_screen"
+    },
+    {
+      "from": "n_raised_igg",
+      "to": "n_no_conditional_match",
+      "label": "false",
+      "id": "n_raised_igg->n_no_conditional_match"
+    },
+    {
+      "from": "n_conditional_testing",
+      "to": "n_nafld_categories",
+      "label": "",
+      "id": "n_conditional_testing->n_nafld_categories"
+    },
+    {
+      "from": "n_nafld_categories",
+      "to": "n_nafld_score_decision",
+      "label": "",
+      "id": "n_nafld_categories->n_nafld_score_decision"
+    },
+    {
+      "from": "n_nafld_score_decision",
+      "to": "n_f0f2",
+      "label": "true",
+      "id": "n_nafld_score_decision->n_f0f2"
+    },
+    {
+      "from": "n_nafld_score_decision",
+      "to": "n_nafld_indeterminate",
+      "label": "false",
+      "id": "n_nafld_score_decision->n_nafld_indeterminate"
+    },
+    {
+      "from": "n_nafld_indeterminate",
+      "to": "n_indeterminate_score",
+      "label": "true",
+      "id": "n_nafld_indeterminate->n_indeterminate_score"
+    },
+    {
+      "from": "n_nafld_indeterminate",
+      "to": "n_nafld_f3f4",
+      "label": "false",
+      "id": "n_nafld_indeterminate->n_nafld_f3f4"
+    },
+    {
+      "from": "n_nafld_f3f4",
+      "to": "n_f3f4_action",
+      "label": "true",
+      "id": "n_nafld_f3f4->n_f3f4_action"
+    },
+    {
+      "from": "n_nafld_f3f4",
+      "to": "n_no_match_nafld",
+      "label": "false",
+      "id": "n_nafld_f3f4->n_no_match_nafld"
+    },
+    {
+      "from": "n_f3f4_action",
+      "to": "n_phase4_bloods_f3f4",
+      "label": "",
+      "id": "n_f3f4_action->n_phase4_bloods_f3f4"
+    },
+    {
+      "from": "n_phase4_bloods_f3f4",
+      "to": "n_refer_secondary_f3f4",
+      "label": "",
+      "id": "n_phase4_bloods_f3f4->n_refer_secondary_f3f4"
+    },
+    {
+      "from": "n_indeterminate_score",
+      "to": "n_fibrous_scan",
+      "label": "",
+      "id": "n_indeterminate_score->n_fibrous_scan"
+    },
+    {
+      "from": "n_fibrous_scan",
+      "to": "n_fib4_categories",
+      "label": "",
+      "id": "n_fibrous_scan->n_fib4_categories"
+    },
+    {
+      "from": "n_fib4_categories",
+      "to": "n_fib4_low_risk",
+      "label": "",
+      "id": "n_fib4_categories->n_fib4_low_risk"
+    },
+    {
+      "from": "n_fib4_low_risk",
+      "to": "n_low_risk_action",
+      "label": "true",
+      "id": "n_fib4_low_risk->n_low_risk_action"
+    },
+    {
+      "from": "n_fib4_low_risk",
+      "to": "n_fib4_intermediate",
+      "label": "false",
+      "id": "n_fib4_low_risk->n_fib4_intermediate"
+    },
+    {
+      "from": "n_fib4_intermediate",
+      "to": "n_intermediate_high_risk",
+      "label": "true",
+      "id": "n_fib4_intermediate->n_intermediate_high_risk"
+    },
+    {
+      "from": "n_fib4_intermediate",
+      "to": "n_fib4_high_risk",
+      "label": "false",
+      "id": "n_fib4_intermediate->n_fib4_high_risk"
+    },
+    {
+      "from": "n_intermediate_high_risk",
+      "to": "n_fibrous_scan2",
+      "label": "",
+      "id": "n_intermediate_high_risk->n_fibrous_scan2"
+    },
+    {
+      "from": "n_low_risk_action",
+      "to": "n_manage_risk_factors",
+      "label": "",
+      "id": "n_low_risk_action->n_manage_risk_factors"
+    },
+    {
+      "from": "n_telephone_consultation",
+      "to": "n_referral_required",
+      "label": "",
+      "id": "n_telephone_consultation->n_referral_required"
+    },
+    {
+      "from": "n_referral_required",
+      "to": "n_refer_secondary_care",
+      "label": "true",
+      "id": "n_referral_required->n_refer_secondary_care"
+    },
+    {
+      "from": "n_referral_required",
+      "to": "n_no_concern",
+      "label": "false",
+      "id": "n_referral_required->n_no_concern"
+    }
+  ]
+}

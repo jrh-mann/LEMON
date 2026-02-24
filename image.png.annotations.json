@@ -1,0 +1,122 @@
+[
+  {
+    "id": "3e1f04b9",
+    "type": "question",
+    "x": 680,
+    "y": 620,
+    "question": "What does 'SLA (not on EMIS)' mean in the Autoimmune Hepatitis screening boxes? Is this text correct?",
+    "status": "pending"
+  },
+  {
+    "id": "33355764",
+    "type": "question",
+    "x": 750,
+    "y": 730,
+    "question": "The referral text says 'if at more hepatitis mythical' - should this be 'hepatocellular' or 'hepatitis risk'? What's the intended meaning?",
+    "status": "pending"
+  },
+  {
+    "id": "7bc828ef",
+    "type": "question",
+    "x": 560,
+    "y": 490,
+    "question": "What specific Haemochromatosis gene test is required here? HFE gene mutation testing?",
+    "status": "pending"
+  },
+  {
+    "id": "1352feb5",
+    "type": "question",
+    "x": 560,
+    "y": 405,
+    "question": "Does 'Transferrin and Seits or Ferritin' mean 'Transferrin Saturation' (not 'Seits')? What's the correct terminology?",
+    "status": "pending"
+  },
+  {
+    "id": "14c0b8e5",
+    "type": "question",
+    "x": 250,
+    "y": 130,
+    "question": "There is a note 'not coded, assume no' near 'Under Specialist Clinic?' - should this default to false if unknown?",
+    "status": "pending"
+  },
+  {
+    "id": "37116609",
+    "type": "question",
+    "x": 330,
+    "y": 320,
+    "question": "The threshold for 'Normal' vs 'Raised' cholesterol appears to be \u22645 vs >5, but the exact cutoff and units should be confirmed.",
+    "status": "pending"
+  },
+  {
+    "id": "7ddd76a5",
+    "type": "question",
+    "x": 420,
+    "y": 430,
+    "question": "The QRISK calculation branches show \u226510% and <10%, but the exact threshold for primary prevention should be confirmed.",
+    "status": "pending"
+  },
+  {
+    "id": "22b0a2a6",
+    "type": "question",
+    "x": 520,
+    "y": 180,
+    "question": "Should the \"Under Specialist Clinic?\" check occur BEFORE optimization status? If a patient is already under specialist care, does their optimization status still matter for routing decisions?",
+    "status": "pending"
+  },
+  {
+    "id": "4ee21694",
+    "type": "question",
+    "x": 850,
+    "y": 520,
+    "question": "The QRISK threshold splits at 10% - is this the current clinical guideline threshold? Some guidelines use different cutoffs (e.g., 20% for high risk). Should this be configurable?",
+    "status": "pending"
+  },
+  {
+    "id": "ff15e819",
+    "type": "question",
+    "x": 1050,
+    "y": 720,
+    "question": "When LDL \u22652.6 and patient is not on maximally tolerated statin, the outcome is \"No further action\". Shouldn't this prompt statin optimization before considering additional therapy?",
+    "status": "pending"
+  },
+  {
+    "id": "75f6cb72",
+    "type": "question",
+    "x": 1200,
+    "y": 900,
+    "question": "The Inclisiran pathway checks \"had 6 months Inclisiran?\" - if YES, what's the intended action? Is this checking for treatment response/continuation vs. initial prescription eligibility?",
+    "status": "pending"
+  },
+  {
+    "id": "bf5264ce",
+    "type": "question",
+    "x": 650,
+    "y": 320,
+    "question": "For Primary Prevention with \"Cholesterol Normal or Raised?\" = Normal, should there be additional criteria? Normal cholesterol alone may not warrant \"no further action\" if other risk factors are present.",
+    "status": "pending"
+  },
+  {
+    "id": "868af77c",
+    "type": "question",
+    "x": 420,
+    "y": 850,
+    "question": "Multiple pathways lead to \"No further action\". Should these be differentiated (e.g., \"No action - optimized\", \"No action - under specialist care\") for audit/tracking purposes?",
+    "status": "pending"
+  },
+  {
+    "id": "0bfe4cbe",
+    "type": "question",
+    "x": 750,
+    "y": 450,
+    "question": "The workflow uses both \"Total Cholesterol\" and \"LDL\" inputs. Are there validation rules to ensure these values are clinically consistent? (LDL should typically be a fraction of total cholesterol)",
+    "status": "pending"
+  },
+  {
+    "id": "d72bb750",
+    "type": "question",
+    "x": 1100,
+    "y": 600,
+    "question": "The LDL thresholds (2.6, 2.0) appear in mmol/L. Should there be unit validation or conversion for sites using mg/dL? (2.6 mmol/L \u2248 100 mg/dL)",
+    "status": "pending"
+  }
+]

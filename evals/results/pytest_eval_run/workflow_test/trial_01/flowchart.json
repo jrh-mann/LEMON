@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "out_adult",
+      "type": "end",
+      "label": "Adult",
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "out_adult",
+      "label": ""
+    }
+  ]
+}

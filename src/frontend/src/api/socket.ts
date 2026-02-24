@@ -459,6 +459,7 @@ export function connectSocket(): Socket {
     console.log('[Socket] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
   })
 
+
   // ===== Workflow Library Events =====
   // These events handle workflow creation and saving by the LLM
 
@@ -523,6 +524,14 @@ export function connectSocket(): Socket {
     } else {
       console.log('[Socket] Workflow was already saved:', data.workflow_id)
     }
+  })
+
+  // Annotations update (from orchestrator image questions)
+  socket.on('annotations_update', (data: { annotations: unknown[] }) => {
+    console.log('[Socket] annotations_update:', data)
+    const workflowStore = useWorkflowStore.getState()
+    workflowStore.setPendingAnnotations(data.annotations as any)
+
   })
 
   // ===== Execution Events =====
@@ -818,12 +827,11 @@ export function disconnectSocket(): void {
     socket = null
   }
 }
-
-// Send chat message via socket (includes workflow atomically in payload)
 export function sendChatMessage(
   message: string,
   conversationId?: string | null,
-  image?: string
+  image?: string,
+  annotations?: unknown[]
 ): void {
   const sock = getSocket()
   if (!sock?.connected) {
@@ -874,6 +882,7 @@ export function sendChatMessage(
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
     image,
+    annotations: annotations && annotations.length > 0 ? annotations : undefined,
     task_id: taskId,
     current_workflow_id: currentWorkflowId,
     workflow: {
