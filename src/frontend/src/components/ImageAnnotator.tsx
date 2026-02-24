@@ -152,14 +152,23 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         (p: { x: number; y: number }): { x: number; y: number } => {
             const img = imageRef.current
             if (!img) return p
-            const viewW = canvasW / effectiveScale
-            const viewH = canvasH / effectiveScale
+
+            const b1x = centerOffset.x / effectiveScale
+            const b2x = img.width - (canvasW - centerOffset.x) / effectiveScale
+            const minX = Math.min(b1x, b2x)
+            const maxX = Math.max(b1x, b2x)
+
+            const b1y = centerOffset.y / effectiveScale
+            const b2y = img.height - (canvasH - centerOffset.y) / effectiveScale
+            const minY = Math.min(b1y, b2y)
+            const maxY = Math.max(b1y, b2y)
+
             return {
-                x: Math.max(0, Math.min(p.x, img.width - viewW)),
-                y: Math.max(0, Math.min(p.y, img.height - viewH)),
+                x: Math.max(minX, Math.min(p.x, maxX)),
+                y: Math.max(minY, Math.min(p.y, maxY)),
             }
         },
-        [canvasW, canvasH, effectiveScale]
+        [canvasW, canvasH, effectiveScale, centerOffset]
     )
 
     // ─── Zoom ───────────────────────────────────────

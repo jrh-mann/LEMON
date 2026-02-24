@@ -1,0 +1,114 @@
+[
+  {
+    "id": "ae27607a",
+    "type": "question",
+    "x": 420,
+    "y": 180,
+    "question": "What does this diamond shape decision node text say exactly? Is it 'Under Specialist Clinic?' or something else?",
+    "status": "pending"
+  },
+  {
+    "id": "e38e1032",
+    "type": "question",
+    "x": 650,
+    "y": 450,
+    "question": "Is this text 'Calculate QRISK2/3' or 'Calculate QRISK 2/3'? Should it be QRISK2 or QRISK3 or both?",
+    "status": "pending"
+  },
+  {
+    "id": "cdc6909d",
+    "type": "question",
+    "x": 280,
+    "y": 680,
+    "question": "What does this process box text say? Is it 'Send Lipid Lowering Therapy AccuRx with self booking link'?",
+    "status": "pending"
+  },
+  {
+    "id": "f4b6cce6",
+    "type": "question",
+    "x": 920,
+    "y": 850,
+    "question": "What are the exact LDL thresholds shown in this decision diamond? Is it '\u22652.6 or 2-2.5 or <2'?",
+    "status": "pending"
+  },
+  {
+    "id": "3d695ea3",
+    "type": "question",
+    "x": 1050,
+    "y": 1050,
+    "question": "What does this medication text say? Is it 'Initiate Inclisiran' or 'Initiate Incisiran'?",
+    "status": "pending"
+  },
+  {
+    "id": "df52da41",
+    "type": "question",
+    "x": 260,
+    "y": 140,
+    "question": "There's a note 'not coded, assume no' near this decision. Should unknown/not coded specialist clinic status default to 'No' and continue down the workflow?",
+    "status": "pending"
+  },
+  {
+    "id": "f6795fb1",
+    "type": "question",
+    "x": 330,
+    "y": 330,
+    "question": "The note says 'Normal' is assumed to be \u22645 (can vary by clinic). Should there be an explicit threshold input, or is cholesterol_status a pre-categorized enum input?",
+    "status": "pending"
+  },
+  {
+    "id": "a22e9e88",
+    "type": "question",
+    "x": 400,
+    "y": 150,
+    "question": "This 'Primary/Secondary Treatment' decision box appears separate from the main flow. How does this integrate with the rest of the workflow? Is it an alternative entry point?",
+    "status": "pending"
+  },
+  {
+    "id": "9548ae42",
+    "type": "question",
+    "x": 680,
+    "y": 490,
+    "question": "The 'LDL \u22652.0' decision appears twice with different outcomes. Are these meant to represent assessments at different time points (before vs after Inclisiran treatment)?",
+    "status": "pending"
+  },
+  {
+    "id": "cc5640f8",
+    "type": "question",
+    "x": 780,
+    "y": 360,
+    "question": "After 'Add in Ezetimibe', what happens next? Should there be a follow-up assessment step or does the workflow end here?",
+    "status": "pending"
+  },
+  {
+    "id": "3810b8ff",
+    "type": "question",
+    "x": 260,
+    "y": 175,
+    "question": "Yellow note says 'not coded, assume no' \u2013 should this create a default value (false) for 'under_specialist_clinic' or affect the branching logic in another way?",
+    "status": "pending"
+  },
+  {
+    "id": "be0f8923",
+    "type": "question",
+    "x": 310,
+    "y": 330,
+    "question": "Yellow note mentions 'We assume Normal to be 5 or below (can vary from clinic to clinic)' \u2013 should the threshold 5 be a configurable input, or is 5 mmol/L hard-coded as the decision threshold?",
+    "status": "pending"
+  },
+  {
+    "id": "022ebb02",
+    "type": "question",
+    "x": 640,
+    "y": 500,
+    "question": "The branch from 'Assess LDL' shows three paths. How do the LDL thresholds relate to each other? Are these sequential checks (\u22652.6, then 2-2.5, then \u22652.0)?",
+    "status": "pending"
+  },
+  {
+    "id": "50cb255a",
+    "type": "question",
+    "x": 770,
+    "y": 525,
+    "question": "The node 'Repeat Lipids at 3 months' after 'LDL \u22652.0' does not have a clear output or next step shown. Does it loop back, or is there a missing outcome?",
+    "status": "pending"
+  }
+]
