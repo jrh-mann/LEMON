@@ -72,8 +72,11 @@ Return ONLY a JSON object with this structure:
     }
   },
   "doubts": [
-    "question or ambiguity 1",
-    "question or ambiguity 2"
+    {
+      "x": 120,
+      "y": 300,
+      "question": "question or ambiguity related to this specific location"
+    }
   ]
 }
 
@@ -101,7 +104,9 @@ Rules:
   - Only decision nodes may have multiple children. Action/start nodes must have at most one child. Outputs have no children.
   - Outputs MUST be leaf nodes (no children).
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
-  - Every node id must be unique across the tree.
+- Every node id must be unique across the tree.
+- For all questions inside the "doubts" array, you MUST provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
+- CRITICAL: The question text MUST be self-contained and descriptive. It should be understandable even without seeing the exact dot location. Reference surrounding text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node represent?" instead of "What is this?").
 - Return JSON only, no extra text.
 
 Once you've received clarifications via feedback, adjust the analysis accordingly, preserving ids
@@ -146,8 +151,34 @@ by recomputing them deterministically from name + type. Respond only with the up
             )
             # Inject user-provided annotations into the prompt
             full_prompt = prompt
-            if annotations:
-                full_prompt += _format_annotations(annotations)
+
+            img_w, img_h = 0, 0
+            try:
+                from PIL import Image
+                with Image.open(image_path) as img:
+                    img_w, img_h = img.size
+            except Exception as e:
+                self._logger.warning("Failed to get image dimensions for prompt: %s", e)
+
+            if img_w > 0 and img_h > 0:
+                full_prompt += (
+                    f"\n\nCRITICAL COORDINATE RULE: When generating 'x' and 'y' coordinates for doubts, "
+                    f"you MUST use a normalized 0-1000 coordinate system where (0,0) is the top-left corner "
+                    f"and (1000, 1000) is the bottom-right corner. Do NOT use raw image pixels. "
+                    f"For example, the exact center of the image is (500, 500)."
+                )
+                if annotations:
+                    scaled_anns = []
+                    for ann in annotations:
+                        ann_copy = dict(ann)
+                        if "x" in ann_copy and "y" in ann_copy:
+                            ann_copy["x"] = int(ann_copy["x"] * 1000 / img_w)
+                            ann_copy["y"] = int(ann_copy["y"] * 1000 / img_h)
+                        scaled_anns.append(ann_copy)
+                    full_prompt += _format_annotations(scaled_anns)
+            else:
+                if annotations:
+                    full_prompt += _format_annotations(annotations)
             user_msg = {
                 "role": "user",
                 "content": [
@@ -206,6 +237,23 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+
+        # Map 0-1000 LLM output coordinates back to absolute hardware pixels
+        if img_w > 0 and img_h > 0:
+            if isinstance(data.get("doubts"), list):
+                for doubt in data["doubts"]:
+                    if isinstance(doubt, dict) and "x" in doubt and "y" in doubt:
+                        try:
+                            raw_x = float(doubt["x"])
+                            raw_y = float(doubt["y"])
+                            new_x = int(raw_x * img_w / 1000)
+                            new_y = int(raw_y * img_h / 1000)
+                            # Clamp within actual bounds to eliminate out-of-bounds rendering bugs
+                            doubt["x"] = max(0, min(new_x, img_w))
+                            doubt["y"] = max(0, min(new_y, img_h))
+                        except (ValueError, TypeError):
+                            pass
+
         include_raw = os.environ.get("LEMON_INCLUDE_RAW_ANALYSIS", "").lower() in {"1", "true", "yes"}
         if include_raw and isinstance(data, dict):
             data["_raw_model_output"] = raw
@@ -314,12 +362,12 @@ def _format_annotations(annotations: List[Dict[str, Any]]) -> str:
         return ""
     lines = [
         "\n\nThe user has provided the following annotations on the image to help clarify it."
-        " Coordinates are in native image pixels (origin top-left):"
+        " Coordinates have been normalized to the 0-1000 system (origin top-left):"
     ]
     for i, ann in enumerate(annotations, 1):
         ann_type = ann.get("type", "unknown")
         if ann_type == "label":
-            dot_x, dot_y = ann.get("dotX", 0), ann.get("dotY", 0)
+            dot_x, dot_y = ann.get("x", 0), ann.get("y", 0)
             text = ann.get("text", "")
             lines.append(f'{i}. Label at ({dot_x}, {dot_y}): "{text}"')
         else:
