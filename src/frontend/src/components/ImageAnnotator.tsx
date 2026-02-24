@@ -1,12 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useChatStore } from '../stores/chatStore'
+import { sendChatMessage } from '../api/socket'
+import { useWorkflowStore } from '../stores/workflowStore'
 
 // ─── Data model ──────────────────────────────────────
 
-export interface Annotation {
+export type Annotation = LabelAnnotation | QuestionAnnotation
+
+export interface LabelAnnotation {
     type: 'label'
-    dotX: number   // native image-px
-    dotY: number
+    x: number   // native image-px
+    y: number
     text: string
+}
+
+export interface QuestionAnnotation {
+    id: string
+    type: 'question'
+    x: number
+    y: number
+    question: string
+    status: 'pending' | 'answered'
 }
 
 // ─── Component ───────────────────────────────────────
@@ -196,7 +210,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         (screenX: number, screenY: number): number => {
             for (let i = annotations.length - 1; i >= 0; i--) {
                 const ann = annotations[i]
-                const dotScreen = imageToScreen(ann.dotX, ann.dotY)
+                const dotScreen = imageToScreen(ann.x, ann.y)
                 const dx = screenX - dotScreen.x
                 const dy = screenY - dotScreen.y
                 if (dx * dx + dy * dy <= DOT_HIT_RADIUS * DOT_HIT_RADIUS) {
@@ -228,10 +242,14 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         // Image at native resolution
         ctx.drawImage(img, 0, 0, img.width, img.height)
 
-        // Draw label dots
+        // Draw label & question dots
         const invScale = 1 / effectiveScale
         annotations.forEach((ann, idx) => {
-            drawLabelDot(ctx, ann.dotX, ann.dotY, idx + 1, invScale, editingIdx === idx)
+            if (ann.type === 'label') {
+                drawLabelDot(ctx, ann.x, ann.y, idx + 1, invScale, editingIdx === idx)
+            } else if (ann.type === 'question') {
+                drawQuestionDot(ctx, ann.x, ann.y, invScale, editingIdx === idx, ann.status)
+            }
         })
 
         ctx.restore()
@@ -247,7 +265,8 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         // Click on dot → open modal
         if (dotIdx >= 0) {
             setEditingIdx(dotIdx)
-            setEditText(annotations[dotIdx].text)
+            const ann = annotations[dotIdx]
+            setEditText(ann.type === 'label' ? ann.text : (ann as any).text || '')
             return
         }
 
@@ -260,7 +279,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         e.preventDefault()
         const coords = screenToImage(e.clientX, e.clientY)
         const newIdx = annotations.length
-        onChange([...annotations, { type: 'label', dotX: coords.x, dotY: coords.y, text: '' }])
+        onChange([...annotations, { type: 'label', x: coords.x, y: coords.y, text: '' } as LabelAnnotation])
         setEditingIdx(newIdx)
         setEditText('')
     }
@@ -308,16 +327,41 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
 
     const handleModalSave = () => {
         if (editingIdx == null) return
-        if (!editText.trim()) {
-            // Empty text → delete the dot
-            const next = [...annotations]
-            next.splice(editingIdx, 1)
-            onChange(next)
-        } else {
-            const updated = [...annotations]
-            updated[editingIdx] = { ...updated[editingIdx], text: editText.trim() }
-            onChange(updated)
+
+        const ann = annotations[editingIdx]
+
+        if (ann.type === 'label') {
+            if (!editText.trim()) {
+                const next = [...annotations]
+                next.splice(editingIdx, 1)
+                onChange(next)
+            } else {
+                const updated = [...annotations]
+                updated[editingIdx] = { ...updated[editingIdx], text: editText.trim() } as LabelAnnotation
+                onChange(updated)
+            }
+        } else if (ann.type === 'question') {
+            if (editText.trim()) {
+                // Submit answer to chat
+                const chatStore = useChatStore.getState()
+                const workflowStore = useWorkflowStore.getState()
+                const { pendingImage } = workflowStore
+
+                chatStore.sendUserMessage(`Answer to question on image: ${editText.trim()}`)
+                sendChatMessage(
+                    `Answer to question on image: ${editText.trim()}`,
+                    chatStore.conversationId,
+                    pendingImage || undefined,
+                    annotations
+                )
+
+                // Update local annotation status
+                const updated = [...annotations]
+                updated[editingIdx] = { ...updated[editingIdx], status: 'answered', text: editText.trim() } as any
+                onChange(updated)
+            }
         }
+
         setEditingIdx(null)
         setEditText('')
     }
@@ -332,10 +376,11 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
     }
 
     const handleModalClose = () => {
-        // If the dot has no text (just placed), delete it
-        if (editingIdx != null && !annotations[editingIdx]?.text && !editText.trim()) {
+        const ann = annotations[editingIdx!]
+        // If the dot has no text (just placed label), delete it
+        if (ann?.type === 'label' && !(ann as LabelAnnotation).text && !editText.trim()) {
             const next = [...annotations]
-            next.splice(editingIdx, 1)
+            next.splice(editingIdx!, 1)
             onChange(next)
         }
         setEditingIdx(null)
@@ -428,23 +473,37 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                 </span>
             </div>
 
-            {/* LEMON-style modal for editing label text */}
+            {/* LEMON-style modal for editing label text or answering LLM questions */}
             {editingIdx != null && editingIdx < annotations.length && (
                 <div className="modal open">
                     <div className="modal-backdrop" onClick={handleModalClose} />
                     <div className="modal-content annotation-modal">
                         <div className="modal-header">
-                            <h2>Label #{editingIdx + 1}</h2>
+                            <h2>
+                                {annotations[editingIdx].type === 'label'
+                                    ? `Label #${editingIdx + 1}`
+                                    : 'LLM Question'}
+                            </h2>
                             <button className="modal-close" onClick={handleModalClose}>×</button>
                         </div>
                         <div className="modal-body">
+                            {annotations[editingIdx].type === 'question' && (
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Question</label>
+                                    <div className="annotation-question-text" style={{ padding: '12px', background: 'var(--surface-color)', borderRadius: '6px', fontSize: '14px', border: '1px solid var(--border-color)', color: 'var(--text-color)' }}>
+                                        {(annotations[editingIdx] as QuestionAnnotation).question}
+                                    </div>
+                                </div>
+                            )}
                             <div className="form-group">
-                                <label htmlFor="annotation-text">Annotation Text</label>
+                                <label htmlFor="annotation-text">
+                                    {annotations[editingIdx].type === 'label' ? 'Annotation Text' : 'Your Answer'}
+                                </label>
                                 <textarea
                                     id="annotation-text"
                                     value={editText}
                                     onChange={(e) => setEditText(e.target.value)}
-                                    placeholder="Enter clarification text for this label..."
+                                    placeholder={annotations[editingIdx].type === 'label' ? "Enter clarification text for this label..." : "Type your answer here..."}
                                     rows={4}
                                     autoFocus
                                     onKeyDown={(e) => {
@@ -454,19 +513,21 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                                     }}
                                 />
                                 <small className="muted">
-                                    Position: ({annotations[editingIdx].dotX}, {annotations[editingIdx].dotY})
+                                    Position: ({annotations[editingIdx].x}, {annotations[editingIdx].y})
                                     {' · Ctrl+Enter to save'}
                                 </small>
                             </div>
                             <div className="form-actions">
-                                <button className="ghost" onClick={handleModalDelete}>
-                                    Delete
-                                </button>
+                                {annotations[editingIdx].type === 'label' && (
+                                    <button className="ghost" onClick={handleModalDelete}>
+                                        Delete
+                                    </button>
+                                )}
                                 <button className="ghost" onClick={handleModalClose}>
                                     Cancel
                                 </button>
                                 <button className="primary" onClick={handleModalSave}>
-                                    Save Label
+                                    {annotations[editingIdx].type === 'label' ? 'Save Label' : 'Submit Answer'}
                                 </button>
                             </div>
                         </div>
@@ -519,6 +580,53 @@ function drawLabelDot(
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(String(number), x, y + 0.5 * invScale)
+
+    ctx.restore()
+}
+
+function drawQuestionDot(
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number,
+    invScale: number,
+    isActive: boolean,
+    status: 'pending' | 'answered',
+) {
+    const r = DOT_RADIUS * invScale
+    ctx.save()
+
+    // Glow when active
+    if (isActive) {
+        ctx.beginPath()
+        ctx.arc(x, y, r * 2.2, 0, Math.PI * 2)
+        ctx.fillStyle = status === 'pending' ? 'rgba(0, 122, 255, 0.25)' : 'rgba(52, 199, 89, 0.25)'
+        ctx.fill()
+    }
+
+    // Drop shadow
+    ctx.beginPath()
+    ctx.arc(x, y + 1.5 * invScale, r, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+    ctx.fill()
+
+    // Dot
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+
+    // Blue for pending, Green for answered
+    ctx.fillStyle = status === 'pending' ? (isActive ? '#3399ff' : '#007aff') : (isActive ? '#30d158' : '#28cd41')
+
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'
+    ctx.lineWidth = 1.5 * invScale
+    ctx.stroke()
+
+    // Mark (?) or (✓)
+    const fontSize = 10 * invScale
+    ctx.font = `bold ${fontSize}px "Space Grotesk", sans-serif`
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(status === 'pending' ? '?' : '✓', x, y + 0.5 * invScale)
 
     ctx.restore()
 }
