@@ -11,9 +11,10 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# Anthropic API limit: 5 MB for base64 image data.
-# Use 4.8 MB as target to leave a safe margin.
-_MAX_IMAGE_BYTES = 4.8 * 1024 * 1024
+# Anthropic API limit: 5 MB for the base64 *string* (not decoded bytes).
+# Base64 inflates by 4/3, so max raw bytes = 5MB * 3/4 ≈ 3.75 MB.
+# Use 3.5 MB as target to leave a safe margin.
+_MAX_RAW_BYTES = 3.5 * 1024 * 1024
 _MAX_DIMENSION = 1568  # Anthropic recommended max dimension
 
 
@@ -22,7 +23,7 @@ def image_to_data_url(image_path: Path) -> str:
     raw = image_path.read_bytes()
 
     # If already small enough, encode directly
-    if len(raw) <= _MAX_IMAGE_BYTES:
+    if len(raw) <= _MAX_RAW_BYTES:
         return _encode_image_bytes(raw, image_path.suffix)
 
     # Resize and compress with Pillow
@@ -60,7 +61,7 @@ def _encode_image_bytes(raw: bytes, suffix: str) -> str:
 
 
 def _compress_image(raw: bytes, suffix: str) -> str:
-    """Resize and compress an image to stay under _MAX_IMAGE_BYTES."""
+    """Resize and compress an image to stay under _MAX_RAW_BYTES."""
     img = Image.open(io.BytesIO(raw))
 
     # Convert RGBA/palette to RGB for JPEG output
@@ -82,7 +83,7 @@ def _compress_image(raw: bytes, suffix: str) -> str:
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=quality)
         data = buf.getvalue()
-        if len(data) <= _MAX_IMAGE_BYTES:
+        if len(data) <= _MAX_RAW_BYTES:
             logger.info("Compressed image to %d bytes (quality=%d)", len(data), quality)
             encoded = base64.b64encode(data).decode("ascii")
             return f"data:image/jpeg;base64,{encoded}"
