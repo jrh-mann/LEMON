@@ -1369,6 +1369,7 @@ export default function Canvas() {
             </div>
             {currentFile.type === 'image' ? (
               <ImageAnnotator
+                key={currentFile.id}
                 imageSrc={currentFile.dataUrl}
                 annotations={pendingAnnotations}
                 onChange={setPendingAnnotations}
