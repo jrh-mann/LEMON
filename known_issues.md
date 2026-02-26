@@ -1,37 +1,10 @@
-# Known Issues & Recent Fixes
-
-## Fixed Issues (2026-02-04)
-
-### 1. Execute Workflow Input Values Not Persisted
-**Symptom:** After running a workflow, clicking "Run Again" would reset all input values to defaults instead of keeping the previously entered values.
-
-**Root Cause:** The `ExecuteWorkflowForm` component initialized input values with fresh defaults on every render instead of reading from the tab's persisted `inputValues` storage.
-
-**Fix:** Updated `Modals.tsx` to:
-- Read initial values from `activeTab.inputValues` 
-- Persist values to tab via `setTabInputValues` on every change
-- Persist values before running execution
-
-### 2. Output Template F-Strings Not Working
-**Symptom:** Templates like `{BMI}` in output nodes were not outputting variable values correctly, or the interpreter would crash with `KeyError: 'name'`.
-
-**Root Cause:** The `TreeInterpreter` constructor assumed all variables in the `var_list` would have a `name` field. If variables were missing the `name` field (e.g., created via certain code paths), the comprehension `{var['name']: var['id'] for var in var_list}` would fail.
-
-**Fix:** Updated `interpreter.py` to:
-- Build `name_to_id` mapping with explicit fallback handling
-- Skip variables without `name` fields (they won't be usable in templates by name)
-- Also add variable IDs as keys, allowing templates to reference by ID directly (e.g., `{var_bmi_number}`)
-
----
-
-## Open Issues
-
 needs checklist because forgets vars
 voice thing should turn off inbetween
 
+auto ask claude button when there is a problem with saving the workflow, e.g. some issue parsing
+forgetting to add conditions to decision nodes
 
-
-
+library bar should slide left or right, left one probably not
 
 Excellent question! Here's my honest feedback as someone trying to help users build workflows:
 
