@@ -19,6 +19,30 @@ from ..utils.cancellation import CancellationError
 class Subagent:
     """Stateful subagent with persisted chat history."""
 
+    # Prompt for extracting side information (sticky notes, annotations, legends)
+    # from workflow images before the main analysis pass.
+    _GUIDANCE_PROMPT = (
+        "Examine this image for any written notes, annotations, or clarifications that "
+        "exist OUTSIDE or ALONGSIDE the main flowchart structure. These might be:\n"
+        "- Sticky notes or post-it notes\n"
+        "- Margin annotations or handwritten text\n"
+        "- Legends or keys explaining symbols\n"
+        "- Clarification text or callout boxes\n"
+        "- Definitions of terms or thresholds written near the diagram\n\n"
+        "CRITICAL RULES:\n"
+        "- ONLY report text that is LITERALLY VISIBLE in the image.\n"
+        "- Do NOT infer, guess, or fabricate any information.\n"
+        "- Do NOT extract text that is part of the flowchart nodes/arrows themselves.\n"
+        "- If there are NO side notes or annotations, return an empty array: []\n"
+        "- It is completely fine to return an empty array. Most images have no side notes.\n\n"
+        'Return ONLY a JSON array. Each item:\n'
+        '- "text": the EXACT text content as written in the image\n'
+        '- "location": brief description of where it appears (e.g., "sticky note, top-right")\n'
+        '- "category": one of "clarification", "definition", "constraint", "note", "legend"\n\n'
+        "If nothing found, return: []\n"
+        "Return JSON only, no extra text."
+    )
+
     def __init__(self, history: HistoryStore):
         self.history = history
         self._logger = logging.getLogger("backend.subagent")
@@ -128,6 +152,9 @@ by recomputing them deterministically from name + type. Respond only with the up
             "role": "system",
             "content": "You extract structured data from workflow images.",
         }
+        # guidance is populated for initial analysis only (not follow-ups)
+        guidance: List[Dict[str, Any]] = []
+
         wants_json = _wants_json(feedback or "")
         if is_followup:
             user_msg = {
@@ -149,6 +176,14 @@ by recomputing them deterministically from name + type. Respond only with the up
                 encode_ms,
                 len(data_url.encode("utf-8")),
             )
+            # Extract side information (sticky notes, legends, annotations) before main analysis
+            guidance = self._extract_guidance(data_url=data_url, should_cancel=should_cancel)
+            if guidance:
+                self._logger.info(
+                    "Extracted %d guidance items from image session_id=%s",
+                    len(guidance), session_id,
+                )
+
             # Inject user-provided annotations into the prompt
             full_prompt = prompt
 
@@ -179,6 +214,19 @@ by recomputing them deterministically from name + type. Respond only with the up
             else:
                 if annotations:
                     full_prompt += _format_annotations(annotations)
+
+            # Inject extracted guidance into the analysis prompt
+            if guidance:
+                lines = [
+                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
+                    for g in guidance
+                ]
+                full_prompt += (
+                    "\n\n## Side Information Found in Image\n"
+                    "The following notes and annotations were found alongside the flowchart. "
+                    "Use them to inform your analysis:\n" + "\n".join(lines)
+                )
+
             user_msg = {
                 "role": "user",
                 "content": [
@@ -249,6 +297,8 @@ by recomputing them deterministically from name + type. Respond only with the up
         data = normalize_analysis(data)
         # Attach the model's extended thinking as reasoning context
         data["reasoning"] = "".join(thinking_parts)
+        # Attach extracted side information (guidance) from the image
+        data["guidance"] = guidance
 
         # Map 0-1000 LLM output coordinates back to absolute hardware pixels
         if img_w > 0 and img_h > 0:
@@ -281,6 +331,68 @@ by recomputing them deterministically from name + type. Respond only with the up
         self.history.store_analysis(session_id, data)
         return data
 
+
+    def _extract_guidance(
+        self,
+        *,
+        data_url: str,
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Extract side information (sticky notes, legends, annotations) from a workflow image.
+
+        Performs a lightweight LLM call before the main analysis to identify any
+        notes or annotations that exist alongside the flowchart. Returns a list
+        of dicts with text/location/category, or [] on any failure (non-blocking).
+        """
+        try:
+            messages = [
+                {"role": "system", "content": "You extract side information from workflow images."},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": self._GUIDANCE_PROMPT},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ]
+            raw = call_llm(
+                messages,
+                max_completion_tokens=4000,
+                response_format=None,
+                caller="subagent",
+                request_tag="extract_guidance",
+                should_cancel=should_cancel,
+            ).strip()
+
+            # Parse JSON array — strip code fences if present
+            text = raw.strip()
+            if text.startswith("```") and text.endswith("```"):
+                text = text.strip("`").strip()
+                if text.lower().startswith("json"):
+                    text = text[4:].strip()
+
+            # Find the first '[' to locate the JSON array
+            start = text.find("[")
+            if start == -1:
+                self._logger.debug("No JSON array found in guidance response")
+                return []
+
+            parsed = json.loads(text[start:])
+            if not isinstance(parsed, list):
+                self._logger.debug("Guidance response was not a list")
+                return []
+
+            # Validate each item has required keys
+            valid = []
+            for item in parsed:
+                if isinstance(item, dict) and "text" in item:
+                    valid.append(item)
+            return valid
+
+        except Exception as exc:
+            # Non-blocking — guidance extraction failure should never break analysis
+            self._logger.warning("Guidance extraction failed (non-blocking): %s", exc)
+            return []
 
     def _parse_json(
         self,

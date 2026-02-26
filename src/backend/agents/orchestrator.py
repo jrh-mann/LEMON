@@ -41,6 +41,7 @@ class Orchestrator:
             "tree": {},
             "doubts": [],
             "reasoning": "",
+            "guidance": [],
         }
 
         self.history: List[Dict[str, str]] = []
@@ -90,6 +91,7 @@ class Orchestrator:
             "tree": self.workflow.get("tree", {}),
             "doubts": self.workflow.get("doubts", []),
             "reasoning": self.workflow.get("reasoning", ""),
+            "guidance": self.workflow.get("guidance", []),
         }
 
     @workflow_analysis.setter
@@ -114,6 +116,8 @@ class Orchestrator:
             self.workflow["doubts"] = value.get("doubts", [])
         if "reasoning" in value and isinstance(value.get("reasoning"), str):
             self.workflow["reasoning"] = value["reasoning"]
+        if "guidance" in value and isinstance(value.get("guidance"), list):
+            self.workflow["guidance"] = value["guidance"]
 
     def sync_workflow(
         self,
@@ -193,6 +197,8 @@ class Orchestrator:
                 self.workflow["doubts"] = analysis_data.get("doubts", [])
             if "reasoning" in analysis_data:
                 self.workflow["reasoning"] = analysis_data.get("reasoning", "")
+            if "guidance" in analysis_data:
+                self.workflow["guidance"] = analysis_data.get("guidance", [])
             self._logger.info(
                 "Synced workflow analysis: %d variables, %d outputs",
                 len(variables),
@@ -376,6 +382,8 @@ class Orchestrator:
                         self.workflow["outputs"] = returned_analysis["outputs"]
                     if "reasoning" in returned_analysis:
                         self.workflow["reasoning"] = returned_analysis["reasoning"]
+                    if "guidance" in returned_analysis:
+                        self.workflow["guidance"] = returned_analysis["guidance"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d variables, %d outputs",
                         len(self.workflow.get("inputs", [])),
@@ -427,6 +435,7 @@ class Orchestrator:
             has_image=has_image,
             allow_tools=allow_tools,
             reasoning=self.workflow.get("reasoning", ""),
+            guidance=self.workflow.get("guidance", []),
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow

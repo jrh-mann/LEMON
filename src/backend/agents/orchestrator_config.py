@@ -913,6 +913,7 @@ def build_system_prompt(
     has_image: bool,
     allow_tools: bool,
     reasoning: str = "",
+    guidance: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     system = (
         "You are a workflow manipulation assistant. Your job is to help users create and modify flowcharts by calling tools.\n\n"
@@ -1205,5 +1206,18 @@ def build_system_prompt(
             "terminology, variable naming choices, node type decisions, and any assumptions "
             "made during analysis.\n\n"
             f"{reasoning}"
+        )
+    # Inject guidance notes (sticky notes, annotations, legends) extracted from the image.
+    if guidance:
+        lines = [
+            f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
+            for g in guidance
+        ]
+        system += (
+            "\n\n## Image Guidance Notes\n"
+            "The following notes, sticky notes, and annotations were found alongside the "
+            "workflow diagram. These provide domain context and clarifications from the "
+            "original author. Use them when interpreting the workflow and answering "
+            "user questions.\n\n" + "\n".join(lines)
         )
     return system

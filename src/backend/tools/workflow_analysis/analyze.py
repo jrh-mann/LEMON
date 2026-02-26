@@ -99,7 +99,7 @@ class AnalyzeWorkflowTool(Tool):
             return {
                 "session_id": session_id,
                 "message": data.get("message", ""),
-                "analysis": {"variables": [], "outputs": [], "tree": {}, "doubts": [], "reasoning": ""},
+                "analysis": {"variables": [], "outputs": [], "tree": {}, "doubts": [], "reasoning": "", "guidance": []},
                 "flowchart": {"nodes": [], "edges": []},
             }
         analysis = normalize_analysis(dict(data))
@@ -136,6 +136,7 @@ class AnalyzeWorkflowTool(Tool):
                 "tree": {},
                 "doubts": ["User hasn't uploaded image, ask them to upload image."],
                 "reasoning": "",
+                "guidance": [],
             },
             "flowchart": {"nodes": [], "edges": []},
         }
