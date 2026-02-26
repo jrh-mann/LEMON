@@ -156,9 +156,12 @@ class AnalyzeWorkflowTool(Tool):
         Builds a lookup from file id to file info, resolves absolute paths,
         then delegates to the subagent's analyze_multi method.
         """
-        # Build lookup: file_id -> file info
-        file_lookup: Dict[str, Dict[str, Any]] = {
+        # Build lookups: by id and by name (fallback for when LLM uses names)
+        id_lookup: Dict[str, Dict[str, Any]] = {
             f.get("id", ""): f for f in uploaded_files
+        }
+        name_lookup: Dict[str, Dict[str, Any]] = {
+            f.get("name", ""): f for f in uploaded_files
         }
 
         # Match classifications to files and resolve absolute paths
@@ -166,9 +169,10 @@ class AnalyzeWorkflowTool(Tool):
         for cls in classifications:
             file_id = cls.get("id", "")
             purpose = cls.get("purpose", "flowchart")
-            file_info = file_lookup.get(file_id)
+            # Try matching by id first, then fall back to matching by name
+            file_info = id_lookup.get(file_id) or name_lookup.get(file_id)
             if not file_info:
-                self._logger.warning("File classification references unknown id: %s", file_id)
+                self._logger.warning("File classification references unknown id/name: %s", file_id)
                 continue
 
             rel_path = file_info.get("path", "")

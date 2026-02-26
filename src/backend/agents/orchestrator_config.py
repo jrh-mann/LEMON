@@ -1217,7 +1217,8 @@ def build_system_prompt(
         # Multiple files: check if any are still unclassified
         unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
         if unclassified:
-            # Files not yet classified — instruct agent to ask in a compact format
+            # Files not yet classified — instruct agent to ask in a compact format.
+            # Show file names to user; use file names as id when calling analyze_workflow.
             numbered_files = "\n".join(
                 f"  {i+1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
             )
@@ -1230,6 +1231,7 @@ def build_system_prompt(
                 f"{numbered_files}\n\n"
                 "Ask: \"Reply with the number and type for each, e.g. '1 flowchart, 2 guidance'\"\n\n"
                 "Once you have classifications, call analyze_workflow with the files parameter."
+                " IMPORTANT: Use the exact file NAME as the 'id' field in each entry of the files array."
             )
         else:
             # All files classified — ready to analyze
