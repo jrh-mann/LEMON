@@ -58,8 +58,9 @@ async function compressDataUrl(
   let next = canvas.toDataURL('image/jpeg', quality)
   let nextBytes = estimateDataUrlBytes(next)
 
-  while (nextBytes > maxBytes && quality > 0.6) {
-    quality = Math.max(0.6, quality - 0.05)
+  // Progressively lower quality to fit under the byte limit
+  while (nextBytes > maxBytes && quality > 0.3) {
+    quality = Math.max(0.3, quality - 0.05)
     next = canvas.toDataURL('image/jpeg', quality)
     nextBytes = estimateDataUrlBytes(next)
   }
@@ -115,9 +116,9 @@ export default function Header() {
               purpose: 'unclassified',
             })
           } else {
-            // Images: compress if needed
-            const MAX_BYTES = 7 * 1024 * 1024
-            const MAX_DIMENSION = 2000
+            // Images: compress to stay under Anthropic's 5MB base64 limit
+            const MAX_BYTES = 4.5 * 1024 * 1024
+            const MAX_DIMENSION = 1568
             const { dataUrl, bytes } = await compressDataUrl(original, {
               maxBytes: MAX_BYTES,
               maxDimension: MAX_DIMENSION,
