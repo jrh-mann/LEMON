@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message, ExecutionLogEntry } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message, ExecutionLogEntry, PendingFile } from '../types'
 import type { Annotation } from '../components/ImageAnnotator'
 import { useChatStore } from './chatStore'
 import { patchWorkflow } from '../api/workflows'
@@ -39,8 +39,7 @@ export interface WorkflowTab {
   flowchart: Flowchart
   history: Flowchart[]
   historyIndex: number
-  pendingImage: string | null
-  pendingImageName: string | null
+  pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
   analysis: WorkflowAnalysis | null
   // Chat state per tab — each workflow gets its own conversation
@@ -81,9 +80,8 @@ interface WorkflowState {
   history: Flowchart[]
   historyIndex: number
 
-  // Pending image (per-tab)
-  pendingImage: string | null
-  pendingImageName: string | null
+  // Pending files (per-tab)
+  pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
 
   // Actions
@@ -134,9 +132,10 @@ interface WorkflowState {
   redo: () => void
   clearHistory: () => void
 
-  // Pending image (per-tab)
-  setPendingImage: (image: string | null, name?: string | null) => void
-  clearPendingImage: () => void
+  // Pending files (per-tab)
+  addPendingFile: (file: PendingFile) => void
+  removePendingFile: (fileId: string) => void
+  clearPendingFiles: () => void
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
 
@@ -207,8 +206,7 @@ const createInitialTab = (): WorkflowTab => {
     flowchart: emptyFlowchart,
     history: [],
     historyIndex: -1,
-    pendingImage: null,
-    pendingImageName: null,
+    pendingFiles: [],
     pendingAnnotations: [],
     analysis: null,
     conversationId: null,  // Will be generated on first message
@@ -252,8 +250,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   connectFromId: null,
   history: [],
   historyIndex: -1,
-  pendingImage: null,
-  pendingImageName: null,
+  pendingFiles: [],
   pendingAnnotations: [],
 
   // Execution state
@@ -333,8 +330,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       flowchart,
       history: [],
       historyIndex: -1,
-      pendingImage: null,
-      pendingImageName: null,
+      pendingFiles: [],
       pendingAnnotations: [],
       analysis: null,
       conversationId: null,  // New tab starts with no conversation
@@ -348,8 +344,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       tab.id === state.activeTabId
         ? {
           ...tab,
-          pendingImage: state.pendingImage,
-          pendingImageName: state.pendingImageName,
+          pendingFiles: state.pendingFiles,
           pendingAnnotations: state.pendingAnnotations,
           analysis: state.currentAnalysis,
           conversationId: chatSnapshot.conversationId,
@@ -369,8 +364,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       connectFromId: null,
       history: [],
       historyIndex: -1,
-      pendingImage: null,
-      pendingImageName: null,
+      pendingFiles: [],
       pendingAnnotations: [],
     })
     // Reset chat for the new tab (fresh conversation)
@@ -393,8 +387,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         selectedNodeIds: [],
         history: [],
         historyIndex: -1,
-        pendingImage: null,
-        pendingImageName: null,
+        pendingFiles: [],
         pendingAnnotations: [],
       })
       // Reset chat for the fresh tab
@@ -423,8 +416,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: activeTab.historyIndex,
       selectedNodeId: null,
       selectedNodeIds: [],
-      pendingImage: activeTab.pendingImage,
-      pendingImageName: activeTab.pendingImageName,
+      pendingFiles: activeTab.pendingFiles,
       pendingAnnotations: activeTab.pendingAnnotations,
     })
     // Restore chat state from the tab we're switching to
@@ -446,8 +438,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           flowchart: state.flowchart,
           history: state.history,
           historyIndex: state.historyIndex,
-          pendingImage: state.pendingImage,
-          pendingImageName: state.pendingImageName,
+          pendingFiles: state.pendingFiles,
           pendingAnnotations: state.pendingAnnotations,
           analysis: state.currentAnalysis,
           conversationId: chatSnapshot.conversationId,
@@ -471,8 +462,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeIds: [],
       connectMode: false,
       connectFromId: null,
-      pendingImage: newTab.pendingImage,
-      pendingImageName: newTab.pendingImageName,
+      pendingFiles: newTab.pendingFiles,
       pendingAnnotations: newTab.pendingAnnotations,
     })
     // Restore chat state from the incoming tab
@@ -804,9 +794,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
-  // Pending image (per-tab)
-  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name, pendingAnnotations: [] }),
-  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null, pendingAnnotations: [] }),
+  // Pending files (per-tab)
+  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file] })),
+  removePendingFile: (fileId) => set((state) => ({ pendingFiles: state.pendingFiles.filter(f => f.id !== fileId) })),
+  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [] }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
 
@@ -822,8 +813,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       connectFromId: null,
       history: [],
       historyIndex: -1,
-      pendingImage: null,
-      pendingImageName: null,
+      pendingFiles: [],
       pendingAnnotations: [],
       execution: { ...initialExecutionState },
     }),

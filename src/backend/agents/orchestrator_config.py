@@ -28,6 +28,25 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "Optional feedback to refine the analysis.",
                         },
+                        "files": {
+                            "type": "array",
+                            "description": (
+                                "Classifications for uploaded files. Required when multiple files "
+                                "are uploaded. Each entry maps a file id to its purpose."
+                            ),
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string", "description": "File id from the upload"},
+                                    "purpose": {
+                                        "type": "string",
+                                        "enum": ["flowchart", "guidance", "mixed"],
+                                        "description": "What this file contains",
+                                    },
+                                },
+                                "required": ["id", "purpose"],
+                            },
+                        },
                     },
                     "required": [],
                 },
@@ -910,7 +929,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
 def build_system_prompt(
     *,
     last_session_id: Optional[str],
-    has_image: bool,
+    has_files: Optional[List[Dict[str, Any]]] = None,
     allow_tools: bool,
     reasoning: str = "",
     guidance: Optional[List[Dict[str, Any]]] = None,
@@ -1189,8 +1208,30 @@ def build_system_prompt(
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."
-    if has_image:
-        system += " The user has uploaded an image; analyze_workflow will use the latest upload."
+    # File-aware instructions based on uploaded files
+    uploaded = has_files or []
+    if len(uploaded) == 1:
+        # Single file: existing behaviour — just tell the model to analyze
+        system += " The user has uploaded a file; analyze_workflow will use the latest upload."
+    elif len(uploaded) > 1:
+        # Multiple files: check if any are still unclassified
+        unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
+        if unclassified:
+            # Files not yet classified — instruct agent to ask
+            file_list = ", ".join(f'"{f.get("name", "?")}"' for f in uploaded)
+            system += (
+                f" The user has uploaded {len(uploaded)} files: {file_list}."
+                " BEFORE analyzing, you MUST ask the user what each file is for."
+                " Ask them to classify each file as one of: flowchart (the actual workflow diagram),"
+                " guidance (definitions, legends, context), or mixed (contains both)."
+                " Once you know the purpose of each file, call analyze_workflow with the files parameter."
+            )
+        else:
+            # All files classified — ready to analyze
+            system += (
+                f" The user has uploaded {len(uploaded)} files and they are classified."
+                " Call analyze_workflow with the files parameter to begin analysis."
+            )
     if not allow_tools:
         system += (
             " Tools are disabled for this response. Do NOT call tools; respond in "

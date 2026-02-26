@@ -5,6 +5,7 @@ import { validateWorkflow, compileToPython } from '../api/workflows'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { addAssistantMessage } from '../stores/chatStore'
+import type { PendingFile } from '../types'
 
 function estimateDataUrlBytes(dataUrl: string): number {
   const comma = dataUrl.indexOf(',')
@@ -73,7 +74,7 @@ export default function Header() {
   const [showExportDropdown, setShowExportDropdown] = useState(false)
 
   const { openModal, setError, devMode, toggleDevMode } = useUIStore()
-  const { currentWorkflow, flowchart, setPendingImage, currentAnalysis } = useWorkflowStore()
+  const { currentWorkflow, flowchart, addPendingFile, currentAnalysis } = useWorkflowStore()
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -86,62 +87,100 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Handle image upload - just store the image, don't auto-analyse
-  const handleImageUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
+  // Process a single file: compress images, read PDFs as data URL, return PendingFile
+  const processFile = useCallback(async (file: File): Promise<PendingFile | null> => {
+    const isPdf = file.type === 'application/pdf'
+    const fileType: 'image' | 'pdf' = isPdf ? 'pdf' : 'image'
 
-      // Read file as base64 data URL. This is later sent to backend inside the `chat` socket payload.
-      // In production (Azure), large payloads can be rejected by proxies/buffers; we proactively compress.
+    return new Promise((resolve) => {
       const reader = new FileReader()
       reader.onload = async () => {
         try {
           const original = reader.result as string
 
-          // Keep a conservative limit because the chat payload also includes workflow state.
-          const MAX_BYTES = 7 * 1024 * 1024
-          const MAX_DIMENSION = 2000
-
-          const { dataUrl, didChange, bytes } = await compressDataUrl(original, {
-            maxBytes: MAX_BYTES,
-            maxDimension: MAX_DIMENSION,
-          })
-
-          if (bytes > MAX_BYTES) {
-            setError(
-              `Image is too large to send (${(bytes / (1024 * 1024)).toFixed(1)}MB). ` +
-              `Try a smaller screenshot or export as JPG, then re-upload.`
-            )
-            return
+          if (isPdf) {
+            // PDFs: no compression, just check size
+            const bytes = estimateDataUrlBytes(original)
+            const MAX_PDF_BYTES = 10 * 1024 * 1024
+            if (bytes > MAX_PDF_BYTES) {
+              setError(`PDF "${file.name}" is too large (${(bytes / (1024 * 1024)).toFixed(1)}MB). Max 10MB.`)
+              resolve(null)
+              return
+            }
+            resolve({
+              id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              name: file.name,
+              dataUrl: original,
+              type: fileType,
+              purpose: 'unclassified',
+            })
+          } else {
+            // Images: compress if needed
+            const MAX_BYTES = 7 * 1024 * 1024
+            const MAX_DIMENSION = 2000
+            const { dataUrl, bytes } = await compressDataUrl(original, {
+              maxBytes: MAX_BYTES,
+              maxDimension: MAX_DIMENSION,
+            })
+            if (bytes > MAX_BYTES) {
+              setError(`Image "${file.name}" is too large (${(bytes / (1024 * 1024)).toFixed(1)}MB).`)
+              resolve(null)
+              return
+            }
+            resolve({
+              id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              name: file.name,
+              dataUrl,
+              type: fileType,
+              purpose: 'unclassified',
+            })
           }
-
-          // Store image in state for later use
-          setPendingImage(dataUrl, file.name)
-
-          const note = didChange
-            ? ` (resized/compressed to ${(bytes / (1024 * 1024)).toFixed(1)}MB)`
-            : ''
-
-          // Add assistant message prompting user to ask for analysis
-          addAssistantMessage(
-            `Image "${file.name}" uploaded${note}. You can now ask me to analyse it, for example:\n\n` +
-            `- "Analyse this workflow image"\n` +
-            `- "Analyse this image, focus on the decision logic for diabetic patients"\n` +
-            `- "Extract the inputs and outputs from this flowchart"`
-          )
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to process uploaded image')
+          setError(err instanceof Error ? err.message : `Failed to process "${file.name}"`)
+          resolve(null)
         }
       }
       reader.readAsDataURL(file)
+    })
+  }, [setError])
 
-      // Reset input
+  // Handle file upload — supports multiple images and PDFs
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (!files || files.length === 0) return
+
+      const processed: PendingFile[] = []
+      for (const file of Array.from(files)) {
+        const pending = await processFile(file)
+        if (pending) {
+          addPendingFile(pending)
+          processed.push(pending)
+        }
+      }
+
+      if (processed.length === 1) {
+        // Single file: existing behaviour — prompt for analysis
+        addAssistantMessage(
+          `File "${processed[0].name}" uploaded. You can now ask me to analyse it, for example:\n\n` +
+          `- "Analyse this workflow image"\n` +
+          `- "Analyse this image, focus on the decision logic for diabetic patients"\n` +
+          `- "Extract the inputs and outputs from this flowchart"`
+        )
+      } else if (processed.length > 1) {
+        // Multiple files: list them
+        const names = processed.map(f => `"${f.name}"`).join(', ')
+        addAssistantMessage(
+          `Uploaded ${processed.length} files: ${names}. You can now ask me to analyse them.`
+        )
+      }
+
+      // Reset input so the same files can be re-selected
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
     },
-    [setPendingImage, setError]
+    [addPendingFile, processFile]
   )
 
   // Handle JSON export
@@ -435,7 +474,7 @@ export default function Header() {
           Browse Library
         </button>
 
-        <label className="ghost upload-label" htmlFor="imageUpload">
+        <label className="ghost upload-label" htmlFor="fileUpload">
           <svg
             width="16"
             height="16"
@@ -448,15 +487,16 @@ export default function Header() {
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          Upload Image
+          Upload Files
         </label>
         <input
           ref={fileInputRef}
           type="file"
-          id="imageUpload"
-          accept="image/*"
+          id="fileUpload"
+          accept="image/*,application/pdf"
+          multiple
           style={{ display: 'none' }}
-          onChange={handleImageUpload}
+          onChange={handleFileUpload}
         />
 
         <button

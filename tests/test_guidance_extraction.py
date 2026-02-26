@@ -194,7 +194,7 @@ class TestBuildSystemPromptGuidance:
         """Non-empty guidance should produce an 'Image Guidance Notes' section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             guidance=[
                 {"text": "HbA1c threshold is 7.5%", "location": "top-right", "category": "definition"},
@@ -212,7 +212,7 @@ class TestBuildSystemPromptGuidance:
         """Empty guidance list should NOT produce an 'Image Guidance Notes' section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             guidance=[],
         )
@@ -223,7 +223,7 @@ class TestBuildSystemPromptGuidance:
         """None guidance should NOT produce an 'Image Guidance Notes' section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             guidance=None,
         )
@@ -234,7 +234,7 @@ class TestBuildSystemPromptGuidance:
         """When guidance param not passed, no Image Guidance Notes section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
         )
 
@@ -306,7 +306,7 @@ class TestFullGuidancePipeline:
         # 3. Build system prompt with guidance from orchestrator
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             reasoning=orch.workflow_analysis.get("reasoning", ""),
             guidance=orch.workflow_analysis.get("guidance", []),

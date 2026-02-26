@@ -830,7 +830,7 @@ export function disconnectSocket(): void {
 export function sendChatMessage(
   message: string,
   conversationId?: string | null,
-  image?: string,
+  files?: import('../types').PendingFile[],
   annotations?: unknown[]
 ): void {
   const sock = getSocket()
@@ -881,7 +881,13 @@ export function sendChatMessage(
     session_id: getSessionId(),
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
-    image,
+    files: files && files.length > 0 ? files.map(f => ({
+      id: f.id,
+      name: f.name,
+      data_url: f.dataUrl,
+      file_type: f.type,
+      purpose: f.purpose,
+    })) : undefined,
     annotations: annotations && annotations.length > 0 ? annotations : undefined,
     task_id: taskId,
     current_workflow_id: currentWorkflowId,

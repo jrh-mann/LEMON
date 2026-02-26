@@ -271,7 +271,7 @@ def register_routes(
 
         response_text = convo.orchestrator.respond(
             message,
-            has_image=bool(image_data),
+            has_files=[],  # REST endpoint doesn't support multi-file yet
             allow_tools=True,
             on_tool_event=on_tool_event,
         )

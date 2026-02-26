@@ -18,7 +18,7 @@ from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_LIBRARY_TOOLS
-from ..utils.uploads import save_uploaded_image, save_annotations
+from ..utils.uploads import save_uploaded_file, save_annotations
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -104,7 +104,7 @@ class SocketChatTask:
     task_id: str
     message: str
     conversation_id: Optional[str]
-    image_data: Optional[str]
+    files_data: list[dict[str, Any]]  # List of uploaded file dicts from frontend
     workflow: Optional[Dict[str, Any]]
     analysis: Optional[Dict[str, Any]]  # Frontend analysis (variables, outputs, etc)
     current_workflow_id: Optional[str] = None  # ID of current workflow on canvas (None if unsaved)
@@ -115,6 +115,7 @@ class SocketChatTask:
     did_stream: bool = False
     convo: Optional[Conversation] = None
     annotations: Optional[list[dict[str, Any]]] = None
+    saved_file_paths: list[dict[str, Any]] = field(default_factory=list)  # Saved file metadata
 
     def is_cancelled(self) -> bool:
         return _is_task_cancelled(self.sid, self.task_id)
@@ -266,18 +267,34 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
-    def _save_uploaded_image(self) -> bool:
-        if not isinstance(self.image_data, str) or not self.image_data.strip():
+    def _save_uploaded_files(self) -> bool:
+        """Save all uploaded files to disk and populate self.saved_file_paths."""
+        if not self.files_data:
             return True
-        try:
-            rel_path = save_uploaded_image(self.image_data, repo_root=self.repo_root)
-            # Save annotations alongside the image if provided
-            if self.annotations and isinstance(self.annotations, list):
-                save_annotations(rel_path, self.annotations, repo_root=self.repo_root)
-        except Exception as exc:
-            logger.exception("Failed to save uploaded image")
-            self.emit_error(f"Invalid image: {exc}")
-            return False
+        for file_info in self.files_data:
+            data_url = file_info.get("data_url", "")
+            if not isinstance(data_url, str) or not data_url.strip():
+                continue
+            try:
+                rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
+                self.saved_file_paths.append({
+                    "id": file_info.get("id", ""),
+                    "name": file_info.get("name", ""),
+                    "path": rel_path,
+                    "file_type": file_type,
+                    "purpose": file_info.get("purpose", "unclassified"),
+                })
+            except Exception as exc:
+                logger.exception("Failed to save uploaded file: %s", file_info.get("name"))
+                self.emit_error(f"Invalid file '{file_info.get('name', '?')}': {exc}")
+                return False
+        # Save annotations alongside the first image if provided
+        if self.annotations and isinstance(self.annotations, list) and self.saved_file_paths:
+            first_image = next(
+                (f for f in self.saved_file_paths if f["file_type"] == "image"), None
+            )
+            if first_image:
+                save_annotations(first_image["path"], self.annotations, repo_root=self.repo_root)
         return True
 
     def _sync_payload_workflow(self) -> None:
@@ -333,13 +350,13 @@ class SocketChatTask:
         self.socketio.start_background_task(self.heartbeat)
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
-            if not self._save_uploaded_image():
+            if not self._save_uploaded_files():
                 return
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
             response_text = self.convo.orchestrator.respond(
                 self.message,
-                has_image=bool(self.image_data),
+                has_files=self.saved_file_paths if self.saved_file_paths else [],
                 stream=self.stream_chunk,
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
@@ -387,7 +404,7 @@ def handle_socket_chat(
         task_id=task_id,
         message=message,
         conversation_id=payload.get("conversation_id"),
-        image_data=payload.get("image"),
+        files_data=payload.get("files") or [],
         workflow=payload.get("workflow"),
         analysis=payload.get("analysis"),
         current_workflow_id=payload.get("current_workflow_id"),  # ID of workflow on canvas

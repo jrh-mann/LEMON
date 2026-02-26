@@ -30,6 +30,8 @@ def decode_data_url(data_url: str) -> tuple[bytes, str]:
         ext = "gif"
     elif media_type == "image/bmp":
         ext = "bmp"
+    elif media_type == "application/pdf":
+        ext = "pdf"
     # validate=True gives clearer failures for truncated/invalid base64 payloads.
     return base64.b64decode(b64, validate=True), ext
 
@@ -60,6 +62,39 @@ def save_uploaded_image(
             "Set LEMON_DATA_DIR to a writable path (e.g. /tmp/lemon or /home/lemon) for this deployment."
         ) from exc
     return str(path.relative_to(data_dir))
+
+
+def save_uploaded_file(
+    data_url: str,
+    *,
+    repo_root: Path,
+    filename_prefix: str = "",
+) -> tuple[str, str]:
+    """Save an uploaded file (image or PDF) and return (relative_path, file_type).
+
+    ``file_type`` is ``"image"`` or ``"pdf"``.
+    """
+    raw, ext = decode_data_url(data_url)
+    file_type = "pdf" if ext == "pdf" else "image"
+    data_dir = lemon_data_dir(repo_root)
+    uploads_dir = data_dir / "uploads"
+    try:
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise PermissionError(
+            "Upload storage directory is not writable. "
+            "Set LEMON_DATA_DIR to a writable path."
+        ) from exc
+    filename = f"{filename_prefix}{uuid4().hex}.{ext}"
+    path = uploads_dir / filename
+    try:
+        path.write_bytes(raw)
+    except PermissionError as exc:
+        raise PermissionError(
+            "Upload storage path is not writable. "
+            "Set LEMON_DATA_DIR to a writable path."
+        ) from exc
+    return str(path.relative_to(data_dir)), file_type
 
 
 def _annotations_path_for(image_path: Path) -> Path:

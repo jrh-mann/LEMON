@@ -184,8 +184,9 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         image_data_url: str | None = None,
         session_id: str | None = None,
         feedback: str | None = None,
+        files: list[dict[str, Any]] | None = None,
     ) -> AnalyzeWorkflowResult:
-        logger.info("MCP analyze_workflow start session_id=%s has_image=%s", session_id, bool(image_data_url))
+        logger.info("MCP analyze_workflow start session_id=%s has_image=%s files=%s", session_id, bool(image_data_url), len(files or []))
         if session_id:
             if not feedback:
                 raise ValueError("feedback is required when session_id is provided.")
@@ -197,6 +198,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["session_id"] = session_id
         if feedback:
             args["feedback"] = feedback
+        if files:
+            args["files"] = files
 
         result = tool.execute(args)
         logger.info("MCP analyze_workflow complete session_id=%s", result.get("session_id"))

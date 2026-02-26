@@ -59,6 +59,9 @@ def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
                     logger.warning("Unsupported image_url for Anthropic: %s", url[:80])
             elif ptype == "image":
                 blocks.append(part)
+            elif ptype == "document":
+                # Passthrough for Anthropic native PDF document content blocks
+                blocks.append({"type": "document", "source": part.get("source", {})})
         return blocks
     fallback = json.dumps(content, ensure_ascii=True)
     return [{"type": "text", "text": fallback}] if fallback else []

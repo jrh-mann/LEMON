@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..storage.history import HistoryStore
 from ..llm import call_llm, call_llm_stream
-from ..utils.image import image_to_data_url
+from ..utils.image import image_to_data_url, file_to_data_url
 from ..utils.analysis import normalize_analysis
 from ..utils.cancellation import CancellationError
 
@@ -332,26 +332,212 @@ by recomputing them deterministically from name + type. Respond only with the up
         return data
 
 
+    def analyze_multi(
+        self,
+        *,
+        classified_files: List[Dict[str, Any]],
+        session_id: str,
+        stream: Optional[Callable[[str], None]] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> Dict[str, Any]:
+        """Two-phase multi-file analysis: guidance collection, then tree analysis.
+
+        Phase 1: Extract guidance from ALL guidance + mixed files.
+        Phase 2: Single LLM call with ALL flowchart + mixed files + accumulated guidance.
+
+        Each classified_file dict has: id, name, abs_path, file_type, purpose.
+        """
+        self._logger.info(
+            "analyze_multi session_id=%s files=%d",
+            session_id,
+            len(classified_files),
+        )
+
+        def is_cancelled() -> bool:
+            return bool(should_cancel and should_cancel())
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled before multi-file analysis.")
+
+        # --- Phase 1: Guidance collection ---
+        # Run _extract_guidance on all guidance + mixed files
+        guidance_files = [f for f in classified_files if f["purpose"] in ("guidance", "mixed")]
+        all_guidance: List[Dict[str, Any]] = []
+        for gf in guidance_files:
+            if is_cancelled():
+                raise CancellationError("Subagent cancelled during guidance extraction.")
+            data_url = file_to_data_url(Path(gf["abs_path"]))
+            items = self._extract_guidance(data_url=data_url, should_cancel=should_cancel)
+            all_guidance.extend(items)
+            self._logger.info(
+                "Guidance from %s: %d items (total: %d)",
+                gf["name"], len(items), len(all_guidance),
+            )
+        # All guidance extracted before any analysis begins
+
+        # --- Phase 2: Tree analysis ---
+        # Collect all flowchart + mixed files for a single LLM call
+        analysis_files = [f for f in classified_files if f["purpose"] in ("flowchart", "mixed")]
+        if not analysis_files:
+            # No analysis files — return guidance only (use 'variables' for consistency)
+            return {
+                "variables": [],
+                "outputs": [],
+                "tree": {},
+                "doubts": [],
+                "reasoning": "",
+                "guidance": all_guidance,
+            }
+
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled before analysis phase.")
+
+        # Build content blocks: one text block + one per file (image or PDF)
+        content_blocks: List[Dict[str, Any]] = []
+
+        # Build the analysis prompt — same as analyze() but with multi-file preamble
+        multi_prompt = (
+            "You are analyzing multiple files that together represent a SINGLE workflow. "
+            "Combine all into ONE unified tree.\n\n"
+        )
+        multi_prompt += """Return ONLY a JSON object with this structure:
+{
+  "inputs": [
+    {"id": "input_name_type", "name": "...", "type": "int|float|bool|string|enum|date", "description": "..."}
+  ],
+  "outputs": [
+    {"name": "...", "description": "..."}
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "exact text from diagram",
+      "children": [
+        {
+          "id": "n1",
+          "type": "decision|action|output",
+          "label": "exact text from diagram",
+          "input_ids": ["input_name_type"],
+          "edge_label": "Yes|No|optional",
+          "children": [ ... ]
+        }
+      ]
+    }
+  },
+  "doubts": []
+}
+
+Rules:
+- Use exact text from the diagrams.
+- Every input must include an "id" computed as: input_{slug(name)}_{type}
+- Input "name" should be canonical (short snake_case concept).
+- Every DECISION node MUST include a structured "condition" object.
+- For binary branches, set child edge_label to EXACTLY "true" or "false".
+- This must be a single rooted tree starting at tree.start.
+- Return JSON only, no extra text.
+"""
+
+        # Inject accumulated guidance into the prompt
+        if all_guidance:
+            lines = [
+                f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
+                for g in all_guidance
+            ]
+            multi_prompt += (
+                "\n\n## Guidance Notes (extracted from accompanying files)\n"
+                "The following notes, definitions, and annotations were found in the guidance files. "
+                "Use them to inform your analysis of the workflow:\n" + "\n".join(lines)
+            )
+
+        content_blocks.append({"type": "text", "text": multi_prompt})
+
+        # Add each analysis file as a content block
+        for af in analysis_files:
+            data_url = file_to_data_url(Path(af["abs_path"]))
+            block = _build_content_block(data_url)
+            content_blocks.append(block)
+
+        messages = [
+            {"role": "system", "content": "You extract structured data from workflow images and documents."},
+            {"role": "user", "content": content_blocks},
+        ]
+
+        # Collect extended thinking
+        thinking_parts: List[str] = []
+
+        def on_thinking(chunk: str) -> None:
+            thinking_parts.append(chunk)
+
+        force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
+        should_stream = stream is not None or force_stream
+
+        if should_stream:
+            def on_delta(chunk: str) -> None:
+                if is_cancelled():
+                    raise CancellationError("Subagent cancelled while streaming.")
+                if stream:
+                    stream(chunk)
+
+            raw = call_llm_stream(
+                messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                on_delta=on_delta,
+                caller="subagent",
+                request_tag="analyze_multi_stream",
+                should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
+            ).strip()
+        else:
+            raw = call_llm(
+                messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                caller="subagent",
+                request_tag="analyze_multi",
+                should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
+            ).strip()
+
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled after multi-file LLM call.")
+        if not raw:
+            raise ValueError("LLM returned an empty response for multi-file analysis.")
+
+        # Parse the JSON response
+        system_msg = {"role": "system", "content": "You extract structured data from workflow images and documents."}
+        user_msg = {"role": "user", "content": content_blocks}
+        data = self._parse_json(raw, multi_prompt, [], system_msg, user_msg, should_cancel=should_cancel)
+        data = normalize_analysis(data)
+        data["reasoning"] = "".join(thinking_parts)
+        data["guidance"] = all_guidance
+        return data
+
     def _extract_guidance(
         self,
         *,
         data_url: str,
         should_cancel: Optional[Callable[[], bool]] = None,
     ) -> List[Dict[str, Any]]:
-        """Extract side information (sticky notes, legends, annotations) from a workflow image.
+        """Extract side information (sticky notes, legends, annotations) from a file.
 
         Performs a lightweight LLM call before the main analysis to identify any
-        notes or annotations that exist alongside the flowchart. Returns a list
-        of dicts with text/location/category, or [] on any failure (non-blocking).
+        notes or annotations that exist alongside the flowchart. Supports both
+        images (image_url content block) and PDFs (document content block).
+        Returns a list of dicts with text/location/category, or [] on any failure (non-blocking).
         """
         try:
+            # Build the appropriate content block based on media type
+            file_block = _build_content_block(data_url)
             messages = [
-                {"role": "system", "content": "You extract side information from workflow images."},
+                {"role": "system", "content": "You extract side information from workflow images and documents."},
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": self._GUIDANCE_PROMPT},
-                        {"type": "image_url", "image_url": {"url": data_url}},
+                        file_block,
                     ],
                 },
             ]
@@ -458,6 +644,23 @@ by recomputing them deterministically from name + type. Respond only with the up
             return parsed_retry
         self._logger.error("Retry JSON parse failed")
         raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+
+
+def _build_content_block(data_url: str) -> Dict[str, Any]:
+    """Build an LLM content block from a data URL — image_url for images, document for PDFs."""
+    if data_url.startswith("data:application/pdf"):
+        # Extract base64 data for Anthropic document content block
+        _, b64 = data_url.split(";base64,", 1)
+        return {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": b64,
+            },
+        }
+    # Default: image content block
+    return {"type": "image_url", "image_url": {"url": data_url}}
 
 
 def _wants_json(feedback: str) -> bool:

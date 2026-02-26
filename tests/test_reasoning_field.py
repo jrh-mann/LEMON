@@ -142,7 +142,7 @@ class TestBuildSystemPromptReasoning:
         """Non-empty reasoning should produce an 'Analysis Context' section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             reasoning="The blue diamond represents a HbA1c threshold check.",
         )
@@ -154,7 +154,7 @@ class TestBuildSystemPromptReasoning:
         """Empty reasoning should NOT produce an 'Analysis Context' section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             reasoning="",
         )
@@ -165,7 +165,7 @@ class TestBuildSystemPromptReasoning:
         """When reasoning param not passed, no Analysis Context section."""
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
         )
 
@@ -228,7 +228,7 @@ class TestFullReasoningPipeline:
         # 3. Build system prompt with reasoning from orchestrator
         prompt = build_system_prompt(
             last_session_id=None,
-            has_image=False,
+            has_files=[],
             allow_tools=True,
             reasoning=orch.workflow_analysis.get("reasoning", ""),
         )

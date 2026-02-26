@@ -75,11 +75,10 @@ export default function Canvas() {
     undo,
     redo,
     pushHistory,
-    pendingImage,
-    pendingImageName,
+    pendingFiles,
     pendingAnnotations,
     setPendingAnnotations,
-    clearPendingImage,
+    clearPendingFiles,
     execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
 
@@ -103,12 +102,13 @@ export default function Canvas() {
   const MIN_ZOOM = 0.25
   const MAX_ZOOM = 8
 
-  // Auto-switch to image tab when image is uploaded
+  // Auto-switch to image tab when files are uploaded (only for images)
   useEffect(() => {
-    if (pendingImage) {
+    const hasImage = pendingFiles.some(f => f.type === 'image')
+    if (hasImage) {
       setCanvasTab('image')
     }
-  }, [pendingImage, setCanvasTab])
+  }, [pendingFiles, setCanvasTab])
 
 
   // Drag state
@@ -1306,39 +1306,51 @@ export default function Canvas() {
         >
           Workflow
         </button>
-        {pendingImage && (
+        {pendingFiles.length > 0 && (
           <button
             className={`workspace-tab ${canvasTab === 'image' ? 'active' : ''}`}
             onClick={() => setCanvasTab('image')}
           >
-            Source Image
+            Source {pendingFiles.length === 1 ? 'File' : 'Files'}
           </button>
         )}
       </div>
 
-      {/* Image preview tab with annotation canvas */}
-      {canvasTab === 'image' && pendingImage && (
-        <div className="image-preview-container">
-          <div className="image-preview-header">
-            <span className="image-name">{pendingImageName || 'Uploaded image'}</span>
-            <button
-              className="clear-image-btn"
-              onClick={() => {
-                clearPendingImage()
-                setCanvasTab('workflow')
-              }}
-              title="Remove image"
-            >
-              Ã—
-            </button>
+      {/* File preview tab — shows first image with annotation canvas, or PDF placeholder */}
+      {canvasTab === 'image' && pendingFiles.length > 0 && (() => {
+        const firstImage = pendingFiles.find(f => f.type === 'image')
+        const displayName = pendingFiles.length === 1
+          ? pendingFiles[0].name
+          : `${pendingFiles.length} files`
+        return (
+          <div className="image-preview-container">
+            <div className="image-preview-header">
+              <span className="image-name">{displayName}</span>
+              <button
+                className="clear-image-btn"
+                onClick={() => {
+                  clearPendingFiles()
+                  setCanvasTab('workflow')
+                }}
+                title="Remove all files"
+              >
+                Ã—
+              </button>
+            </div>
+            {firstImage ? (
+              <ImageAnnotator
+                imageSrc={firstImage.dataUrl}
+                annotations={pendingAnnotations}
+                onChange={setPendingAnnotations}
+              />
+            ) : (
+              <div className="pdf-placeholder">
+                <p className="muted">PDF files uploaded — preview not available</p>
+              </div>
+            )}
           </div>
-          <ImageAnnotator
-            imageSrc={pendingImage}
-            annotations={pendingAnnotations}
-            onChange={setPendingAnnotations}
-          />
-        </div>
-      )}
+        )
+      })()}
 
       {/* Workflow canvas tab */}
       <div

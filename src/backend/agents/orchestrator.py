@@ -231,6 +231,7 @@ class Orchestrator:
                     "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
                     "user_id": self.user_id,  # Serialize user_id (string)
                     "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+                    "uploaded_files": getattr(self, "uploaded_files", []),
                 },
             }
             data = call_mcp_tool(tool_name, mcp_args)
@@ -241,6 +242,7 @@ class Orchestrator:
                 "workflow_analysis": self.workflow_analysis,
                 "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
                 "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+                "uploaded_files": getattr(self, "uploaded_files", []),
             }
             # Add workflow_store and user_id if available
             if self.workflow_store is not None:
@@ -409,7 +411,7 @@ class Orchestrator:
         self,
         user_message: str,
         *,
-        has_image: bool = False,
+        has_files: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
         should_cancel: Optional[Callable[[], bool]] = None,
@@ -419,6 +421,9 @@ class Orchestrator:
     ) -> str:
         """Respond to a user message, optionally calling tools."""
         self._logger.info("Received message bytes=%d history_len=%d", len(user_message.encode("utf-8")), len(self.history))
+        # Store uploaded files metadata for tool access
+        self.uploaded_files = has_files or []
+
         def is_cancelled() -> bool:
             return bool(should_cancel and should_cancel())
         did_stream = False
@@ -432,7 +437,7 @@ class Orchestrator:
         tool_desc = tool_descriptions()
         system = build_system_prompt(
             last_session_id=self.last_session_id,
-            has_image=has_image,
+            has_files=self.uploaded_files,
             allow_tools=allow_tools,
             reasoning=self.workflow.get("reasoning", ""),
             guidance=self.workflow.get("guidance", []),
