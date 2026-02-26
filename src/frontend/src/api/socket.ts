@@ -96,11 +96,6 @@ export function connectSocket(): Socket {
     }
   })
 
-  // Debug: log all incoming events
-  socket.onAny((event, ...args) => {
-    console.log('[Socket] Event:', event, args)
-  })
-
   // Chat response
   socket.on('chat_response', (data: SocketChatResponse) => {
     console.log('[Socket] chat_response:', data)
@@ -876,18 +871,25 @@ export function sendChatMessage(
       is_active: tab.id === workflowStore.activeTabId,
     }))
 
+  // Debug: log whether files are included in the payload
+  const filesPayload = files && files.length > 0 ? files.map(f => ({
+    id: f.id,
+    name: f.name,
+    data_url: f.dataUrl,
+    file_type: f.type,
+    purpose: f.purpose,
+  })) : undefined
+  console.log('[Socket] sendChatMessage files_count:', files?.length ?? 0,
+    'payload_files:', filesPayload?.length ?? 0,
+    'file_names:', files?.map(f => f.name) ?? [],
+    'data_url_lengths:', files?.map(f => f.dataUrl?.length ?? 0) ?? [])
+
   // Atomic: workflow travels with message (no race conditions)
   sock.emit('chat', {
     session_id: getSessionId(),
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
-    files: files && files.length > 0 ? files.map(f => ({
-      id: f.id,
-      name: f.name,
-      data_url: f.dataUrl,
-      file_type: f.type,
-      purpose: f.purpose,
-    })) : undefined,
+    files: filesPayload,
     annotations: annotations && annotations.length > 0 ? annotations : undefined,
     task_id: taskId,
     current_workflow_id: currentWorkflowId,

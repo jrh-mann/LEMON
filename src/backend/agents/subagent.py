@@ -339,6 +339,7 @@ by recomputing them deterministically from name + type. Respond only with the up
         session_id: str,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """Two-phase multi-file analysis: guidance collection, then tree analysis.
 
@@ -353,6 +354,11 @@ by recomputing them deterministically from name + type. Respond only with the up
             len(classified_files),
         )
 
+        def _progress(msg: str) -> None:
+            """Emit progress status to the frontend."""
+            if on_progress:
+                on_progress(msg)
+
         def is_cancelled() -> bool:
             return bool(should_cancel and should_cancel())
         if is_cancelled():
@@ -362,9 +368,10 @@ by recomputing them deterministically from name + type. Respond only with the up
         # Run _extract_guidance on all guidance + mixed files
         guidance_files = [f for f in classified_files if f["purpose"] in ("guidance", "mixed")]
         all_guidance: List[Dict[str, Any]] = []
-        for gf in guidance_files:
+        for idx, gf in enumerate(guidance_files):
             if is_cancelled():
                 raise CancellationError("Subagent cancelled during guidance extraction.")
+            _progress(f"Extracting guidance ({idx + 1}/{len(guidance_files)})...")
             data_url = file_to_data_url(Path(gf["abs_path"]))
             items = self._extract_guidance(data_url=data_url, should_cancel=should_cancel)
             all_guidance.extend(items)
@@ -390,6 +397,8 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         if is_cancelled():
             raise CancellationError("Subagent cancelled before analysis phase.")
+
+        _progress(f"Analyzing {len(analysis_files)} file(s)...")
 
         # Build content blocks: one text block + one per file (image or PDF)
         content_blocks: List[Dict[str, Any]] = []

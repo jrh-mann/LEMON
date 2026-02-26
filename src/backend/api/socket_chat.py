@@ -172,7 +172,12 @@ class SocketChatTask:
         if event == "tool_start":
             self.executed_tools.append({"tool": tool, "arguments": args})
         if tool == "analyze_workflow":
-            self.emit_progress(event, "Analyzing workflow...", tool=tool)
+            if event == "tool_progress":
+                # Phase-specific progress from the subagent (e.g., "Extracting guidance (1/2)...")
+                status = args.get("status", "Analyzing workflow...")
+                self.emit_progress(event, status, tool=tool)
+            else:
+                self.emit_progress(event, "Analyzing workflow...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -189,7 +194,9 @@ class SocketChatTask:
                     break
         if event == "tool_batch_complete":
             self.flush_tool_summary()
-        if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
+        # Emit workflow_modified when analysis produces a flowchart — either from
+        # publish_latest_analysis or directly from analyze_workflow.
+        if tool in ("publish_latest_analysis", "analyze_workflow") and event == "tool_complete" and isinstance(result, dict):
             flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
             if flowchart and flowchart.get("nodes"):
                 analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
@@ -225,7 +232,7 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
-            if tool in WORKFLOW_INPUT_TOOLS and self.convo:
+            if (tool in WORKFLOW_INPUT_TOOLS or tool == "analyze_workflow") and self.convo:
                 # Emit variables (unified variable system) - includes inputs, subprocess, calculated
                 # Frontend receives under 'variables' key for display in Variables tab
                 # Include task_id so frontend can filter out updates for inactive tabs
@@ -269,11 +276,19 @@ class SocketChatTask:
 
     def _save_uploaded_files(self) -> bool:
         """Save all uploaded files to disk and populate self.saved_file_paths."""
+        logger.info("_save_uploaded_files: files_data count=%d", len(self.files_data))
         if not self.files_data:
+            logger.info("_save_uploaded_files: no files_data, returning early")
             return True
         for file_info in self.files_data:
             data_url = file_info.get("data_url", "")
+            logger.info(
+                "_save_uploaded_files: processing file id=%s name=%s data_url_len=%d",
+                file_info.get("id", "?"), file_info.get("name", "?"),
+                len(data_url) if isinstance(data_url, str) else 0,
+            )
             if not isinstance(data_url, str) or not data_url.strip():
+                logger.warning("_save_uploaded_files: skipping file with empty data_url: %s", file_info.get("name"))
                 continue
             try:
                 rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
@@ -386,6 +401,14 @@ def handle_socket_chat(
     message = payload.get("message", "")
     task_id = payload.get("task_id")
     sid = request.sid
+    # Debug: log whether files are present in the payload
+    raw_files = payload.get("files")
+    logger.info(
+        "handle_socket_chat: message_len=%d files_present=%s files_count=%d",
+        len(message) if isinstance(message, str) else 0,
+        raw_files is not None,
+        len(raw_files) if isinstance(raw_files, list) else 0,
+    )
 
     if not isinstance(message, str) or not message.strip():
         socketio.emit("agent_error", {"task_id": task_id, "error": "message is required"}, to=sid)

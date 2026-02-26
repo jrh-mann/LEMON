@@ -212,6 +212,7 @@ class Orchestrator:
         *,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
     ) -> ToolResult:
         self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
         self._tool_logger.info(
@@ -255,6 +256,7 @@ class Orchestrator:
                 args,
                 stream=stream,
                 should_cancel=should_cancel,
+                on_progress=on_progress,
                 session_state=session_state,
             )
         result = self._normalize_tool_result(tool_name, data)
@@ -272,6 +274,28 @@ class Orchestrator:
             # Update workflow_analysis if this was a successful input management tool
             if tool_name in WORKFLOW_INPUT_TOOLS:
                 self._update_analysis_from_tool_result(tool_name, result.data)
+
+        # Store analysis data from analyze_workflow into orchestrator state
+        # so subsequent tool calls have access to variables, tree, doubts, etc.
+        if tool_name == "analyze_workflow" and result.success and isinstance(result.data, dict):
+            analysis = result.data.get("analysis")
+            if isinstance(analysis, dict):
+                for key in ("inputs", "outputs", "tree", "doubts", "reasoning", "guidance"):
+                    # Map 'variables' key from analysis to internal 'inputs' key
+                    src_key = "variables" if key == "inputs" else key
+                    if src_key in analysis:
+                        self.workflow[key] = analysis[src_key]
+                # Also store flowchart nodes/edges if present
+                flowchart = result.data.get("flowchart")
+                if isinstance(flowchart, dict) and flowchart.get("nodes"):
+                    self.workflow["nodes"] = flowchart.get("nodes", [])
+                    self.workflow["edges"] = flowchart.get("edges", [])
+                self._logger.info(
+                    "Stored analyze_workflow result: %d inputs, %d outputs, %d nodes",
+                    len(self.workflow.get("inputs", [])),
+                    len(self.workflow.get("outputs", [])),
+                    len(self.workflow.get("nodes", [])),
+                )
 
         # Also update workflow when publish_latest_analysis returns a flowchart
         if tool_name == "publish_latest_analysis" and isinstance(result.data, dict):
@@ -420,9 +444,10 @@ class Orchestrator:
         ] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
-        self._logger.info("Received message bytes=%d history_len=%d", len(user_message.encode("utf-8")), len(self.history))
+        self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
         # Store uploaded files metadata for tool access
         self.uploaded_files = has_files or []
+        self._logger.info("uploaded_files count=%d files=%s", len(self.uploaded_files), [f.get("name") for f in self.uploaded_files])
 
         def is_cancelled() -> bool:
             return bool(should_cancel and should_cancel())
@@ -565,7 +590,16 @@ class Orchestrator:
                 try:
                     if on_tool_event:
                         on_tool_event("tool_start", tool_name, args, None)
-                    result = self.run_tool(tool_name, args, stream=None, should_cancel=should_cancel)
+
+                    # Build a progress callback that relays phase updates via on_tool_event
+                    def _on_progress(status: str) -> None:
+                        if on_tool_event:
+                            on_tool_event("tool_progress", tool_name, {"status": status}, None)
+
+                    result = self.run_tool(
+                        tool_name, args, stream=None, should_cancel=should_cancel,
+                        on_progress=_on_progress,
+                    )
                     session_id = result.data.get("session_id")
                     if session_id:
                         self.last_session_id = session_id

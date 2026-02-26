@@ -60,6 +60,7 @@ class AnalyzeWorkflowTool(Tool):
         )
         stream = kwargs.get("stream")
         should_cancel = kwargs.get("should_cancel")
+        on_progress = kwargs.get("on_progress")
         session_state = kwargs.get("session_state") or {}
         session_id = args.get("session_id")
         feedback = args.get("feedback")
@@ -76,7 +77,8 @@ class AnalyzeWorkflowTool(Tool):
         # Path 2: Multi-file analysis with classifications
         if file_classifications and uploaded_files:
             return self._analyze_multi_file(
-                uploaded_files, file_classifications, stream, should_cancel
+                uploaded_files, file_classifications, stream, should_cancel,
+                on_progress=on_progress,
             )
 
         # Path 3: Single file analysis (existing behaviour)
@@ -150,6 +152,7 @@ class AnalyzeWorkflowTool(Tool):
         classifications: List[Dict[str, Any]],
         stream: Any,
         should_cancel: Any,
+        on_progress: Any = None,
     ) -> Dict[str, Any]:
         """Analyze multiple files with classification-aware two-phase ordering.
 
@@ -201,6 +204,7 @@ class AnalyzeWorkflowTool(Tool):
             session_id=session_id,
             stream=stream,
             should_cancel=should_cancel,
+            on_progress=on_progress,
         )
         return self._build_response(session_id, data)
 
