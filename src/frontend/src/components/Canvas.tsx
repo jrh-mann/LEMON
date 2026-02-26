@@ -1375,9 +1375,12 @@ export default function Canvas() {
                 onChange={setPendingAnnotations}
               />
             ) : (
-              <div className="pdf-placeholder">
-                <p className="muted">{currentFile.name} (PDF) — preview not available</p>
-              </div>
+              <iframe
+                key={currentFile.id}
+                className="pdf-preview"
+                src={currentFile.dataUrl}
+                title={currentFile.name}
+              />
             )}
           </div>
         )

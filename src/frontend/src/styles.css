@@ -1244,6 +1244,14 @@ body {
   cursor: default;
 }
 
+/* PDF preview iframe — fills the preview area below the header */
+.pdf-preview {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--paper);
+}
+
 .image-preview-header .clear-image-btn {
   background: none;
   border: none;
