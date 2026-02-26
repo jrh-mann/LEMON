@@ -138,13 +138,25 @@ def _to_anthropic_messages(
     return system, converted
 
 
-def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]]]:
+def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]], str]:
+    """Parse an Anthropic API response into (text, tool_calls, thinking_text).
+
+    Extracts text, tool_use, and thinking content blocks from the response.
+    """
     content_blocks = getattr(message, "content", []) or []
     text_parts: List[str] = []
     tool_calls: List[Dict[str, Any]] = []
+    thinking_parts: List[str] = []
     for block in content_blocks:
-        btype = getattr(block, "type", None) or block.get("type") if isinstance(block, dict) else None
-        if btype == "text":
+        # Parentheses required: without them `A or B if C else D` parses as
+        # `(A or B) if C else D`, returning None for non-dict SDK objects.
+        btype = getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)
+        if btype == "thinking":
+            # Extended thinking content block
+            thinking = getattr(block, "thinking", None) if not isinstance(block, dict) else block.get("thinking")
+            if thinking:
+                thinking_parts.append(thinking)
+        elif btype == "text":
             text = getattr(block, "text", None) if not isinstance(block, dict) else block.get("text")
             if text:
                 text_parts.append(text)
@@ -202,4 +214,4 @@ def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]]]:
             seen.add(key)
             merged.append(call)
         tool_calls = merged
-    return "".join(text_parts), tool_calls
+    return "".join(text_parts), tool_calls, "".join(thinking_parts)

@@ -188,6 +188,12 @@ by recomputing them deterministically from name + type. Respond only with the up
             }
         messages = [system_msg, *history_messages, user_msg]
 
+        # Collect extended thinking from the LLM to use as reasoning context
+        thinking_parts: List[str] = []
+
+        def on_thinking(chunk: str) -> None:
+            thinking_parts.append(chunk)
+
         llm_start = time.perf_counter()
         force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
         should_stream = stream is not None or force_stream
@@ -215,6 +221,8 @@ by recomputing them deterministically from name + type. Respond only with the up
                 caller="subagent",
                 request_tag="analyze_stream",
                 should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
             ).strip()
         else:
             raw = call_llm(
@@ -224,6 +232,8 @@ by recomputing them deterministically from name + type. Respond only with the up
                 caller="subagent",
                 request_tag="analyze",
                 should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
             ).strip()
         llm_ms = (time.perf_counter() - llm_start) * 1000
         self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
@@ -237,6 +247,8 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+        # Attach the model's extended thinking as reasoning context
+        data["reasoning"] = "".join(thinking_parts)
 
         # Map 0-1000 LLM output coordinates back to absolute hardware pixels
         if img_w > 0 and img_h > 0:

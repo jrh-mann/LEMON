@@ -26,7 +26,8 @@ class Conversation:
         "inputs": [],
         "outputs": [],
         "tree": {},
-        "doubts": []
+        "doubts": [],
+        "reasoning": "",
     })
 
     # Backward-compatible properties for existing code
@@ -49,7 +50,8 @@ class Conversation:
             "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
             "outputs": self.workflow.get("outputs", []),
             "tree": self.workflow.get("tree", {}),
-            "doubts": self.workflow.get("doubts", [])
+            "doubts": self.workflow.get("doubts", []),
+            "reasoning": self.workflow.get("reasoning", ""),
         }
 
     def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
@@ -84,6 +86,8 @@ class Conversation:
             self.workflow["tree"] = analysis.get("tree", {})
         if "doubts" in analysis:
             self.workflow["doubts"] = analysis.get("doubts", [])
+        if "reasoning" in analysis:
+            self.workflow["reasoning"] = analysis.get("reasoning", "")
         self.updated_at = utc_now()
 
 

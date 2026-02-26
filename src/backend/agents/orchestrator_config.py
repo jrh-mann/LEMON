@@ -912,6 +912,7 @@ def build_system_prompt(
     last_session_id: Optional[str],
     has_image: bool,
     allow_tools: bool,
+    reasoning: str = "",
 ) -> str:
     system = (
         "You are a workflow manipulation assistant. Your job is to help users create and modify flowcharts by calling tools.\n\n"
@@ -1193,5 +1194,16 @@ def build_system_prompt(
         system += (
             " Tools are disabled for this response. Do NOT call tools; respond in "
             "plain text only."
+        )
+    # Inject subagent reasoning context so the orchestrator understands
+    # domain terminology, variable naming choices, and analysis assumptions.
+    if reasoning:
+        system += (
+            "\n\n## Analysis Context\n"
+            "The following reasoning was produced by the workflow analysis system when "
+            "interpreting the user's workflow image. Use this context to understand domain "
+            "terminology, variable naming choices, node type decisions, and any assumptions "
+            "made during analysis.\n\n"
+            f"{reasoning}"
         )
     return system

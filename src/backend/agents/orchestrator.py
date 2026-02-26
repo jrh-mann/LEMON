@@ -39,7 +39,8 @@ class Orchestrator:
             "inputs": [],
             "outputs": [],
             "tree": {},
-            "doubts": []
+            "doubts": [],
+            "reasoning": "",
         }
 
         self.history: List[Dict[str, str]] = []
@@ -87,7 +88,8 @@ class Orchestrator:
             "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
             "outputs": self.workflow.get("outputs", []),
             "tree": self.workflow.get("tree", {}),
-            "doubts": self.workflow.get("doubts", [])
+            "doubts": self.workflow.get("doubts", []),
+            "reasoning": self.workflow.get("reasoning", ""),
         }
 
     @workflow_analysis.setter
@@ -110,6 +112,8 @@ class Orchestrator:
             self.workflow["tree"] = value.get("tree", {})
         if "doubts" in value and isinstance(value.get("doubts"), list):
             self.workflow["doubts"] = value.get("doubts", [])
+        if "reasoning" in value and isinstance(value.get("reasoning"), str):
+            self.workflow["reasoning"] = value["reasoning"]
 
     def sync_workflow(
         self,
@@ -187,6 +191,8 @@ class Orchestrator:
                 self.workflow["tree"] = analysis_data.get("tree", {})
             if "doubts" in analysis_data:
                 self.workflow["doubts"] = analysis_data.get("doubts", [])
+            if "reasoning" in analysis_data:
+                self.workflow["reasoning"] = analysis_data.get("reasoning", "")
             self._logger.info(
                 "Synced workflow analysis: %d variables, %d outputs",
                 len(variables),
@@ -368,6 +374,8 @@ class Orchestrator:
                         self.workflow["inputs"] = returned_analysis["inputs"]
                     if "outputs" in returned_analysis:
                         self.workflow["outputs"] = returned_analysis["outputs"]
+                    if "reasoning" in returned_analysis:
+                        self.workflow["reasoning"] = returned_analysis["reasoning"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d variables, %d outputs",
                         len(self.workflow.get("inputs", [])),
@@ -418,6 +426,7 @@ class Orchestrator:
             last_session_id=self.last_session_id,
             has_image=has_image,
             allow_tools=allow_tools,
+            reasoning=self.workflow.get("reasoning", ""),
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow
