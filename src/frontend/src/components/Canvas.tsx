@@ -102,12 +102,17 @@ export default function Canvas() {
   const MIN_ZOOM = 0.25
   const MAX_ZOOM = 8
 
-  // Auto-switch to image tab when files are uploaded (only for images)
+  // Index of the currently displayed file in the Source Files tab
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0)
+
+  // Auto-switch to image tab when files are uploaded (only for images),
+  // and reset the file index so we start from the first file.
   useEffect(() => {
     const hasImage = pendingFiles.some(f => f.type === 'image')
     if (hasImage) {
       setCanvasTab('image')
     }
+    setSelectedFileIndex(0)
   }, [pendingFiles, setCanvasTab])
 
 
@@ -1316,16 +1321,41 @@ export default function Canvas() {
         )}
       </div>
 
-      {/* File preview tab — shows first image with annotation canvas, or PDF placeholder */}
+      {/* File preview tab — shows selected file with prev/next navigation */}
       {canvasTab === 'image' && pendingFiles.length > 0 && (() => {
-        const firstImage = pendingFiles.find(f => f.type === 'image')
-        const displayName = pendingFiles.length === 1
-          ? pendingFiles[0].name
-          : `${pendingFiles.length} files`
+        // Clamp index in case files were removed
+        const idx = Math.min(selectedFileIndex, pendingFiles.length - 1)
+        const currentFile = pendingFiles[idx]
+        const showNav = pendingFiles.length > 1
         return (
           <div className="image-preview-container">
             <div className="image-preview-header">
-              <span className="image-name">{displayName}</span>
+              {/* Prev button — only when multiple files */}
+              {showNav && (
+                <button
+                  className="file-nav-btn"
+                  disabled={idx === 0}
+                  onClick={() => setSelectedFileIndex(idx - 1)}
+                  title="Previous file"
+                >
+                  ‹
+                </button>
+              )}
+              <span className="image-name">
+                {currentFile.name}
+                {showNav && ` (${idx + 1}/${pendingFiles.length})`}
+              </span>
+              {/* Next button — only when multiple files */}
+              {showNav && (
+                <button
+                  className="file-nav-btn"
+                  disabled={idx === pendingFiles.length - 1}
+                  onClick={() => setSelectedFileIndex(idx + 1)}
+                  title="Next file"
+                >
+                  ›
+                </button>
+              )}
               <button
                 className="clear-image-btn"
                 onClick={() => {
@@ -1334,18 +1364,18 @@ export default function Canvas() {
                 }}
                 title="Remove all files"
               >
-                Ã—
+                ×
               </button>
             </div>
-            {firstImage ? (
+            {currentFile.type === 'image' ? (
               <ImageAnnotator
-                imageSrc={firstImage.dataUrl}
+                imageSrc={currentFile.dataUrl}
                 annotations={pendingAnnotations}
                 onChange={setPendingAnnotations}
               />
             ) : (
               <div className="pdf-placeholder">
-                <p className="muted">PDF files uploaded — preview not available</p>
+                <p className="muted">{currentFile.name} (PDF) — preview not available</p>
               </div>
             )}
           </div>
