@@ -451,10 +451,17 @@ class Orchestrator:
                 len(self.history)
             )
 
+        # Prepend a file notice to the user message so the LLM sees attached files
+        # directly in the conversation (not just in the system prompt).
+        effective_message = user_message
+        if self.uploaded_files:
+            file_names = [f.get("name", "?") for f in self.uploaded_files]
+            effective_message = f"[Attached files: {', '.join(file_names)}]\n\n{user_message}"
+
         messages = [
             {"role": "system", "content": system},
             *limited_history,
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": effective_message},
         ]
         try:
             def on_delta(delta: str) -> None:
