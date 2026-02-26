@@ -1217,14 +1217,19 @@ def build_system_prompt(
         # Multiple files: check if any are still unclassified
         unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
         if unclassified:
-            # Files not yet classified — instruct agent to ask
-            file_list = ", ".join(f'"{f.get("name", "?")}"' for f in uploaded)
+            # Files not yet classified — instruct agent to ask in a compact format
+            numbered_files = "\n".join(
+                f"  {i+1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
+            )
             system += (
-                f" The user has uploaded {len(uploaded)} files: {file_list}."
-                " BEFORE analyzing, you MUST ask the user what each file is for."
-                " Ask them to classify each file as one of: flowchart (the actual workflow diagram),"
-                " guidance (definitions, legends, context), or mixed (contains both)."
-                " Once you know the purpose of each file, call analyze_workflow with the files parameter."
+                f" The user has uploaded {len(uploaded)} files."
+                " BEFORE analyzing, ask the user to classify each file."
+                " Present it in this EXACT compact format:\n\n"
+                "Types: **flowchart** (the workflow diagram), **guidance** (definitions/legends/context), **mixed** (both)\n\n"
+                "Files:\n"
+                f"{numbered_files}\n\n"
+                "Ask: \"Reply with the number and type for each, e.g. '1 flowchart, 2 guidance'\"\n\n"
+                "Once you have classifications, call analyze_workflow with the files parameter."
             )
         else:
             # All files classified — ready to analyze
