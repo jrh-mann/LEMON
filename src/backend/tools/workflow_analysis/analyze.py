@@ -198,6 +198,10 @@ class AnalyzeWorkflowTool(Tool):
             return self._missing_image_response()
 
         session_id = uuid4().hex
+        # Create a session entry so follow-up feedback works.
+        # Use the first file's name as the session image reference.
+        first_file = classified_files[0]
+        self.history.create_session(session_id, first_file.get("name", "multi-file"))
 
         data = self.subagent.analyze_multi(
             classified_files=classified_files,

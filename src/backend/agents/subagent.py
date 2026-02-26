@@ -522,6 +522,12 @@ Rules:
         data = normalize_analysis(data)
         data["reasoning"] = "".join(thinking_parts)
         data["guidance"] = all_guidance
+
+        # Persist to history so publish_latest_analysis can load it later
+        self.history.add_message(session_id, "user", multi_prompt)
+        self.history.add_message(session_id, "assistant", json.dumps(data))
+        self.history.store_analysis(session_id, data)
+
         return data
 
     def _extract_guidance(
