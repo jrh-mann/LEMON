@@ -18,6 +18,10 @@
   --shadow-lg: 0 16px 48px rgba(22, 24, 23, 0.16);
   --radius: 16px;
   --radius-sm: 10px;
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 * {
@@ -26,10 +30,60 @@
   padding: 0;
 }
 
+button,
+input,
+select,
+textarea,
+a,
+.tab,
+.sidebar-tab,
+.portfolio-card,
+.palette-block,
+.context-menu-item {
+  transition: all var(--transition-normal);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 body {
   font-family: "Space Grotesk", "Gill Sans", sans-serif;
   color: var(--ink);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(31, 36, 34, 0.15) 1.5px, transparent 1.5px);
+  background-size: 20px 20px;
+  background-position: 0 0;
   height: 100vh;
   overflow: hidden;
 }
@@ -37,9 +91,7 @@ body {
 .backdrop {
   position: fixed;
   inset: 0;
-  background:
-    radial-gradient(circle at 15% 15%, rgba(31, 110, 104, 0.08), transparent 35%),
-    radial-gradient(circle at 85% 20%, rgba(201, 138, 44, 0.08), transparent 35%);
+  background: transparent;
   pointer-events: none;
   z-index: -1;
 }
@@ -47,15 +99,122 @@ body {
 /* App Layout */
 .app-layout {
   display: grid;
-  grid-template-rows: auto auto 1fr;
-  /* Header, TabBar, Workspace */
-  height: calc(100vh - var(--chat-height, 280px));
-  /* Dynamically adjust for chat dock height */
-  min-height: 300px;
-  /* Minimum height for usable workspace */
+  grid-template-rows: auto 1fr;
+  /* Default height includes chat dock space. We animate this when revealing workspace. */
+  height: calc(100vh - var(--app-header-height, 57px) - var(--chat-height, 280px));
+  transition: height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 200px;
 }
 
-/* Header */
+/* ========== Workspace Reveal Transitions ========== */
+
+/* When hidden: sidebars and tab bar offscreen, canvas fills the screen */
+.app-layout.workspace-hidden {
+  height: calc(100vh - var(--app-header-height, 57px));
+}
+
+.app-layout.workspace-hidden .canvas-container {
+  pointer-events: none;
+}
+
+.app-layout.workspace-hidden .tab-bar {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.app-layout.workspace-hidden .palette-sidebar {
+  margin-left: -220px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app-layout.workspace-hidden .sidebar.library-sidebar {
+  margin-right: -400px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-dock.workspace-hidden {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+/* Disable pointer events during transition */
+.app-layout.transitioning {
+  pointer-events: none;
+}
+
+/* When revealed: everything slides in — FAST (400ms) */
+.app-layout.workspace-revealed .tab-bar {
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.05s,
+    opacity 0.3s ease 0.05s;
+}
+
+.app-layout.workspace-revealed .palette-sidebar {
+  margin-left: 0;
+  opacity: 1;
+  transition: margin 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.1s,
+    opacity 0.3s ease 0.1s;
+}
+
+.app-layout.workspace-revealed .sidebar.library-sidebar {
+  margin-right: 0;
+  opacity: 1;
+  transition: margin 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.1s,
+    opacity 0.3s ease 0.1s;
+}
+
+.chat-dock.workspace-revealed {
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s ease;
+}
+
+/* Canvas controls animations */
+.app-layout.workspace-hidden .mode-toggle-btn,
+.app-layout.workspace-hidden .zoom-controls,
+.app-layout.workspace-hidden .beautify-control,
+.app-layout.workspace-hidden .meta-controls,
+.app-layout.workspace-hidden .canvas-top-controls {
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  pointer-events: none;
+}
+
+.app-layout.workspace-revealed .mode-toggle-btn,
+.app-layout.workspace-revealed .zoom-controls,
+.app-layout.workspace-revealed .beautify-control,
+.app-layout.workspace-revealed .meta-controls,
+.app-layout.workspace-revealed .canvas-top-controls {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.app-layout.workspace-revealed .canvas-top-controls {
+  transition-delay: 0.1s;
+}
+
+.app-layout.workspace-revealed .mode-toggle-btn {
+  transition-delay: 0.15s;
+}
+
+.app-layout.workspace-revealed .zoom-controls {
+  transition-delay: 0.2s;
+}
+
+.app-layout.workspace-revealed .beautify-control {
+  transition-delay: 0.25s;
+}
+
+.app-layout.workspace-revealed .meta-controls {
+  transition-delay: 0.3s;
+}
+
+/* Header - persistent across all pages */
 .app-header {
   display: flex;
   align-items: center;
@@ -63,7 +222,8 @@ body {
   padding: 12px 24px;
   background: var(--paper);
   border-bottom: 1px solid var(--edge);
-  z-index: 100;
+  z-index: 200;
+  position: relative;
 }
 
 .logo {
@@ -119,6 +279,8 @@ body {
   z-index: 1000;
   min-width: 160px;
   overflow: hidden;
+  transform-origin: top right;
+  animation: fadeInScale var(--transition-fast);
 }
 
 .export-dropdown button {
@@ -306,9 +468,9 @@ body {
 
 /* Workspace */
 .workspace {
-  display: grid;
-  grid-template-columns: 200px 1fr auto;
-  gap: 0;
+  display: flex;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -318,6 +480,12 @@ body {
   border-right: 1px solid var(--edge);
   padding: 20px 16px;
   overflow-y: auto;
+  flex-shrink: 0;
+  position: relative;
+  transition: margin 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    min-width 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .browser-sidebar {
@@ -327,16 +495,12 @@ body {
 
 /* Resizable sidebar */
 .sidebar.library-sidebar {
-  position: relative;
-  flex-shrink: 0;
-  min-width: 280px;
-  max-width: 60vw;
   padding-left: 12px;
   /* Just enough for resize handle grip */
 }
 
-.sidebar.library-sidebar.resizing {
-  transition: none;
+.sidebar.resizing {
+  transition: none !important;
 }
 
 /* Resize handle on left edge */
@@ -367,6 +531,53 @@ body {
 .sidebar-resize-handle:hover .resize-grip,
 .sidebar.resizing .sidebar-resize-handle .resize-grip {
   background: var(--teal);
+}
+
+/* Sidebar Collapsed State */
+.sidebar.sidebar-collapsed {
+  min-width: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: visible !important;
+}
+
+.sidebar.sidebar-collapsed>*:not(.sidebar-resize-handle) {
+  display: none !important;
+}
+
+/* Make resize handles float outside when collapsed */
+.sidebar.sidebar-collapsed .sidebar-resize-handle {
+  width: 16px;
+  background: transparent;
+  border: none;
+}
+
+.sidebar.sidebar-collapsed .resize-grip {
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(31, 110, 104, 0.4);
+  height: 60px;
+  width: 6px;
+  border-radius: 4px;
+}
+
+/* Palette handle needs to be on the right side */
+.palette-resize-handle {
+  left: auto;
+  right: 0;
+  border-left: none;
+  border-right: 1px solid var(--edge);
+}
+
+.sidebar.sidebar-collapsed.palette-sidebar .palette-resize-handle {
+  right: -16px;
+  /* Protrude right into canvas */
+}
+
+/* Library (Right) handle needs to protrude left into canvas */
+.sidebar.sidebar-collapsed.right-collapsed .sidebar-resize-handle {
+  left: -16px;
+  z-index: 200;
 }
 
 .sidebar-section {
@@ -1044,15 +1255,26 @@ body {
   padding: 8px;
 }
 
+.auth-page,
+.library-page,
+.export-page {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+  animation: fadeIn var(--transition-slow);
+}
+
 /* Canvas Area */
 .canvas-area {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background: transparent;
   position: relative;
   min-width: 0;
-  /* Allow shrinking in grid */
+  /* Allow shrinking in flex */
   overflow: hidden;
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Workspace Tabs */
@@ -1298,6 +1520,46 @@ body {
 
 .mode-toggle-btn:active {
   transform: scale(0.95);
+}
+
+/* Canvas Top Controls */
+.canvas-top-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+
+.main-track-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.main-track-toggle input {
+  cursor: pointer;
+}
+
+.canvas-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--teal);
 }
 
 /* Zoom controls */
@@ -1697,10 +1959,8 @@ body {
   display: flex;
   flex-direction: column;
   z-index: 100;
-  min-height: 200px;
-  /* Minimum chat height */
-  max-height: 60vh;
   /* Maximum to leave room for workspace */
+  max-height: 60vh;
 }
 
 .chat-resize-handle {
@@ -1717,6 +1977,33 @@ body {
 
 .chat-resize-handle:hover .resize-grip {
   background: var(--teal);
+}
+
+/* Chat Dock Collapsed State */
+.chat-dock.chat-dock-collapsed {
+  height: 0 !important;
+  min-height: 0 !important;
+  border-top: none;
+  overflow: visible;
+}
+
+.chat-dock.chat-dock-collapsed>*:not(.chat-resize-handle) {
+  display: none !important;
+}
+
+.chat-dock.chat-dock-collapsed .chat-resize-handle {
+  height: 16px;
+  background: transparent;
+  border: none;
+  position: absolute;
+  top: -16px;
+  left: 0;
+  right: 0;
+}
+
+.chat-dock.chat-dock-collapsed .resize-grip {
+  background: var(--teal);
+  box-shadow: 0 0 8px rgba(31, 110, 104, 0.4);
 }
 
 .resize-grip {
@@ -2504,34 +2791,34 @@ body {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.modal.active {
-  display: flex;
+  background: rgba(22, 24, 23, 0.4);
+  padding: 20px;
+  animation: fadeIn var(--transition-normal);
 }
 
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(31, 36, 34, 0.4);
-  backdrop-filter: blur(4px);
+  z-index: -1;
 }
 
 .modal-content {
-  position: relative;
   background: var(--paper);
   border-radius: var(--radius);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
   box-shadow: var(--shadow-lg);
-  width: 90%;
-  max-width: 800px;
-  max-height: 80vh;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: modalIn 0.3s ease;
+  position: relative;
+  z-index: 1001;
+  border: 1px solid var(--edge);
+  overflow: hidden;
+  animation: fadeInScale var(--transition-bounce);
 }
 
 .modal-header {
@@ -4818,7 +5105,7 @@ button.primary.warning:hover {
 
 .run-btn.executing {
   background: var(--amber);
-  box-shadow: 0 4px 12px rgba(201, 138, 44, 0.3);
+  box-shadow: 0 44px 12px rgba(201, 138, 44, 0.3);
 }
 
 /* Speed control slider */
@@ -5071,7 +5358,7 @@ button.primary.warning:hover {
   border-top: 1px solid var(--edge);
 }
 
-<<<<<<< HEAD
+
 /* ============================================
    Subflow Execution Modal
    Shows subflow canvas in popup during execution
@@ -5339,12 +5626,13 @@ button.primary.warning:hover {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: modal-fade-in 0.2s ease;
+  background: rgba(22, 24, 23, 0.4);
+  padding: 20px;
+  animation: fadeIn var(--transition-normal);
 }
 
 .tool-inspector-modal {
@@ -5655,6 +5943,23 @@ button.primary.warning:hover {
   color: var(--muted);
   font-size: 0.8rem;
   padding: 20px;
+}
+
+.node-properties-overlay {
+  position: absolute;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  width: 380px;
+  max-width: 90vw;
+  max-height: 80vh;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  animation: fadeInScale var(--transition-bounce);
+  transform-origin: center center;
+  overflow: hidden;
 }
 
 /* ============ Execution Log Modal (Dev Tools) ============ */
@@ -6219,7 +6524,7 @@ button.primary.warning:hover {
   border: 1px solid rgba(139, 92, 246, 0.2);
 }
 
-=======
+
 /* ── Image Annotator ─────────────────────────────────── */
 
 /* Source Image tab container */
@@ -6443,5 +6748,3 @@ button.primary.warning:hover {
   color: var(--text-faint);
   font-size: 0.8rem;
 }
-
->>>>>>>docs/eval-plan

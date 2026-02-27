@@ -3,9 +3,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { executeWorkflow } from '../api/execution'
 import { listWorkflows } from '../api/workflows'
-import WorkflowBrowser from './WorkflowBrowser'
 import type {
-  SidebarTab,
   ExecutionResult,
   InputBlock,
   InputType,
@@ -40,13 +38,11 @@ const buildVariableId = (name: string, type: InputType): string => {
 // Backwards compatibility alias
 const buildInputId = buildVariableId
 
-// Storage key and default/min width for sidebar
-const SIDEBAR_WIDTH_KEY = 'lemon_right_sidebar_width'
-const DEFAULT_WIDTH = 320
-const MIN_WIDTH = 280  // Minimum to show all 3 tabs comfortably
+const DEFAULT_WIDTH = 200
+const MIN_WIDTH = 0
 
 export default function RightSidebar() {
-  const { activeTab, setActiveTab, openModal } = useUIStore()
+  const { openModal } = useUIStore()
   const {
     currentWorkflow,
     currentAnalysis,
@@ -58,16 +54,12 @@ export default function RightSidebar() {
     updateEdgeLabel,
     workflows,
     setWorkflows,
-    tabs,
-    activeTabId,
-    setTabInputValues
+    inputValues,
+    setInputValues
   } = useWorkflowStore()
 
   // Resizable sidebar state
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY)
-    return stored ? Math.max(parseInt(stored, 10), MIN_WIDTH) : DEFAULT_WIDTH
-  })
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const sidebarRef = useRef<HTMLElement>(null)
 
@@ -78,14 +70,14 @@ export default function RightSidebar() {
     const handleMouseMove = (e: MouseEvent) => {
       // Calculate new width based on mouse position from right edge of window
       const newWidth = window.innerWidth - e.clientX
-      const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidth, window.innerWidth * 0.6))
+      const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidth, window.innerWidth * 0.4))
       setSidebarWidth(clampedWidth)
     }
 
     const handleMouseUp = () => {
       setIsResizing(false)
-      // Persist to localStorage
-      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth))
+      // Snap to closed if very small
+      setSidebarWidth(prev => prev < 40 ? 0 : prev)
     }
 
     document.addEventListener('mousemove', handleMouseMove)
@@ -100,17 +92,12 @@ export default function RightSidebar() {
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
-  }, [isResizing, sidebarWidth])
+  }, [isResizing])
 
-  // Start resizing
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsResizing(true)
   }, [])
-
-  // Get persisted input values for the active tab
-  const activeWorkflowTab = tabs.find(t => t.id === activeTabId)
-  const inputValues = activeWorkflowTab?.inputValues || {}
 
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -124,19 +111,10 @@ export default function RightSidebar() {
   const [draftRangeMax, setDraftRangeMax] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
 
-  // Auto-switch to properties tab when a node or edge is selected
-  useEffect(() => {
-    if (selectedNodeId || selectedEdge) {
-      setActiveTab('properties')
-    }
-  }, [selectedNodeId, selectedEdge, setActiveTab])
-
-  // Get selected node
+  // Determine what's selected
   const selectedNode = selectedNodeId
     ? flowchart.nodes.find((n) => n.id === selectedNodeId)
     : null
-
-  // Get selected edge and its source/target nodes
   const selectedEdgeData = selectedEdge
     ? flowchart.edges.find((e) => e.from === selectedEdge.from && e.to === selectedEdge.to)
     : null
@@ -147,8 +125,9 @@ export default function RightSidebar() {
     ? flowchart.nodes.find((n) => n.id === selectedEdge.to)
     : null
   const isDecisionEdge = selectedEdgeSourceNode?.type === 'decision'
+  const showProperties = !!(selectedNode || selectedEdgeData)
 
-  // Load workflows from API if not already loaded (needed for subprocess config)
+  // Load workflows if needed for subprocess config
   useEffect(() => {
     if (selectedNode?.type === 'subprocess' && workflows.length === 0) {
       listWorkflows()
@@ -168,9 +147,9 @@ export default function RightSidebar() {
   // Handle input change
   const handleInputChange = useCallback(
     (name: string, value: unknown) => {
-      setTabInputValues(activeTabId, { ...inputValues, [name]: value })
+      setInputValues({ ...inputValues, [name]: value })
     },
-    [activeTabId, inputValues, setTabInputValues]
+    [inputValues, setInputValues]
   )
 
   const resetDraftInput = () => {
@@ -305,370 +284,321 @@ export default function RightSidebar() {
     }
   }, [currentWorkflow, inputValues])
 
-  // Handle tab click
-  const handleTabClick = useCallback(
-    (tab: SidebarTab) => {
-      setActiveTab(tab)
-    },
-    [setActiveTab]
-  )
+
+
+  const isCollapsed = sidebarWidth === 0
 
   return (
     <aside
       ref={sidebarRef}
-      className={`sidebar library-sidebar ${isResizing ? 'resizing' : ''}`}
-      style={{ width: sidebarWidth }}
+      className={`sidebar library-sidebar ${isResizing ? 'resizing' : ''} ${isCollapsed ? 'sidebar-collapsed right-collapsed' : ''}`}
+      style={{
+        width: isCollapsed ? 0 : sidebarWidth,
+        minWidth: isCollapsed ? 0 : sidebarWidth,
+        overflowX: isCollapsed ? 'visible' : 'hidden', // Required for the handle to float
+        paddingLeft: isCollapsed ? 0 : (sidebarWidth < 40 ? 0 : undefined),
+        paddingRight: isCollapsed ? 0 : (sidebarWidth < 40 ? 0 : undefined),
+      }}
     >
-      {/* Resize handle on left edge */}
       <div
         className="sidebar-resize-handle"
         onMouseDown={handleResizeStart}
-        title="Drag to resize"
+        title={isCollapsed ? "Drag to expand" : "Drag to resize"}
       >
         <div className="resize-grip"></div>
       </div>
-      <div className="sidebar-tabs">
-        <button
-          className={`sidebar-tab ${activeTab === 'library' ? 'active' : ''}`}
-          onClick={() => handleTabClick('library')}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          <span>Library</span>
-        </button>
-        <button
-          className={`sidebar-tab ${activeTab === 'variables' ? 'active' : ''}`}
-          onClick={() => handleTabClick('variables')}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="12" y1="18" x2="12" y2="12" />
-            <line x1="9" y1="15" x2="15" y2="15" />
-          </svg>
-          <span>Variables</span>
-        </button>
-        <button
-          className={`sidebar-tab ${activeTab === 'properties' ? 'active' : ''}`}
-          onClick={() => handleTabClick('properties')}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
-          <span>Props</span>
-        </button>
-      </div>
 
-      {/* Library panel */}
-      <div
-        className={`sidebar-panel ${activeTab === 'library' ? '' : 'hidden'}`}
-        data-panel="library"
-      >
-        <WorkflowBrowser />
-      </div>
+      {!isCollapsed && (
+        <>
+          {/* Auto-switch: Properties when node/edge selected, Variables otherwise */}
+          {showProperties ? (
+            <div className="sidebar-panel" data-panel="properties">
+              {selectedNode ? (
+                <div className="properties-panel">
+                  <div className="properties-header">
+                    <h4>Properties</h4>
+                    <p className="muted small">{selectedNode.type} node</p>
+                  </div>
 
-      {/* Variables panel */}
-      <div
-        className={`sidebar-panel ${activeTab === 'variables' ? '' : 'hidden'}`}
-        data-panel="variables"
-      >
-        {/* ... Variables content ... */}
-        <div className="inputs-header">
-          <div>
-            <h4>Variables</h4>
-            <p className="muted small">Canonical list for this workflow.</p>
-          </div>
-          <button
-            className="ghost inputs-add-btn"
-            onClick={() => {
-              if (!currentAnalysis) {
-                setAnalysis({ variables: [], outputs: [], tree: {}, doubts: [] })
-              }
-              setInputError(null)
-              setShowAddInput(true)
-            }}
-          >
-            + Input
-          </button>
-        </div>
-
-        {showAnalysisView ? (
-          <>
-            {showAddInput && (
-              <div className="input-add-form">
-                <div className="input-add-row">
-                  <label>Name</label>
-                  <input
-                    type="text"
-                    value={draftName}
-                    onChange={(e) => setDraftName(e.target.value)}
-                    placeholder="e.g. Total Cholesterol"
-                  />
-                </div>
-                <div className="input-add-row">
-                  <label>Type</label>
-                  <select
-                    value={draftType}
-                    onChange={(e) => setDraftType(e.target.value as InputType)}
-                  >
-                    <option value="string">string</option>
-                    <option value="number">number</option>
-                    <option value="bool">bool</option>
-                    <option value="enum">enum</option>
-                    <option value="date">date</option>
-                  </select>
-                </div>
-                <div className="input-add-row">
-                  <label>Description</label>
-                  <input
-                    type="text"
-                    value={draftDescription}
-                    onChange={(e) => setDraftDescription(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-                {draftType === 'enum' && (
-                  <div className="input-add-row">
-                    <label>Enum values</label>
+                  <div className="form-group">
+                    <label>Label</label>
                     <input
                       type="text"
-                      value={draftEnum}
-                      onChange={(e) => setDraftEnum(e.target.value)}
-                      placeholder="Comma-separated values"
+                      value={selectedNode.label}
+                      onChange={(e) => updateNode(selectedNode.id, { label: e.target.value })}
+                      placeholder="Node label"
                     />
+                    <p className="muted small">Display text for the node</p>
                   </div>
-                )}
-                {draftType === 'number' && (
-                  <div className="input-add-row input-add-range">
-                    <label>Range</label>
-                    <div className="input-add-range-fields">
-                      <input
-                        type="number"
-                        value={draftRangeMin}
-                        onChange={(e) => setDraftRangeMin(e.target.value)}
-                        placeholder="Min"
-                      />
-                      <input
-                        type="number"
-                        value={draftRangeMax}
-                        onChange={(e) => setDraftRangeMax(e.target.value)}
-                        placeholder="Max"
-                      />
-                    </div>
-                  </div>
-                )}
-                {inputError && <p className="error-text">{inputError}</p>}
-                <div className="input-add-actions">
-                  <button className="primary" onClick={handleAddInput}>
-                    Add Input
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      resetDraftInput()
-                      setShowAddInput(false)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {analysisInputs.length === 0 ? (
-              <div className="inputs-empty">
-                <p className="muted">No variables listed yet.</p>
-                <p className="muted small">Run analysis or add a variable to start the list.</p>
-              </div>
-            ) : (
-              <div className="inputs-list">
-                {inputVariables.length > 0 && (
-                  <div className="inputs-group">
-                    <h5 className="inputs-group-title">Inputs</h5>
-                    {inputVariables.map(renderAnalysisInput)}
-                  </div>
-                )}
+                  {selectedNode.type === 'decision' && (
+                    <DecisionConditionEditor
+                      node={selectedNode}
+                      analysisInputs={analysisInputs}
+                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                    />
+                  )}
 
-                {expectedVariables.length > 0 && (
-                  <div className="inputs-group">
-                    <h5 className="inputs-group-title">Expected Variables</h5>
-                    {expectedVariables.map(renderAnalysisInput)}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        ) : !currentWorkflow ? (
-          <div className="inputs-empty">
-            <p className="muted">No variables defined.</p>
-            <p className="muted small">Create or load a workflow to see its variables.</p>
-          </div>
-        ) : inputBlocks.length === 0 ? (
-          <div className="inputs-empty">
-            <p className="muted">This workflow has no input blocks.</p>
-          </div>
-        ) : (
-          <>
-            <div className="inputs-list">
-              {inputBlocks.map((input) => (
-                <InputField
-                  key={input.id}
-                  input={input}
-                  value={inputValues[input.name]}
-                  onChange={(val) => handleInputChange(input.name, val)}
-                />
-              ))}
-            </div>
+                  {selectedNode.type === 'end' && (
+                    <EndNodeConfig
+                      node={selectedNode}
+                      analysisInputs={analysisInputs}
+                      workflowOutputType={currentWorkflow?.output_type || 'string'}
+                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                    />
+                  )}
 
-            <div className="execute-section">
-              <button
-                className="primary full-width"
-                onClick={handleExecute}
-                disabled={isExecuting}
-              >
-                {isExecuting ? 'Executing...' : 'Execute Workflow'}
-              </button>
+                  {selectedNode.type === 'subprocess' && (
+                    <SubprocessConfig
+                      node={selectedNode}
+                      workflows={workflows}
+                      analysisInputs={analysisInputs}
+                      currentWorkflowId={currentWorkflow?.id}
+                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                    />
+                  )}
 
-              {error && <p className="error-text">{error}</p>}
-
-              {executionResult && (
-                <div className="execution-result">
-                  <h4>Result</h4>
-                  <div className={`result-output ${executionResult.success ? 'success' : 'error'}`}>
-                    {executionResult.output || executionResult.error || 'No output'}
-                  </div>
-                  {executionResult.path && (
-                    <details>
-                      <summary>Execution path ({executionResult.path.length} steps)</summary>
-                      <ol className="execution-path">
-                        {executionResult.path.map((step, i) => (
-                          <li key={i}>{step}</li>
-                        ))}
-                      </ol>
-                    </details>
+                  {selectedNode.type === 'calculation' && (
+                    <CalculationConfigEditor
+                      node={selectedNode}
+                      analysisInputs={analysisInputs}
+                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
+                    />
                   )}
                 </div>
+              ) : selectedEdgeData ? (
+                <div className="properties-panel">
+                  <div className="properties-header">
+                    <h4>Edge Properties</h4>
+                    <p className="muted small">
+                      {selectedEdgeSourceNode?.label || selectedEdge?.from} → {selectedEdgeTargetNode?.label || selectedEdge?.to}
+                    </p>
+                  </div>
+
+                  {isDecisionEdge ? (
+                    <div className="form-group">
+                      <label>Branch Type</label>
+                      <select
+                        value={selectedEdgeData.label || ''}
+                        onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
+                      >
+                        <option value="">Select branch...</option>
+                        <option value="true">True (condition is met)</option>
+                        <option value="false">False (condition is not met)</option>
+                      </select>
+                      <p className="muted small">
+                        Decision nodes require exactly two branches: one for when the condition is true, and one for when it is false.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="form-group">
+                      <label>Label (Optional)</label>
+                      <input
+                        type="text"
+                        value={selectedEdgeData.label || ''}
+                        onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
+                        placeholder="Edge label"
+                      />
+                      <p className="muted small">Optional text to display on the edge.</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="sidebar-panel" data-panel="variables">
+              <div className="inputs-header">
+                <div>
+                  <h4>Variables</h4>
+                  <p className="muted small">Canonical list for this workflow.</p>
+                </div>
+                <button
+                  className="ghost inputs-add-btn"
+                  onClick={() => {
+                    if (!currentAnalysis) {
+                      setAnalysis({ variables: [], outputs: [], tree: {}, doubts: [] })
+                    }
+                    setInputError(null)
+                    setShowAddInput(true)
+                  }}
+                >
+                  + Input
+                </button>
+              </div>
+
+              {showAnalysisView ? (
+                <>
+                  {showAddInput && (
+                    <div className="input-add-form">
+                      <div className="input-add-row">
+                        <label>Name</label>
+                        <input
+                          type="text"
+                          value={draftName}
+                          onChange={(e) => setDraftName(e.target.value)}
+                          placeholder="e.g. Total Cholesterol"
+                        />
+                      </div>
+                      <div className="input-add-row">
+                        <label>Type</label>
+                        <select
+                          value={draftType}
+                          onChange={(e) => setDraftType(e.target.value as InputType)}
+                        >
+                          <option value="string">string</option>
+                          <option value="number">number</option>
+                          <option value="bool">bool</option>
+                          <option value="enum">enum</option>
+                          <option value="date">date</option>
+                        </select>
+                      </div>
+                      <div className="input-add-row">
+                        <label>Description</label>
+                        <input
+                          type="text"
+                          value={draftDescription}
+                          onChange={(e) => setDraftDescription(e.target.value)}
+                          placeholder="Optional"
+                        />
+                      </div>
+                      {draftType === 'enum' && (
+                        <div className="input-add-row">
+                          <label>Enum values</label>
+                          <input
+                            type="text"
+                            value={draftEnum}
+                            onChange={(e) => setDraftEnum(e.target.value)}
+                            placeholder="Comma-separated values"
+                          />
+                        </div>
+                      )}
+                      {draftType === 'number' && (
+                        <div className="input-add-row input-add-range">
+                          <label>Range</label>
+                          <div className="input-add-range-fields">
+                            <input
+                              type="number"
+                              value={draftRangeMin}
+                              onChange={(e) => setDraftRangeMin(e.target.value)}
+                              placeholder="Min"
+                            />
+                            <input
+                              type="number"
+                              value={draftRangeMax}
+                              onChange={(e) => setDraftRangeMax(e.target.value)}
+                              placeholder="Max"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {inputError && <p className="error-text">{inputError}</p>}
+                      <div className="input-add-actions">
+                        <button className="primary" onClick={handleAddInput}>
+                          Add Input
+                        </button>
+                        <button
+                          className="ghost"
+                          onClick={() => {
+                            resetDraftInput()
+                            setShowAddInput(false)
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {analysisInputs.length === 0 ? (
+                    <div className="inputs-empty">
+                      <p className="muted">No variables listed yet.</p>
+                      <p className="muted small">Run analysis or add a variable to start the list.</p>
+                    </div>
+                  ) : (
+                    <div className="inputs-list">
+                      {inputVariables.length > 0 && (
+                        <div className="inputs-group">
+                          <h5 className="inputs-group-title">Inputs</h5>
+                          {inputVariables.map(renderAnalysisInput)}
+                        </div>
+                      )}
+
+                      {expectedVariables.length > 0 && (
+                        <div className="inputs-group">
+                          <h5 className="inputs-group-title">Expected Variables</h5>
+                          {expectedVariables.map(renderAnalysisInput)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : !currentWorkflow ? (
+                <div className="inputs-empty">
+                  <p className="muted">No variables defined.</p>
+                  <p className="muted small">Create or load a workflow to see its variables.</p>
+                </div>
+              ) : inputBlocks.length === 0 ? (
+                <div className="inputs-empty">
+                  <p className="muted">This workflow has no input blocks.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="inputs-list">
+                    {inputBlocks.map((input) => (
+                      <InputField
+                        key={input.id}
+                        input={input}
+                        value={inputValues[input.name]}
+                        onChange={(val) => handleInputChange(input.name, val)}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="execute-section">
+                    <button
+                      className="primary full-width"
+                      onClick={handleExecute}
+                      disabled={isExecuting}
+                    >
+                      {isExecuting ? 'Executing...' : 'Execute Workflow'}
+                    </button>
+
+                    {error && <p className="error-text">{error}</p>}
+
+                    {executionResult && (
+                      <div className="execution-result">
+                        <h4>Result</h4>
+                        <div className={`result-output ${executionResult.success ? 'success' : 'error'}`}>
+                          {executionResult.output || executionResult.error || 'No output'}
+                        </div>
+                        {executionResult.path && (
+                          <details>
+                            <summary>Execution path ({executionResult.path.length} steps)</summary>
+                            <ol className="execution-path">
+                              {executionResult.path.map((step, i) => (
+                                <li key={i}>{step}</li>
+                              ))}
+                            </ol>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="validate-section">
+                    <button
+                      className="ghost full-width"
+                      onClick={() => openModal('validation')}
+                    >
+                      Validate Workflow
+                    </button>
+                  </div>
+                </>
               )}
             </div>
-
-            <div className="validate-section">
-              <button
-                className="ghost full-width"
-                onClick={() => openModal('validation')}
-              >
-                Validate Workflow
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Properties panel */}
-      <div
-        className={`sidebar-panel ${activeTab === 'properties' ? '' : 'hidden'}`}
-        data-panel="properties"
-      >
-        {selectedNode ? (
-          <div className="properties-panel">
-            <div className="properties-header">
-              <h4>Properties</h4>
-              <p className="muted small">{selectedNode.type} node</p>
-            </div>
-
-            <div className="form-group">
-              <label>Label</label>
-              <input
-                type="text"
-                value={selectedNode.label}
-                onChange={(e) => updateNode(selectedNode.id, { label: e.target.value })}
-                placeholder="Node label"
-              />
-              <p className="muted small">Display text for the node</p>
-            </div>
-
-            {selectedNode.type === 'decision' && (
-              <DecisionConditionEditor
-                node={selectedNode}
-                analysisInputs={analysisInputs}
-                onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-              />
-            )}
-
-            {selectedNode.type === 'end' && (
-              <EndNodeConfig
-                node={selectedNode}
-                analysisInputs={analysisInputs}
-                workflowOutputType={currentWorkflow?.output_type || 'string'}
-                onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-              />
-            )}
-
-            {selectedNode.type === 'subprocess' && (
-              <SubprocessConfig
-                node={selectedNode}
-                workflows={workflows}
-                analysisInputs={analysisInputs}
-                currentWorkflowId={currentWorkflow?.id}
-                onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-              />
-            )}
-
-            {selectedNode.type === 'calculation' && (
-              <CalculationConfigEditor
-                node={selectedNode}
-                analysisInputs={analysisInputs}
-                onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-              />
-            )}
-          </div>
-        ) : selectedEdgeData ? (
-          // Edge properties panel
-          <div className="properties-panel">
-            <div className="properties-header">
-              <h4>Edge Properties</h4>
-              <p className="muted small">
-                {selectedEdgeSourceNode?.label || selectedEdge?.from} → {selectedEdgeTargetNode?.label || selectedEdge?.to}
-              </p>
-            </div>
-
-            {isDecisionEdge ? (
-              <div className="form-group">
-                <label>Branch Type</label>
-                <select
-                  value={selectedEdgeData.label || ''}
-                  onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
-                >
-                  <option value="">Select branch...</option>
-                  <option value="true">True (condition is met)</option>
-                  <option value="false">False (condition is not met)</option>
-                </select>
-                <p className="muted small">
-                  Decision nodes require exactly two branches: one for when the condition is true, and one for when it is false.
-                </p>
-              </div>
-            ) : (
-              <div className="form-group">
-                <label>Label (Optional)</label>
-                <input
-                  type="text"
-                  value={selectedEdgeData.label || ''}
-                  onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
-                  placeholder="Edge label"
-                />
-                <p className="muted small">Optional text to display on the edge.</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="properties-empty">
-            <p className="muted">No node or edge selected.</p>
-            <p className="muted small">Select a node or edge on the canvas to edit its properties.</p>
-          </div>
-        )}
-      </div>
+          )}
+        </>
+      )}
     </aside>
   )
 }
@@ -784,7 +714,7 @@ function InputField({
  * For 'string' workflows, "Static value" is replaced by "Value Template" (f-string).
  * For other types, "Static value" shows a type-aware input.
  */
-function EndNodeConfig({
+export function EndNodeConfig({
   node,
   analysisInputs,
   workflowOutputType,
@@ -933,7 +863,7 @@ function EndNodeConfig({
  * Allows selecting a subworkflow, mapping parent inputs to subworkflow inputs,
  * and naming the output variable for use in subsequent nodes.
  */
-function SubprocessConfig({
+export function SubprocessConfig({
   node,
   workflows,
   analysisInputs,
@@ -1132,7 +1062,7 @@ function SubprocessConfig({
  * Allows selecting an input, choosing a comparator appropriate for the input type,
  * and specifying comparison value(s).
  */
-function DecisionConditionEditor({
+export function DecisionConditionEditor({
   node,
   analysisInputs,
   onUpdate,
@@ -1365,7 +1295,7 @@ function formatConditionPreview(condition: DecisionCondition, inputs: WorkflowIn
  * Allows selecting an operator, configuring operands (variable references or literals),
  * and specifying the output variable name.
  */
-function CalculationConfigEditor({
+export function CalculationConfigEditor({
   node,
   analysisInputs,
   onUpdate,
