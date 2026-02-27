@@ -7,7 +7,7 @@ import { cancelChatTask, sendChatMessage } from '../api/socket'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
-export default function Chat() {
+export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const [inputValue, setInputValue] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -186,8 +186,8 @@ export default function Chat() {
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging.current) return
     const delta = startY.current - e.clientY
-    // Min 200px, max 60% of viewport to leave room for workspace
-    const newHeight = Math.min(Math.max(startHeight.current + delta, 200), window.innerHeight * 0.6)
+    // Min 0, max 60% of viewport to leave room for workspace
+    const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
     setChatHeight(newHeight)
   }
 
@@ -200,8 +200,9 @@ export default function Chat() {
     document.removeEventListener('mouseup', handleMouseUp)
   }
 
+  const isCollapsed = chatHeight === 0
   return (
-    <div className="chat-dock" style={{ height: chatHeight }}>
+    <div className={`chat-dock ${revealedClass || ''} ${isCollapsed ? 'chat-dock-collapsed' : ''}`} style={{ height: isCollapsed ? undefined : chatHeight }}>
       <div className="chat-resize-handle" onMouseDown={handleMouseDown}>
         <div className="resize-grip"></div>
       </div>

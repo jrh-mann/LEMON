@@ -45,6 +45,9 @@ interface UIState {
   // Execution log modal (dev tools)
   executionLogModalOpen: boolean
 
+  // Workspace reveal (home -> workflow transition)
+  workspaceRevealed: boolean
+
   // Actions
   setStage: (stage: Stage) => void
   openModal: (modal: ModalType) => void
@@ -78,6 +81,9 @@ interface UIState {
   // Execution log modal
   setExecutionLogModalOpen: (open: boolean) => void
 
+  // Workspace reveal
+  revealWorkspace: () => void
+
   // Reset
   reset: () => void
 }
@@ -104,6 +110,7 @@ export const useUIStore = create<UIState>((set) => ({
   selectedToolCall: null,
   trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
   executionLogModalOpen: false,
+  workspaceRevealed: false,
 
   // Actions
   setStage: (stage) => set({ stage }),
@@ -180,6 +187,9 @@ export const useUIStore = create<UIState>((set) => ({
   // Execution log modal
   setExecutionLogModalOpen: (open) => set({ executionLogModalOpen: open }),
 
+  // Workspace reveal
+  revealWorkspace: () => set({ workspaceRevealed: true }),
+
   // Reset
   reset: () =>
     set({
@@ -195,5 +205,6 @@ export const useUIStore = create<UIState>((set) => ({
       panX: 0,
       panY: 0,
       chatHeight: 280,
+      workspaceRevealed: false,
     }),
 }))

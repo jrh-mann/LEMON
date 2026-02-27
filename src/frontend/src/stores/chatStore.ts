@@ -111,22 +111,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setConversationId: (id) => {
     set({ conversationId: id })
-    // Also update the active tab's conversationId in workflowStore
+    // Also update the workflowStore's conversationId
     if (id) {
-      useWorkflowStore.getState().setActiveTabConversationId(id)
+      useWorkflowStore.getState().setConversationId(id)
     }
   },
 
   // Ensure conversationId exists before sync operations
-  // Uses per-tab conversation ID from workflowStore
   ensureConversationId: () => {
     const workflowStore = useWorkflowStore.getState()
-    let conversationId = workflowStore.getActiveTabConversationId()
+    let conversationId = workflowStore.conversationId
     if (!conversationId) {
       conversationId = crypto.randomUUID()
-      workflowStore.setActiveTabConversationId(conversationId)
+      workflowStore.setConversationId(conversationId)
     }
-    // Sync to chatStore's local state for backwards compatibility
+    // Sync to chatStore's local state
     set({ conversationId })
   },
 

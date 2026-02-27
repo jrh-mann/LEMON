@@ -28,7 +28,7 @@ export default function WorkflowBrowser() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const { addTab, setAnalysis, setWorkflows: setGlobalWorkflows } = useWorkflowStore()
+  const { setCurrentWorkflow, setFlowchart, setAnalysis, setWorkflows: setGlobalWorkflows } = useWorkflowStore()
   const { closeModal } = useUIStore()
 
   // Load my workflows
@@ -226,7 +226,7 @@ export default function WorkflowBrowser() {
       // Check if positions are all at (0,0) or overlapping - apply auto-layout
       const needsLayout = flowchart.nodes.length > 1 &&
         (flowchart.nodes.every((n) => n.x === 0 && n.y === 0) ||
-         new Set(flowchart.nodes.map((n) => `${n.x},${n.y}`)).size < flowchart.nodes.length / 2)
+          new Set(flowchart.nodes.map((n) => `${n.x},${n.y}`)).size < flowchart.nodes.length / 2)
 
       if (needsLayout) {
         flowchart = autoLayoutFlowchart(flowchart)
@@ -243,7 +243,8 @@ export default function WorkflowBrowser() {
         connections: [],
       }
 
-      addTab(workflowData.metadata.name, workflow, flowchart)
+      setCurrentWorkflow(workflow)
+      setFlowchart(flowchart)
 
       // Set analysis data if available (map backend 'inputs' to frontend 'variables')
       if (workflowData.inputs || workflowData.outputs || workflowData.tree || workflowData.doubts) {

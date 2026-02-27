@@ -1,7 +1,6 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, Message, ExecutionLogEntry } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, ExecutionLogEntry } from '../types'
 import type { Annotation } from '../components/ImageAnnotator'
-import { useChatStore } from './chatStore'
 import { patchWorkflow } from '../api/workflows'
 
 // Execution state for visual workflow execution
@@ -31,38 +30,17 @@ export interface SubflowExecutionState {
   executedNodeIds: string[]         // Trail of executed nodes in subflow
 }
 
-// Tab interface
-export interface WorkflowTab {
-  id: string
-  title: string
-  workflow: Workflow | null
-  flowchart: Flowchart
-  history: Flowchart[]
-  historyIndex: number
-  pendingImage: string | null
-  pendingImageName: string | null
-  pendingAnnotations: Annotation[]
-  analysis: WorkflowAnalysis | null
-  // Chat state per tab — each workflow gets its own conversation
-  conversationId: string | null
-  messages: Message[]
-  // Persistent input values per tab
-  inputValues: Record<string, unknown>
-}
-
 interface WorkflowState {
   // Workflow library
   workflows: WorkflowSummary[]
   isLoadingWorkflows: boolean
 
-  // Tabs
-  tabs: WorkflowTab[]
-  activeTabId: string
-
-  // Current workflow (derived from active tab)
+  // Current workflow state
   currentWorkflow: Workflow | null
   flowchart: Flowchart
   currentAnalysis: WorkflowAnalysis | null
+  conversationId: string | null
+  inputValues: Record<string, unknown>
 
   // Canvas state
   selectedNodeId: string | null
@@ -77,11 +55,11 @@ interface WorkflowState {
   // Subflow execution stack for popup modal (supports nested subflows)
   subflowStack: SubflowExecutionState[]
 
-  // History for undo/redo (derived from active tab)
+  // History for undo/redo
   history: Flowchart[]
   historyIndex: number
 
-  // Pending image (per-tab)
+  // Pending image
   pendingImage: string | null
   pendingImageName: string | null
   pendingAnnotations: Annotation[]
@@ -93,15 +71,8 @@ interface WorkflowState {
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
-
-  // Tab operations
-  addTab: (title?: string, workflow?: Workflow | null, flowchart?: Flowchart) => string
-  closeTab: (tabId: string) => void
-  switchTab: (tabId: string) => void
-  updateTabTitle: (tabId: string, title: string) => void
-  getActiveTabConversationId: () => string | null
-  setActiveTabConversationId: (conversationId: string) => void
-  setTabInputValues: (tabId: string, values: Record<string, unknown>) => void
+  setConversationId: (conversationId: string | null) => void
+  setInputValues: (values: Record<string, unknown>) => void
 
   // Node operations
   selectNode: (nodeId: string | null) => void
@@ -134,7 +105,7 @@ interface WorkflowState {
   redo: () => void
   clearHistory: () => void
 
-  // Pending image (per-tab)
+  // Pending image
   setPendingImage: (image: string | null, name?: string | null) => void
   clearPendingImage: () => void
   setPendingAnnotations: (annotations: Annotation[]) => void
@@ -183,41 +154,9 @@ const initialExecutionState: ExecutionState = {
   logIndentationStack: [],
 }
 
-// Generate unique tab ID
-const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-
 // Generate unique workflow ID (used for new workflows before they're saved)
 // Format matches backend: wf_{uuid hex}
 const generateWorkflowId = () => `wf_${crypto.randomUUID().replace(/-/g, '')}`
-
-// Create initial tab with a pre-generated workflow ID
-const createInitialTab = (): WorkflowTab => {
-  const workflowId = generateWorkflowId()
-  return {
-    id: generateTabId(),
-    title: 'New Workflow',
-    // Create a minimal workflow object with the pre-generated ID
-    // This ensures the workflow has an ID from the start
-    workflow: {
-      id: workflowId,
-      metadata: { name: 'New Workflow' },
-      blocks: [],
-      connections: [],
-    } as unknown as Workflow,
-    flowchart: emptyFlowchart,
-    history: [],
-    historyIndex: -1,
-    pendingImage: null,
-    pendingImageName: null,
-    pendingAnnotations: [],
-    analysis: null,
-    conversationId: null,  // Will be generated on first message
-    messages: [],
-    inputValues: {},
-  }
-}
-
-const initialTab = createInitialTab()
 
 // Helper to sync edges to backend (fire-and-forget, logs errors)
 // This persists UI-triggered edge changes without blocking the UI
@@ -237,14 +176,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflows: [],
   isLoadingWorkflows: false,
 
-  // Tabs
-  tabs: [initialTab],
-  activeTabId: initialTab.id,
-
-  // Current state (from active tab) - use initial tab's workflow (has pre-generated ID)
-  currentWorkflow: initialTab.workflow,
+  currentWorkflow: {
+    id: generateWorkflowId(),
+    metadata: { name: 'New Workflow' },
+    blocks: [],
+    connections: [],
+  } as unknown as Workflow,
   flowchart: emptyFlowchart,
   currentAnalysis: null,
+  conversationId: null,
+  inputValues: {},
+
   selectedNodeId: null,
   selectedNodeIds: [],
   selectedEdge: null,
@@ -265,21 +207,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
   setLoadingWorkflows: (loading) => set({ isLoadingWorkflows: loading }),
-  setCurrentWorkflow: (workflow) => {
-    const state = get()
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? { ...tab, workflow, title: workflow?.metadata?.name || tab.title }
-        : tab
-    )
-    set({ currentWorkflow: workflow, tabs })
-  },
-  // Sets just the workflow ID for the current tab (used when LLM creates a workflow)
-  // Creates a minimal workflow object if none exists, or updates existing workflow's ID
-  setCurrentWorkflowId: (workflowId) => {
-    const state = get()
-    // Create or update the workflow object with the ID
-    // If no workflow exists, create a minimal stub - full data comes from workflow_modified event
+  setCurrentWorkflow: (workflow) => set({ currentWorkflow: workflow }),
+
+  // Sets just the workflow ID for the current workflow
+  setCurrentWorkflowId: (workflowId) => set((state) => {
     const workflow = state.currentWorkflow
       ? { ...state.currentWorkflow, id: workflowId }
       : {
@@ -288,230 +219,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         blocks: [],
         connections: [],
       } as unknown as Workflow
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? { ...tab, workflow }
-        : tab
-    )
-    set({ currentWorkflow: workflow, tabs })
-  },
+    return { currentWorkflow: workflow }
+  }),
+
   setFlowchart: (flowchart) => {
     const state = get()
     state.pushHistory()
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? { ...tab, flowchart }
-        : tab
-    )
-    set({ flowchart, tabs })
-  },
-  setAnalysis: (analysis) => {
-    const state = get()
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? { ...tab, analysis }
-        : tab
-    )
-    set({ currentAnalysis: analysis, tabs })
+    set({ flowchart })
   },
 
-  // Tab operations
-  addTab: (title = 'New Workflow', workflow = null, flowchart = emptyFlowchart) => {
-    // Generate a workflow ID if not provided (for new tabs without existing workflow)
-    const workflowId = workflow?.id ?? generateWorkflowId()
-    const workflowWithId = workflow ?? {
-      id: workflowId,
-      metadata: { name: title },
-      blocks: [],
-      connections: [],
-    } as unknown as Workflow
-
-    const newTab: WorkflowTab = {
-      id: generateTabId(),
-      title,
-      workflow: workflowWithId,
-      flowchart,
-      history: [],
-      historyIndex: -1,
-      pendingImage: null,
-      pendingImageName: null,
-      pendingAnnotations: [],
-      analysis: null,
-      conversationId: null,  // New tab starts with no conversation
-      messages: [],
-      inputValues: {},
-    }
-    // Save current tab's state (including chat) before switching
-    const state = get()
-    const chatSnapshot = useChatStore.getState().getSnapshot()
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? {
-          ...tab,
-          pendingImage: state.pendingImage,
-          pendingImageName: state.pendingImageName,
-          pendingAnnotations: state.pendingAnnotations,
-          analysis: state.currentAnalysis,
-          conversationId: chatSnapshot.conversationId,
-          messages: chatSnapshot.messages,
-        }
-        : tab
-    )
-    set({
-      tabs: [...tabs, newTab],
-      activeTabId: newTab.id,
-      currentWorkflow: workflow,
-      flowchart,
-      currentAnalysis: null,
-      selectedNodeId: null,
-      selectedNodeIds: [],
-      connectMode: false,
-      connectFromId: null,
-      history: [],
-      historyIndex: -1,
-      pendingImage: null,
-      pendingImageName: null,
-      pendingAnnotations: [],
-    })
-    // Reset chat for the new tab (fresh conversation)
-    useChatStore.getState().reset()
-    return newTab.id
-  },
-
-  closeTab: (tabId) => {
-    const state = get()
-    if (state.tabs.length <= 1) {
-      // Don't close last tab, just reset it
-      const newTab = createInitialTab()
-      set({
-        tabs: [newTab],
-        activeTabId: newTab.id,
-        currentWorkflow: newTab.workflow,  // Use the new tab's workflow (has pre-generated ID)
-        flowchart: emptyFlowchart,
-        currentAnalysis: null,
-        selectedNodeId: null,
-        selectedNodeIds: [],
-        history: [],
-        historyIndex: -1,
-        pendingImage: null,
-        pendingImageName: null,
-        pendingAnnotations: [],
-      })
-      // Reset chat for the fresh tab
-      useChatStore.getState().reset()
-      return
-    }
-
-    const tabIndex = state.tabs.findIndex(t => t.id === tabId)
-    const newTabs = state.tabs.filter(t => t.id !== tabId)
-
-    // If closing active tab, switch to adjacent tab
-    let newActiveId = state.activeTabId
-    if (tabId === state.activeTabId) {
-      const newIndex = Math.min(tabIndex, newTabs.length - 1)
-      newActiveId = newTabs[newIndex].id
-    }
-
-    const activeTab = newTabs.find(t => t.id === newActiveId)!
-    set({
-      tabs: newTabs,
-      activeTabId: newActiveId,
-      currentWorkflow: activeTab.workflow,
-      flowchart: activeTab.flowchart,
-      currentAnalysis: activeTab.analysis,
-      history: activeTab.history,
-      historyIndex: activeTab.historyIndex,
-      selectedNodeId: null,
-      selectedNodeIds: [],
-      pendingImage: activeTab.pendingImage,
-      pendingImageName: activeTab.pendingImageName,
-      pendingAnnotations: activeTab.pendingAnnotations,
-    })
-    // Restore chat state from the tab we're switching to
-    if (tabId === state.activeTabId) {
-      useChatStore.getState().restoreState(activeTab.conversationId, activeTab.messages)
-    }
-  },
-
-  switchTab: (tabId) => {
-    const state = get()
-    if (tabId === state.activeTabId) return
-
-    // Save current tab state including pending image and chat
-    const chatSnapshot = useChatStore.getState().getSnapshot()
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? {
-          ...tab,
-          flowchart: state.flowchart,
-          history: state.history,
-          historyIndex: state.historyIndex,
-          pendingImage: state.pendingImage,
-          pendingImageName: state.pendingImageName,
-          pendingAnnotations: state.pendingAnnotations,
-          analysis: state.currentAnalysis,
-          conversationId: chatSnapshot.conversationId,
-          messages: chatSnapshot.messages,
-        }
-        : tab
-    )
-
-    const newTab = tabs.find(t => t.id === tabId)
-    if (!newTab) return
-
-    set({
-      tabs,
-      activeTabId: tabId,
-      currentWorkflow: newTab.workflow,
-      flowchart: newTab.flowchart,
-      currentAnalysis: newTab.analysis,
-      history: newTab.history,
-      historyIndex: newTab.historyIndex,
-      selectedNodeId: null,
-      selectedNodeIds: [],
-      connectMode: false,
-      connectFromId: null,
-      pendingImage: newTab.pendingImage,
-      pendingImageName: newTab.pendingImageName,
-      pendingAnnotations: newTab.pendingAnnotations,
-    })
-    // Restore chat state from the incoming tab
-    useChatStore.getState().restoreState(newTab.conversationId, newTab.messages)
-  },
-
-  updateTabTitle: (tabId, title) => {
-    set(state => ({
-      tabs: state.tabs.map(tab =>
-        tab.id === tabId ? { ...tab, title } : tab
-      ),
-    }))
-  },
-
-  setTabInputValues: (tabId, values) => {
-    set(state => ({
-      tabs: state.tabs.map(tab =>
-        tab.id === tabId ? { ...tab, inputValues: values } : tab
-      ),
-    }))
-  },
-
-  // Get the conversation ID for the active tab (used by socket.ts for per-tab chat)
-  getActiveTabConversationId: () => {
-    const state = get()
-    const activeTab = state.tabs.find(t => t.id === state.activeTabId)
-    return activeTab?.conversationId ?? null
-  },
-
-  // Set the conversation ID for the active tab (called when first message is sent)
-  setActiveTabConversationId: (conversationId) => {
-    const state = get()
-    const tabs = state.tabs.map(tab =>
-      tab.id === state.activeTabId
-        ? { ...tab, conversationId }
-        : tab
-    )
-    set({ tabs })
-  },
+  setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
+  setConversationId: (conversationId) => set({ conversationId }),
+  setInputValues: (inputValues) => set({ inputValues }),
 
   // Node operations
   selectNode: (nodeId) => set({
@@ -804,7 +523,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
-  // Pending image (per-tab)
+  // Pending image
   setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name, pendingAnnotations: [] }),
   clearPendingImage: () => set({ pendingImage: null, pendingImageName: null, pendingAnnotations: [] }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
@@ -813,9 +532,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Reset
   reset: () =>
     set({
-      currentWorkflow: null,
+      currentWorkflow: {
+        id: generateWorkflowId(),
+        metadata: { name: 'New Workflow' },
+        blocks: [],
+        connections: [],
+      } as unknown as Workflow,
       flowchart: emptyFlowchart,
       currentAnalysis: null,
+      conversationId: null,
+      inputValues: {},
       selectedNodeId: null,
       selectedNodeIds: [],
       connectMode: false,
@@ -964,7 +690,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     subflowStack: state.subflowStack.slice(0, -1),  // Pop top subflow
   })),
 
-  // Execution log actions (dev tools)
   // Execution log actions (dev tools)
   addExecutionLog: (log) => set((state) => {
     let currentStack = state.execution.logIndentationStack || [];

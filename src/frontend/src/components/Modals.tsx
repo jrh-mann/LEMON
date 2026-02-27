@@ -56,7 +56,7 @@ function Modal({
   if (!isOpen) return null
 
   return (
-    <div className="modal open">
+    <div className="modal">
       <div className="modal-backdrop" onClick={onClose}></div>
       <div className="modal-content">
         <div className="modal-header">
@@ -578,14 +578,9 @@ function ExecuteWorkflowForm() {
     execution,
     setExecutionSpeed,
     clearExecution,
-    tabs,
-    activeTabId,
-    setTabInputValues,
+    inputValues: persistedValues,
+    setInputValues: setGlobalInputValues,
   } = useWorkflowStore()
-
-  // Get the active tab's persisted input values
-  const activeTab = tabs.find(t => t.id === activeTabId)
-  const persistedValues = activeTab?.inputValues ?? {}
 
   // Initialize input values from workflow variables, using persisted values when available
   const workflowInputs = currentAnalysis?.variables ?? []
@@ -620,17 +615,15 @@ function ExecuteWorkflowForm() {
     return initial
   })
 
-  // Handle input value change - update local state and persist to tab
+  // Handle input value change - update local state and persist to store
   const handleInputChange = useCallback((inputId: string, value: unknown) => {
     setInputValues((prev) => {
       const newValues = { ...prev, [inputId]: value }
-      // Persist to tab for next execution
-      if (activeTabId) {
-        setTabInputValues(activeTabId, newValues)
-      }
+      // Persist to store for next execution
+      setGlobalInputValues(newValues)
       return newValues
     })
-  }, [activeTabId, setTabInputValues])
+  }, [setGlobalInputValues])
 
   // Handle speed slider change
   const handleSpeedChange = useCallback(
@@ -645,12 +638,10 @@ function ExecuteWorkflowForm() {
   // Modal will reopen when execution completes or errors (handled by socket.ts)
   const handleRun = useCallback(() => {
     // Persist input values before running
-    if (activeTabId) {
-      setTabInputValues(activeTabId, inputValues)
-    }
+    setGlobalInputValues(inputValues)
     startWorkflowExecution(inputValues, execution.executionSpeed)
     closeModal()  // Close modal so user can see the canvas with execution highlighting
-  }, [inputValues, execution.executionSpeed, closeModal, activeTabId, setTabInputValues])
+  }, [inputValues, execution.executionSpeed, closeModal, setGlobalInputValues])
 
   // Render input field based on type
   const renderInputField = (input: WorkflowInput) => {

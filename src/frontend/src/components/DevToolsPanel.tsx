@@ -155,11 +155,6 @@ export default function DevToolsPanel() {
                         })}
                         {renderStateSection('Variables', 'variables', workflowStore.currentAnalysis?.variables)}
                         {renderStateSection('Execution', 'execution', workflowStore.execution)}
-                        {renderStateSection('Tabs', 'tabs', workflowStore.tabs.map(t => ({
-                            id: t.id.slice(0, 8),
-                            title: t.title,
-                            nodes: t.flowchart.nodes.length,
-                        })))}
                     </div>
                 )}
 

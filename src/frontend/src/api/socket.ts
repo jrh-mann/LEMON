@@ -485,10 +485,13 @@ export function connectSocket(): Socket {
       console.log('[Socket] Workflow ID already matches:', data.workflow_id)
     }
 
-    // Update the tab title to match the workflow name
-    const activeTabId = workflowStore.activeTabId
-    if (activeTabId) {
-      workflowStore.updateTabTitle(activeTabId, data.name)
+    // Update the workflow name
+    const currentWf = workflowStore.currentWorkflow
+    if (currentWf && data.name) {
+      workflowStore.setCurrentWorkflow({
+        ...currentWf,
+        metadata: { ...currentWf.metadata, name: data.name }
+      })
     }
 
     // Store workflow-level output_type from backend
@@ -515,10 +518,13 @@ export function connectSocket(): Socket {
     // Update the workflow in the current tab to mark it as saved
     // This could update a UI indicator showing the workflow is now in the user's library
     if (!data.already_saved) {
-      // Only update tab title if it wasn't already saved (name may have changed)
-      const activeTabId = workflowStore.activeTabId
-      if (activeTabId && data.name) {
-        workflowStore.updateTabTitle(activeTabId, data.name)
+      // Only update name if it wasn't already saved
+      const currentWf = workflowStore.currentWorkflow
+      if (currentWf && data.name) {
+        workflowStore.setCurrentWorkflow({
+          ...currentWf,
+          metadata: { ...currentWf.metadata, name: data.name }
+        })
       }
       console.log('[Socket] Workflow saved to library:', data.workflow_id, 'name:', data.name)
     } else {
@@ -856,25 +862,18 @@ export function sendChatMessage(
   // Get the ensured conversation ID
   const ensuredConversationId = chatStore.conversationId
 
-  // Collect info about all open tabs with unsaved workflows (not in DB)
-  // This allows list_workflows_in_library to show all drafts, not just the current tab
-  const openTabs = workflowStore.tabs
-    .filter(tab => {
-      // Include tabs that have nodes (actual work) but aren't saved to DB
-      // A workflow is considered "unsaved" if it has nodes but its ID isn't in the saved workflows list
-      const hasNodes = tab.flowchart.nodes.length > 0
-      const workflowId = tab.workflow?.id
-      // We don't have access to the DB list here, so we send all tabs with content
-      // Backend will filter out ones that are already saved
-      return hasNodes && workflowId
+  // Collect info about the active unsaved workflow
+  const openTabs: any[] = []
+  const currentWf = workflowStore.currentWorkflow
+  if (currentWf && workflowStore.flowchart.nodes.length > 0) {
+    openTabs.push({
+      workflow_id: currentWf.id,
+      title: currentWf.metadata?.name || 'New Workflow',
+      node_count: workflowStore.flowchart.nodes.length,
+      edge_count: workflowStore.flowchart.edges.length,
+      is_active: true,
     })
-    .map(tab => ({
-      workflow_id: tab.workflow?.id,
-      title: tab.title,
-      node_count: tab.flowchart.nodes.length,
-      edge_count: tab.flowchart.edges.length,
-      is_active: tab.id === workflowStore.activeTabId,
-    }))
+  }
 
   // Atomic: workflow travels with message (no race conditions)
   sock.emit('chat', {

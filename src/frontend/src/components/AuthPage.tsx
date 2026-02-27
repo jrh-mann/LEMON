@@ -25,7 +25,7 @@ export default function AuthPage() {
     setIsSubmitting(true)
     try {
       await loginUser({ email, password, remember })
-      window.location.hash = '#/'
+      window.location.hash = '#/home'
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message)
@@ -57,8 +57,8 @@ export default function AuthPage() {
 
         <section className="auth-panel">
           <div className="auth-panel-header">
-            <a className="auth-back" href="#/">
-              Back to workspace
+            <a className="auth-back" href="#/home">
+              Back to home
             </a>
           </div>
 
