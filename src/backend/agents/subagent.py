@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..storage.history import HistoryStore
 from ..llm import call_llm, call_llm_stream
-from ..utils.image import image_to_data_url
+from ..utils.image import image_to_data_url, image_to_data_url_with_grid
 from ..utils.analysis import normalize_analysis
 from ..utils.cancellation import CancellationError
 
@@ -141,7 +141,7 @@ by recomputing them deterministically from name + type. Respond only with the up
             }
         else:
             encode_start = time.perf_counter()
-            data_url = image_to_data_url(image_path)
+            data_url = image_to_data_url_with_grid(image_path)
             encode_ms = (time.perf_counter() - encode_start) * 1000
             self._logger.info(
                 "Image encoded session_id=%s ms=%.1f size_bytes=%d",
