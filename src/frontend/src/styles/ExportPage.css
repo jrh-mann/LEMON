@@ -1,0 +1,162 @@
+/* ExportPage - Full page export UI */
+
+.export-page {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+.export-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--edge);
+    flex-shrink: 0;
+}
+
+.export-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.export-back-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+}
+
+.export-title {
+    font-family: "Fraunces", "Space Grotesk", serif;
+    font-size: 1.4rem;
+    font-weight: 500;
+    color: var(--ink);
+}
+
+.export-header-right {
+    width: 100px;
+}
+
+.export-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+}
+
+.export-empty {
+    text-align: center;
+    color: var(--muted);
+}
+
+.export-empty .primary {
+    margin-top: 16px;
+}
+
+/* Export Cards */
+.export-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 960px;
+    width: 100%;
+}
+
+.export-card {
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-radius: 16px;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    transition: all 0.2s ease;
+}
+
+.export-card:hover {
+    border-color: var(--teal);
+    box-shadow: 0 4px 16px rgba(31, 110, 104, 0.08), 0 8px 32px rgba(0, 0, 0, 0.04);
+    transform: translateY(-2px);
+}
+
+.export-card-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.export-card-icon.json-icon {
+    background: var(--teal-light);
+    color: var(--teal);
+}
+
+.export-card-icon.png-icon {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.export-card-icon.python-icon {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.export-card h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.export-card-desc {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.export-card-info {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+.export-card-info span {
+    background: var(--edge);
+    color: var(--muted);
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+}
+
+.export-result {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    border-radius: 8px;
+    width: 100%;
+}
+
+.export-result.success {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.export-result.error {
+    background: var(--rose-light);
+    color: var(--rose);
+}
+
+.export-btn {
+    width: 100%;
+    justify-content: center;
+    margin-top: auto;
+}
