@@ -31,10 +31,10 @@ interface Props {
     onChange: (annotations: Annotation[]) => void
 }
 
-const DOT_RADIUS = 7          // screen-px
-const DOT_HIT_RADIUS = 14     // screen-px
-const DOT_COLOR = '#e6b800'
-const DOT_COLOR_ACTIVE = '#ffd633'
+const DOT_RADIUS = 12         // screen-px
+const DOT_HIT_RADIUS = 18     // screen-px
+const DOT_COLOR = '#FFB300'   // Material Amber 600
+const DOT_COLOR_ACTIVE = '#FFCA28' // Material Amber 400
 
 export default function ImageAnnotator({ imageSrc, annotations, onChange }: Props) {
     const containerRef = useRef<HTMLDivElement>(null)
@@ -239,11 +239,14 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
+        const dpr = window.devicePixelRatio || 1
+
         // Background matches toolbar
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#1a1a1a'
-        ctx.fillRect(0, 0, canvasW, canvasH)
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
 
         ctx.save()
+        ctx.scale(dpr, dpr)
         ctx.translate(centerOffset.x, centerOffset.y)
         ctx.scale(effectiveScale, effectiveScale)
         ctx.translate(-pan.x, -pan.y)
@@ -351,23 +354,41 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
             }
         } else if (ann.type === 'question') {
             if (editText.trim()) {
-                // Submit answer to chat
-                const chatStore = useChatStore.getState()
-                const workflowStore = useWorkflowStore.getState()
-                const { pendingImage } = workflowStore
-
-                chatStore.sendUserMessage(`Answer to question on image: ${editText.trim()}`)
-                sendChatMessage(
-                    `Answer to question on image: ${editText.trim()}`,
-                    chatStore.conversationId,
-                    pendingImage || undefined,
-                    annotations
-                )
-
-                // Update local annotation status
+                // Update local annotation status first
                 const updated = [...annotations]
                 updated[editingIdx] = { ...updated[editingIdx], status: 'answered', text: editText.trim() } as any
                 onChange(updated)
+
+                // Check if all questions are now answered
+                const pendingCount = updated.filter(a => a.type === 'question' && a.status === 'pending').length
+
+                if (pendingCount === 0) {
+                    // All questions answered, submit combined response to chat
+                    const chatStore = useChatStore.getState()
+                    const workflowStore = useWorkflowStore.getState()
+                    const { pendingImage } = workflowStore
+
+                    // Format a combined message
+                    const answeredQuestions = updated.filter(a => a.type === 'question')
+                    let combinedMessage = "I have answered all your questions on the image:\n"
+
+                    answeredQuestions.forEach((q: any, i) => {
+                        combinedMessage += `\nQ${i + 1}: ${q.question}\nA: ${q.text}\n`
+                    })
+
+                    chatStore.sendUserMessage(combinedMessage)
+                    sendChatMessage(
+                        combinedMessage,
+                        chatStore.conversationId,
+                        pendingImage || undefined,
+                        updated
+                    )
+                } else {
+                    // Show a toast so the user isn't confused why the chat isn't responding yet
+                    import('react-hot-toast').then(({ toast }) => {
+                        toast.success(`Answer saved. ${pendingCount} question${pendingCount > 1 ? 's' : ''} remaining.`)
+                    })
+                }
             }
         }
 
@@ -448,10 +469,10 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                 <div className="annotator-viewport">
                     <canvas
                         ref={canvasRef}
-                        width={canvasW}
-                        height={canvasH}
+                        width={canvasW * (window.devicePixelRatio || 1)}
+                        height={canvasH * (window.devicePixelRatio || 1)}
                         className="annotator-canvas"
-                        style={{ cursor: getCursor() }}
+                        style={{ width: `${canvasW}px`, height: `${canvasH}px`, cursor: getCursor() }}
                         onMouseDown={handleMouseDown}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
@@ -559,36 +580,41 @@ function drawLabelDot(
     const r = DOT_RADIUS * invScale
     ctx.save()
 
-    // Glow when active
     if (isActive) {
         ctx.beginPath()
-        ctx.arc(x, y, r * 2.2, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(230, 184, 0, 0.25)'
+        ctx.arc(x, y, r * 1.5, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(255, 179, 0, 0.2)'
         ctx.fill()
     }
 
-    // Drop shadow
-    ctx.beginPath()
-    ctx.arc(x, y + 1.5 * invScale, r, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
-    ctx.fill()
+    // Shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
+    ctx.shadowBlur = 6 * invScale
+    ctx.shadowOffsetY = 3 * invScale
+    ctx.shadowOffsetX = 0
 
-    // Dot
+    // Outer white rim
     ctx.beginPath()
     ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fill()
+
+    // Clear shadow for next layers
+    ctx.shadowColor = 'transparent'
+
+    // Inner filled dot
+    ctx.beginPath()
+    ctx.arc(x, y, r - 2 * invScale, 0, Math.PI * 2)
     ctx.fillStyle = isActive ? DOT_COLOR_ACTIVE : DOT_COLOR
     ctx.fill()
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'
-    ctx.lineWidth = 1.5 * invScale
-    ctx.stroke()
 
     // Number
-    const fontSize = 9 * invScale
-    ctx.font = `bold ${fontSize}px "Space Grotesk", sans-serif`
-    ctx.fillStyle = '#000'
+    const fontSize = Math.max(10, r * 0.9) // minimum 10px scaled
+    ctx.font = `600 ${fontSize}px "Space Grotesk", "Roboto", sans-serif`
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.87)' // Material typography primary
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(String(number), x, y + 0.5 * invScale)
+    ctx.fillText(String(number), x, y + (0.5 * invScale))
 
     ctx.restore()
 }
@@ -603,39 +629,43 @@ function drawQuestionDot(
     const r = DOT_RADIUS * invScale
     ctx.save()
 
-    // Glow when active
+    let fill = status === 'pending' ? '#2196F3' : '#4CAF50'
     if (isActive) {
+        fill = status === 'pending' ? '#64B5F6' : '#81C784'
         ctx.beginPath()
-        ctx.arc(x, y, r * 2.2, 0, Math.PI * 2)
-        ctx.fillStyle = status === 'pending' ? 'rgba(0, 122, 255, 0.25)' : 'rgba(52, 199, 89, 0.25)'
+        ctx.arc(x, y, r * 1.5, 0, Math.PI * 2)
+        ctx.fillStyle = status === 'pending' ? 'rgba(33, 150, 243, 0.2)' : 'rgba(76, 175, 80, 0.2)'
         ctx.fill()
     }
 
-    // Drop shadow
-    ctx.beginPath()
-    ctx.arc(x, y + 1.5 * invScale, r, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
-    ctx.fill()
+    // Shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
+    ctx.shadowBlur = 6 * invScale
+    ctx.shadowOffsetY = 3 * invScale
+    ctx.shadowOffsetX = 0
 
-    // Dot
+    // Outer white rim
     ctx.beginPath()
     ctx.arc(x, y, r, 0, Math.PI * 2)
-
-    // Blue for pending, Green for answered
-    ctx.fillStyle = status === 'pending' ? (isActive ? '#3399ff' : '#007aff') : (isActive ? '#30d158' : '#28cd41')
-
+    ctx.fillStyle = '#FFFFFF'
     ctx.fill()
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'
-    ctx.lineWidth = 1.5 * invScale
-    ctx.stroke()
+
+    // Clear shadow for next layers
+    ctx.shadowColor = 'transparent'
+
+    // Inner filled dot
+    ctx.beginPath()
+    ctx.arc(x, y, r - 2 * invScale, 0, Math.PI * 2)
+    ctx.fillStyle = fill
+    ctx.fill()
 
     // Mark (?) or (✓)
-    const fontSize = 10 * invScale
-    ctx.font = `bold ${fontSize}px "Space Grotesk", sans-serif`
-    ctx.fillStyle = '#fff'
+    const fontSize = Math.max(10, r * 1.1)
+    ctx.font = `600 ${fontSize}px "Space Grotesk", "Roboto", sans-serif`
+    ctx.fillStyle = '#FFFFFF'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(status === 'pending' ? '?' : '✓', x, y + 0.5 * invScale)
+    ctx.fillText(status === 'pending' ? '?' : '✓', x, y + (0.5 * invScale))
 
     ctx.restore()
 }

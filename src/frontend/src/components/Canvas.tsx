@@ -97,6 +97,7 @@ export default function Canvas() {
     setCanvasMode,
     trackExecution,     // Import tracking state
     setTrackExecution,  // Import tracking setter
+    workspaceRevealed,
   } = useUIStore()
 
   // Zoom limits for wheel zoom - matches uiStore constants
@@ -648,15 +649,7 @@ export default function Canvas() {
     [startConnect]
   )
 
-  // Handle context menu
-  const handleNodeContextMenu = useCallback(
-    (e: React.MouseEvent, node: FlowNode) => {
-      e.preventDefault()
-      selectNode(node.id)
-      // Could show context menu here
-    },
-    [selectNode]
-  )
+
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -777,7 +770,6 @@ export default function Canvas() {
         transform={`translate(${node.x}, ${node.y})`}
         onPointerDown={(e) => handleNodePointerDown(e, node)}
         onDoubleClick={(e) => handleNodeDoubleClick(e, node)}
-        onContextMenu={(e) => handleNodeContextMenu(e, node)}
         style={{ cursor: isDragging && dragNodeId === node.id ? 'grabbing' : 'grab' }}
       >
         {/* Invisible hit area for better click/drag detection */}
@@ -1294,27 +1286,25 @@ export default function Canvas() {
     pushHistory()
   }, [flowchart, setFlowchart, pushHistory])
 
-  const isEmpty = flowchart.nodes.length === 0
-
   return (
     <div className="canvas-area">
-      {/* Workspace tabs */}
-      <div className="workspace-tabs" id="workspaceTabs">
-        <button
-          className={`workspace-tab ${canvasTab === 'workflow' ? 'active' : ''}`}
-          onClick={() => setCanvasTab('workflow')}
-        >
-          Workflow
-        </button>
-        {pendingImage && (
+      {/* Toolbar / Tabs area - Only show Source Image tab if there is an image uploaded */}
+      {workspaceRevealed && pendingImage && (
+        <div className="workspace-tabs">
           <button
             className={`workspace-tab ${canvasTab === 'image' ? 'active' : ''}`}
             onClick={() => setCanvasTab('image')}
           >
             Source Image
           </button>
-        )}
-      </div>
+          <button
+            className={`workspace-tab ${canvasTab === 'workflow' ? 'active' : ''}`}
+            onClick={() => setCanvasTab('workflow')}
+          >
+            Workflow
+          </button>
+        </div>
+      )}
 
       {/* Image preview tab with annotation canvas */}
       {canvasTab === 'image' && pendingImage && (
@@ -1383,24 +1373,7 @@ export default function Canvas() {
             >
               <polygon points="0 0, 10 3.5, 0 7" fill="var(--teal)" />
             </marker>
-            <pattern
-              id="grid"
-              width="40"
-              height="40"
-              patternUnits="userSpaceOnUse"
-            >
-              <path
-                d="M 40 0 L 0 0 0 40"
-                fill="none"
-                stroke="var(--edge)"
-                strokeWidth="0.5"
-                opacity="0.5"
-              />
-            </pattern>
           </defs>
-
-          {/* Grid background */}
-          <rect width="100%" height="100%" fill="url(#grid)" style={{ pointerEvents: 'all' }} />
 
           {/* Edges layer */}
           <g id="edgeLayer">
@@ -1441,184 +1414,167 @@ export default function Canvas() {
           )}
         </svg>
 
-        {/* Empty state overlay */}
-        {isEmpty && (
-          <div className="canvas-empty" id="canvasEmpty">
-            <div className="empty-content">
-              <div className="empty-icon">
-                <svg
-                  width="64"
-                  height="64"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </div>
-              <h2>Start building</h2>
-              <p>Drag blocks from the left, or describe your workflow below</p>
-            </div>
-          </div>
-        )}
-
         {/* Connect mode indicator */}
-        {connectMode && (
+        {workspaceRevealed && connectMode && (
           <div className="connect-mode-indicator">
             Click another node to connect, or press Escape to cancel
           </div>
         )}
 
+        {/* Top Controls */}
+        {workspaceRevealed && execution.isExecuting && (
+          <div className="canvas-top-controls">
+            <label className="track-toggle main-track-toggle" title="Track executing node">
+              <input
+                type="checkbox"
+                checked={trackExecution}
+                onChange={(e) => setTrackExecution(e.target.checked)}
+              />
+              <span className="track-label">Track</span>
+            </label>
+            <div className="canvas-status-indicator">
+              <span className="pulse-dot" />
+              Running
+            </div>
+          </div>
+        )}
+
         {/* Mode toggle control - single button showing current mode */}
-        <button
-          className="mode-toggle-btn"
-          onClick={toggleCanvasMode}
-          title={canvasMode === 'select' ? 'Select mode (click to switch to Pan - H)' : 'Pan mode (click to switch to Select - V)'}
-        >
-          {canvasMode === 'select' ? (
-            /* Cursor/pointer icon for select mode */
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
-              <path d="M13 13l6 6" />
-            </svg>
-          ) : (
-            /* Hand/pan icon for pan mode */
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0" />
-              <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6" />
-              <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
-              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-            </svg>
-          )}
-        </button>
+        {workspaceRevealed && (
+          <button
+            className="mode-toggle-btn"
+            onClick={toggleCanvasMode}
+            title={canvasMode === 'select' ? 'Select mode (click to switch to Pan - H)' : 'Pan mode (click to switch to Select - V)'}
+          >
+            {canvasMode === 'select' ? (
+              /* Cursor/pointer icon for select mode */
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                <path d="M13 13l6 6" />
+              </svg>
+            ) : (
+              /* Hand/pan icon for pan mode */
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0" />
+                <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6" />
+                <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+                <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+              </svg>
+            )}
+          </button>
+        )}
 
         {/* Zoom controls */}
-        <div className="zoom-controls">
-          <button className="zoom-btn" onClick={zoomIn} title="Zoom in (+)">
-            +
-          </button>
-          <button className="zoom-btn" onClick={() => { resetZoom(); setPanOffset({ x: 0, y: 0 }); }} title="Reset view (0)">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-            </svg>
-          </button>
-          <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
-            -
-          </button>
-
-          <div style={{ width: 1, height: 16, background: 'var(--edge)', margin: '0 4px' }} />
-
-          <button
-            className={`zoom-btn ${trackExecution ? 'active' : ''}`}
-            onClick={() => setTrackExecution(!trackExecution)}
-            title="Track execution"
-            style={trackExecution ? { color: 'var(--rose)', borderColor: 'var(--rose)', background: 'var(--rose-light)' } : {}}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <circle cx="12" cy="12" r="3" fill="currentColor" />
-            </svg>
-          </button>
-        </div>
+        {workspaceRevealed && (
+          <div className="zoom-controls">
+            <button className="zoom-btn" onClick={zoomIn} title="Zoom in (+)">
+              +
+            </button>
+            <button className="zoom-btn" onClick={() => { resetZoom(); setPanOffset({ x: 0, y: 0 }); }} title="Reset view (0)">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
+              </svg>
+            </button>
+            <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
+              -
+            </button>
+          </div>
+        )}
 
         {/* Beautify control */}
-        <div className="beautify-control">
-          <button className="beautify-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              className="flower-icon"
-            >
-              {/* Aura glow filter */}
-              <defs>
-                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
-                  <feMerge>
-                    <feMergeNode in="coloredBlur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-                <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9" />
-                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6" />
-                </radialGradient>
-                <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor="var(--amber)" />
-                  <stop offset="100%" stopColor="var(--rose)" />
-                </radialGradient>
-              </defs>
-              {/* Outer petals */}
-              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)" />
-              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)" />
-              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)" />
-              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)" />
-              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)" />
-              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)" />
-              {/* Center */}
-              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)" />
-            </svg>
-          </button>
-        </div>
+        {workspaceRevealed && (
+          <div className="beautify-control">
+            <button className="beautify-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                className="flower-icon"
+              >
+                {/* Aura glow filter */}
+                <defs>
+                  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
+                    <feMerge>
+                      <feMergeNode in="coloredBlur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                  <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6" />
+                  </radialGradient>
+                  <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
+                    <stop offset="0%" stopColor="var(--amber)" />
+                    <stop offset="100%" stopColor="var(--rose)" />
+                  </radialGradient>
+                </defs>
+                {/* Outer petals */}
+                <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)" />
+                <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)" />
+                <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)" />
+                <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)" />
+                <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)" />
+                <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)" />
+                {/* Center */}
+                <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Meta controls */}
-        <div className="meta-controls">
-          <button className="meta-btn" title="Undo (Cmd+Z)" onClick={undo}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 7v6h6" />
-              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-            </svg>
-          </button>
-          <button className="meta-btn" title="Redo (Cmd+Shift+Z)" onClick={redo}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 7v6h-6" />
-              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
-            </svg>
-          </button>
-        </div>
+        {workspaceRevealed && (
+          <div className="meta-controls">
+            <button className="meta-btn" title="Undo (Cmd+Z)" onClick={undo}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 7v6h6" />
+                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+              </svg>
+            </button>
+            <button className="meta-btn" title="Redo (Cmd+Shift+Z)" onClick={redo}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 7v6h-6" />
+                <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
