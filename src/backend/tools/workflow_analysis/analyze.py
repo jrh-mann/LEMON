@@ -13,7 +13,7 @@ from ...utils.analysis import normalize_analysis
 from ...utils.cancellation import CancellationError
 from ...utils.flowchart import flowchart_from_tree
 from ...utils.paths import lemon_data_dir
-from ...utils.uploads import load_annotations
+from ...utils.uploads import load_annotations, save_annotations
 from ..core import Tool, ToolParameter
 
 
@@ -104,10 +104,38 @@ class AnalyzeWorkflowTool(Tool):
             }
         analysis = normalize_analysis(dict(data))
         flowchart = flowchart_from_tree(analysis.get("tree") or {})
+
+        doubts = analysis.get("doubts", [])
+        new_annotations = []
+        if isinstance(doubts, list) and doubts:
+            for doubt in doubts:
+                if isinstance(doubt, dict) and "question" in doubt and "x" in doubt and "y" in doubt:
+                    is_dup = False
+                    for a in annotations:
+                        if a.get("type") == "question" and a.get("question") == str(doubt["question"]):
+                            if abs(a.get("x", 0) - doubt["x"]) < 10 and abs(a.get("y", 0) - doubt["y"]) < 10:
+                                is_dup = True
+                                break
+                    if not is_dup:
+                        ann = {
+                            "id": uuid4().hex[:8],
+                            "type": "question",
+                            "x": doubt["x"],
+                            "y": doubt["y"],
+                            "question": str(doubt["question"]),
+                            "status": "pending",
+                        }
+                        annotations.append(ann)
+                        new_annotations.append(ann)
+            
+            if new_annotations:
+                save_annotations(image_path, annotations, repo_root=self.repo_root)
+
         return {
             "session_id": session_id,
             "analysis": analysis,
             "flowchart": flowchart,
+            "annotations": annotations,
         }
 
     def _latest_uploaded_image(self) -> Optional[str]:

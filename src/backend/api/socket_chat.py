@@ -204,7 +204,7 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
-        if tool == "add_image_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+        if tool in ("add_image_question", "analyze_workflow") and event == "tool_complete" and isinstance(result, dict) and "annotations" in result:
             self.socketio.emit(
                 "annotations_update",
                 {

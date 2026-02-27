@@ -33,7 +33,6 @@ from ..tools import (
     SetWorkflowOutputTool,
     ValidateWorkflowTool,
     ExecuteWorkflowTool,
-    CompilePythonTool,
     ListWorkflowsInLibrary,
     CreateWorkflowTool,
     SaveWorkflowToLibrary,
@@ -162,7 +161,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     set_output_tool = SetWorkflowOutputTool()
     validate_tool = ValidateWorkflowTool()
     execute_tool = ExecuteWorkflowTool()
-    compile_python_tool = CompilePythonTool()
 
     # Workflow library tools and shared WorkflowStore for MCP mode.
     # MCP can't receive the live object from the orchestrator's session_state,
@@ -536,19 +534,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         # Use provided user_id or default for MCP mode
         state.setdefault("user_id", user_id or "mcp_user")
         return create_workflow_tool.execute(args, session_state=state)
-
-    @server.tool(name="compile_python")
-    def compile_python(
-        include_main: bool = False,
-        include_docstring: bool = True,
-        session_state: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Generate Python code from the current workflow."""
-        args: dict[str, Any] = {
-            "include_main": include_main,
-            "include_docstring": include_docstring,
-        }
-        return compile_python_tool.execute(args, session_state=session_state or {})
 
     @server.tool(name="execute_workflow")
     def execute_workflow(

@@ -1110,6 +1110,13 @@ def register_routes(
                 "warnings": [],
             }), 400
 
+        # Closure to securely fetch subflows within users permission domain
+        def _fetch_subworkflow(sub_id: str):
+            # Try to fetch using workflow_store
+            # For draft subflows this requires user ownership
+            # If we need to support peer-reviewed public subflows we could modify this later
+            return workflow_store.get_workflow(sub_id, getattr(g, "auth_user", None).id if hasattr(g, "auth_user") else None)
+
         # Compile workflow to Python
         result = compile_workflow_to_python(
             nodes=nodes,
@@ -1120,6 +1127,7 @@ def register_routes(
             include_imports=include_imports,
             include_docstring=include_docstring,
             include_main=include_main,
+            fetch_subworkflow=_fetch_subworkflow,
         )
 
         if result.success:
