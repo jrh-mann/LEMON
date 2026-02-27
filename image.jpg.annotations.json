@@ -110,5 +110,45 @@
     "y": 525,
     "question": "The node 'Repeat Lipids at 3 months' after 'LDL \u22652.0' does not have a clear output or next step shown. Does it loop back, or is there a missing outcome?",
     "status": "pending"
+  },
+  {
+    "id": "4348e5ff",
+    "type": "question",
+    "x": 520,
+    "y": 280,
+    "question": "Should we default to 'primary' prevention if not coded/documented?",
+    "status": "pending"
+  },
+  {
+    "id": "e7b7d4d8",
+    "type": "question",
+    "x": 320,
+    "y": 180,
+    "question": "Should the cholesterol threshold (5.0) be configurable, or hardcoded?",
+    "status": "pending"
+  },
+  {
+    "id": "29a2d590",
+    "type": "question",
+    "x": 620,
+    "y": 450,
+    "question": "Two paths lead to 'Send Lipid Lowering Therapy' - are these intentionally different actions or should they merge?",
+    "status": "pending"
+  },
+  {
+    "id": "af5bef84",
+    "type": "question",
+    "x": 1050,
+    "y": 520,
+    "question": "Should LDL 2.0-2.5 range have different handling than LDL \u22652.6? What about the '6 months Inclisiran check' note?",
+    "status": "pending"
+  },
+  {
+    "id": "5f77d1bb",
+    "type": "question",
+    "x": 520,
+    "y": 360,
+    "question": "Is this yellow 'Primary/Secondary Treatment' box a missing decision node, or just a label/comment?",
+    "status": "pending"
   }
 ]

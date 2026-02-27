@@ -1,14 +1,14 @@
 {
   "run_id": "pytest_env_restore",
-  "generated_at": "2026-02-23T20:19:00.645781+00:00",
+  "generated_at": "2026-02-25T17:29:19.477077+00:00",
   "cases_selected": [
     "workflow_test"
   ],
   "trials_per_case": 1,
   "total_trials": 1,
   "transport": "direct",
-  "eval_data_dir": "/tmp/lemon_eval_pytest_env_restore",
-  "history_db_path": "/tmp/lemon_eval_pytest_env_restore/history.sqlite",
+  "eval_data_dir": "C:\\tmp\\lemon_eval_pytest_env_restore",
+  "history_db_path": "C:\\tmp\\lemon_eval_pytest_env_restore\\history.sqlite",
   "weights": {
     "node_f1": 0.25,
     "edge_f1": 0.25,
@@ -73,10 +73,10 @@
             "validity_score": 100.0
           },
           "artifacts": {
-            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_env_restore/workflow_test/trial_01/raw_model_output.txt",
-            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_env_restore/workflow_test/trial_01/normalized_analysis.json",
-            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_env_restore/workflow_test/trial_01/flowchart.json",
-            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_env_restore/workflow_test/trial_01/score.json"
+            "raw_model_output": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_env_restore\\workflow_test\\trial_01\\raw_model_output.txt",
+            "normalized_analysis": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_env_restore\\workflow_test\\trial_01\\normalized_analysis.json",
+            "flowchart": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_env_restore\\workflow_test\\trial_01\\flowchart.json",
+            "score": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_env_restore\\workflow_test\\trial_01\\score.json"
           }
         }
       ]
