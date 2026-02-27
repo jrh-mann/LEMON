@@ -461,7 +461,8 @@ class TestOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         
@@ -482,7 +483,8 @@ class TestOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         
@@ -505,7 +507,8 @@ class TestOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         
@@ -524,7 +527,8 @@ class TestOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         
@@ -556,7 +560,8 @@ class TestOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         result = interpreter.execute({
             "input_age_int": 50,
@@ -598,7 +603,8 @@ class TestOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         input_values = {"input_age_int": 25}
         result = interpreter.execute(input_values, on_step=on_step)
