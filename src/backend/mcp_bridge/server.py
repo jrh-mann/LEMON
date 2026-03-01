@@ -185,6 +185,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         session_id: str | None = None,
         feedback: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        relationship: str | None = None,
     ) -> AnalyzeWorkflowResult:
         logger.info("MCP analyze_workflow start session_id=%s has_image=%s files=%s", session_id, bool(image_data_url), len(files or []))
         if session_id:
@@ -200,6 +201,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["feedback"] = feedback
         if files:
             args["files"] = files
+        if relationship:
+            args["relationship"] = relationship
 
         result = tool.execute(args)
         logger.info("MCP analyze_workflow complete session_id=%s", result.get("session_id"))

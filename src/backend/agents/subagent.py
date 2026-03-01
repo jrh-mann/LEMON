@@ -340,11 +340,14 @@ by recomputing them deterministically from name + type. Respond only with the up
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
         on_progress: Optional[Callable[[str], None]] = None,
+        relationship: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Two-phase multi-file analysis: guidance collection, then tree analysis.
 
         Phase 1: Extract guidance from ALL guidance + mixed files.
         Phase 2: Single LLM call with ALL flowchart + mixed files + accumulated guidance.
+        The optional ``relationship`` string provides user context about how the files
+        relate to each other and what information to extract from each.
 
         Each classified_file dict has: id, name, abs_path, file_type, purpose.
         """
@@ -421,6 +424,17 @@ by recomputing them deterministically from name + type. Respond only with the up
             "into each pathway via a decision node.\n"
             "- The result must be ONE tree preserving ALL logic from ALL files.\n\n"
         )
+        # Inject user-provided relationship context so the LLM understands how
+        # the files connect and what to extract from each.
+        if relationship:
+            multi_prompt += (
+                "## User Context\n"
+                "The user described how these files relate and what to extract:\n"
+                f"{relationship}\n\n"
+                "Use this context to guide how you merge the workflows. "
+                "Pay special attention to the user's description of connection points "
+                "and what information matters from each file.\n\n"
+            )
         multi_prompt += """Return ONLY a JSON object with this structure:
 {
   "inputs": [

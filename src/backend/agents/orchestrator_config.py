@@ -47,6 +47,14 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                 "required": ["id", "purpose"],
                             },
                         },
+                        "relationship": {
+                            "type": "string",
+                            "description": (
+                                "How the files relate to each other and what to extract from each. "
+                                "Includes the user's description of the connection between workflows "
+                                "and any per-file extraction notes."
+                            ),
+                        },
                     },
                     "required": [],
                 },
@@ -1224,13 +1232,17 @@ def build_system_prompt(
             )
             system += (
                 f" The user has uploaded {len(uploaded)} files."
-                " BEFORE analyzing, ask the user to classify each file."
-                " Present it in this EXACT compact format:\n\n"
-                "Types: **flowchart** (the workflow diagram), **guidance** (definitions/legends/context), **mixed** (both)\n\n"
+                " BEFORE analyzing, ask the user THREE things in this EXACT compact format:\n\n"
+                "**1. File types:** **flowchart** (the workflow diagram), **guidance** (definitions/legends/context), **mixed** (both)\n\n"
                 "Files:\n"
                 f"{numbered_files}\n\n"
-                "Ask: \"Reply with the number and type for each, e.g. '1 flowchart, 2 guidance'\"\n\n"
-                "Once you have classifications, call analyze_workflow with the files parameter."
+                "**2. What to extract from each:** e.g. 'full decision tree', 'just the medication names', 'risk scoring thresholds'\n\n"
+                "**3. How are they related?** e.g. 'liver workup discovers abnormal HbA1c which triggers the diabetes pathway'\n\n"
+                "Example reply:\n"
+                "\"1 mixed - full decision tree, 2 mixed - full decision tree. "
+                "The liver workup blood tests can reveal diabetes markers, triggering the treatment pathway.\"\n\n"
+                "Once you have all three pieces of information, call analyze_workflow with the files parameter "
+                "and pass the relationship description and per-file extraction notes in the relationship field."
                 " IMPORTANT: Use the exact file NAME as the 'id' field in each entry of the files array."
             )
         else:

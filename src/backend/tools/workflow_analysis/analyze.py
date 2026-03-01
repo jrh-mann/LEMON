@@ -41,6 +41,12 @@ class AnalyzeWorkflowTool(Tool):
             description="Classifications for uploaded files (id + purpose). Required for multi-file analysis.",
             required=False,
         ),
+        ToolParameter(
+            name="relationship",
+            type="string",
+            description="How the files relate and what to extract from each.",
+            required=False,
+        ),
     ]
 
     def __init__(self, repo_root: Path):
@@ -65,6 +71,7 @@ class AnalyzeWorkflowTool(Tool):
         session_id = args.get("session_id")
         feedback = args.get("feedback")
         file_classifications = args.get("files")  # List of {id, purpose}
+        relationship = args.get("relationship")  # How files relate + extraction notes
         uploaded_files = session_state.get("uploaded_files", [])
 
         if should_cancel and should_cancel():
@@ -78,7 +85,7 @@ class AnalyzeWorkflowTool(Tool):
         if file_classifications and uploaded_files:
             return self._analyze_multi_file(
                 uploaded_files, file_classifications, stream, should_cancel,
-                on_progress=on_progress,
+                on_progress=on_progress, relationship=relationship,
             )
 
         # Path 3: Single file analysis (existing behaviour)
@@ -153,6 +160,7 @@ class AnalyzeWorkflowTool(Tool):
         stream: Any,
         should_cancel: Any,
         on_progress: Any = None,
+        relationship: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Analyze multiple files with classification-aware two-phase ordering.
 
@@ -209,6 +217,7 @@ class AnalyzeWorkflowTool(Tool):
             stream=stream,
             should_cancel=should_cancel,
             on_progress=on_progress,
+            relationship=relationship,
         )
         return self._build_response(session_id, data)
 

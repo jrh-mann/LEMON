@@ -366,6 +366,78 @@ class TestAnalyzeMulti:
             assert "BMI cutoff 30" in prompt_text
             assert "Guidance Notes" in prompt_text
 
+    def test_relationship_injected_into_analysis_prompt(self):
+        """User-provided relationship context should appear in the analysis prompt."""
+        subagent = _make_subagent()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Two flowchart files — no guidance phase, just analysis
+            f1 = Path(tmpdir) / "diabetes.png"
+            f1.write_bytes(b"fake png")
+            f2 = Path(tmpdir) / "liver.png"
+            f2.write_bytes(b"fake png")
+            classified = [
+                {"id": "f1", "name": "diabetes.png", "abs_path": str(f1), "file_type": "image", "purpose": "flowchart"},
+                {"id": "f2", "name": "liver.png", "abs_path": str(f2), "file_type": "image", "purpose": "flowchart"},
+            ]
+
+            analysis_response = self._mock_analysis_response()
+            analysis_prompts: list[str] = []
+
+            def mock_llm(messages, **kwargs):
+                for msg in messages:
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                analysis_prompts.append(block["text"])
+                return analysis_response
+
+            with patch("src.backend.agents.subagent.call_llm", side_effect=mock_llm):
+                subagent.analyze_multi(
+                    classified_files=classified,
+                    session_id="test_session",
+                    relationship="The liver workup can reveal diabetes markers, triggering the treatment pathway.",
+                )
+
+            prompt_text = " ".join(analysis_prompts)
+            # The relationship description should be injected under "User Context"
+            assert "User Context" in prompt_text
+            assert "liver workup can reveal diabetes markers" in prompt_text
+
+    def test_no_relationship_omits_user_context(self):
+        """When no relationship is provided, the prompt should not contain User Context section."""
+        subagent = _make_subagent()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f1 = Path(tmpdir) / "flow.png"
+            f1.write_bytes(b"fake png")
+            classified = [
+                {"id": "f1", "name": "flow.png", "abs_path": str(f1), "file_type": "image", "purpose": "flowchart"},
+            ]
+
+            analysis_response = self._mock_analysis_response()
+            analysis_prompts: list[str] = []
+
+            def mock_llm(messages, **kwargs):
+                for msg in messages:
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                analysis_prompts.append(block["text"])
+                return analysis_response
+
+            with patch("src.backend.agents.subagent.call_llm", side_effect=mock_llm):
+                subagent.analyze_multi(
+                    classified_files=classified,
+                    session_id="test_session",
+                    # No relationship provided
+                )
+
+            prompt_text = " ".join(analysis_prompts)
+            assert "User Context" not in prompt_text
+
 
 # --- Test 10-11: build_system_prompt ---
 
@@ -382,7 +454,9 @@ class TestBuildSystemPromptFiles:
             allow_tools=True,
         )
         assert "BEFORE analyzing" in prompt
-        assert "classify each file" in prompt
+        # The prompt asks the user to classify files and describe how they relate
+        assert "File types" in prompt
+        assert "How are they related" in prompt
         assert "image1.png" in prompt
         assert "doc.pdf" in prompt
 
@@ -396,7 +470,7 @@ class TestBuildSystemPromptFiles:
         )
         assert "uploaded a file" in prompt
         # Should NOT ask for classification
-        assert "classify each file" not in prompt
+        assert "File types" not in prompt
 
     def test_no_files_no_file_section(self):
         """No files should not add any file-related instructions."""
