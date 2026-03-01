@@ -75,11 +75,10 @@ export default function Canvas() {
     undo,
     redo,
     pushHistory,
-    pendingImage,
-    pendingImageName,
+    pendingFiles,
     pendingAnnotations,
     setPendingAnnotations,
-    clearPendingImage,
+    clearPendingFiles,
     execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
 
@@ -104,12 +103,16 @@ export default function Canvas() {
   const MIN_ZOOM = 0.25
   const MAX_ZOOM = 8
 
-  // Auto-switch to image tab when image is uploaded
+  // Derive first pending image for the canvas image tab
+  const pendingImage = pendingFiles.find(f => f.type === 'image')?.dataUrl ?? null
+  const pendingImageName = pendingFiles.find(f => f.type === 'image')?.name ?? null
+
+  // Auto-switch to image tab when files are uploaded
   useEffect(() => {
-    if (pendingImage) {
+    if (pendingFiles.length > 0) {
       setCanvasTab('image')
     }
-  }, [pendingImage, setCanvasTab])
+  }, [pendingFiles, setCanvasTab])
 
 
   // Drag state
@@ -1314,7 +1317,7 @@ export default function Canvas() {
             <button
               className="clear-image-btn"
               onClick={() => {
-                clearPendingImage()
+                clearPendingFiles()
                 setCanvasTab('workflow')
               }}
               title="Remove image"
