@@ -28,6 +28,33 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "string",
                             "description": "Optional feedback to refine the analysis.",
                         },
+                        "files": {
+                            "type": "array",
+                            "description": (
+                                "Classifications for uploaded files. Required when multiple files "
+                                "are uploaded. Each entry maps a file id to its purpose."
+                            ),
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string", "description": "File id from the upload"},
+                                    "purpose": {
+                                        "type": "string",
+                                        "enum": ["flowchart", "guidance", "mixed"],
+                                        "description": "What this file contains",
+                                    },
+                                },
+                                "required": ["id", "purpose"],
+                            },
+                        },
+                        "relationship": {
+                            "type": "string",
+                            "description": (
+                                "How the files relate to each other and what to extract from each. "
+                                "Includes the user's description of the connection between workflows "
+                                "and any per-file extraction notes."
+                            ),
+                        },
                     },
                     "required": [],
                 },
@@ -884,8 +911,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
 def build_system_prompt(
     *,
     last_session_id: Optional[str],
-    has_image: bool,
+    has_files: Optional[List[Dict[str, Any]]] = None,
     allow_tools: bool,
+    reasoning: str = "",
+    guidance: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     system = (
         "You are a workflow manipulation assistant. Your job is to help users create and modify flowcharts by calling tools.\n\n"
@@ -1160,11 +1189,68 @@ def build_system_prompt(
     )
     if last_session_id:
         system += f" Current analyze_workflow session_id: {last_session_id}."
-    if has_image:
-        system += " The user has uploaded an image; analyze_workflow will use the latest upload."
+    # File-aware instructions based on uploaded files
+    uploaded = has_files or []
+    if len(uploaded) == 1:
+        # Single file: existing behaviour — just tell the model to analyze
+        system += " The user has uploaded a file; analyze_workflow will use the latest upload."
+    elif len(uploaded) > 1:
+        # Multiple files: check if any are still unclassified
+        unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
+        if unclassified:
+            # Files not yet classified — instruct agent to ask in a compact format.
+            # Show file names to user; use file names as id when calling analyze_workflow.
+            numbered_files = "\n".join(
+                f"  {i+1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
+            )
+            system += (
+                f" The user has uploaded {len(uploaded)} files."
+                " BEFORE analyzing, ask the user THREE things in this EXACT compact format:\n\n"
+                "**1. File types:** **flowchart** (the workflow diagram), **guidance** (definitions/legends/context), **mixed** (both)\n\n"
+                "Files:\n"
+                f"{numbered_files}\n\n"
+                "**2. What to extract from each:** e.g. 'full decision tree', 'just the medication names', 'risk scoring thresholds'\n\n"
+                "**3. How are they related?** e.g. 'liver workup discovers abnormal HbA1c which triggers the diabetes pathway'\n\n"
+                "Example reply:\n"
+                "\"1 mixed - full decision tree, 2 mixed - full decision tree. "
+                "The liver workup blood tests can reveal diabetes markers, triggering the treatment pathway.\"\n\n"
+                "Once you have all three pieces of information, call analyze_workflow with the files parameter "
+                "and pass the relationship description and per-file extraction notes in the relationship field."
+                " IMPORTANT: Use the exact file NAME as the 'id' field in each entry of the files array."
+            )
+        else:
+            # All files classified — ready to analyze
+            system += (
+                f" The user has uploaded {len(uploaded)} files and they are classified."
+                " Call analyze_workflow with the files parameter to begin analysis."
+            )
     if not allow_tools:
         system += (
             " Tools are disabled for this response. Do NOT call tools; respond in "
             "plain text only."
+        )
+    # Inject subagent reasoning context so the orchestrator understands
+    # domain terminology, variable naming choices, and analysis assumptions.
+    if reasoning:
+        system += (
+            "\n\n## Analysis Context\n"
+            "The following reasoning was produced by the workflow analysis system when "
+            "interpreting the user's workflow image. Use this context to understand domain "
+            "terminology, variable naming choices, node type decisions, and any assumptions "
+            "made during analysis.\n\n"
+            f"{reasoning}"
+        )
+    # Inject guidance notes (sticky notes, annotations, legends) extracted from the image.
+    if guidance:
+        lines = [
+            f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
+            for g in guidance
+        ]
+        system += (
+            "\n\n## Image Guidance Notes\n"
+            "The following notes, sticky notes, and annotations were found alongside the "
+            "workflow diagram. These provide domain context and clarifications from the "
+            "original author. Use them when interpreting the workflow and answering "
+            "user questions.\n\n" + "\n".join(lines)
         )
     return system

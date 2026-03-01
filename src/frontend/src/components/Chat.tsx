@@ -30,10 +30,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   } = useChatStore()
 
   const {
-    pendingImage,
-    pendingImageName,
+    pendingFiles,
     pendingAnnotations,
-    clearPendingImage,
+    clearPendingFiles,
   } = useWorkflowStore()
 
   const { chatHeight, setChatHeight } = useUIStore()
@@ -123,16 +122,16 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending image and annotations if available
+    // Send via socket - include pending files and annotations if available
     sendChatMessage(
       trimmed,
       conversationId,
-      pendingImage || undefined,
+      pendingFiles.length > 0 ? pendingFiles : undefined,
       pendingAnnotations.length > 0 ? pendingAnnotations : undefined
     )
 
-    // Keep pending image around so user can reference it in Source Image tab
-    // Image is only cleared when user explicitly clicks x or uploads a new one
+    // Keep pending files around so user can reference them in Source Image tab
+    // Files are only cleared when user explicitly clicks x or uploads new ones
 
     // Clear input and reset voice base text
     setInputValue('')
@@ -276,13 +275,17 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       </div>
 
       <div className="chat-input-container">
-        {pendingImage && (
+        {pendingFiles.length > 0 && (
           <div className="pending-image-indicator">
-            <span>Image ready: {pendingImageName || 'uploaded image'}</span>
+            <span>
+              {pendingFiles.length === 1
+                ? `File ready: ${pendingFiles[0].name}`
+                : `${pendingFiles.length} files ready`}
+            </span>
             <button
               className="clear-image-btn"
-              onClick={clearPendingImage}
-              title="Remove image"
+              onClick={clearPendingFiles}
+              title="Remove all files"
             >
               x
             </button>

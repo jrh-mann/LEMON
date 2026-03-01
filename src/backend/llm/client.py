@@ -113,18 +113,23 @@ def call_llm(
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    thinking_budget: Optional[int] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
 ) -> str:
     load_env()
     if response_format:
         logger.debug("response_format ignored for Anthropic")
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
-    payload = {
+    payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
         "max_tokens": max_completion_tokens,
         "system": system,
         "messages": converted,
     }
+    # Enable extended thinking when a budget is provided
+    if thinking_budget is not None:
+        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
     chunks: List[str] = []
 
     def on_delta(text: str) -> None:
@@ -138,18 +143,29 @@ def call_llm(
             if should_cancel and should_cancel():
                 _close_stream(stream)
                 raise CancellationError("LLM streaming cancelled.")
-            if getattr(event, "type", "") == "content_block_delta":
+            event_type = getattr(event, "type", "")
+            if event_type == "content_block_delta":
                 delta = getattr(event, "delta", None)
-                text = getattr(delta, "text", None)
-                if text:
-                    on_delta(text)
+                # Route thinking deltas to the on_thinking callback
+                delta_type = getattr(delta, "type", None)
+                if delta_type == "thinking_delta" and on_thinking:
+                    thinking_text = getattr(delta, "thinking", None)
+                    if thinking_text:
+                        on_thinking(thinking_text)
+                else:
+                    text = getattr(delta, "text", None)
+                    if text:
+                        on_delta(text)
         if should_cancel and should_cancel():
             _close_stream(stream)
             raise CancellationError("LLM streaming cancelled.")
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    parsed_text, _ = _parse_anthropic_response(message)
+    parsed_text, _, parsed_thinking = _parse_anthropic_response(message)
+    # Deliver any thinking from the final message that wasn't streamed
+    if parsed_thinking and on_thinking:
+        on_thinking(parsed_thinking)
     _record_tokens(
         request_id=request_id,
         message=message,
@@ -304,7 +320,7 @@ def call_llm_with_tools(
     message = _call_stream()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    parsed_text, tool_calls = _parse_anthropic_response(message)
+    parsed_text, tool_calls, _ = _parse_anthropic_response(message)
     recovered: List[Dict[str, Any]] = []
     if tool_blocks:
         indices = tool_block_order or sorted(tool_blocks.keys())
@@ -380,18 +396,23 @@ def call_llm_stream(
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    thinking_budget: Optional[int] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
 ) -> str:
     load_env()
     if response_format:
         logger.debug("response_format ignored for Anthropic")
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
-    payload = {
+    payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
         "max_tokens": max_completion_tokens,
         "system": system,
         "messages": converted,
     }
+    # Enable extended thinking when a budget is provided
+    if thinking_budget is not None:
+        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
     start = time.perf_counter()
     request_id = uuid.uuid4().hex
     with client.messages.stream(**payload) as stream:
@@ -399,18 +420,29 @@ def call_llm_stream(
             if should_cancel and should_cancel():
                 _close_stream(stream)
                 raise CancellationError("LLM streaming cancelled.")
-            if getattr(event, "type", "") == "content_block_delta":
+            event_type = getattr(event, "type", "")
+            if event_type == "content_block_delta":
                 delta = getattr(event, "delta", None)
-                text = getattr(delta, "text", None)
-                if text:
-                    on_delta(text)
+                # Route thinking deltas to the on_thinking callback
+                delta_type = getattr(delta, "type", None)
+                if delta_type == "thinking_delta" and on_thinking:
+                    thinking_text = getattr(delta, "thinking", None)
+                    if thinking_text:
+                        on_thinking(thinking_text)
+                else:
+                    text = getattr(delta, "text", None)
+                    if text:
+                        on_delta(text)
         if should_cancel and should_cancel():
             _close_stream(stream)
             raise CancellationError("LLM streaming cancelled.")
         message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    text, _ = _parse_anthropic_response(message)
+    text, _, parsed_thinking = _parse_anthropic_response(message)
+    # Deliver any thinking from the final message that wasn't streamed
+    if parsed_thinking and on_thinking:
+        on_thinking(parsed_thinking)
     _record_tokens(
         request_id=request_id,
         message=message,

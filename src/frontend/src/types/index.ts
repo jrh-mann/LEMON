@@ -81,6 +81,20 @@ export const COMPARATOR_LABELS: Record<Comparator, string> = {
 export type ValidationConfidence = 'none' | 'low' | 'medium' | 'high'
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
+// ============ File Upload Types ============
+
+// Classification of an uploaded file's purpose in the workflow
+export type FilePurpose = 'flowchart' | 'guidance' | 'mixed' | 'unclassified'
+
+// A file staged for upload (image or PDF)
+export interface PendingFile {
+  id: string
+  name: string
+  dataUrl: string
+  type: 'image' | 'pdf'
+  purpose: FilePurpose
+}
+
 // ============ Calculation Operators ============
 // Frontend definitions mirroring backend operators.py
 
@@ -669,7 +683,7 @@ export interface SocketChatEvent {
   session_id: string
   message: string
   conversation_id?: string
-  image?: string
+  files?: PendingFile[]
   task_id?: string
 }
 

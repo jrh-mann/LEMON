@@ -366,7 +366,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                     // All questions answered, submit combined response to chat
                     const chatStore = useChatStore.getState()
                     const workflowStore = useWorkflowStore.getState()
-                    const { pendingImage } = workflowStore
+                    const { pendingFiles } = workflowStore
 
                     // Format a combined message
                     const answeredQuestions = updated.filter(a => a.type === 'question')
@@ -380,7 +380,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                     sendChatMessage(
                         combinedMessage,
                         chatStore.conversationId,
-                        pendingImage || undefined,
+                        pendingFiles.length > 0 ? pendingFiles : undefined,
                         updated
                     )
                 } else {

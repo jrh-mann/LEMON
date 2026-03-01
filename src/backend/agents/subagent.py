@@ -11,13 +11,37 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..storage.history import HistoryStore
 from ..llm import call_llm, call_llm_stream
-from ..utils.image import image_to_data_url, image_to_data_url_with_grid
+from ..utils.image import image_to_data_url, file_to_data_url
 from ..utils.analysis import normalize_analysis
 from ..utils.cancellation import CancellationError
 
 
 class Subagent:
     """Stateful subagent with persisted chat history."""
+
+    # Prompt for extracting side information (sticky notes, annotations, legends)
+    # from workflow images before the main analysis pass.
+    _GUIDANCE_PROMPT = (
+        "Examine this image for any written notes, annotations, or clarifications that "
+        "exist OUTSIDE or ALONGSIDE the main flowchart structure. These might be:\n"
+        "- Sticky notes or post-it notes\n"
+        "- Margin annotations or handwritten text\n"
+        "- Legends or keys explaining symbols\n"
+        "- Clarification text or callout boxes\n"
+        "- Definitions of terms or thresholds written near the diagram\n\n"
+        "CRITICAL RULES:\n"
+        "- ONLY report text that is LITERALLY VISIBLE in the image.\n"
+        "- Do NOT infer, guess, or fabricate any information.\n"
+        "- Do NOT extract text that is part of the flowchart nodes/arrows themselves.\n"
+        "- If there are NO side notes or annotations, return an empty array: []\n"
+        "- It is completely fine to return an empty array. Most images have no side notes.\n\n"
+        'Return ONLY a JSON array. Each item:\n'
+        '- "text": the EXACT text content as written in the image\n'
+        '- "location": brief description of where it appears (e.g., "sticky note, top-right")\n'
+        '- "category": one of "clarification", "definition", "constraint", "note", "legend"\n\n'
+        "If nothing found, return: []\n"
+        "Return JSON only, no extra text."
+    )
 
     def __init__(self, history: HistoryStore):
         self.history = history
@@ -128,6 +152,9 @@ by recomputing them deterministically from name + type. Respond only with the up
             "role": "system",
             "content": "You extract structured data from workflow images.",
         }
+        # guidance is populated for initial analysis only (not follow-ups)
+        guidance: List[Dict[str, Any]] = []
+
         wants_json = _wants_json(feedback or "")
         if is_followup:
             user_msg = {
@@ -141,7 +168,7 @@ by recomputing them deterministically from name + type. Respond only with the up
             }
         else:
             encode_start = time.perf_counter()
-            data_url = image_to_data_url_with_grid(image_path)
+            data_url = image_to_data_url(image_path)
             encode_ms = (time.perf_counter() - encode_start) * 1000
             self._logger.info(
                 "Image encoded session_id=%s ms=%.1f size_bytes=%d",
@@ -149,6 +176,14 @@ by recomputing them deterministically from name + type. Respond only with the up
                 encode_ms,
                 len(data_url.encode("utf-8")),
             )
+            # Extract side information (sticky notes, legends, annotations) before main analysis
+            guidance = self._extract_guidance(data_url=data_url, should_cancel=should_cancel)
+            if guidance:
+                self._logger.info(
+                    "Extracted %d guidance items from image session_id=%s",
+                    len(guidance), session_id,
+                )
+
             # Inject user-provided annotations into the prompt
             full_prompt = prompt
 
@@ -179,6 +214,19 @@ by recomputing them deterministically from name + type. Respond only with the up
             else:
                 if annotations:
                     full_prompt += _format_annotations(annotations)
+
+            # Inject extracted guidance into the analysis prompt
+            if guidance:
+                lines = [
+                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
+                    for g in guidance
+                ]
+                full_prompt += (
+                    "\n\n## Side Information Found in Image\n"
+                    "The following notes and annotations were found alongside the flowchart. "
+                    "Use them to inform your analysis:\n" + "\n".join(lines)
+                )
+
             user_msg = {
                 "role": "user",
                 "content": [
@@ -187,6 +235,12 @@ by recomputing them deterministically from name + type. Respond only with the up
                 ],
             }
         messages = [system_msg, *history_messages, user_msg]
+
+        # Collect extended thinking from the LLM to use as reasoning context
+        thinking_parts: List[str] = []
+
+        def on_thinking(chunk: str) -> None:
+            thinking_parts.append(chunk)
 
         llm_start = time.perf_counter()
         force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
@@ -215,6 +269,8 @@ by recomputing them deterministically from name + type. Respond only with the up
                 caller="subagent",
                 request_tag="analyze_stream",
                 should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
             ).strip()
         else:
             raw = call_llm(
@@ -224,6 +280,8 @@ by recomputing them deterministically from name + type. Respond only with the up
                 caller="subagent",
                 request_tag="analyze",
                 should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
             ).strip()
         llm_ms = (time.perf_counter() - llm_start) * 1000
         self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
@@ -237,6 +295,10 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+        # Attach the model's extended thinking as reasoning context
+        data["reasoning"] = "".join(thinking_parts)
+        # Attach extracted side information (guidance) from the image
+        data["guidance"] = guidance
 
         # Map 0-1000 LLM output coordinates back to absolute hardware pixels
         if img_w > 0 and img_h > 0:
@@ -269,6 +331,296 @@ by recomputing them deterministically from name + type. Respond only with the up
         self.history.store_analysis(session_id, data)
         return data
 
+
+    def analyze_multi(
+        self,
+        *,
+        classified_files: List[Dict[str, Any]],
+        session_id: str,
+        stream: Optional[Callable[[str], None]] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
+        relationship: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Two-phase multi-file analysis: guidance collection, then tree analysis.
+
+        Phase 1: Extract guidance from ALL guidance + mixed files.
+        Phase 2: Single LLM call with ALL flowchart + mixed files + accumulated guidance.
+        The optional ``relationship`` string provides user context about how the files
+        relate to each other and what information to extract from each.
+
+        Each classified_file dict has: id, name, abs_path, file_type, purpose.
+        """
+        self._logger.info(
+            "analyze_multi session_id=%s files=%d",
+            session_id,
+            len(classified_files),
+        )
+
+        def _progress(msg: str) -> None:
+            """Emit progress status to the frontend."""
+            if on_progress:
+                on_progress(msg)
+
+        def is_cancelled() -> bool:
+            return bool(should_cancel and should_cancel())
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled before multi-file analysis.")
+
+        # --- Phase 1: Guidance collection ---
+        # Run _extract_guidance on all guidance + mixed files
+        guidance_files = [f for f in classified_files if f["purpose"] in ("guidance", "mixed")]
+        all_guidance: List[Dict[str, Any]] = []
+        for idx, gf in enumerate(guidance_files):
+            if is_cancelled():
+                raise CancellationError("Subagent cancelled during guidance extraction.")
+            _progress(f"Extracting guidance ({idx + 1}/{len(guidance_files)})...")
+            data_url = file_to_data_url(Path(gf["abs_path"]))
+            items = self._extract_guidance(data_url=data_url, should_cancel=should_cancel)
+            all_guidance.extend(items)
+            self._logger.info(
+                "Guidance from %s: %d items (total: %d)",
+                gf["name"], len(items), len(all_guidance),
+            )
+        # All guidance extracted before any analysis begins
+
+        # --- Phase 2: Tree analysis ---
+        # Collect all flowchart + mixed files for a single LLM call
+        analysis_files = [f for f in classified_files if f["purpose"] in ("flowchart", "mixed")]
+        if not analysis_files:
+            # No analysis files — return guidance only (use 'variables' for consistency)
+            return {
+                "variables": [],
+                "outputs": [],
+                "tree": {},
+                "doubts": [],
+                "reasoning": "",
+                "guidance": all_guidance,
+            }
+
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled before analysis phase.")
+
+        _progress(f"Analyzing {len(analysis_files)} file(s)...")
+
+        # Build content blocks: one text block + one per file (image or PDF)
+        content_blocks: List[Dict[str, Any]] = []
+
+        # Build the analysis prompt — same as analyze() but with multi-file preamble
+        multi_prompt = (
+            "You are analyzing multiple files that together form a COMBINED workflow. "
+            "Each file contains part of the overall patient/process pathway.\n\n"
+            "## CRITICAL: Merging Rules\n"
+            "- EVERY file's logic MUST appear in the final tree. Do NOT omit any file.\n"
+            "- Look for natural connection points between the workflows:\n"
+            "  - A test result or condition in one workflow that triggers the other\n"
+            "  - Shared patient populations or overlapping conditions\n"
+            "  - Sequential steps where one pathway leads into another\n"
+            "- If workflows share a common entry point, merge them there.\n"
+            "- If one workflow naturally feeds into another (e.g., a diagnostic workup "
+            "discovers a condition that triggers a treatment pathway), chain them at "
+            "that decision point.\n"
+            "- If no obvious link exists, create a common start node that branches "
+            "into each pathway via a decision node.\n"
+            "- The result must be ONE tree preserving ALL logic from ALL files.\n\n"
+        )
+        # Inject user-provided relationship context so the LLM understands how
+        # the files connect and what to extract from each.
+        if relationship:
+            multi_prompt += (
+                "## User Context\n"
+                "The user described how these files relate and what to extract:\n"
+                f"{relationship}\n\n"
+                "Use this context to guide how you merge the workflows. "
+                "Pay special attention to the user's description of connection points "
+                "and what information matters from each file.\n\n"
+            )
+        multi_prompt += """Return ONLY a JSON object with this structure:
+{
+  "inputs": [
+    {"id": "input_name_type", "name": "...", "type": "int|float|bool|string|enum|date", "description": "..."}
+  ],
+  "outputs": [
+    {"name": "...", "description": "..."}
+  ],
+  "tree": {
+    "start": {
+      "id": "start",
+      "type": "start",
+      "label": "exact text from diagram",
+      "children": [
+        {
+          "id": "n1",
+          "type": "decision|action|output",
+          "label": "exact text from diagram",
+          "input_ids": ["input_name_type"],
+          "edge_label": "Yes|No|optional",
+          "children": [ ... ]
+        }
+      ]
+    }
+  },
+  "doubts": []
+}
+
+Rules:
+- Use exact text from the diagrams.
+- Every input must include an "id" computed as: input_{slug(name)}_{type}
+- Input "name" should be canonical (short snake_case concept).
+- Every DECISION node MUST include a structured "condition" object.
+- For binary branches, set child edge_label to EXACTLY "true" or "false".
+- This must be a single rooted tree starting at tree.start.
+- Return JSON only, no extra text.
+"""
+
+        # Inject accumulated guidance into the prompt
+        if all_guidance:
+            lines = [
+                f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
+                for g in all_guidance
+            ]
+            multi_prompt += (
+                "\n\n## Guidance Notes (extracted from accompanying files)\n"
+                "The following notes, definitions, and annotations were found in the guidance files. "
+                "Use them to inform your analysis of the workflow:\n" + "\n".join(lines)
+            )
+
+        content_blocks.append({"type": "text", "text": multi_prompt})
+
+        # Add each analysis file as a content block
+        for af in analysis_files:
+            data_url = file_to_data_url(Path(af["abs_path"]))
+            block = _build_content_block(data_url)
+            content_blocks.append(block)
+
+        messages = [
+            {"role": "system", "content": "You extract structured data from workflow images and documents."},
+            {"role": "user", "content": content_blocks},
+        ]
+
+        # Collect extended thinking
+        thinking_parts: List[str] = []
+
+        def on_thinking(chunk: str) -> None:
+            thinking_parts.append(chunk)
+
+        force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
+        should_stream = stream is not None or force_stream
+
+        if should_stream:
+            def on_delta(chunk: str) -> None:
+                if is_cancelled():
+                    raise CancellationError("Subagent cancelled while streaming.")
+                if stream:
+                    stream(chunk)
+
+            raw = call_llm_stream(
+                messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                on_delta=on_delta,
+                caller="subagent",
+                request_tag="analyze_multi_stream",
+                should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
+            ).strip()
+        else:
+            raw = call_llm(
+                messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                caller="subagent",
+                request_tag="analyze_multi",
+                should_cancel=should_cancel,
+                thinking_budget=10000,
+                on_thinking=on_thinking,
+            ).strip()
+
+        if is_cancelled():
+            raise CancellationError("Subagent cancelled after multi-file LLM call.")
+        if not raw:
+            raise ValueError("LLM returned an empty response for multi-file analysis.")
+
+        # Parse the JSON response
+        system_msg = {"role": "system", "content": "You extract structured data from workflow images and documents."}
+        user_msg = {"role": "user", "content": content_blocks}
+        data = self._parse_json(raw, multi_prompt, [], system_msg, user_msg, should_cancel=should_cancel)
+        data = normalize_analysis(data)
+        data["reasoning"] = "".join(thinking_parts)
+        data["guidance"] = all_guidance
+
+        # Persist to history so publish_latest_analysis can load it later
+        self.history.add_message(session_id, "user", multi_prompt)
+        self.history.add_message(session_id, "assistant", json.dumps(data))
+        self.history.store_analysis(session_id, data)
+
+        return data
+
+    def _extract_guidance(
+        self,
+        *,
+        data_url: str,
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Extract side information (sticky notes, legends, annotations) from a file.
+
+        Performs a lightweight LLM call before the main analysis to identify any
+        notes or annotations that exist alongside the flowchart. Supports both
+        images (image_url content block) and PDFs (document content block).
+        Returns a list of dicts with text/location/category, or [] on any failure (non-blocking).
+        """
+        try:
+            # Build the appropriate content block based on media type
+            file_block = _build_content_block(data_url)
+            messages = [
+                {"role": "system", "content": "You extract side information from workflow images and documents."},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": self._GUIDANCE_PROMPT},
+                        file_block,
+                    ],
+                },
+            ]
+            raw = call_llm(
+                messages,
+                max_completion_tokens=4000,
+                response_format=None,
+                caller="subagent",
+                request_tag="extract_guidance",
+                should_cancel=should_cancel,
+            ).strip()
+
+            # Parse JSON array — strip code fences if present
+            text = raw.strip()
+            if text.startswith("```") and text.endswith("```"):
+                text = text.strip("`").strip()
+                if text.lower().startswith("json"):
+                    text = text[4:].strip()
+
+            # Find the first '[' to locate the JSON array
+            start = text.find("[")
+            if start == -1:
+                self._logger.debug("No JSON array found in guidance response")
+                return []
+
+            parsed = _parse_json_array(text[start:])
+            if parsed is None:
+                self._logger.warning("Failed to parse guidance JSON array")
+                return []
+
+            # Validate each item has required keys
+            valid = []
+            for item in parsed:
+                if isinstance(item, dict) and "text" in item:
+                    valid.append(item)
+            return valid
+
+        except Exception as exc:
+            # Non-blocking — guidance extraction failure should never break analysis
+            self._logger.warning("Guidance extraction failed (non-blocking): %s", exc)
+            return []
 
     def _parse_json(
         self,
@@ -334,6 +686,80 @@ by recomputing them deterministically from name + type. Respond only with the up
             return parsed_retry
         self._logger.error("Retry JSON parse failed")
         raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+
+
+def _parse_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
+    """Robustly parse a JSON array from potentially malformed LLM output.
+
+    Tries in order:
+    1. Strict json.loads
+    2. raw_decode (ignores trailing text)
+    3. Strip trailing commas before ] and retry
+    Returns None if all attempts fail.
+    """
+    import re as _re
+
+    # Attempt 1: strict parse
+    try:
+        result = json.loads(text)
+        return result if isinstance(result, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: raw_decode — handles trailing text after the array
+    try:
+        decoder = json.JSONDecoder()
+        result, _ = decoder.raw_decode(text)
+        return result if isinstance(result, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 3: fix trailing commas (e.g. `{...}, ]`) and retry
+    cleaned = _re.sub(r",\s*([}\]])", r"\1", text)
+    try:
+        result = json.loads(cleaned)
+        return result if isinstance(result, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 4: find matching ] bracket, extract substring, retry with cleaning
+    depth = 0
+    end_idx = -1
+    for i, ch in enumerate(text):
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                end_idx = i
+                break
+    if end_idx > 0:
+        subset = text[: end_idx + 1]
+        subset = _re.sub(r",\s*([}\]])", r"\1", subset)
+        try:
+            result = json.loads(subset)
+            return result if isinstance(result, list) else None
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def _build_content_block(data_url: str) -> Dict[str, Any]:
+    """Build an LLM content block from a data URL — image_url for images, document for PDFs."""
+    if data_url.startswith("data:application/pdf"):
+        # Extract base64 data for Anthropic document content block
+        _, b64 = data_url.split(";base64,", 1)
+        return {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": b64,
+            },
+        }
+    # Default: image content block
+    return {"type": "image_url", "image_url": {"url": data_url}}
 
 
 def _wants_json(feedback: str) -> bool:
