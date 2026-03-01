@@ -118,5 +118,53 @@
     "y": 600,
     "question": "The LDL thresholds (2.6, 2.0) appear in mmol/L. Should there be unit validation or conversion for sites using mg/dL? (2.6 mmol/L \u2248 100 mg/dL)",
     "status": "pending"
+  },
+  {
+    "id": "ebe6fb14",
+    "type": "question",
+    "x": 291,
+    "y": 238,
+    "question": "Should the assumption \"not coded, assume no\" be built into the workflow logic as a default value?",
+    "status": "pending"
+  },
+  {
+    "id": "78f4300e",
+    "type": "question",
+    "x": 197,
+    "y": 548,
+    "question": "Should the \"Normal = 5 or below\" threshold be a configurable input parameter since it varies by clinic?",
+    "status": "pending"
+  },
+  {
+    "id": "de604f34",
+    "type": "question",
+    "x": 101,
+    "y": 918,
+    "question": "This appears to be a duplicate label. Is there missing logic or additional branching intended here?",
+    "status": "pending"
+  },
+  {
+    "id": "799deb1f",
+    "type": "question",
+    "x": 326,
+    "y": 809,
+    "question": "Are \u226510% and <10% the only QRISK categories, or should there be handling for unmeasured/unavailable QRISK scores?",
+    "status": "pending"
+  },
+  {
+    "id": "46477438",
+    "type": "question",
+    "x": 818,
+    "y": 763,
+    "question": "Should the LDL range 2.0-2.5 be inclusive on both ends, or exclusive? (i.e., 2.0 \u2264 LDL \u2264 2.5 or 2.0 < LDL < 2.5?)",
+    "status": "pending"
+  },
+  {
+    "id": "d0659866",
+    "type": "question",
+    "x": 914,
+    "y": 835,
+    "question": "Is this a simple yes/no flag, or does it require date-based calculation? If date-based, what's the start date reference?",
+    "status": "pending"
   }
 ]

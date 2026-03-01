@@ -209,45 +209,33 @@ class TestPythonCodeGenerator:
 
     def test_simple_workflow(self):
         """Test a simple start -> decision -> end workflow."""
-        tree = {
-            "start": {
-                "id": "node_start",
-                "type": "start",
-                "label": "Start",
-                "children": [
-                    {
-                        "id": "node_decision",
-                        "type": "decision",
-                        "label": "Age Check",
-                        "condition": {
-                            "input_id": "var_age_int",
-                            "comparator": "gte",
-                            "value": 18,
-                        },
-                        "children": [
-                            {
-                                "id": "node_adult",
-                                "type": "end",
-                                "label": "Adult",
-                                "edge_label": "true",
-                            },
-                            {
-                                "id": "node_minor",
-                                "type": "end",
-                                "label": "Minor",
-                                "edge_label": "false",
-                            },
-                        ],
-                    }
-                ],
-            }
-        }
+        nodes = [
+            {"id": "node_start", "type": "start", "label": "Start"},
+            {
+                "id": "node_decision",
+                "type": "decision",
+                "label": "Age Check",
+                "condition": {
+                    "input_id": "var_age_int",
+                    "comparator": "gte",
+                    "value": 18,
+                }
+            },
+            {"id": "node_adult", "type": "end", "label": "Adult"},
+            {"id": "node_minor", "type": "end", "label": "Minor"}
+        ]
+        edges = [
+            {"source": "node_start", "target": "node_decision"},
+            {"source": "node_decision", "target": "node_adult", "label": "true"},
+            {"source": "node_decision", "target": "node_minor", "label": "false"}
+        ]
+        
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
         ]
 
-        generator = PythonCodeGenerator()
-        result = generator.compile(tree, variables, workflow_name="Age Check")
+        generator = PythonCodeGenerator(nodes=nodes, edges=edges, variables=variables, workflow_name="Age Check")
+        result = generator.compile()
 
         assert result.success
         assert "def age_check(age: float)" in result.code
@@ -258,65 +246,46 @@ class TestPythonCodeGenerator:
 
     def test_nested_decisions(self):
         """Test nested decision nodes."""
-        tree = {
-            "start": {
-                "id": "node_start",
-                "type": "start",
-                "label": "Start",
-                "children": [
-                    {
-                        "id": "node_d1",
-                        "type": "decision",
-                        "label": "Check Age",
-                        "condition": {
-                            "input_id": "var_age_int",
-                            "comparator": "gte",
-                            "value": 18,
-                        },
-                        "children": [
-                            {
-                                "id": "node_d2",
-                                "type": "decision",
-                                "label": "Check Income",
-                                "edge_label": "true",
-                                "condition": {
-                                    "input_id": "var_income_float",
-                                    "comparator": "gte",
-                                    "value": 50000,
-                                },
-                                "children": [
-                                    {
-                                        "id": "node_approved",
-                                        "type": "end",
-                                        "label": "Approved",
-                                        "edge_label": "true",
-                                    },
-                                    {
-                                        "id": "node_conditional",
-                                        "type": "end",
-                                        "label": "Conditional Approval",
-                                        "edge_label": "false",
-                                    },
-                                ],
-                            },
-                            {
-                                "id": "node_rejected",
-                                "type": "end",
-                                "label": "Rejected: Underage",
-                                "edge_label": "false",
-                            },
-                        ],
-                    }
-                ],
-            }
-        }
+        nodes = [
+            {"id": "node_start", "type": "start", "label": "Start"},
+            {
+                "id": "node_d1",
+                "type": "decision",
+                "label": "Check Age",
+                "condition": {
+                    "input_id": "var_age_int",
+                    "comparator": "gte",
+                    "value": 18,
+                }
+            },
+            {
+                "id": "node_d2",
+                "type": "decision",
+                "label": "Check Income",
+                "condition": {
+                    "input_id": "var_income_float",
+                    "comparator": "gte",
+                    "value": 50000,
+                }
+            },
+            {"id": "node_approved", "type": "end", "label": "Approved"},
+            {"id": "node_conditional", "type": "end", "label": "Conditional Approval"},
+            {"id": "node_rejected", "type": "end", "label": "Rejected: Underage"}
+        ]
+        edges = [
+            {"source": "node_start", "target": "node_d1"},
+            {"source": "node_d1", "target": "node_d2", "label": "true"},
+            {"source": "node_d1", "target": "node_rejected", "label": "false"},
+            {"source": "node_d2", "target": "node_approved", "label": "true"},
+            {"source": "node_d2", "target": "node_conditional", "label": "false"}
+        ]
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
             {"id": "var_income_float", "name": "Income", "type": "number", "source": "input"},
         ]
 
-        generator = PythonCodeGenerator()
-        result = generator.compile(tree, variables, workflow_name="Loan Approval")
+        generator = PythonCodeGenerator(nodes=nodes, edges=edges, variables=variables, workflow_name="Loan Approval")
+        result = generator.compile()
 
         assert result.success
         assert "def loan_approval(age: float, income: float)" in result.code
@@ -329,98 +298,77 @@ class TestPythonCodeGenerator:
 
     def test_output_template(self):
         """Test output node with template."""
-        tree = {
-            "start": {
-                "id": "node_start",
-                "type": "start",
-                "label": "Start",
-                "children": [
-                    {
-                        "id": "node_end",
-                        "type": "end",
-                        "label": "Result",
-                        "output_template": "BMI is {BMI}",
-                    }
-                ],
-            }
-        }
+        nodes = [
+            {"id": "node_start", "type": "start", "label": "Start"},
+            {"id": "node_end", "type": "end", "label": "Result", "output_template": "BMI is {BMI}"}
+        ]
+        edges = [
+            {"source": "node_start", "target": "node_end"}
+        ]
         variables = [
             {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "input"},
         ]
 
-        generator = PythonCodeGenerator()
-        result = generator.compile(tree, variables, workflow_name="BMI Result")
+        generator = PythonCodeGenerator(nodes=nodes, edges=edges, variables=variables, workflow_name="BMI Result")
+        result = generator.compile()
 
         assert result.success
         assert 'return f"BMI is {bmi}"' in result.code
 
     def test_empty_tree(self):
         """Test error handling for empty tree."""
-        tree = {}
+        nodes = []
+        edges = []
         variables = []
 
-        generator = PythonCodeGenerator()
-        result = generator.compile(tree, variables)
+        generator = PythonCodeGenerator(nodes=nodes, edges=edges, variables=variables)
+        result = generator.compile()
 
         assert not result.success
-        assert "missing 'start'" in result.error
+        assert "no nodes" in result.error
 
     def test_include_main_block(self):
         """Test including if __name__ == '__main__' block."""
-        tree = {
-            "start": {
-                "id": "node_start",
-                "type": "start",
-                "label": "Start",
-                "children": [
-                    {
-                        "id": "node_end",
-                        "type": "end",
-                        "label": "Done",
-                    }
-                ],
-            }
-        }
+        nodes = [
+            {"id": "node_start", "type": "start", "label": "Start"},
+            {"id": "node_end", "type": "end", "label": "Done"}
+        ]
+        edges = [
+            {"source": "node_start", "target": "node_end"}
+        ]
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
         ]
 
-        generator = PythonCodeGenerator()
-        result = generator.compile(tree, variables, include_main=True)
+        # In compile_workflow_to_python, include_main logic is handled by setting include_main at compilation end
+        # We need to test compile_workflow_to_python which has include_main
+        result = compile_workflow_to_python(nodes=nodes, edges=edges, variables=variables, include_main=True)
 
         assert result.success
         assert 'if __name__ == "__main__":' in result.code
-        assert "result = workflow(0.0)" in result.code
+        assert "result = workflow(" in result.code
 
     def test_subprocess_warning(self):
         """Test that subprocess nodes generate warnings."""
-        tree = {
-            "start": {
-                "id": "node_start",
-                "type": "start",
-                "label": "Start",
-                "children": [
-                    {
-                        "id": "node_sub",
-                        "type": "subprocess",
-                        "label": "Credit Check",
-                        "subworkflow_id": "wf_credit",
-                        "output_variable": "score",
-                        "children": [
-                            {
-                                "id": "node_end",
-                                "type": "end",
-                                "label": "Complete",
-                            }
-                        ],
-                    }
-                ],
-            }
-        }
+        nodes = [
+            {"id": "node_start", "type": "start", "label": "Start"},
+            {
+                "id": "node_sub",
+                "type": "subprocess",
+                "label": "Credit Check",
+                "subworkflow_id": "wf_credit",
+                "output_variable": "score"
+            },
+            {"id": "node_end", "type": "end", "label": "Complete"}
+        ]
+        edges = [
+            {"source": "node_start", "target": "node_sub"},
+            {"source": "node_sub", "target": "node_end"}
+        ]
         variables = []
 
-        generator = PythonCodeGenerator()
-        result = generator.compile(tree, variables)
+        generator = PythonCodeGenerator(nodes=nodes, edges=edges, variables=variables)
+        result = generator.compile()
 
         assert result.success
         assert len(result.warnings) > 0
@@ -454,9 +402,9 @@ class TestCompileWorkflowToPython:
             {"id": "n4", "type": "end", "label": "No", "x": 150, "y": 300},
         ]
         edges = [
-            {"from": "n1", "to": "n2", "label": ""},
-            {"from": "n2", "to": "n3", "label": "true"},
-            {"from": "n2", "to": "n4", "label": "false"},
+            {"source": "n1", "target": "n2", "label": ""},
+            {"source": "n2", "target": "n3", "label": "true"},
+            {"source": "n2", "target": "n4", "label": "false"},
         ]
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},

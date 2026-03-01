@@ -62,8 +62,11 @@ const BLOCKS: BlockConfig[] = [
         <rect x="6" y="6" width="12" height="12" rx="2" />
       </svg>
     )
-  },
+  }
 ]
+
+const DEFAULT_WIDTH = 200
+const MIN_WIDTH = 0
 
 export default function Palette() {
   const { addNode, flowchart, setFlowchart, setAnalysis } = useWorkflowStore()
@@ -71,6 +74,46 @@ export default function Palette() {
   const dragDataRef = useRef<BlockConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [paletteMode, setPaletteMode] = useState<'build' | 'dev'>('build')
+
+  // Resizable sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
+  const [isResizing, setIsResizing] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  // Handle resize drag
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate new width based on mouse position from left edge of window
+      const newWidth = e.clientX
+      const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidth, window.innerWidth * 0.4))
+      setSidebarWidth(clampedWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      // Snap to closed if very small
+      setSidebarWidth(prev => prev < 40 ? 0 : prev)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ew-resize'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isResizing])
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
 
   // Force build mode if dev tools disabled
   useEffect(() => {
@@ -249,161 +292,183 @@ export default function Palette() {
     openModal('execute')
   }, [openModal])
 
+  const isCollapsed = sidebarWidth === 0
+
   return (
-    <aside className="sidebar palette-sidebar">
-      {/* Dev Mode Toggle */}
-      {devMode && (
-        <div className="sidebar-section">
-          <div className="sidebar-toggle-group">
-            <button
-              className={`sidebar-toggle-btn ${paletteMode === 'build' ? 'active' : ''}`}
-              onClick={() => setPaletteMode('build')}
-            >
-              Build
-            </button>
-            <button
-              className={`sidebar-toggle-btn ${paletteMode === 'dev' ? 'active' : ''}`}
-              onClick={() => setPaletteMode('dev')}
-            >
-              Dev Tools
-            </button>
-          </div>
-        </div>
-      )}
+    <aside
+      ref={sidebarRef}
+      className={`sidebar palette-sidebar ${isResizing ? 'resizing' : ''} ${isCollapsed ? 'sidebar-collapsed' : ''}`}
+      style={{
+        width: isCollapsed ? 0 : sidebarWidth,
+        minWidth: isCollapsed ? 0 : sidebarWidth,
+        overflowX: isCollapsed ? 'visible' : 'hidden', // Required for the handle to float
+        paddingLeft: isCollapsed ? 0 : (sidebarWidth < 40 ? 0 : undefined),
+        paddingRight: isCollapsed ? 0 : (sidebarWidth < 40 ? 0 : undefined),
+      }}
+    >
+      <div
+        className="sidebar-resize-handle palette-resize-handle"
+        onMouseDown={handleResizeStart}
+        title={isCollapsed ? "Drag to expand" : "Drag to resize"}
+      >
+        <div className="resize-grip"></div>
+      </div>
 
-      {paletteMode === 'build' ? (
+      {!isCollapsed && (
         <>
-          <div className="sidebar-section">
-            <p className="eyebrow">BLOCKS</p>
-            <div className="block-palette">
-              {BLOCKS.map((block) => (
+          {/* Dev Mode Toggle */}
+          {devMode && (
+            <div className="sidebar-section">
+              <div className="sidebar-toggle-group">
                 <button
-                  key={block.type}
-                  className="palette-block"
-                  data-type={block.type}
-                  draggable="true"
-                  onDragStart={(e) => handleDragStart(e, block)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => handleClick(block)}
-                  title={`Click to add ${block.label} block`}
+                  className={`sidebar-toggle-btn ${paletteMode === 'build' ? 'active' : ''}`}
+                  onClick={() => setPaletteMode('build')}
                 >
-                  <div className={`block-icon ${block.type}-icon`}>{block.icon}</div>
-                  <span>{block.label}</span>
+                  Build
                 </button>
-              ))}
+                <button
+                  className={`sidebar-toggle-btn ${paletteMode === 'dev' ? 'active' : ''}`}
+                  onClick={() => setPaletteMode('dev')}
+                >
+                  Dev Tools
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Run Workflow Button */}
-          <div className="sidebar-section">
-            <p className="eyebrow">EXECUTE</p>
-            <button
-              className="run-btn full-width"
-              onClick={handleRunClick}
-              disabled={flowchart.nodes.length === 0}
-              title="Run workflow with visual execution"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              Run Workflow
-            </button>
-          </div>
+          {paletteMode === 'build' ? (
+            <>
+              <div className="sidebar-section">
+                <p className="eyebrow">BLOCKS</p>
+                <div className="block-palette">
+                  {BLOCKS.map((block) => (
+                    <button
+                      key={block.type}
+                      className="palette-block"
+                      data-type={block.type}
+                      draggable="true"
+                      onDragStart={(e) => handleDragStart(e, block)}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => handleClick(block)}
+                      title={`Click to add ${block.label} block`}
+                    >
+                      <div className={`block-icon ${block.type}-icon`}>{block.icon}</div>
+                      <span>{block.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="sidebar-section">
-            <p className="eyebrow">TIPS</p>
-            <ul className="tips-list">
-              <li>Click a block to add it to canvas</li>
-              <li>Double-click a node to start connecting</li>
-              <li>Press Delete to remove selected node</li>
-              <li>Cmd+Z to undo, Cmd+Shift+Z to redo</li>
-            </ul>
-          </div>
+              {/* Run Workflow Button */}
+              <div className="sidebar-section">
+                <p className="eyebrow">EXECUTE</p>
+                <button
+                  className="run-btn full-width"
+                  onClick={handleRunClick}
+                  disabled={flowchart.nodes.length === 0}
+                  title="Run workflow with visual execution"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  Run Workflow
+                </button>
+              </div>
 
-          <div className="sidebar-section">
-            <p className="eyebrow">IMPORT</p>
-            <button
-              className="ghost full-width"
-              onClick={() => setShowJsonInput(true)}
-              title="Import flowchart from JSON"
-            >
-              Import JSON
-            </button>
-            <button
-              className="ghost full-width"
-              onClick={() => {
-                // Sample flowchart with proper English labels
-                const sampleFlowchart = {
-                  nodes: [
-                    { id: 'n1', type: 'start' as const, label: 'Patient Arrives', x: 400, y: 100, color: 'teal' as const },
-                    { id: 'n2', type: 'process' as const, label: 'Check Vitals', x: 400, y: 220, color: 'teal' as const },
-                    { id: 'n3', type: 'decision' as const, label: 'Temperature > 38C?', x: 400, y: 340, color: 'amber' as const },
-                    { id: 'n4', type: 'process' as const, label: 'Administer Fever Medication', x: 200, y: 460, color: 'teal' as const },
-                    { id: 'n5', type: 'process' as const, label: 'Continue Monitoring', x: 600, y: 460, color: 'teal' as const },
-                    { id: 'n6', type: 'end' as const, label: 'Discharge Patient', x: 400, y: 580, color: 'green' as const },
-                  ],
-                  edges: [
-                    { from: 'n1', to: 'n2', label: '' },
-                    { from: 'n2', to: 'n3', label: '' },
-                    { from: 'n3', to: 'n4', label: 'Yes' },
-                    { from: 'n3', to: 'n5', label: 'No' },
-                    { from: 'n4', to: 'n6', label: '' },
-                    { from: 'n5', to: 'n6', label: '' },
-                  ],
-                }
-                setFlowchart(sampleFlowchart)
-              }}
-              title="Load a sample flowchart to test frontend rendering"
-              style={{ marginTop: '8px' }}
-            >
-              Load Example
-            </button>
-          </div>
-        </>
-      ) : (
-        <DevToolsPanel />
-      )}
+              <div className="sidebar-section">
+                <p className="eyebrow">TIPS</p>
+                <ul className="tips-list">
+                  <li>Click a block to add it to canvas</li>
+                  <li>Double-click a node to start connecting</li>
+                  <li>Press Delete to remove selected node</li>
+                  <li>Cmd+Z to undo, Cmd+Shift+Z to redo</li>
+                </ul>
+              </div>
 
-      {/* Hidden file input for JSON upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json,application/json"
-        style={{ display: 'none' }}
-        onChange={handleFileUpload}
-      />
+              <div className="sidebar-section">
+                <p className="eyebrow">IMPORT</p>
+                <button
+                  className="ghost full-width"
+                  onClick={() => setShowJsonInput(true)}
+                  title="Import flowchart from JSON"
+                >
+                  Import JSON
+                </button>
+                <button
+                  className="ghost full-width"
+                  onClick={() => {
+                    // Sample flowchart with proper English labels
+                    const sampleFlowchart = {
+                      nodes: [
+                        { id: 'n1', type: 'start' as const, label: 'Patient Arrives', x: 400, y: 100, color: 'teal' as const },
+                        { id: 'n2', type: 'process' as const, label: 'Check Vitals', x: 400, y: 220, color: 'teal' as const },
+                        { id: 'n3', type: 'decision' as const, label: 'Temperature > 38C?', x: 400, y: 340, color: 'amber' as const },
+                        { id: 'n4', type: 'process' as const, label: 'Administer Fever Medication', x: 200, y: 460, color: 'teal' as const },
+                        { id: 'n5', type: 'process' as const, label: 'Continue Monitoring', x: 600, y: 460, color: 'teal' as const },
+                        { id: 'n6', type: 'end' as const, label: 'Discharge Patient', x: 400, y: 580, color: 'green' as const },
+                      ],
+                      edges: [
+                        { from: 'n1', to: 'n2', label: '' },
+                        { from: 'n2', to: 'n3', label: '' },
+                        { from: 'n3', to: 'n4', label: 'Yes' },
+                        { from: 'n3', to: 'n5', label: 'No' },
+                        { from: 'n4', to: 'n6', label: '' },
+                        { from: 'n5', to: 'n6', label: '' },
+                      ],
+                    }
+                    setFlowchart(sampleFlowchart)
+                  }}
+                  title="Load a sample flowchart to test frontend rendering"
+                  style={{ marginTop: '8px' }}
+                >
+                  Load Example
+                </button>
+              </div>
+            </>
+          ) : (
+            <DevToolsPanel />
+          )}
 
-      {/* JSON Input Modal */}
-      {showJsonInput && (
-        <div className="json-modal-overlay" onClick={() => setShowJsonInput(false)}>
-          <div className="json-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Import Workflow JSON</h3>
-            <p className="muted small">Upload a JSON file or paste JSON below</p>
+          {/* Hidden file input for JSON upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+            onChange={handleFileUpload}
+          />
 
-            {/* File upload button */}
-            <button
-              className="ghost full-width file-upload-btn"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Choose JSON File
-            </button>
+          {/* JSON Input Modal */}
+          {showJsonInput && (
+            <div className="json-modal-overlay" onClick={() => setShowJsonInput(false)}>
+              <div className="json-modal" onClick={(e) => e.stopPropagation()}>
+                <h3>Import Workflow JSON</h3>
+                <p className="muted small">Upload a JSON file or paste JSON below</p>
 
-            <div className="import-divider">
-              <span>or paste JSON</span>
-            </div>
+                {/* File upload button */}
+                <button
+                  className="ghost full-width file-upload-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Choose JSON File
+                </button>
 
-            <textarea
-              value={jsonText}
-              onChange={(e) => {
-                setJsonText(e.target.value)
-                setJsonError(null)
-              }}
-              placeholder={`{
+                <div className="import-divider">
+                  <span>or paste JSON</span>
+                </div>
+
+                <textarea
+                  value={jsonText}
+                  onChange={(e) => {
+                    setJsonText(e.target.value)
+                    setJsonError(null)
+                  }}
+                  placeholder={`{
   "flowchart": {
     "nodes": [
       {"id": "n1", "type": "start", "label": "Start", "x": 400, "y": 100},
@@ -414,15 +479,17 @@ export default function Palette() {
     ]
   }
 }`}
-              rows={10}
-            />
-            {jsonError && <p className="error-text">{jsonError}</p>}
-            <div className="json-modal-actions">
-              <button className="ghost" onClick={() => setShowJsonInput(false)}>Cancel</button>
-              <button className="primary" onClick={handleJsonImport} disabled={!jsonText.trim()}>Import</button>
+                  rows={10}
+                />
+                {jsonError && <p className="error-text">{jsonError}</p>}
+                <div className="json-modal-actions">
+                  <button className="ghost" onClick={() => setShowJsonInput(false)}>Cancel</button>
+                  <button className="primary" onClick={handleJsonImport} disabled={!jsonText.trim()}>Import</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </aside>
   )

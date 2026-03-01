@@ -309,90 +309,146 @@ class PythonCodeGenerator:
 
     def __init__(self):
         """Initialize the generator."""
+    def __init__(
+        self,
+        nodes: List[Dict[str, Any]],
+        edges: List[Dict[str, Any]],
+        variables: List[Dict[str, Any]],
+        outputs: Optional[List[Dict[str, Any]]] = None,
+        workflow_name: str = "workflow",
+        include_main: bool = False,
+        fetch_subworkflow: Optional[callable] = None,
+        _processed_subflows: Optional[Set[str]] = None,
+    ):
+        """Initialize the compiler.
+
+        Args:
+            nodes: Workflow nodes
+            edges: Workflow edges
+            variables: Variable definitions
+            outputs: Optional end node output definitions
+            workflow_name: Name of the generated Python function
+            include_main: Whether to include an if __name__ == '__main__' block
+            fetch_subworkflow: Optional callback `(workflow_id) -> Workflow` for resolving subflows.
+            _processed_subflows: Optional set of already processed subflow IDs to prevent infinite cycles.
+        """
+        self.nodes = {node.get('id'): node for node in nodes if node.get('id')}
+        self.edges = edges
+        self.variables = variables
+        self.outputs = outputs
+        self.workflow_name = self._to_function_name(workflow_name)
+        self.include_main = include_main
+        self.fetch_subworkflow = fetch_subworkflow
+        self._processed_subflows = _processed_subflows or set()
+
         self.condition_compiler = ConditionCompiler()
         self._indent_level = 0
         self._lines: List[str] = []
         self._warnings: List[str] = []
 
-    def compile(
-        self,
-        tree: Dict[str, Any],
-        variables: List[Dict[str, Any]],
-        outputs: Optional[List[Dict[str, Any]]] = None,
-        workflow_name: str = "workflow",
-        include_imports: bool = True,
-        include_docstring: bool = True,
-        include_main: bool = False,
-    ) -> CompilationResult:
-        """Generate Python code from a workflow tree.
-
-        Args:
-            tree: Nested workflow tree with 'start' key
-            variables: List of variable definitions
-            outputs: List of output definitions (optional)
-            workflow_name: Name for the generated function
-            include_imports: Whether to include import statements
-            include_docstring: Whether to include docstring
-            include_main: Whether to include if __name__ == "__main__" block
+    def compile(self) -> CompilationResult:
+        """Compile the workflow to Python code.
 
         Returns:
-            CompilationResult with generated code or error
+            CompilationResult with generated code or errors.
         """
         try:
-            # Reset state
+            # Reset state for this compilation run
             self._indent_level = 0
             self._lines = []
             self._warnings = []
 
             # Create resolver
             # Filter to only input-source variables for function parameters
-            input_vars = [v for v in variables if v.get('source', 'input') == 'input']
-            self.resolver = VariableNameResolver(variables)
+            input_vars = [v for v in self.variables if v.get('source', 'input') == 'input']
+            self.resolver = VariableNameResolver(self.variables)
 
-            # Validate tree
-            if 'start' not in tree:
-                raise CompilationError("Tree missing 'start' node")
-
+            # First, check and compile any subflows as helper functions
+            subflow_code_blocks = []
+            
+            if self.fetch_subworkflow:
+                for node in self.nodes.values():
+                    if node.get("type") == "subprocess":
+                        sub_id = node.get("subworkflow_id")
+                        if not sub_id or sub_id in self._processed_subflows:
+                            continue
+                            
+                        self._processed_subflows.add(sub_id)
+                        subflow_obj = self.fetch_subworkflow(sub_id)
+                        
+                        if subflow_obj:
+                            sub_func_name = f"subflow_{sub_id.replace('-', '_')}"
+                            
+                            sub_compiler = PythonCodeGenerator(
+                                nodes=subflow_obj.nodes,
+                                edges=subflow_obj.edges,
+                                variables=subflow_obj.inputs,
+                                outputs=subflow_obj.outputs,
+                                workflow_name=sub_func_name,
+                                fetch_subworkflow=self.fetch_subworkflow,
+                                _processed_subflows=self._processed_subflows,
+                            )
+                            # Compile subflow without imports/main block
+                            sub_result = sub_compiler.compile()
+                            if sub_result.success and sub_result.code:
+                                subflow_code_blocks.append(sub_result.code)
+                            self._warnings.extend(["Subflow: " + w for w in sub_result.warnings])
+                        else:
+                            self._warnings.append(f"Warning: Could not fetch subworkflow '{sub_id}'. Generated call will fail.")
+            
+            # --- Compile Root Workflow ---
             # Generate imports
-            if include_imports:
-                self._generate_imports(variables)
-                self._add_line("")
+            self._generate_imports(self.variables)
+            self._add_line("")
 
             # Generate function signature
-            func_name = self._to_function_name(workflow_name)
-            self._generate_function_signature(func_name, input_vars)
+            self._generate_function_signature(self.workflow_name, input_vars)
 
             # Generate docstring
-            if include_docstring:
-                self._indent_level += 1
-                self._generate_docstring(workflow_name, input_vars, outputs)
+            self._indent_level += 1
+            self._generate_docstring(self.workflow_name, input_vars, self.outputs)
 
             # Generate body
-            if self._indent_level == 0:
-                self._indent_level = 1
-
-            start_node = tree['start']
-            children = start_node.get('children', [])
-
-            if not children:
-                self._add_line("pass  # Empty workflow")
+            start_nodes = [n for n in self.nodes.values() if n.get('type') == 'start']
+            if not start_nodes:
+                if not self.nodes:
+                    raise CompilationError("Workflow has no nodes")
+                # Fallback to first node if no explicit start node exists
+                start_node = next(iter(self.nodes.values()))
             else:
-                self._visit_node(children[0])
-
-            self._indent_level = 0
-
+                start_node = start_nodes[0]
+            
+            # The start node itself might have code, or merely act as a pointer. 
+            # If it's literally a 'start' node, we visit its children. 
+            # If it's a fallback node of a different type, we should visit IT directly.
+            if start_node.get('type') == 'start':
+                children = self._get_children(start_node)
+                if not children:
+                    self._add_line("pass  # Empty workflow")
+                else:
+                    self._visit_node(children[0])
+            else:
+                self._visit_node(start_node)
+                
+            self._indent_level -= 1
+            
             # Generate main block
-            if include_main:
+            if self.include_main:
                 self._add_line("")
-                self._generate_main_block(func_name, input_vars)
-
-            code = "\n".join(self._lines)
+                self._generate_main_block(self.workflow_name, input_vars)
+            
+            # Append subflow helper functions to the start of the final string
+            combined_code = "\n\n".join(subflow_code_blocks)
+            if combined_code:
+                combined_code += "\n\n"
+            combined_code += "\n".join(self._lines)
+            
             return CompilationResult(
                 success=True,
-                code=code,
+                code=combined_code,
                 warnings=self._warnings
             )
-
+            
         except CompilationError as e:
             return CompilationResult(
                 success=False,
@@ -423,12 +479,14 @@ class PythonCodeGenerator:
                 imports.add("from datetime import date")
 
         # Add typing import for type hints
-        imports.add("from typing import Union")
+        imports.add("from typing import Union, List, Dict, Any, Optional, Set, Callable")
         
         # Always include math for calculation support
         # (could be optimized to only include if calculations are present)
         imports.add("import math")
         imports.add("import statistics")
+        imports.add("import re") # For _to_function_name and _compile_template
+        imports.add("import json") # For _format_output_value
 
         for imp in sorted(imports):
             self._add_line(imp)
@@ -505,6 +563,26 @@ class PythonCodeGenerator:
         self._add_line("print(f\"Result: {result}\")")
         self._indent_level -= 1
 
+    def _get_children(self, node: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get children nodes for a given node."""
+        node_id = node.get('id')
+        if not node_id:
+            return []
+        
+        children = []
+        for edge in self.edges:
+            if edge.get('source') == node_id:
+                target_id = edge.get('target')
+                if target_id in self.nodes:
+                    child_node = self.nodes[target_id]
+                    child_node['edge_label'] = edge.get('label', '') # Attach edge label for decision nodes
+                    children.append(child_node)
+        
+        # Sort children to ensure consistent order (e.g., for decision branches)
+        # This might need more sophisticated logic based on actual workflow editor behavior
+        children.sort(key=lambda n: n.get('edge_label', '') + n.get('id', ''))
+        return children
+
     def _visit_node(self, node: Dict[str, Any]) -> None:
         """Visit a node and generate appropriate code.
 
@@ -528,11 +606,11 @@ class PythonCodeGenerator:
 
         elif node_type in ('start', 'action', 'process'):
             # Pass-through nodes - continue to children
-            children = node.get('children', [])
+            children = self._get_children(node)
             if children:
                 self._visit_node(children[0])
             else:
-                self._warnings.append(f"Node '{node_id}' has no children")
+                self._warnings.append(f"Node '{node_id}' has no continuation")
                 self._add_line(f"pass  # Node '{node_id}' has no continuation")
 
         else:
@@ -615,7 +693,7 @@ class PythonCodeGenerator:
     def _visit_decision_node(self, node: Dict[str, Any]) -> None:
         """Generate if/else block for decision node."""
         condition = node.get('condition')
-        children = node.get('children', [])
+        children = self._get_children(node)
         node_label = node.get('label', node.get('id', 'decision'))
 
         if not condition:
@@ -677,28 +755,49 @@ class PythonCodeGenerator:
             self._indent_level -= 1
 
     def _visit_subprocess_node(self, node: Dict[str, Any]) -> None:
-        """Generate subprocess call (as comment placeholder for now).
+        """Generate subprocess call.
 
-        Full subprocess support would require loading the subworkflow
-        and generating it as a separate function.
+        Requires self.fetch_subworkflow to be provided to recursively find 
+        and compile subworkflows as helper functions.
         """
         node_label = node.get('label', node.get('id', 'subprocess'))
         subworkflow_id = node.get('subworkflow_id', 'unknown')
         output_variable = node.get('output_variable', 'result')
+        input_mapping = node.get('input_mapping') or {}
 
-        # Generate comment about subprocess
+        # 1. Output the function call
         python_var = re.sub(r'[^a-z0-9]+', '_', output_variable.lower()).strip('_')
         self._add_line(f"# Subprocess: {node_label}")
-        self._add_line(f"# TODO: Implement call to subworkflow '{subworkflow_id}'")
-        self._add_line(f"{python_var} = None  # Placeholder for subprocess output")
-
-        self._warnings.append(
-            f"Subprocess '{node_label}' requires manual implementation. "
-            f"Subworkflow ID: {subworkflow_id}"
-        )
+        
+        # Determine the function name the subflow will be compiled into
+        sub_func_name = f"subflow_{subworkflow_id.replace('-', '_')}"
+        
+        if self.fetch_subworkflow:
+            # Map parent variables to the subflow's arguments
+            kwargs = []
+            for sub_in, parent_var_id in input_mapping.items():
+                if parent_var_id in self.resolver.id_to_python:
+                    arg_val = self.resolver.resolve(parent_var_id)
+                else:
+                    # If parent_var_id is not a known variable, assume it's a literal or a direct reference
+                    # This might need more robust handling depending on how input_mapping is structured
+                    arg_val = repr(parent_var_id) # Treat as literal string for now
+                # Clean the sub_in arg name just in case
+                clean_kwarg = re.sub(r'[^a-z0-9]+', '_', sub_in.lower()).strip('_')
+                kwargs.append(f"{clean_kwarg}={arg_val}")
+                
+            kwargs_str = ", ".join(kwargs)
+            self._add_line(f"{python_var} = {sub_func_name}({kwargs_str})")
+        else:
+            self._add_line(f"# TODO: Implement call to subworkflow '{subworkflow_id}'")
+            self._add_line(f"{python_var} = None  # Placeholder for subprocess output")
+            self._warnings.append(
+                f"Subprocess '{node_label}' requires manual implementation. "
+                f"Subworkflow ID: {subworkflow_id}"
+            )
 
         # Continue to children
-        children = node.get('children', [])
+        children = self._get_children(node)
         if children:
             self._add_line("")
             self._visit_node(children[0])
@@ -763,7 +862,7 @@ class PythonCodeGenerator:
         self.resolver.id_to_python[output_name] = python_var
         
         # Continue to children
-        children = node.get('children', [])
+        children = self._get_children(node)
         if children:
             self._add_line("")
             self._visit_node(children[0])
@@ -834,31 +933,34 @@ def compile_workflow_to_python(
     variables: List[Dict[str, Any]],
     outputs: Optional[List[Dict[str, Any]]] = None,
     workflow_name: str = "workflow",
-    **kwargs
+    include_imports: bool = True,
+    include_docstring: bool = True,
+    include_main: bool = False,
+    fetch_subworkflow: Optional[callable] = None,
 ) -> CompilationResult:
-    """Convenience function to compile a workflow from nodes/edges format.
+    """Helper function to compile a workflow to Python.
 
     Args:
-        nodes: Flat list of workflow nodes
-        edges: Flat list of workflow edges
-        variables: List of variable definitions
-        outputs: List of output definitions (optional)
-        workflow_name: Name for the generated function
-        **kwargs: Additional options passed to compile()
+        nodes: Workflow nodes
+        edges: Workflow edges
+        variables: Variable definitions
+        outputs: Optional end node output definitions
+        workflow_name: Name of the generated Python function
+        include_imports: Whether to include typing imports at the top
+        include_docstring: Whether to include docstring and parameter descriptions
+        include_main: Whether to include an if __name__ == "__main__" block
+        fetch_subworkflow: Optional callback `(workflow_id) -> Workflow` for resolving subflows.
 
     Returns:
-        CompilationResult with generated code or error
+        CompilationResult
     """
-    from ..utils.flowchart import tree_from_flowchart
-
-    # Convert to tree format
-    tree = tree_from_flowchart(nodes, edges)
-    if not tree or 'start' not in tree:
-        return CompilationResult(
-            success=False,
-            error="Could not build tree from nodes/edges. Ensure workflow has a start node."
-        )
-
-    # Generate code
-    generator = PythonCodeGenerator()
-    return generator.compile(tree, variables, outputs, workflow_name, **kwargs)
+    generator = PythonCodeGenerator(
+        nodes=nodes,
+        edges=edges,
+        variables=variables,
+        outputs=outputs,
+        workflow_name=workflow_name,
+        include_main=include_main,
+        fetch_subworkflow=fetch_subworkflow,
+    )
+    return generator.compile()

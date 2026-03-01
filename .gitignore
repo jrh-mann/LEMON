@@ -78,3 +78,7 @@ publishprofile.xml
 .mcp.json
 .cursor/
 .claude/settings.local.json
+
+# Local tool outputs
+pytest_output.txt
+src/frontend/lint_output.txt

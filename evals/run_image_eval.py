@@ -21,7 +21,7 @@ from src.backend.tools.workflow_analysis.analyze import AnalyzeWorkflowTool
 from src.backend.utils.image import image_to_data_url
 from src.backend.utils.paths import lemon_data_dir
 from src.backend.utils.uploads import save_uploaded_image
-from src.backend.mcp.client import call_mcp_tool
+from src.backend.mcp_bridge.client import call_mcp_tool
 
 from evals.diagnostics import emit_diagnostics
 from evals.scoring import score_trial

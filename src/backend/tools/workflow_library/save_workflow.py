@@ -137,7 +137,7 @@ class SaveWorkflowToLibrary(Tool):
             
             # Build update kwargs - always set is_draft=False
             update_kwargs: Dict[str, Any] = {"is_draft": False}
-            
+
             # Include optional metadata updates if provided
             new_name = args.get("name")
             if new_name and isinstance(new_name, str) and new_name.strip():

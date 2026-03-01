@@ -460,7 +460,8 @@ class TestCalculationOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info)
+            if "step_index" in step_info:
+                steps.append(step_info)
         
         result = interpreter.execute({
             "var_a_number": 50.0,
@@ -484,7 +485,8 @@ class TestCalculationOnStepCallback:
         
         steps = []
         def on_step(step_info):
-            steps.append(step_info.copy())
+            if "step_index" in step_info:
+                steps.append(step_info.copy())
         
         result = interpreter.execute({
             "var_a_number": 10.0,

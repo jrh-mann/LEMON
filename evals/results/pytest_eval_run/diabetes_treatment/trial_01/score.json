@@ -51,32 +51,32 @@
       "matched": 0,
       "total": 12,
       "success_rate": 0.0,
-      "execution_failures": 12,
+      "execution_failures": 0,
       "mapping_coverage": 0.08333333333333333,
       "failures": [
         {
           "test_index": 0,
-          "error": "input_age_int must be int, got str",
+          "predicted": "Adult",
           "expected": "Admit via A&E/Medics"
         },
         {
           "test_index": 1,
-          "error": "input_age_int must be int, got str",
+          "predicted": "Adult",
           "expected": "Start Gliclazide or Insulin"
         },
         {
           "test_index": 2,
-          "error": "input_age_int must be int, got str",
+          "predicted": "Adult",
           "expected": "Metformin (continue and review in 3 months)"
         },
         {
           "test_index": 3,
-          "error": "input_age_int must be int, got str",
+          "predicted": "Adult",
           "expected": "SGLT2i (continue and review in 3 months)"
         },
         {
           "test_index": 4,
-          "error": "input_age_int must be int, got str",
+          "predicted": "Adult",
           "expected": "Ozempic titrate to full dose with 3 monthly A1c's"
         }
       ]

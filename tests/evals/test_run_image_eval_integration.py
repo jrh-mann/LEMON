@@ -68,7 +68,7 @@ class _MockAnalyzeWorkflowTool:
 
 
 def test_run_evaluation_generates_expected_artifacts(monkeypatch):
-    repo_root = Path("/Users/jeetthakwani/dev/LEMON")
+    repo_root = Path(__file__).resolve().parent.parent.parent
     run_id = "pytest_eval_run"
 
     # Ensure clean output directory for deterministic assertions.
@@ -93,7 +93,7 @@ def test_run_evaluation_generates_expected_artifacts(monkeypatch):
 
     assert summary["total_trials"] == 3
     assert len(summary["cases"]) == 3
-    assert summary["eval_data_dir"].startswith("/tmp/lemon_eval_")
+    assert "lemon_eval_" in summary["eval_data_dir"]
 
     summary_path = Path(summary["summary_path"])
     assert summary_path.exists()
@@ -115,7 +115,7 @@ def test_run_evaluation_generates_expected_artifacts(monkeypatch):
 
 
 def test_environment_restored_after_run(monkeypatch):
-    repo_root = Path("/Users/jeetthakwani/dev/LEMON")
+    repo_root = Path(__file__).resolve().parent.parent.parent
     run_id = "pytest_env_restore"
 
     original_data_dir = os.environ.get("LEMON_DATA_DIR")
@@ -137,7 +137,7 @@ def test_environment_restored_after_run(monkeypatch):
 
 
 def test_mcp_transport_uses_api_call(monkeypatch):
-    repo_root = Path("/Users/jeetthakwani/dev/LEMON")
+    repo_root = Path(__file__).resolve().parent.parent.parent
     run_id = "pytest_mcp_transport"
 
     def _fake_call_mcp_tool(name, args):

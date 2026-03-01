@@ -1,0 +1,199 @@
+/* HomePage - Floating content on top of canvas */
+
+.home-floating {
+    position: fixed;
+    inset: 0;
+    top: 57px;
+    /* Below persistent header */
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    /* Let canvas clicks through */
+    transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.home-floating>* {
+    pointer-events: auto;
+    /* Re-enable on content */
+}
+
+/* Exit animation when workspace reveals */
+.home-floating.home-floating-exit {
+    opacity: 0;
+    transform: translateY(-30px);
+    pointer-events: none !important;
+}
+
+.home-floating.home-floating-exit>* {
+    pointer-events: none !important;
+}
+
+.home-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    padding: 0 24px;
+}
+
+/* Greeting */
+.home-greeting {
+    text-align: center;
+}
+
+.greeting-sparkle {
+    display: inline-block;
+    font-size: 1.4rem;
+    color: var(--teal);
+    margin-bottom: 8px;
+    animation: sparkle-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sparkle-pulse {
+
+    0%,
+    100% {
+        opacity: 0.7;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.15);
+    }
+}
+
+.greeting-subtitle {
+    font-size: 1.1rem;
+    color: var(--teal);
+    font-weight: 500;
+    margin-bottom: 4px;
+    letter-spacing: 0.01em;
+}
+
+.greeting-title {
+    font-family: "Fraunces", "Space Grotesk", serif;
+    font-size: 2.5rem;
+    font-weight: 400;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+/* Chat Bar */
+.home-chat-bar {
+    width: 100%;
+    max-width: 640px;
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-radius: 28px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 8px 32px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.home-chat-bar:focus-within {
+    border-color: var(--teal);
+    box-shadow: 0 2px 8px rgba(31, 110, 104, 0.15), 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.home-chat-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 1rem;
+    color: var(--ink);
+    resize: none;
+    outline: none;
+    min-height: 24px;
+    max-height: 120px;
+    line-height: 1.5;
+}
+
+.home-chat-input::placeholder {
+    color: var(--muted);
+}
+
+.home-chat-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.home-send-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: var(--teal);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.home-send-btn:hover:not(:disabled) {
+    background: #1a5c57;
+    transform: scale(1.05);
+}
+
+.home-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Quick Action Chips */
+.home-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.home-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.home-chip:hover {
+    border-color: var(--teal);
+    background: var(--teal-light);
+    color: var(--teal);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(31, 110, 104, 0.12);
+}
+
+.home-chip:active {
+    transform: translateY(0);
+}
+
+.home-chip svg {
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.home-chip:hover svg {
+    opacity: 1;
+}
