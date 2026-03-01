@@ -96,9 +96,14 @@ export function connectSocket(): Socket {
     }
   })
 
-  // Debug: log all incoming events
-  socket.onAny((event, ...args) => {
-    console.log('[Socket] Event:', event, args)
+  // LLM reasoning/thinking chunks streamed during analysis
+  socket.on('chat_thinking', (data: { chunk: string; task_id?: string }) => {
+    const chatStore = useChatStore.getState()
+    if (data.task_id) {
+      if (chatStore.isTaskCancelled(data.task_id)) return
+      if (chatStore.currentTaskId && data.task_id !== chatStore.currentTaskId) return
+    }
+    chatStore.appendThinkingContent(data.chunk || '')
   })
 
   // Chat response
@@ -836,7 +841,7 @@ export function disconnectSocket(): void {
 export function sendChatMessage(
   message: string,
   conversationId?: string | null,
-  image?: string,
+  files?: import('../types').PendingFile[],
   annotations?: unknown[]
 ): void {
   const sock = getSocket()
@@ -875,12 +880,25 @@ export function sendChatMessage(
     })
   }
 
+  // Debug: log whether files are included in the payload
+  const filesPayload = files && files.length > 0 ? files.map(f => ({
+    id: f.id,
+    name: f.name,
+    data_url: f.dataUrl,
+    file_type: f.type,
+    purpose: f.purpose,
+  })) : undefined
+  console.log('[Socket] sendChatMessage files_count:', files?.length ?? 0,
+    'payload_files:', filesPayload?.length ?? 0,
+    'file_names:', files?.map(f => f.name) ?? [],
+    'data_url_lengths:', files?.map(f => f.dataUrl?.length ?? 0) ?? [])
+
   // Atomic: workflow travels with message (no race conditions)
   sock.emit('chat', {
     session_id: getSessionId(),
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
-    image,
+    files: filesPayload,
     annotations: annotations && annotations.length > 0 ? annotations : undefined,
     task_id: taskId,
     current_workflow_id: currentWorkflowId,

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, ExecutionLogEntry } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, ExecutionLogEntry, PendingFile } from '../types'
 import type { Annotation } from '../components/ImageAnnotator'
 import { patchWorkflow } from '../api/workflows'
 
@@ -59,9 +59,8 @@ interface WorkflowState {
   history: Flowchart[]
   historyIndex: number
 
-  // Pending image
-  pendingImage: string | null
-  pendingImageName: string | null
+  // Pending files for analysis (images and PDFs)
+  pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
 
   // Actions
@@ -105,9 +104,10 @@ interface WorkflowState {
   redo: () => void
   clearHistory: () => void
 
-  // Pending image
-  setPendingImage: (image: string | null, name?: string | null) => void
-  clearPendingImage: () => void
+  // Pending files
+  addPendingFile: (file: PendingFile) => void
+  removePendingFile: (fileId: string) => void
+  clearPendingFiles: () => void
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
 
@@ -194,8 +194,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   connectFromId: null,
   history: [],
   historyIndex: -1,
-  pendingImage: null,
-  pendingImageName: null,
+  pendingFiles: [],
   pendingAnnotations: [],
 
   // Execution state
@@ -523,9 +522,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
-  // Pending image
-  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name, pendingAnnotations: [] }),
-  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null, pendingAnnotations: [] }),
+  // Pending files
+  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file] })),
+  removePendingFile: (fileId) => set((state) => ({ pendingFiles: state.pendingFiles.filter(f => f.id !== fileId) })),
+  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [] }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
 
@@ -548,8 +548,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       connectFromId: null,
       history: [],
       historyIndex: -1,
-      pendingImage: null,
-      pendingImageName: null,
+      pendingFiles: [],
       pendingAnnotations: [],
       execution: { ...initialExecutionState },
     }),

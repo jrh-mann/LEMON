@@ -17,13 +17,12 @@ interface ChatState {
   // Processing status (what the orchestrator is currently doing)
   processingStatus: string | null
 
+  // Live reasoning stream from LLM extended thinking
+  thinkingContent: string
+
   // Agent interaction
   pendingQuestion: string | null
   taskId: string | null
-
-  // Pending image for analysis (user uploads, then asks orchestrator to analyse)
-  pendingImage: string | null
-  pendingImageName: string | null
 
   // Actions
   addMessage: (message: Message) => void
@@ -45,13 +44,13 @@ interface ChatState {
   // Processing status
   setProcessingStatus: (status: string | null) => void
 
+  // Thinking stream
+  appendThinkingContent: (content: string) => void
+  clearThinkingContent: () => void
+
   // Agent
   setPendingQuestion: (question: string | null, taskId?: string | null) => void
   clearPendingQuestion: () => void
-
-  // Image
-  setPendingImage: (image: string | null, name?: string | null) => void
-  clearPendingImage: () => void
 
   // User message helper
   sendUserMessage: (content: string) => Message
@@ -86,11 +85,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentTaskId: null,
   cancelledTaskIds: {},
   processingStatus: null,
+  thinkingContent: '',
   pendingQuestion: null,
   taskId: null,
-  pendingImage: null,
-  pendingImageName: null,
-
   // Actions
   addMessage: (message) =>
     set((state) => ({
@@ -172,21 +169,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (content) {
       addAssistantMessage(content)
     }
-    set({ streamingContent: '', isStreaming: false, processingStatus: null })
+    set({ streamingContent: '', isStreaming: false, processingStatus: null, thinkingContent: '' })
   },
 
-  // Processing status
-  setProcessingStatus: (status) => set({ processingStatus: status }),
+  // Processing status — clear thinking content when processing ends
+  setProcessingStatus: (status) => set(status === null
+    ? { processingStatus: null, thinkingContent: '' }
+    : { processingStatus: status }),
+
+  // Thinking stream
+  appendThinkingContent: (content) =>
+    set((state) => ({ thinkingContent: state.thinkingContent + content })),
+  clearThinkingContent: () => set({ thinkingContent: '' }),
 
   // Agent
   setPendingQuestion: (question, taskId = null) =>
     set({ pendingQuestion: question, taskId }),
 
   clearPendingQuestion: () => set({ pendingQuestion: null, taskId: null }),
-
-  // Image
-  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name }),
-  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null }),
 
   // User message helper
   sendUserMessage: (content) => {
@@ -216,6 +216,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       currentTaskId: null,
       processingStatus: null,
+      thinkingContent: '',
       pendingQuestion: null,
       taskId: null,
     }),
@@ -230,10 +231,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentTaskId: null,
       cancelledTaskIds: {},
       processingStatus: null,
+      thinkingContent: '',
       pendingQuestion: null,
       taskId: null,
-      pendingImage: null,
-      pendingImageName: null,
     }),
 }))
 

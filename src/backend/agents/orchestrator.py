@@ -39,7 +39,9 @@ class Orchestrator:
             "inputs": [],
             "outputs": [],
             "tree": {},
-            "doubts": []
+            "doubts": [],
+            "reasoning": "",
+            "guidance": [],
         }
 
         self.history: List[Dict[str, str]] = []
@@ -87,7 +89,9 @@ class Orchestrator:
             "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
             "outputs": self.workflow.get("outputs", []),
             "tree": self.workflow.get("tree", {}),
-            "doubts": self.workflow.get("doubts", [])
+            "doubts": self.workflow.get("doubts", []),
+            "reasoning": self.workflow.get("reasoning", ""),
+            "guidance": self.workflow.get("guidance", []),
         }
 
     @workflow_analysis.setter
@@ -110,6 +114,10 @@ class Orchestrator:
             self.workflow["tree"] = value.get("tree", {})
         if "doubts" in value and isinstance(value.get("doubts"), list):
             self.workflow["doubts"] = value.get("doubts", [])
+        if "reasoning" in value and isinstance(value.get("reasoning"), str):
+            self.workflow["reasoning"] = value["reasoning"]
+        if "guidance" in value and isinstance(value.get("guidance"), list):
+            self.workflow["guidance"] = value["guidance"]
 
     def sync_workflow(
         self,
@@ -187,6 +195,10 @@ class Orchestrator:
                 self.workflow["tree"] = analysis_data.get("tree", {})
             if "doubts" in analysis_data:
                 self.workflow["doubts"] = analysis_data.get("doubts", [])
+            if "reasoning" in analysis_data:
+                self.workflow["reasoning"] = analysis_data.get("reasoning", "")
+            if "guidance" in analysis_data:
+                self.workflow["guidance"] = analysis_data.get("guidance", [])
             self._logger.info(
                 "Synced workflow analysis: %d variables, %d outputs",
                 len(variables),
@@ -200,6 +212,8 @@ class Orchestrator:
         *,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
+        on_thinking: Optional[Callable[[str], None]] = None,
     ) -> ToolResult:
         self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
         self._tool_logger.info(
@@ -219,6 +233,7 @@ class Orchestrator:
                     "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
                     "user_id": self.user_id,  # Serialize user_id (string)
                     "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+                    "uploaded_files": getattr(self, "uploaded_files", []),
                 },
             }
             data = call_mcp_tool(tool_name, mcp_args)
@@ -229,6 +244,7 @@ class Orchestrator:
                 "workflow_analysis": self.workflow_analysis,
                 "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
                 "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+                "uploaded_files": getattr(self, "uploaded_files", []),
             }
             # Add workflow_store and user_id if available
             if self.workflow_store is not None:
@@ -241,6 +257,8 @@ class Orchestrator:
                 args,
                 stream=stream,
                 should_cancel=should_cancel,
+                on_progress=on_progress,
+                on_thinking=on_thinking,
                 session_state=session_state,
             )
         result = self._normalize_tool_result(tool_name, data)
@@ -258,6 +276,28 @@ class Orchestrator:
             # Update workflow_analysis if this was a successful input management tool
             if tool_name in WORKFLOW_INPUT_TOOLS:
                 self._update_analysis_from_tool_result(tool_name, result.data)
+
+        # Store analysis data from analyze_workflow into orchestrator state
+        # so subsequent tool calls have access to variables, tree, doubts, etc.
+        if tool_name == "analyze_workflow" and result.success and isinstance(result.data, dict):
+            analysis = result.data.get("analysis")
+            if isinstance(analysis, dict):
+                for key in ("inputs", "outputs", "tree", "doubts", "reasoning", "guidance"):
+                    # Map 'variables' key from analysis to internal 'inputs' key
+                    src_key = "variables" if key == "inputs" else key
+                    if src_key in analysis:
+                        self.workflow[key] = analysis[src_key]
+                # Also store flowchart nodes/edges if present
+                flowchart = result.data.get("flowchart")
+                if isinstance(flowchart, dict) and flowchart.get("nodes"):
+                    self.workflow["nodes"] = flowchart.get("nodes", [])
+                    self.workflow["edges"] = flowchart.get("edges", [])
+                self._logger.info(
+                    "Stored analyze_workflow result: %d inputs, %d outputs, %d nodes",
+                    len(self.workflow.get("inputs", [])),
+                    len(self.workflow.get("outputs", [])),
+                    len(self.workflow.get("nodes", [])),
+                )
 
         # Also update workflow when publish_latest_analysis returns a flowchart
         if tool_name == "publish_latest_analysis" and isinstance(result.data, dict):
@@ -368,6 +408,10 @@ class Orchestrator:
                         self.workflow["inputs"] = returned_analysis["inputs"]
                     if "outputs" in returned_analysis:
                         self.workflow["outputs"] = returned_analysis["outputs"]
+                    if "reasoning" in returned_analysis:
+                        self.workflow["reasoning"] = returned_analysis["reasoning"]
+                    if "guidance" in returned_analysis:
+                        self.workflow["guidance"] = returned_analysis["guidance"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d variables, %d outputs",
                         len(self.workflow.get("inputs", [])),
@@ -393,7 +437,7 @@ class Orchestrator:
         self,
         user_message: str,
         *,
-        has_image: bool = False,
+        has_files: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
         should_cancel: Optional[Callable[[], bool]] = None,
@@ -402,7 +446,11 @@ class Orchestrator:
         ] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools."""
-        self._logger.info("Received message bytes=%d history_len=%d", len(user_message.encode("utf-8")), len(self.history))
+        self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
+        # Store uploaded files metadata for tool access
+        self.uploaded_files = has_files or []
+        self._logger.info("uploaded_files count=%d files=%s", len(self.uploaded_files), [f.get("name") for f in self.uploaded_files])
+
         def is_cancelled() -> bool:
             return bool(should_cancel and should_cancel())
         did_stream = False
@@ -416,8 +464,10 @@ class Orchestrator:
         tool_desc = tool_descriptions()
         system = build_system_prompt(
             last_session_id=self.last_session_id,
-            has_image=has_image,
+            has_files=self.uploaded_files,
             allow_tools=allow_tools,
+            reasoning=self.workflow.get("reasoning", ""),
+            guidance=self.workflow.get("guidance", []),
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow
@@ -428,10 +478,17 @@ class Orchestrator:
                 len(self.history)
             )
 
+        # Prepend a file notice to the user message so the LLM sees attached files
+        # directly in the conversation (not just in the system prompt).
+        effective_message = user_message
+        if self.uploaded_files:
+            file_names = [f.get("name", "?") for f in self.uploaded_files]
+            effective_message = f"[Attached files: {', '.join(file_names)}]\n\n{user_message}"
+
         messages = [
             {"role": "system", "content": system},
             *limited_history,
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": effective_message},
         ]
         try:
             def on_delta(delta: str) -> None:
@@ -535,7 +592,21 @@ class Orchestrator:
                 try:
                     if on_tool_event:
                         on_tool_event("tool_start", tool_name, args, None)
-                    result = self.run_tool(tool_name, args, stream=None, should_cancel=should_cancel)
+
+                    # Build a progress callback that relays phase updates via on_tool_event
+                    def _on_progress(status: str) -> None:
+                        if on_tool_event:
+                            on_tool_event("tool_progress", tool_name, {"status": status}, None)
+
+                    # Forward LLM thinking chunks to the frontend via on_tool_event
+                    def _on_thinking(chunk: str) -> None:
+                        if on_tool_event:
+                            on_tool_event("tool_thinking", tool_name, {"chunk": chunk}, None)
+
+                    result = self.run_tool(
+                        tool_name, args, stream=None, should_cancel=should_cancel,
+                        on_progress=_on_progress, on_thinking=_on_thinking,
+                    )
                     session_id = result.data.get("session_id")
                     if session_id:
                         self.last_session_id = session_id

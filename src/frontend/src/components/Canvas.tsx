@@ -75,11 +75,10 @@ export default function Canvas() {
     undo,
     redo,
     pushHistory,
-    pendingImage,
-    pendingImageName,
+    pendingFiles,
     pendingAnnotations,
     setPendingAnnotations,
-    clearPendingImage,
+    clearPendingFiles,
     execution,  // Execution state for visual highlighting
   } = useWorkflowStore()
 
@@ -104,15 +103,18 @@ export default function Canvas() {
   const MIN_ZOOM = 0.25
   const MAX_ZOOM = 8
 
-  // Auto-switch to image tab when image is uploaded
+  // Auto-switch to image tab when files are uploaded
   useEffect(() => {
-    if (pendingImage) {
+    if (pendingFiles.length > 0) {
       setCanvasTab('image')
     }
-  }, [pendingImage, setCanvasTab])
+  }, [pendingFiles, setCanvasTab])
 
 
   // Drag state
+  // Track which file is shown in the multi-file preview (prev/next navigation)
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0)
+
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null)
   const [dragNodeId, setDragNodeId] = useState<string | null>(null)
@@ -1288,14 +1290,14 @@ export default function Canvas() {
 
   return (
     <div className="canvas-area">
-      {/* Toolbar / Tabs area - Only show Source Image tab if there is an image uploaded */}
-      {workspaceRevealed && pendingImage && (
+      {/* Toolbar / Tabs area - Only show Source Files tab if there are files uploaded */}
+      {workspaceRevealed && pendingFiles.length > 0 && (
         <div className="workspace-tabs">
           <button
             className={`workspace-tab ${canvasTab === 'image' ? 'active' : ''}`}
             onClick={() => setCanvasTab('image')}
           >
-            Source Image
+            Source {pendingFiles.length === 1 ? 'File' : 'Files'}
           </button>
           <button
             className={`workspace-tab ${canvasTab === 'workflow' ? 'active' : ''}`}
@@ -1306,29 +1308,68 @@ export default function Canvas() {
         </div>
       )}
 
-      {/* Image preview tab with annotation canvas */}
-      {canvasTab === 'image' && pendingImage && (
-        <div className="image-preview-container">
-          <div className="image-preview-header">
-            <span className="image-name">{pendingImageName || 'Uploaded image'}</span>
-            <button
-              className="clear-image-btn"
-              onClick={() => {
-                clearPendingImage()
-                setCanvasTab('workflow')
-              }}
-              title="Remove image"
-            >
-              Ã—
-            </button>
+      {/* File preview tab — shows selected file with prev/next navigation */}
+      {canvasTab === 'image' && pendingFiles.length > 0 && (() => {
+        const idx = Math.min(selectedFileIndex, pendingFiles.length - 1)
+        const currentFile = pendingFiles[idx]
+        const showNav = pendingFiles.length > 1
+        return (
+          <div className="image-preview-container">
+            <div className="image-preview-header">
+              {showNav && (
+                <button
+                  className="file-nav-btn"
+                  disabled={idx === 0}
+                  onClick={() => setSelectedFileIndex(idx - 1)}
+                  title="Previous file"
+                >
+                  &lsaquo;
+                </button>
+              )}
+              <span className="image-name">
+                {currentFile.name}
+                {showNav && ` (${idx + 1}/${pendingFiles.length})`}
+              </span>
+              {showNav && (
+                <button
+                  className="file-nav-btn"
+                  disabled={idx === pendingFiles.length - 1}
+                  onClick={() => setSelectedFileIndex(idx + 1)}
+                  title="Next file"
+                >
+                  &rsaquo;
+                </button>
+              )}
+              <button
+                className="clear-image-btn"
+                onClick={() => {
+                  clearPendingFiles()
+                  setSelectedFileIndex(0)
+                  setCanvasTab('workflow')
+                }}
+                title="Remove all files"
+              >
+                &times;
+              </button>
+            </div>
+            {currentFile.type === 'image' ? (
+              <ImageAnnotator
+                key={currentFile.id}
+                imageSrc={currentFile.dataUrl}
+                annotations={pendingAnnotations}
+                onChange={setPendingAnnotations}
+              />
+            ) : (
+              <iframe
+                key={currentFile.id}
+                className="pdf-preview"
+                src={currentFile.dataUrl}
+                title={currentFile.name}
+              />
+            )}
           </div>
-          <ImageAnnotator
-            imageSrc={pendingImage}
-            annotations={pendingAnnotations}
-            onChange={setPendingAnnotations}
-          />
-        </div>
-      )}
+        )
+      })()}
 
       {/* Workflow canvas tab */}
       <div

@@ -33,7 +33,7 @@ export default function WorkflowPage() {
         error,
         clearError
     } = useUIStore()
-    const { setCurrentWorkflow, setFlowchart, setAnalysis, setPendingImage } = useWorkflowStore()
+    const { setCurrentWorkflow, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
 
@@ -163,48 +163,67 @@ export default function WorkflowPage() {
         }
     }, [handleHomeSend])
 
-    // Home chatbox: image upload
-    const handleHomeImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+    // Home chatbox: file upload (images and PDFs, supports multiple)
+    const handleHomeFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const fileList = e.target.files
+        if (!fileList || fileList.length === 0) return
 
-        const reader = new FileReader()
-        reader.onload = async () => {
+        const names: string[] = []
+        for (const file of Array.from(fileList)) {
             try {
-                const original = reader.result as string
-                const { dataUrl, didChange, bytes } = await compressDataUrl(original, {
-                    maxBytes: MAX_IMAGE_BYTES,
-                    maxDimension: MAX_IMAGE_DIMENSION,
+                const isPdf = file.type === 'application/pdf'
+                const reader = new FileReader()
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string)
+                    reader.onerror = () => reject(new Error('Failed to read file'))
+                    reader.readAsDataURL(file)
                 })
 
-                if (bytes > MAX_IMAGE_BYTES) {
-                    setError(
-                        `Image is too large (${(bytes / (1024 * 1024)).toFixed(1)}MB). Try a smaller image.`
-                    )
-                    return
+                let finalDataUrl = dataUrl
+                if (!isPdf) {
+                    // Compress images to stay under Anthropic's size limit
+                    const { dataUrl: compressed, didChange, bytes } = await compressDataUrl(dataUrl, {
+                        maxBytes: MAX_IMAGE_BYTES,
+                        maxDimension: MAX_IMAGE_DIMENSION,
+                    })
+                    if (bytes > MAX_IMAGE_BYTES) {
+                        setError(`"${file.name}" is too large (${(bytes / (1024 * 1024)).toFixed(1)}MB). Skipped.`)
+                        continue
+                    }
+                    finalDataUrl = compressed
+                    if (didChange) {
+                        names.push(`${file.name} (resized)`)
+                    } else {
+                        names.push(file.name)
+                    }
+                } else {
+                    names.push(file.name)
                 }
 
-                setPendingImage(dataUrl, file.name)
-
-                const note = didChange
-                    ? ` (resized to ${(bytes / (1024 * 1024)).toFixed(1)}MB)`
-                    : ''
-
-                addAssistantMessage(
-                    `Image "${file.name}" uploaded${note}. You can now ask me to analyse it.`
-                )
-
-                triggerReveal()
+                addPendingFile({
+                    id: `${Date.now()}_${file.name}`,
+                    name: file.name,
+                    dataUrl: finalDataUrl,
+                    type: isPdf ? 'pdf' : 'image',
+                    purpose: 'unclassified',
+                })
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to process image')
+                setError(err instanceof Error ? err.message : `Failed to process ${file.name}`)
             }
         }
-        reader.readAsDataURL(file)
+
+        if (names.length > 0) {
+            const msg = names.length === 1
+                ? `File "${names[0]}" uploaded. You can now ask me to analyse it.`
+                : `Uploaded ${names.length} files: ${names.join(', ')}.`
+            addAssistantMessage(msg)
+            triggerReveal()
+        }
 
         if (homeFileInputRef.current) {
             homeFileInputRef.current.value = ''
         }
-    }, [setPendingImage, setError, triggerReveal])
+    }, [addPendingFile, setError, triggerReveal])
 
     const revealedClass = workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
 
@@ -263,21 +282,22 @@ export default function WorkflowPage() {
                             Browse Library
                         </button>
 
-                        <label className="home-chip" htmlFor="homeImageUpload">
+                        <label className="home-chip" htmlFor="homeFileUpload">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
                                 <polyline points="17 8 12 3 7 8" />
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
-                            Upload Image
+                            Upload Files
                         </label>
                         <input
                             ref={homeFileInputRef}
                             type="file"
-                            id="homeImageUpload"
-                            accept="image/*"
+                            id="homeFileUpload"
+                            accept="image/*,application/pdf"
+                            multiple
                             style={{ display: 'none' }}
-                            onChange={handleHomeImageUpload}
+                            onChange={handleHomeFileUpload}
                         />
 
                         <button className="home-chip" onClick={() => { triggerReveal() }}>

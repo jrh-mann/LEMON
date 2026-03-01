@@ -21,6 +21,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     isStreaming,
     streamingContent,
     processingStatus,
+    thinkingContent,
     currentTaskId,
     pendingQuestion,
     sendUserMessage,
@@ -30,13 +31,18 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   } = useChatStore()
 
   const {
-    pendingImage,
-    pendingImageName,
+    pendingFiles,
     pendingAnnotations,
-    clearPendingImage,
+    clearPendingFiles,
   } = useWorkflowStore()
 
   const { chatHeight, setChatHeight } = useUIStore()
+
+  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
+  // Tracks whether the user has scrolled up inside the thinking container so we
+  // stop snapping to the bottom while they're reading earlier reasoning.
+  const thinkingRef = useRef<HTMLDivElement>(null)
+  const isThinkingScrolledUp = useRef(false)
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -106,6 +112,29 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }, [isStreaming, scrollToBottom])
 
+  // Auto-scroll the thinking stream container to bottom when new chunks arrive,
+  // but only if the user hasn't scrolled up to read earlier reasoning.
+  useEffect(() => {
+    if (thinkingRef.current && !isThinkingScrolledUp.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
+    }
+  }, [thinkingContent])
+
+  // Reset the scroll-up flag when thinking content is cleared (analysis finished)
+  useEffect(() => {
+    if (!thinkingContent) {
+      isThinkingScrolledUp.current = false
+    }
+  }, [thinkingContent])
+
+  // Detect manual scroll inside the thinking stream container
+  const handleThinkingScroll = useCallback(() => {
+    const el = thinkingRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
+    isThinkingScrolledUp.current = !atBottom
+  }, [])
+
   // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current
@@ -123,16 +152,16 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending image and annotations if available
+    // Send via socket - include pending files and annotations if available
     sendChatMessage(
       trimmed,
       conversationId,
-      pendingImage || undefined,
+      pendingFiles.length > 0 ? pendingFiles : undefined,
       pendingAnnotations.length > 0 ? pendingAnnotations : undefined
     )
 
-    // Keep pending image around so user can reference it in Source Image tab
-    // Image is only cleared when user explicitly clicks x or uploads a new one
+    // Keep pending files around so user can reference them in Source Image tab
+    // Files are only cleared when user explicitly clicks x or uploads new ones
 
     // Clear input and reset voice base text
     setInputValue('')
@@ -255,12 +284,26 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                       {processingStatus}
                     </span>
                   )}
+                  {thinkingContent && (
+                    <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                      <span className="thinking-label">Reasoning</span>
+                      <div className="thinking-text">{thinkingContent}</div>
+                    </div>
+                  )}
                 </>
               ) : processingStatus ? (
-                <span className="processing-status">
-                  <span className="status-dot"></span>
-                  {processingStatus}
-                </span>
+                <>
+                  <span className="processing-status">
+                    <span className="status-dot"></span>
+                    {processingStatus}
+                  </span>
+                  {thinkingContent && (
+                    <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                      <span className="thinking-label">Reasoning</span>
+                      <div className="thinking-text">{thinkingContent}</div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <span className="typing-indicator">
                   <span></span>
@@ -276,13 +319,17 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       </div>
 
       <div className="chat-input-container">
-        {pendingImage && (
+        {pendingFiles.length > 0 && (
           <div className="pending-image-indicator">
-            <span>Image ready: {pendingImageName || 'uploaded image'}</span>
+            <span>
+              {pendingFiles.length === 1
+                ? `File ready: ${pendingFiles[0].name}`
+                : `${pendingFiles.length} files ready`}
+            </span>
             <button
               className="clear-image-btn"
-              onClick={clearPendingImage}
-              title="Remove image"
+              onClick={clearPendingFiles}
+              title="Remove all files"
             >
               x
             </button>

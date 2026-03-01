@@ -37,6 +37,8 @@ class PublishLatestAnalysisTool(Tool):
                     "doubts": [
                         "No analysis found. Ask the user to upload an image and run workflow analysis."
                     ],
+                    "reasoning": "",
+                    "guidance": [],
                 },
                 "flowchart": {"nodes": [], "edges": []},
             }
