@@ -405,8 +405,21 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         # Build the analysis prompt — same as analyze() but with multi-file preamble
         multi_prompt = (
-            "You are analyzing multiple files that together represent a SINGLE workflow. "
-            "Combine all into ONE unified tree.\n\n"
+            "You are analyzing multiple files that together form a COMBINED workflow. "
+            "Each file contains part of the overall patient/process pathway.\n\n"
+            "## CRITICAL: Merging Rules\n"
+            "- EVERY file's logic MUST appear in the final tree. Do NOT omit any file.\n"
+            "- Look for natural connection points between the workflows:\n"
+            "  - A test result or condition in one workflow that triggers the other\n"
+            "  - Shared patient populations or overlapping conditions\n"
+            "  - Sequential steps where one pathway leads into another\n"
+            "- If workflows share a common entry point, merge them there.\n"
+            "- If one workflow naturally feeds into another (e.g., a diagnostic workup "
+            "discovers a condition that triggers a treatment pathway), chain them at "
+            "that decision point.\n"
+            "- If no obvious link exists, create a common start node that branches "
+            "into each pathway via a decision node.\n"
+            "- The result must be ONE tree preserving ALL logic from ALL files.\n\n"
         )
         multi_prompt += """Return ONLY a JSON object with this structure:
 {
@@ -578,9 +591,9 @@ Rules:
                 self._logger.debug("No JSON array found in guidance response")
                 return []
 
-            parsed = json.loads(text[start:])
-            if not isinstance(parsed, list):
-                self._logger.debug("Guidance response was not a list")
+            parsed = _parse_json_array(text[start:])
+            if parsed is None:
+                self._logger.warning("Failed to parse guidance JSON array")
                 return []
 
             # Validate each item has required keys
@@ -659,6 +672,63 @@ Rules:
             return parsed_retry
         self._logger.error("Retry JSON parse failed")
         raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+
+
+def _parse_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
+    """Robustly parse a JSON array from potentially malformed LLM output.
+
+    Tries in order:
+    1. Strict json.loads
+    2. raw_decode (ignores trailing text)
+    3. Strip trailing commas before ] and retry
+    Returns None if all attempts fail.
+    """
+    import re as _re
+
+    # Attempt 1: strict parse
+    try:
+        result = json.loads(text)
+        return result if isinstance(result, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: raw_decode — handles trailing text after the array
+    try:
+        decoder = json.JSONDecoder()
+        result, _ = decoder.raw_decode(text)
+        return result if isinstance(result, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 3: fix trailing commas (e.g. `{...}, ]`) and retry
+    cleaned = _re.sub(r",\s*([}\]])", r"\1", text)
+    try:
+        result = json.loads(cleaned)
+        return result if isinstance(result, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 4: find matching ] bracket, extract substring, retry with cleaning
+    depth = 0
+    end_idx = -1
+    for i, ch in enumerate(text):
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                end_idx = i
+                break
+    if end_idx > 0:
+        subset = text[: end_idx + 1]
+        subset = _re.sub(r",\s*([}\]])", r"\1", subset)
+        try:
+            result = json.loads(subset)
+            return result if isinstance(result, list) else None
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def _build_content_block(data_url: str) -> Dict[str, Any]:
