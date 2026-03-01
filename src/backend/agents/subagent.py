@@ -14,6 +14,8 @@ from ..llm import call_llm, call_llm_stream
 from ..utils.image import image_to_data_url, file_to_data_url
 from ..utils.analysis import normalize_analysis
 from ..utils.cancellation import CancellationError
+from ..validation.tree_validator import TreeValidator
+from ..validation.retry_harness import validate_and_retry
 
 
 class Subagent:
@@ -299,6 +301,20 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+
+        # Structural validation of the nested tree — retry via LLM if invalid.
+        data, remaining_errors = self._validate_tree_with_retry(
+            data,
+            system_msg=system_msg,
+            history_messages=history_messages,
+            user_msg=user_msg,
+            assistant_raw=raw,
+            should_cancel=should_cancel,
+        )
+        # Surface remaining structural errors as doubts so the user sees them.
+        if remaining_errors:
+            self._attach_validation_doubts(data, remaining_errors)
+
         # Attach the model's extended thinking as reasoning context
         data["reasoning"] = "".join(thinking_parts)
         # Attach extracted side information (guidance) from the image
@@ -554,6 +570,19 @@ Rules:
         user_msg = {"role": "user", "content": content_blocks}
         data = self._parse_json(raw, multi_prompt, [], system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+
+        # Structural validation of the nested tree — retry via LLM if invalid.
+        data, remaining_errors = self._validate_tree_with_retry(
+            data,
+            system_msg=system_msg,
+            history_messages=[],
+            user_msg=user_msg,
+            assistant_raw=raw,
+            should_cancel=should_cancel,
+        )
+        if remaining_errors:
+            self._attach_validation_doubts(data, remaining_errors)
+
         data["reasoning"] = "".join(thinking_parts)
         data["guidance"] = all_guidance
 
@@ -693,6 +722,93 @@ Rules:
             return parsed_retry
         self._logger.error("Retry JSON parse failed")
         raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+
+    # ------------------------------------------------------------------
+    # Tree structural validation helpers
+    # ------------------------------------------------------------------
+
+    _tree_validator = TreeValidator()
+
+    def _validate_tree_with_retry(
+        self,
+        data: Dict[str, Any],
+        *,
+        system_msg: dict,
+        history_messages: list,
+        user_msg: dict,
+        assistant_raw: str,
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> tuple:
+        """Run TreeValidator on *data*, retrying via the LLM if invalid.
+
+        Returns ``(data, remaining_errors)`` — remaining_errors is empty
+        when validation passes (possibly after retries).
+        """
+
+        def _retry_llm(error_text: str) -> str:
+            """Re-call the LLM with the original conversation + error feedback."""
+            if should_cancel and should_cancel():
+                raise CancellationError("Subagent cancelled before structural retry.")
+            retry_messages = [
+                system_msg,
+                *history_messages,
+                user_msg,
+                {"role": "assistant", "content": assistant_raw},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous response had structural errors in the tree. "
+                        "Fix ONLY these issues and return the corrected JSON:\n\n"
+                        f"{error_text}"
+                    ),
+                },
+            ]
+            return call_llm(
+                retry_messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                caller="subagent",
+                request_tag="tree_structure_retry",
+                should_cancel=should_cancel,
+            ).strip()
+
+        def _parse_and_normalize(raw: str) -> Dict[str, Any]:
+            """Parse raw LLM output and normalize it."""
+            cleaned = raw.strip()
+            if cleaned.startswith("```") and cleaned.endswith("```"):
+                cleaned = cleaned.strip("`").strip()
+                if cleaned.lower().startswith("json"):
+                    cleaned = cleaned[4:].strip()
+            parsed = json.loads(cleaned)
+            if not isinstance(parsed, dict):
+                raise ValueError("Expected a JSON object.")
+            return normalize_analysis(parsed)
+
+        return validate_and_retry(
+            data=data,
+            validate_fn=self._tree_validator.validate,
+            format_errors_fn=TreeValidator.format_errors,
+            retry_llm_fn=_retry_llm,
+            parse_fn=_parse_and_normalize,
+            max_retries=2,
+            logger=self._logger,
+        )
+
+    @staticmethod
+    def _attach_validation_doubts(
+        data: Dict[str, Any],
+        errors: list,
+    ) -> None:
+        """Append remaining validation errors as doubts so the user sees them."""
+        doubts = data.get("doubts")
+        if not isinstance(doubts, list):
+            doubts = []
+            data["doubts"] = doubts
+        for err in errors:
+            doubts.append({
+                "text": f"[{err.code}] {err.message}",
+                "source": "tree_validator",
+            })
 
 
 def _parse_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
