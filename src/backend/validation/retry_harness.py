@@ -55,6 +55,7 @@ def validate_and_retry(
 
     is_valid, errors = validate_fn(data)
     if is_valid:
+        log.info("Structural validation passed on first attempt")
         return (data, [])
 
     for attempt in range(1, max_retries + 1):
