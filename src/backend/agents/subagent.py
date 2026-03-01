@@ -757,9 +757,13 @@ Rules:
                 {
                     "role": "user",
                     "content": (
-                        "Your previous response had structural errors in the tree. "
-                        "Fix ONLY these issues and return the corrected JSON:\n\n"
-                        f"{error_text}"
+                        "Your previous JSON response had structural errors in the "
+                        "tree. Each error below includes a FIX hint explaining "
+                        "what is expected.\n\n"
+                        f"{error_text}\n\n"
+                        "Return the COMPLETE corrected JSON with these issues "
+                        "fixed. Keep everything else unchanged. Return ONLY "
+                        "valid JSON, no extra text."
                     ),
                 },
             ]

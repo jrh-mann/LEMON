@@ -81,12 +81,33 @@ class TreeValidator:
     # Formatting helper
     # ------------------------------------------------------------------
 
+    # Per-code fix guidance shown to the LLM during retry.
+    _FIX_HINTS: Dict[str, str] = {
+        "TREE_MISSING": "Add a top-level \"tree\" key containing a \"start\" node object.",
+        "TREE_MISSING_START": "The \"tree\" object must have a \"start\" key whose value is the root node (type \"start\").",
+        "TREE_START_TYPE": "The root node must have \"type\": \"start\".",
+        "INVALID_TREE_NODE_TYPE": "Valid node types are: start, decision, action, output.",
+        "DUPLICATE_NODE_ID": "Every node must have a globally unique \"id\". Rename the duplicate.",
+        "MISSING_NODE_ID": "Every node must have a non-empty string \"id\" field.",
+        "MISSING_NODE_LABEL": "Every node must have a non-empty string \"label\" field.",
+        "DECISION_CHILDREN_COUNT": "Decision nodes must have exactly 2 children — one for the true branch and one for the false branch.",
+        "DECISION_EDGE_LABELS": "The two children of a decision node must have \"edge_label\": \"true\" and \"edge_label\": \"false\" respectively.",
+        "DECISION_MISSING_CONDITION": "Decision nodes must have a \"condition\" object with \"input_id\" (referencing a variable) and \"comparator\" (e.g. \"gt\", \"is_true\").",
+        "OUTPUT_HAS_CHILDREN": "Output nodes are leaf nodes — remove the \"children\" array or set it to [].",
+        "ACTION_MULTIPLE_CHILDREN": "Action and start nodes can have at most 1 child. If the flow branches, use a decision node instead.",
+        "INVALID_INPUT_REFERENCE": "The condition's \"input_id\" must match an id or name from the variables list.",
+    }
+
     @staticmethod
     def format_errors(errors: List[ValidationError]) -> str:
-        """Return a human-readable bullet list of *errors*."""
+        """Return a human-readable bullet list of *errors* with fix guidance."""
         if not errors:
             return "No validation errors."
-        lines = [f"- [{e.code}] {e.message}" for e in errors]
+        lines: List[str] = []
+        for e in errors:
+            hint = TreeValidator._FIX_HINTS.get(e.code, "")
+            suffix = f"  FIX: {hint}" if hint else ""
+            lines.append(f"- [{e.code}] {e.message}{suffix}")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
