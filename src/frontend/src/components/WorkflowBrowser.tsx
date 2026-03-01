@@ -29,7 +29,7 @@ export default function WorkflowBrowser() {
   const [error, setError] = useState<string | null>(null)
 
   const { setCurrentWorkflow, setFlowchart, setAnalysis, setWorkflows: setGlobalWorkflows } = useWorkflowStore()
-  const { closeModal } = useUIStore()
+  const { setZoomingCard, closeModal } = useUIStore()
 
   // Load my workflows
   const loadMyWorkflows = useCallback(async () => {
@@ -188,9 +188,20 @@ export default function WorkflowBrowser() {
   }
 
   // Handle workflow selection - opens in new tab
-  const handleSelectWorkflow = async (workflowId: string) => {
+  const handleSelectWorkflow = async (workflowSummary: WorkflowSummary, e: React.MouseEvent) => {
     try {
-      const workflowData: any = await getWorkflow(workflowId)
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      setZoomingCard({
+        id: workflowSummary.id,
+        title: workflowSummary.name,
+        rect
+      })
+
+      // Wait for BOTH the 100ms UI expansion AND the network fetch to complete
+      const [workflowData] = await Promise.all([
+        getWorkflow(workflowSummary.id) as Promise<any>,
+        new Promise(resolve => setTimeout(resolve, 100))
+      ])
 
       // Workflow can be in two formats:
       // 1. Old format: blocks/connections (Block-based)
@@ -258,6 +269,9 @@ export default function WorkflowBrowser() {
       }
 
       closeModal()
+
+      // Small delay to let the modal close completely
+      await new Promise(resolve => setTimeout(resolve, 100))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflow')
     }
@@ -328,7 +342,7 @@ export default function WorkflowBrowser() {
     <div key={workflow.id} className="workflow-card-container">
       <button
         className="workflow-card"
-        onClick={() => handleSelectWorkflow(workflow.id)}
+        onClick={(e) => handleSelectWorkflow(workflow, e)}
       >
         <div className="workflow-card-header">
           <h4>{workflow.name}</h4>

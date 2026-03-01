@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
+import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
 import { autoLayoutFlowchart } from '../utils/canvas'
 import type { WorkflowSummary, FlowNode, WorkflowAnalysis, Workflow } from '../types'
@@ -9,6 +10,7 @@ type BrowserTab = 'mine' | 'published' | 'peer_review'
 
 export default function LibraryPage() {
     const { setCurrentWorkflow, setFlowchart, setAnalysis } = useWorkflowStore()
+    const { setZoomingCard, setZoomPhase } = useUIStore()
 
     const [activeTab, setActiveTab] = useState<BrowserTab>('mine')
     const [myWorkflows, setMyWorkflows] = useState<WorkflowSummary[]>([])
@@ -51,9 +53,20 @@ export default function LibraryPage() {
     }
 
     // Handle workflow selection - open in workflow page
-    const handleSelect = useCallback(async (workflowId: string) => {
+    const handleSelect = useCallback(async (workflowSummary: WorkflowSummary, e: React.MouseEvent) => {
         try {
-            const data: any = await getWorkflow(workflowId)
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            setZoomingCard({
+                id: workflowSummary.id,
+                title: workflowSummary.name,
+                rect
+            })
+
+            // Wait for BOTH the 100ms UI expansion AND the network fetch to complete
+            const [data] = await Promise.all([
+                getWorkflow(workflowSummary.id) as Promise<any>,
+                new Promise(resolve => setTimeout(resolve, 100))
+            ])
 
             const workflow: Workflow = {
                 id: data.id,
@@ -103,10 +116,16 @@ export default function LibraryPage() {
 
             // Navigate to workflow
             window.location.hash = '#/workflow'
+
+            // Small delay to let the Router mount WorkflowPage
+            // before triggering the fade out and sidebar slide in
+            setTimeout(() => {
+                setZoomPhase('fading')
+            }, 50)
         } catch (err) {
             console.error('Failed to open workflow:', err)
         }
-    }, [setCurrentWorkflow, setFlowchart, setAnalysis])
+    }, [setCurrentWorkflow, setFlowchart, setAnalysis, setZoomingCard, setZoomPhase])
 
     // Handle delete
     const handleDelete = useCallback(async (id: string) => {
@@ -207,7 +226,7 @@ export default function LibraryPage() {
                 ) : (
                     <div className="library-grid">
                         {workflows.map(wf => (
-                            <div key={wf.id} className="library-card" onClick={() => handleSelect(wf.id)}>
+                            <div key={wf.id} className="library-card" onClick={(e) => handleSelect(wf, e)}>
                                 <div className="library-card-header">
                                     <h3 className="library-card-name">{wf.name}</h3>
                                     {activeTab === 'mine' && (
