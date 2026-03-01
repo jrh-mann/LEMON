@@ -14,6 +14,7 @@ from ..mcp_bridge.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .orchestrator_config import build_system_prompt, tool_descriptions
 from ..utils.cancellation import CancellationError
+from ..validation.workflow_validator import WorkflowValidator
 
 
 @dataclass
@@ -272,6 +273,9 @@ class Orchestrator:
         if result.success:
             if tool_name in WORKFLOW_EDIT_TOOLS:
                 self._update_workflow_from_tool_result(tool_name, result.data)
+                # Post-tool structural validation (non-strict: workflow is still being built).
+                # Hard-fail so the LLM sees the error and can call corrective tools.
+                result = self._post_tool_validate(result)
 
             # Update workflow_analysis if this was a successful input management tool
             if tool_name in WORKFLOW_INPUT_TOOLS:
@@ -385,6 +389,48 @@ class Orchestrator:
             if new_workflow:
                 self.workflow["nodes"] = new_workflow.get("nodes", [])
                 self.workflow["edges"] = new_workflow.get("edges", [])
+
+    # Shared validator instance for post-tool checks (non-strict).
+    _workflow_validator = WorkflowValidator()
+
+    def _post_tool_validate(self, result: ToolResult) -> ToolResult:
+        """Validate current workflow state after a WORKFLOW_EDIT_TOOL succeeds.
+
+        Uses ``strict=False`` because the workflow is still being built
+        incrementally — we only check invariants that should never be
+        violated: no self-loops, no duplicate IDs, valid node types,
+        valid edge references, no cycles.
+
+        Returns the original *result* if valid, or a new failed
+        ``ToolResult`` if validation errors are found (triggers the
+        orchestrator's existing retry mechanism).
+        """
+        nodes = self.workflow.get("nodes", [])
+        if not nodes:
+            # Nothing to validate yet
+            return result
+
+        # Build a minimal workflow dict for the validator
+        workflow_dict = {
+            "nodes": nodes,
+            "edges": self.workflow.get("edges", []),
+            "variables": self.workflow.get("inputs", []),
+        }
+        is_valid, errors = self._workflow_validator.validate(workflow_dict, strict=False)
+        if is_valid:
+            return result
+
+        error_text = "; ".join(f"[{e.code}] {e.message}" for e in errors)
+        self._logger.warning(
+            "Post-tool validation failed (%d errors): %s", len(errors), error_text,
+        )
+        return ToolResult(
+            tool=result.tool,
+            data={**result.data, "success": False, "error": error_text},
+            success=False,
+            message="",
+            error=f"Workflow validation failed after tool execution: {error_text}",
+        )
 
     def _update_analysis_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
         """Update workflow metadata based on successful input tool execution.
