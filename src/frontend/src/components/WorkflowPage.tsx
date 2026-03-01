@@ -22,7 +22,17 @@ import '../styles/HomePage.css'
 
 export default function WorkflowPage() {
     const [authReady, setAuthReady] = useState(false)
-    const { error, clearError, chatHeight, setError, workspaceRevealed, revealWorkspace } = useUIStore()
+    // State
+    const {
+        workspaceRevealed,
+        revealWorkspace,
+        isTransitioning,
+        setIsTransitioning,
+        chatHeight,
+        setError,
+        error,
+        clearError
+    } = useUIStore()
     const { setCurrentWorkflow, setFlowchart, setAnalysis, setPendingImage } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
@@ -33,7 +43,7 @@ export default function WorkflowPage() {
     const homeFileInputRef = useRef<HTMLInputElement>(null)
 
     // Track transition state for animations
-    const [isTransitioning, setIsTransitioning] = useState(false)
+    // const [isTransitioning, setIsTransitioning] = useState(false) // Removed as per instruction
 
     // Initialize session and socket connection
     useSession(authReady)
@@ -67,7 +77,9 @@ export default function WorkflowPage() {
         if (loadedWorkflowIdRef.current === workflowId) return
 
         // If loading a specific workflow, reveal workspace immediately
-        if (!workspaceRevealed) {
+        // BUT ONLY if we aren't currently transitioning from a card click
+        const { zoomingCard } = useUIStore.getState()
+        if (!workspaceRevealed && !zoomingCard) {
             revealWorkspace()
         }
 
@@ -122,7 +134,7 @@ export default function WorkflowPage() {
         revealWorkspace()
         // Clear transition state after animation completes
         setTimeout(() => setIsTransitioning(false), 500)
-    }, [revealWorkspace])
+    }, [revealWorkspace, setIsTransitioning])
 
     // Home chatbox: send message and trigger transition
     const handleHomeSend = useCallback(async () => {
