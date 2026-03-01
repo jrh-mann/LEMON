@@ -157,6 +157,8 @@ by recomputing them deterministically from name + type. Respond only with the up
         }
         # guidance is populated for initial analysis only (not follow-ups)
         guidance: List[Dict[str, Any]] = []
+        # Image dimensions for coordinate mapping (set during initial analysis)
+        img_w, img_h = 0, 0
 
         wants_json = _wants_json(feedback or "")
         if is_followup:
