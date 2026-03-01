@@ -934,20 +934,21 @@ export default function Canvas() {
 
     return (
       <g key={`${edge.from}-${edge.to}`} className={edgeClassNames} onClick={handleEdgeClick} style={{ cursor: 'pointer' }}>
-        {/* Invisible wider path for easier clicking - increased from 12 to 20 */}
+        {/* Invisible wider path for easier clicking - increased from 20 to 40 */}
         <path
           d={path}
           fill="none"
           stroke="transparent"
-          strokeWidth={20}
+          strokeWidth={40}
           style={{ cursor: 'pointer' }}
         />
         {/* Visible edge line - increased stroke width for better visibility */}
         <path
+          className="edge-visible"
           d={path}
           fill="none"
           stroke={isSelected ? 'var(--accent)' : 'var(--ink)'}
-          strokeWidth={isSelected ? 3 : 2}
+          strokeWidth={isSelected ? 6 : 4}
           markerEnd="url(#arrowhead)"
         />
         {/* Show label for decision edges, or any edge with a label */}
@@ -1396,23 +1397,25 @@ export default function Canvas() {
           <defs>
             <marker
               id="arrowhead"
-              markerWidth="10"
-              markerHeight="7"
-              refX="10"
-              refY="3.5"
+              markerUnits="userSpaceOnUse"
+              markerWidth="20"
+              markerHeight="14"
+              refX="18"
+              refY="7"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="var(--ink)" />
+              <polygon points="0 0, 20 7, 0 14" fill="var(--ink)" />
             </marker>
             <marker
               id="arrowhead-preview"
-              markerWidth="10"
-              markerHeight="7"
-              refX="10"
-              refY="3.5"
+              markerUnits="userSpaceOnUse"
+              markerWidth="20"
+              markerHeight="14"
+              refX="18"
+              refY="7"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="var(--teal)" />
+              <polygon points="0 0, 20 7, 0 14" fill="var(--teal)" />
             </marker>
           </defs>
 
@@ -1429,11 +1432,12 @@ export default function Canvas() {
           {/* Preview edge during drag connection */}
           {dragConnection && (
             <path
+              className="edge-visible"
               d={`M ${dragConnection.startX} ${dragConnection.startY} L ${dragConnection.currentX} ${dragConnection.currentY}`}
               fill="none"
               stroke="var(--teal)"
-              strokeWidth={2}
-              strokeDasharray="5,5"
+              strokeWidth={4}
+              strokeDasharray="8,8"
               markerEnd="url(#arrowhead-preview)"
               style={{ pointerEvents: 'none' }}
             />

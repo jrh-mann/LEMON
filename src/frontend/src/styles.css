@@ -2456,6 +2456,7 @@ body {
   line-height: 1.5;
   color: var(--ink-light, #6b7280);
 }
+
 .thinking-label {
   font-size: 10px;
   font-weight: 600;
@@ -2464,6 +2465,7 @@ body {
   margin-bottom: 4px;
   display: block;
 }
+
 .thinking-text {
   white-space: pre-wrap;
   word-break: break-word;
@@ -2802,7 +2804,7 @@ body {
   cursor: pointer;
 }
 
-.flow-edge path {
+.flow-edge .edge-visible {
   transition: stroke 0.2s ease, stroke-width 0.2s ease;
 }
 
@@ -2810,14 +2812,16 @@ body {
   pointer-events: stroke;
 }
 
-.flow-edge:hover path {
+/* Debounce rapid hover flashes by adding a delay to the transition */
+.flow-edge:hover .edge-visible {
   stroke: var(--teal);
-  stroke-width: 3;
+  stroke-width: 8;
+  transition-delay: 0.1s;
 }
 
-.flow-edge.selected path {
+.flow-edge.selected .edge-visible {
   stroke: var(--teal);
-  stroke-width: 3.5;
+  stroke-width: 9;
 }
 
 /* Edge labels */
@@ -5064,14 +5068,14 @@ button.primary.warning:hover {
 }
 
 /* Edge that is currently being traversed */
-.flow-edge.executing path {
-  stroke: var(--teal) !important;
+.flow-edge.executing .edge-visible {
+  stroke: var(--amber) !important;
   stroke-width: 3px;
   animation: edgeFlow 0.6s linear infinite;
 }
 
 /* Edge that has been traversed - part of execution trail */
-.flow-edge.executed path {
+.flow-edge.executed .edge-visible {
   stroke: var(--green) !important;
   stroke-width: 2.5px;
 }
