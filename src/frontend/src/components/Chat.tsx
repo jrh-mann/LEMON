@@ -38,8 +38,11 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
 
   const { chatHeight, setChatHeight } = useUIStore()
 
-  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive
+  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
+  // Tracks whether the user has scrolled up inside the thinking container so we
+  // stop snapping to the bottom while they're reading earlier reasoning.
   const thinkingRef = useRef<HTMLDivElement>(null)
+  const isThinkingScrolledUp = useRef(false)
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -109,12 +112,28 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }, [isStreaming, scrollToBottom])
 
-  // Auto-scroll the thinking stream container to bottom when new chunks arrive
+  // Auto-scroll the thinking stream container to bottom when new chunks arrive,
+  // but only if the user hasn't scrolled up to read earlier reasoning.
   useEffect(() => {
-    if (thinkingRef.current) {
+    if (thinkingRef.current && !isThinkingScrolledUp.current) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
     }
   }, [thinkingContent])
+
+  // Reset the scroll-up flag when thinking content is cleared (analysis finished)
+  useEffect(() => {
+    if (!thinkingContent) {
+      isThinkingScrolledUp.current = false
+    }
+  }, [thinkingContent])
+
+  // Detect manual scroll inside the thinking stream container
+  const handleThinkingScroll = useCallback(() => {
+    const el = thinkingRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
+    isThinkingScrolledUp.current = !atBottom
+  }, [])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -266,7 +285,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                     </span>
                   )}
                   {thinkingContent && (
-                    <div className="thinking-stream" ref={thinkingRef}>
+                    <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
                       <span className="thinking-label">Reasoning</span>
                       <div className="thinking-text">{thinkingContent}</div>
                     </div>
@@ -279,7 +298,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                     {processingStatus}
                   </span>
                   {thinkingContent && (
-                    <div className="thinking-stream" ref={thinkingRef}>
+                    <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
                       <span className="thinking-label">Reasoning</span>
                       <div className="thinking-text">{thinkingContent}</div>
                     </div>
