@@ -114,6 +114,13 @@ Rules:
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
 - Input "name" should be canonical and reusable (short snake_case concept), not a long sentence.
   Example: "A1c after metformin" -> "a1c_after_metformin".
+- PREFER numeric/float variables with threshold comparators over pre-baked booleans.
+  When a diagram says "Is A1c > 58?" or "A1c controlled?", model the variable as
+  {"id": "input_a1c_float", "name": "a1c", "type": "float"} and the decision condition as
+  {"input_id": "input_a1c_float", "comparator": "gt", "value": 58}.
+  Do NOT create a boolean like "a1c_controlled: bool" — use the raw measurable value.
+  Only use type "bool" for genuinely binary clinical facts (e.g., "metformin_tolerated",
+  "admission_required") that have no underlying numeric threshold.
 - If a decision/action depends on one or more inputs, include "input_ids" on that node
   referencing the input ids.
 - Every DECISION node MUST include a structured "condition" object:
@@ -130,7 +137,13 @@ Rules:
   - Allowed node types: start, decision, action, output.
   - Only decision nodes may have multiple children. Action/start nodes must have at most one child. Outputs have no children.
   - Outputs MUST be leaf nodes (no children).
+  - Every leaf node (no children) MUST have type "output". If a terminal step looks
+    like an action (e.g., "Continue metformin"), it is still an output because it is
+    the final recommendation of that branch.
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
+- Output node labels MUST be specific and distinguishable. Use the exact treatment/outcome
+  text from the diagram. Do NOT generalize to vague labels like "Continue current treatment" —
+  each output should have a unique, clinically actionable label.
 - Every node id must be unique across the tree.
 - For all questions inside the "doubts" array, you MUST provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
 - CRITICAL: The question text MUST be self-contained and descriptive. It should be understandable even without seeing the exact dot location. Reference surrounding text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node represent?" instead of "What is this?").

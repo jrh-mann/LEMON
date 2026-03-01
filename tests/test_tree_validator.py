@@ -40,8 +40,8 @@ def _valid_decision_node(**overrides):
         "condition": {"input_id": "age", "comparator": "gte"},
         "children": [
             {
-                "id": "action_true",
-                "type": "action",
+                "id": "output_true",
+                "type": "output",
                 "label": "Approve",
                 "edge_label": "true",
                 "children": [],
@@ -198,7 +198,7 @@ class TestTreeValidator:
 
     def test_decision_one_child(self):
         decision = _valid_decision_node(
-            children=[{"id": "a1", "type": "action", "label": "Only child", "edge_label": "true", "children": []}]
+            children=[{"id": "o1", "type": "output", "label": "Only child", "edge_label": "true", "children": []}]
         )
         start = _valid_start_node(children=[decision])
         ok, errors = self.validator.validate(_make_analysis(tree_start=start))
@@ -208,9 +208,9 @@ class TestTreeValidator:
     def test_decision_three_children(self):
         decision = _valid_decision_node(
             children=[
-                {"id": "a1", "type": "action", "label": "C1", "edge_label": "true", "children": []},
-                {"id": "a2", "type": "action", "label": "C2", "edge_label": "false", "children": []},
-                {"id": "a3", "type": "action", "label": "C3", "edge_label": "maybe", "children": []},
+                {"id": "o1", "type": "output", "label": "C1", "edge_label": "true", "children": []},
+                {"id": "o2", "type": "output", "label": "C2", "edge_label": "false", "children": []},
+                {"id": "o3", "type": "output", "label": "C3", "edge_label": "maybe", "children": []},
             ]
         )
         start = _valid_start_node(children=[decision])
@@ -223,8 +223,8 @@ class TestTreeValidator:
     def test_decision_wrong_edge_labels(self):
         decision = _valid_decision_node(
             children=[
-                {"id": "a1", "type": "action", "label": "Yes", "edge_label": "yes", "children": []},
-                {"id": "a2", "type": "action", "label": "No", "edge_label": "no", "children": []},
+                {"id": "o1", "type": "output", "label": "Yes", "edge_label": "yes", "children": []},
+                {"id": "o2", "type": "output", "label": "No", "edge_label": "no", "children": []},
             ]
         )
         start = _valid_start_node(children=[decision])
@@ -236,8 +236,8 @@ class TestTreeValidator:
         """'True'/'False' (capitalised) should pass."""
         decision = _valid_decision_node(
             children=[
-                {"id": "a1", "type": "action", "label": "Yes", "edge_label": "True", "children": []},
-                {"id": "a2", "type": "action", "label": "No", "edge_label": "False", "children": []},
+                {"id": "o1", "type": "output", "label": "Yes", "edge_label": "True", "children": []},
+                {"id": "o2", "type": "output", "label": "No", "edge_label": "False", "children": []},
             ]
         )
         start = _valid_start_node(children=[decision])
@@ -273,7 +273,7 @@ class TestTreeValidator:
 
     def test_output_has_children(self):
         output = _valid_output_node(
-            children=[{"id": "c1", "type": "action", "label": "Orphan", "children": []}]
+            children=[{"id": "c1", "type": "output", "label": "Orphan", "children": []}]
         )
         start = _valid_start_node(children=[output])
         ok, errors = self.validator.validate(_make_analysis(tree_start=start))
@@ -345,6 +345,34 @@ class TestTreeValidator:
         )
         ok, errors = self.validator.validate(analysis)
         assert not any(e.code == "INVALID_INPUT_REFERENCE" for e in errors)
+
+    # --- LEAF_NOT_OUTPUT ---
+
+    def test_leaf_action_flagged(self):
+        """An action node with no children should be flagged as LEAF_NOT_OUTPUT."""
+        leaf_action = {"id": "act_1", "type": "action", "label": "Continue metformin", "children": []}
+        start = _valid_start_node(children=[leaf_action])
+        ok, errors = self.validator.validate(_make_analysis(tree_start=start))
+        assert ok is False
+        assert any(e.code == "LEAF_NOT_OUTPUT" for e in errors)
+
+    def test_action_with_child_not_flagged(self):
+        """An action node that has a child is NOT a leaf — no LEAF_NOT_OUTPUT."""
+        action = {
+            "id": "act_1",
+            "type": "action",
+            "label": "Do thing",
+            "children": [_valid_output_node()],
+        }
+        start = _valid_start_node(children=[action])
+        ok, errors = self.validator.validate(_make_analysis(tree_start=start))
+        assert not any(e.code == "LEAF_NOT_OUTPUT" for e in errors)
+
+    def test_output_leaf_not_flagged(self):
+        """Output nodes that are leaves are correct — no LEAF_NOT_OUTPUT."""
+        start = _valid_start_node(children=[_valid_output_node()])
+        ok, errors = self.validator.validate(_make_analysis(tree_start=start))
+        assert not any(e.code == "LEAF_NOT_OUTPUT" for e in errors)
 
     # --- Combined errors ---
 

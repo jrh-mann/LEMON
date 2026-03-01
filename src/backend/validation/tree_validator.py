@@ -96,6 +96,7 @@ class TreeValidator:
         "OUTPUT_HAS_CHILDREN": "Output nodes are leaf nodes — remove the \"children\" array or set it to [].",
         "ACTION_MULTIPLE_CHILDREN": "Action and start nodes can have at most 1 child. If the flow branches, use a decision node instead.",
         "INVALID_INPUT_REFERENCE": "The condition's \"input_id\" must match an id or name from the variables list.",
+        "LEAF_NOT_OUTPUT": "Leaf nodes (no children) must have type \"output\". If a terminal step looks like an action, change its type to \"output\".",
     }
 
     @staticmethod
@@ -193,6 +194,17 @@ class TreeValidator:
             self._validate_output(node, children, errors)
         elif node_type in ("action", "start"):
             self._validate_single_child(node, children, errors)
+
+        # --- LEAF_NOT_OUTPUT: action nodes with no children should be output ---
+        if node_type == "action" and not children:
+            errors.append(
+                ValidationError(
+                    code="LEAF_NOT_OUTPUT",
+                    message=f"Node '{node_id}' is a leaf (no children) but has type "
+                    f"'action'. Leaf nodes must have type 'output'.",
+                    node_id=node_id if isinstance(node_id, str) else None,
+                )
+            )
 
         # Recurse into children
         for child in children:
