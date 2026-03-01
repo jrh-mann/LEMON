@@ -47,6 +47,11 @@ interface UIState {
 
   // Workspace reveal (home -> workflow transition)
   workspaceRevealed: boolean
+  isTransitioning: boolean
+
+  // Zooming card transition
+  zoomingCard: { id: string, rect: DOMRect, title: string } | null
+  zoomPhase: 'idle' | 'expanding' | 'fading'
 
   // Actions
   setStage: (stage: Stage) => void
@@ -83,6 +88,11 @@ interface UIState {
 
   // Workspace reveal
   revealWorkspace: () => void
+  setIsTransitioning: (transitioning: boolean) => void
+
+  // Set zooming card
+  setZoomingCard: (card: { id: string, rect: DOMRect, title: string } | null) => void
+  setZoomPhase: (phase: 'idle' | 'expanding' | 'fading') => void
 
   // Reset
   reset: () => void
@@ -111,6 +121,9 @@ export const useUIStore = create<UIState>((set) => ({
   trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
   executionLogModalOpen: false,
   workspaceRevealed: false,
+  isTransitioning: false,
+  zoomingCard: null,
+  zoomPhase: 'idle',
 
   // Actions
   setStage: (stage) => set({ stage }),
@@ -189,6 +202,10 @@ export const useUIStore = create<UIState>((set) => ({
 
   // Workspace reveal
   revealWorkspace: () => set({ workspaceRevealed: true }),
+  setIsTransitioning: (transitioning) => set({ isTransitioning: transitioning }),
+
+  setZoomingCard: (card) => set({ zoomingCard: card }),
+  setZoomPhase: (phase) => set({ zoomPhase: phase }),
 
   // Reset
   reset: () =>
@@ -206,5 +223,8 @@ export const useUIStore = create<UIState>((set) => ({
       panY: 0,
       chatHeight: 280,
       workspaceRevealed: false,
+      isTransitioning: false,
+      zoomingCard: null,
+      zoomPhase: 'idle',
     }),
 }))

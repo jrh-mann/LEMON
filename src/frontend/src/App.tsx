@@ -6,6 +6,7 @@ import Header from './components/Header'
 import WorkflowPage from './components/WorkflowPage'
 import LibraryPage from './components/LibraryPage'
 import ExportPage from './components/ExportPage'
+import WorkflowTransitionLayer from './components/WorkflowTransitionLayer'
 
 type Route = 'auth' | 'workflow' | 'library' | 'export'
 
@@ -47,6 +48,7 @@ function App() {
           {route === 'export' && <ExportPage />}
         </div>
       )}
+      <WorkflowTransitionLayer />
     </>
   )
 }
