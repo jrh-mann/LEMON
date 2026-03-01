@@ -67,6 +67,7 @@ class AnalyzeWorkflowTool(Tool):
         stream = kwargs.get("stream")
         should_cancel = kwargs.get("should_cancel")
         on_progress = kwargs.get("on_progress")
+        on_thinking = kwargs.get("on_thinking")
         session_state = kwargs.get("session_state") or {}
         session_id = args.get("session_id")
         feedback = args.get("feedback")
@@ -79,17 +80,17 @@ class AnalyzeWorkflowTool(Tool):
 
         # Path 1: Follow-up on existing session (unchanged)
         if session_id:
-            return self._analyze_followup(session_id, feedback, stream, should_cancel)
+            return self._analyze_followup(session_id, feedback, stream, should_cancel, on_thinking=on_thinking)
 
         # Path 2: Multi-file analysis with classifications
         if file_classifications and uploaded_files:
             return self._analyze_multi_file(
                 uploaded_files, file_classifications, stream, should_cancel,
-                on_progress=on_progress, relationship=relationship,
+                on_progress=on_progress, relationship=relationship, on_thinking=on_thinking,
             )
 
         # Path 3: Single file analysis (existing behaviour)
-        return self._analyze_single_file(stream, should_cancel)
+        return self._analyze_single_file(stream, should_cancel, on_thinking=on_thinking)
 
     def _analyze_followup(
         self,
@@ -97,6 +98,7 @@ class AnalyzeWorkflowTool(Tool):
         feedback: Optional[str],
         stream: Any,
         should_cancel: Any,
+        on_thinking: Any = None,
     ) -> Dict[str, Any]:
         """Continue a prior analysis session with feedback."""
         if not feedback:
@@ -120,6 +122,7 @@ class AnalyzeWorkflowTool(Tool):
             annotations=annotations or None,
             stream=stream,
             should_cancel=should_cancel,
+            on_thinking=on_thinking,
         )
         return self._build_response(session_id, data)
 
@@ -127,6 +130,7 @@ class AnalyzeWorkflowTool(Tool):
         self,
         stream: Any,
         should_cancel: Any,
+        on_thinking: Any = None,
     ) -> Dict[str, Any]:
         """Analyze the most recently uploaded file (single file flow)."""
         file_name = self._latest_uploaded_file()
@@ -150,6 +154,7 @@ class AnalyzeWorkflowTool(Tool):
             annotations=annotations or None,
             stream=stream,
             should_cancel=should_cancel,
+            on_thinking=on_thinking,
         )
         return self._build_response(session_id, data)
 
@@ -161,6 +166,7 @@ class AnalyzeWorkflowTool(Tool):
         should_cancel: Any,
         on_progress: Any = None,
         relationship: Optional[str] = None,
+        on_thinking: Any = None,
     ) -> Dict[str, Any]:
         """Analyze multiple files with classification-aware two-phase ordering.
 
@@ -218,6 +224,7 @@ class AnalyzeWorkflowTool(Tool):
             should_cancel=should_cancel,
             on_progress=on_progress,
             relationship=relationship,
+            on_thinking=on_thinking,
         )
         return self._build_response(session_id, data)
 

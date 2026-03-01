@@ -171,6 +171,14 @@ class SocketChatTask:
             return
         if event == "tool_start":
             self.executed_tools.append({"tool": tool, "arguments": args})
+        # Stream LLM thinking chunks to the frontend during analysis
+        if event == "tool_thinking" and tool == "analyze_workflow":
+            chunk = args.get("chunk", "")
+            if chunk:
+                self.socketio.emit(
+                    "chat_thinking", {"chunk": chunk, "task_id": self.task_id}, to=self.sid,
+                )
+            return
         if tool == "analyze_workflow":
             if event == "tool_progress":
                 # Phase-specific progress from the subagent (e.g., "Extracting guidance (1/2)...")

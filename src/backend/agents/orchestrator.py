@@ -213,6 +213,7 @@ class Orchestrator:
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
         on_progress: Optional[Callable[[str], None]] = None,
+        on_thinking: Optional[Callable[[str], None]] = None,
     ) -> ToolResult:
         self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
         self._tool_logger.info(
@@ -257,6 +258,7 @@ class Orchestrator:
                 stream=stream,
                 should_cancel=should_cancel,
                 on_progress=on_progress,
+                on_thinking=on_thinking,
                 session_state=session_state,
             )
         result = self._normalize_tool_result(tool_name, data)
@@ -596,9 +598,14 @@ class Orchestrator:
                         if on_tool_event:
                             on_tool_event("tool_progress", tool_name, {"status": status}, None)
 
+                    # Forward LLM thinking chunks to the frontend via on_tool_event
+                    def _on_thinking(chunk: str) -> None:
+                        if on_tool_event:
+                            on_tool_event("tool_thinking", tool_name, {"chunk": chunk}, None)
+
                     result = self.run_tool(
                         tool_name, args, stream=None, should_cancel=should_cancel,
-                        on_progress=_on_progress,
+                        on_progress=_on_progress, on_thinking=_on_thinking,
                     )
                     session_id = result.data.get("session_id")
                     if session_id:

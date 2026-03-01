@@ -56,6 +56,7 @@ class Subagent:
         annotations: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
+        on_thinking: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """Analyze a workflow image and return a JSON report."""
         self._logger.info(
@@ -236,11 +237,14 @@ by recomputing them deterministically from name + type. Respond only with the up
             }
         messages = [system_msg, *history_messages, user_msg]
 
-        # Collect extended thinking from the LLM to use as reasoning context
+        # Collect extended thinking from the LLM to use as reasoning context.
+        # Forward each chunk to the caller for real-time streaming if a callback is provided.
         thinking_parts: List[str] = []
 
-        def on_thinking(chunk: str) -> None:
+        def _on_thinking_chunk(chunk: str) -> None:
             thinking_parts.append(chunk)
+            if on_thinking:
+                on_thinking(chunk)
 
         llm_start = time.perf_counter()
         force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
@@ -270,7 +274,7 @@ by recomputing them deterministically from name + type. Respond only with the up
                 request_tag="analyze_stream",
                 should_cancel=should_cancel,
                 thinking_budget=10000,
-                on_thinking=on_thinking,
+                on_thinking=_on_thinking_chunk,
             ).strip()
         else:
             raw = call_llm(
@@ -281,7 +285,7 @@ by recomputing them deterministically from name + type. Respond only with the up
                 request_tag="analyze",
                 should_cancel=should_cancel,
                 thinking_budget=10000,
-                on_thinking=on_thinking,
+                on_thinking=_on_thinking_chunk,
             ).strip()
         llm_ms = (time.perf_counter() - llm_start) * 1000
         self._logger.info("LLM call complete session_id=%s ms=%.1f", session_id, llm_ms)
@@ -341,6 +345,7 @@ by recomputing them deterministically from name + type. Respond only with the up
         should_cancel: Optional[Callable[[], bool]] = None,
         on_progress: Optional[Callable[[str], None]] = None,
         relationship: Optional[str] = None,
+        on_thinking: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """Two-phase multi-file analysis: guidance collection, then tree analysis.
 
@@ -498,11 +503,13 @@ Rules:
             {"role": "user", "content": content_blocks},
         ]
 
-        # Collect extended thinking
+        # Collect extended thinking and forward chunks to caller for real-time streaming
         thinking_parts: List[str] = []
 
-        def on_thinking(chunk: str) -> None:
+        def _on_thinking_chunk(chunk: str) -> None:
             thinking_parts.append(chunk)
+            if on_thinking:
+                on_thinking(chunk)
 
         force_stream = os.environ.get("LEMON_SUBAGENT_STREAM", "").lower() in {"1", "true", "yes"}
         should_stream = stream is not None or force_stream
@@ -523,7 +530,7 @@ Rules:
                 request_tag="analyze_multi_stream",
                 should_cancel=should_cancel,
                 thinking_budget=10000,
-                on_thinking=on_thinking,
+                on_thinking=_on_thinking_chunk,
             ).strip()
         else:
             raw = call_llm(
@@ -534,7 +541,7 @@ Rules:
                 request_tag="analyze_multi",
                 should_cancel=should_cancel,
                 thinking_budget=10000,
-                on_thinking=on_thinking,
+                on_thinking=_on_thinking_chunk,
             ).strip()
 
         if is_cancelled():

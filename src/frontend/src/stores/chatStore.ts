@@ -17,6 +17,9 @@ interface ChatState {
   // Processing status (what the orchestrator is currently doing)
   processingStatus: string | null
 
+  // Live reasoning stream from LLM extended thinking
+  thinkingContent: string
+
   // Agent interaction
   pendingQuestion: string | null
   taskId: string | null
@@ -40,6 +43,10 @@ interface ChatState {
 
   // Processing status
   setProcessingStatus: (status: string | null) => void
+
+  // Thinking stream
+  appendThinkingContent: (content: string) => void
+  clearThinkingContent: () => void
 
   // Agent
   setPendingQuestion: (question: string | null, taskId?: string | null) => void
@@ -78,6 +85,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentTaskId: null,
   cancelledTaskIds: {},
   processingStatus: null,
+  thinkingContent: '',
   pendingQuestion: null,
   taskId: null,
   // Actions
@@ -161,11 +169,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (content) {
       addAssistantMessage(content)
     }
-    set({ streamingContent: '', isStreaming: false, processingStatus: null })
+    set({ streamingContent: '', isStreaming: false, processingStatus: null, thinkingContent: '' })
   },
 
-  // Processing status
-  setProcessingStatus: (status) => set({ processingStatus: status }),
+  // Processing status — clear thinking content when processing ends
+  setProcessingStatus: (status) => set(status === null
+    ? { processingStatus: null, thinkingContent: '' }
+    : { processingStatus: status }),
+
+  // Thinking stream
+  appendThinkingContent: (content) =>
+    set((state) => ({ thinkingContent: state.thinkingContent + content })),
+  clearThinkingContent: () => set({ thinkingContent: '' }),
 
   // Agent
   setPendingQuestion: (question, taskId = null) =>
@@ -201,6 +216,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       currentTaskId: null,
       processingStatus: null,
+      thinkingContent: '',
       pendingQuestion: null,
       taskId: null,
     }),
@@ -215,6 +231,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentTaskId: null,
       cancelledTaskIds: {},
       processingStatus: null,
+      thinkingContent: '',
       pendingQuestion: null,
       taskId: null,
     }),

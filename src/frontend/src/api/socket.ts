@@ -96,6 +96,16 @@ export function connectSocket(): Socket {
     }
   })
 
+  // LLM reasoning/thinking chunks streamed during analysis
+  socket.on('chat_thinking', (data: { chunk: string; task_id?: string }) => {
+    const chatStore = useChatStore.getState()
+    if (data.task_id) {
+      if (chatStore.isTaskCancelled(data.task_id)) return
+      if (chatStore.currentTaskId && data.task_id !== chatStore.currentTaskId) return
+    }
+    chatStore.appendThinkingContent(data.chunk || '')
+  })
+
   // Chat response
   socket.on('chat_response', (data: SocketChatResponse) => {
     console.log('[Socket] chat_response:', data)

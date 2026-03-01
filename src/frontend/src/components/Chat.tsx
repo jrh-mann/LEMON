@@ -21,6 +21,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     isStreaming,
     streamingContent,
     processingStatus,
+    thinkingContent,
     currentTaskId,
     pendingQuestion,
     sendUserMessage,
@@ -36,6 +37,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   } = useWorkflowStore()
 
   const { chatHeight, setChatHeight } = useUIStore()
+
+  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive
+  const thinkingRef = useRef<HTMLDivElement>(null)
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -104,6 +108,13 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       scrollToBottom()
     }
   }, [isStreaming, scrollToBottom])
+
+  // Auto-scroll the thinking stream container to bottom when new chunks arrive
+  useEffect(() => {
+    if (thinkingRef.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
+    }
+  }, [thinkingContent])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -254,12 +265,26 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                       {processingStatus}
                     </span>
                   )}
+                  {thinkingContent && (
+                    <div className="thinking-stream" ref={thinkingRef}>
+                      <span className="thinking-label">Reasoning</span>
+                      <div className="thinking-text">{thinkingContent}</div>
+                    </div>
+                  )}
                 </>
               ) : processingStatus ? (
-                <span className="processing-status">
-                  <span className="status-dot"></span>
-                  {processingStatus}
-                </span>
+                <>
+                  <span className="processing-status">
+                    <span className="status-dot"></span>
+                    {processingStatus}
+                  </span>
+                  {thinkingContent && (
+                    <div className="thinking-stream" ref={thinkingRef}>
+                      <span className="thinking-label">Reasoning</span>
+                      <div className="thinking-text">{thinkingContent}</div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <span className="typing-indicator">
                   <span></span>
