@@ -256,14 +256,8 @@ by recomputing them deterministically from name + type. Respond only with the up
 
             # Inject extracted guidance into the analysis prompt
             if guidance:
-                lines = [
-                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
-                    for g in guidance
-                ]
-                full_prompt += (
-                    "\n\n## Side Information Found in Image\n"
-                    "The following notes and annotations were found alongside the flowchart. "
-                    "Use them to inform your analysis:\n" + "\n".join(lines)
+                full_prompt += _format_guidance(
+                    guidance, header="Side Information Found in Image"
                 )
 
             user_msg = {
@@ -532,14 +526,9 @@ Rules:
 
         # Inject accumulated guidance into the prompt
         if all_guidance:
-            lines = [
-                f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
-                for g in all_guidance
-            ]
-            multi_prompt += (
-                "\n\n## Guidance Notes (extracted from accompanying files)\n"
-                "The following notes, definitions, and annotations were found in the guidance files. "
-                "Use them to inform your analysis of the workflow:\n" + "\n".join(lines)
+            multi_prompt += _format_guidance(
+                all_guidance,
+                header="Guidance Notes (extracted from accompanying files)",
             )
 
         content_blocks.append({"type": "text", "text": multi_prompt})
@@ -948,6 +937,48 @@ def _wants_json(feedback: str) -> bool:
         "json object",
     )
     return any(t in text for t in triggers)
+
+
+def _format_guidance(guidance: List[Dict[str, Any]], *, header: str) -> str:
+    """Format guidance items into a prompt section, splitting standalone vs linked.
+
+    Standalone items (linked_to is None) are shown as simple category/text/location
+    lines. Linked items include a reference to the flowchart node they describe.
+
+    Args:
+        guidance: List of guidance dicts with text, location, category, linked_to, link_type.
+        header: Section header text (e.g., "Side Information Found in Image").
+    """
+    if not guidance:
+        return ""
+
+    standalone = [g for g in guidance if not g.get("linked_to")]
+    linked = [g for g in guidance if g.get("linked_to")]
+
+    parts: list[str] = [f"\n\n## {header}\n"]
+
+    if standalone:
+        parts.append("The following notes and annotations provide context:\n")
+        for g in standalone:
+            parts.append(
+                f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                f'({g.get("location", "")})'
+            )
+
+    if linked:
+        parts.append(
+            "\nThe following detailed guidance panels are linked to specific "
+            "flowchart nodes:\n"
+        )
+        for g in linked:
+            link_via = f" via {g['link_type']}" if g.get("link_type") else ""
+            parts.append(
+                f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                f'({g.get("location", "")}) -> linked to node: '
+                f'"{g["linked_to"]}"{link_via}'
+            )
+
+    return "\n".join(parts)
 
 
 def _format_annotations(annotations: List[Dict[str, Any]]) -> str:

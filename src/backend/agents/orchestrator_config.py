@@ -1283,17 +1283,37 @@ def build_system_prompt(
             "made during analysis.\n\n"
             f"{reasoning}"
         )
-    # Inject guidance notes (sticky notes, annotations, legends) extracted from the image.
+    # Inject guidance notes (sticky notes, annotations, legends, linked panels)
+    # extracted from the image. Split into standalone and linked formatting.
     if guidance:
-        lines = [
-            f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
-            for g in guidance
-        ]
+        standalone = [g for g in guidance if not g.get("linked_to")]
+        linked = [g for g in guidance if g.get("linked_to")]
+
+        system += "\n\n## Image Guidance Notes\n"
         system += (
-            "\n\n## Image Guidance Notes\n"
-            "The following notes, sticky notes, and annotations were found alongside the "
-            "workflow diagram. These provide domain context and clarifications from the "
-            "original author. Use them when interpreting the workflow and answering "
-            "user questions.\n\n" + "\n".join(lines)
+            "The following notes and guidance panels were found alongside the "
+            "workflow diagram. Use them when interpreting the workflow and answering "
+            "user questions.\n\n"
         )
+
+        if standalone:
+            for g in standalone:
+                system += (
+                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                    f'({g.get("location", "")})\n'
+                )
+
+        if linked:
+            system += (
+                "\nThe following detailed guidance panels describe complex logic "
+                "for specific flowchart nodes:\n"
+            )
+            for g in linked:
+                link_via = f" via {g['link_type']}" if g.get("link_type") else ""
+                system += (
+                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                    f'({g.get("location", "")}) -> linked to node: '
+                    f'"{g["linked_to"]}"{link_via}\n'
+                )
+
     return system
