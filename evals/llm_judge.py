@@ -50,14 +50,14 @@ You are an expert workflow evaluator. Compare a **predicted workflow** against
 
 Return ONLY a JSON object:
 ```json
-{
+{{
   "decision_completeness": <0-10>,
   "variable_coverage": <0-10>,
   "output_correctness": <0-10>,
   "logical_consistency": <0-10>,
   "subworkflow_quality": <0-10>,
   "reasoning": "Brief explanation of major strengths and weaknesses."
-}
+}}
 ```
 
 ## Ground-truth logic (Python)
