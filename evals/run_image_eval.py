@@ -25,6 +25,7 @@ from src.backend.mcp_bridge.client import call_mcp_tool
 
 from evals.diagnostics import emit_diagnostics
 from evals.scoring import score_trial
+from src.backend.llm.client import call_llm
 
 
 def _repo_root() -> Path:
@@ -113,6 +114,83 @@ def _run_analysis_mcp(
     return result
 
 
+def _generate_doubt_answers(
+    doubts: List[Dict[str, Any]],
+    case_config: Dict[str, Any],
+    ground_truth_module: Any,
+) -> str:
+    """Use an LLM to answer the subagent's doubt questions using ground truth.
+
+    Returns a feedback string with answers and a trigger phrase so the
+    subagent regenerates the full JSON.
+    """
+    import inspect
+
+    questions = [
+        f"{i}. {d.get('question', str(d))}" for i, d in enumerate(doubts, 1)
+    ]
+
+    gt_source = inspect.getsource(ground_truth_module.determine_workflow_outcome)
+    node_labels = [n["label"] for n in case_config.get("canonical_expected_nodes", [])]
+    expected_outputs = case_config.get("expected_outputs", [])
+
+    prompt = (
+        "Answer these clarifying questions about a workflow diagram.\n"
+        "The correct logic is:\n\n"
+        f"```python\n{gt_source}\n```\n\n"
+        f"Decision nodes: {node_labels}\n"
+        f"Outputs: {expected_outputs}\n\n"
+        "Answer each question concisely based on the ground truth.\n"
+        'End with: "Please regenerate the full JSON with these corrections."\n\n'
+        + "\n".join(questions)
+    )
+
+    return call_llm(
+        [{"role": "user", "content": prompt}],
+        max_completion_tokens=2000,
+        caller="eval_doubt_answerer",
+        request_tag="doubt_answers",
+    )
+
+
+def _run_analysis_with_clarification(
+    *,
+    tool: AnalyzeWorkflowTool,
+    repo_root: Path,
+    image_path: Path,
+    case_id: str,
+    trial_index: int,
+    case_config: Dict[str, Any],
+    ground_truth_module: Any,
+) -> Dict[str, Any]:
+    """Multi-turn analysis: initial run, answer doubts, re-analyze.
+
+    Turn 1: standard single-shot analysis.
+    Turn 2 (if doubts exist): generate answers from ground truth, feed back
+    to the subagent so it regenerates the JSON.
+    """
+    # Turn 1: initial analysis (same as one-shot)
+    _upload_image_for_trial(repo_root, image_path, case_id, trial_index)
+    result = tool.execute({})
+
+    session_id = result.get("session_id")
+    analysis = result.get("analysis", {})
+    doubts = analysis.get("doubts", [])
+
+    if not doubts or not session_id:
+        return result  # No doubts → return as-is
+
+    # Turn 2: answer doubts and re-analyze
+    feedback = _generate_doubt_answers(doubts, case_config, ground_truth_module)
+    result2 = tool.execute({"session_id": session_id, "feedback": feedback})
+
+    # If followup returned plain text (no JSON), keep original
+    if "message" in result2 and "analysis" not in result2:
+        return result
+
+    return result2
+
+
 def _mean_metrics(score_entries: Sequence[Mapping[str, Any]]) -> Dict[str, float]:
     metric_names = [
         "node_f1",
@@ -144,6 +222,7 @@ def run_evaluation(
     run_id: str,
     emit_report: bool,
     transport: str,
+    clarify: bool = False,
 ) -> Dict[str, Any]:
     all_cases = _load_cases(repo_root)
     selected_cases = _select_cases(all_cases, cases_arg)
@@ -174,7 +253,18 @@ def run_evaluation(
                 trial_dir = results_dir / case_id / f"trial_{trial_index:02d}"
                 trial_dir.mkdir(parents=True, exist_ok=True)
 
-                if transport == "direct":
+                if clarify and transport == "direct":
+                    assert tool is not None
+                    tool_result = _run_analysis_with_clarification(
+                        tool=tool,
+                        repo_root=repo_root,
+                        image_path=image_path,
+                        case_id=case_id,
+                        trial_index=trial_index,
+                        case_config=case,
+                        ground_truth_module=ground_truth_module,
+                    )
+                elif transport == "direct":
                     assert tool is not None
                     tool_result = _run_analysis_direct(
                         tool=tool,
@@ -257,6 +347,7 @@ def run_evaluation(
             "trials_per_case": trials,
             "total_trials": len(trial_records),
             "transport": transport,
+            "clarify": clarify,
             "eval_data_dir": str(lemon_data_dir(repo_root)),
             "history_db_path": str(lemon_data_dir(repo_root) / "history.sqlite"),
             "weights": {
@@ -304,6 +395,11 @@ def main() -> None:
         default="direct",
         help="Execution transport for analyze calls: direct tool or MCP HTTP API.",
     )
+    parser.add_argument(
+        "--clarify",
+        action="store_true",
+        help="Enable multi-turn: answer subagent doubts before final scoring.",
+    )
 
     args = parser.parse_args()
 
@@ -320,6 +416,7 @@ def main() -> None:
         run_id=run_id,
         emit_report=args.emit_report,
         transport=args.transport,
+        clarify=args.clarify,
     )
 
     print(json.dumps({
