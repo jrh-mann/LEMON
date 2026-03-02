@@ -354,6 +354,23 @@ def _semantic_score(
             if pred_id:
                 runtime_inputs[pred_id] = value
 
+        # Coerce values to match predicted variable types so fuzzy-mapped
+        # inputs don't cause type errors in the interpreter.
+        var_type_map = {v.get("id"): v.get("type", "") for v in variables}
+        for vid, val in runtime_inputs.items():
+            expected_type = var_type_map.get(vid, "")
+            if expected_type == "bool" and not isinstance(val, bool):
+                runtime_inputs[vid] = bool(val)
+            elif expected_type in ("int", "float", "number") and isinstance(val, bool):
+                runtime_inputs[vid] = int(val)
+            elif expected_type in ("int", "float", "number") and isinstance(val, str):
+                try:
+                    runtime_inputs[vid] = float(val)
+                except ValueError:
+                    pass
+            elif expected_type in ("string", "enum") and not isinstance(val, str):
+                runtime_inputs[vid] = str(val)
+
         result = interpreter.execute(runtime_inputs)
         if not result.success:
             execution_failures += 1
