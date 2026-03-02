@@ -33,13 +33,29 @@ export type Comparator =
   | DateComparator
   | EnumComparator
 
-// Structured decision condition - references variables by ID
-export interface DecisionCondition {
+// Simple decision condition — references a single variable by ID
+export interface SimpleCondition {
   input_id: string       // Which workflow variable to compare (e.g., "var_age_int")
   comparator: Comparator // The comparison operator to use
-  value: unknown         // The value to compare against
+  value?: unknown        // The value to compare against
   value2?: unknown       // Second value for range comparisons (within_range, date_between)
 }
+
+// Compound condition operator
+export type ConditionOperator = 'and' | 'or'
+
+// Compound condition — combines 2+ simple conditions with AND/OR
+export interface CompoundCondition {
+  operator: ConditionOperator
+  conditions: SimpleCondition[] // Must have >= 2 entries; no nesting
+}
+
+// Union type: a condition is either simple or compound
+export type DecisionCondition = SimpleCondition | CompoundCondition
+
+// Type guard: detect compound vs simple conditions
+export const isCompoundCondition = (c: DecisionCondition): c is CompoundCondition =>
+  'operator' in c
 
 // Helper: Map input types to their valid comparators
 export const COMPARATORS_BY_TYPE: Record<InputType, Comparator[]> = {
