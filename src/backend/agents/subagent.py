@@ -145,7 +145,6 @@ Return ONLY a JSON object with this structure:
 
 Rules:
 - Use exact text from the diagram.
-- If there are no doubts, return "doubts": [].
 - Every input must include an "id" computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
 - Input "name" should be canonical and reusable (short snake_case concept), not a long sentence.
@@ -157,6 +156,12 @@ Rules:
   Do NOT create a boolean like "a1c_controlled: bool" — use the raw measurable value.
   Only use type "bool" for genuinely binary clinical facts (e.g., "metformin_tolerated",
   "admission_required") that have no underlying numeric threshold.
+- STAGE-SPECIFIC VARIABLES: When a workflow checks the SAME measurement at different
+  treatment stages (e.g., A1c checked after metformin, then after SGLT2i, then after
+  dual therapy), each check MUST use a SEPARATE input variable. For example:
+  "input_a1c_after_metformin_float", "input_a1c_after_sglt2i_float",
+  "input_a1c_after_dual_therapy_float". Each represents a distinct clinical timepoint.
+  Do NOT reuse a single variable for multiple stage-specific checks.
 - If a decision/action depends on one or more inputs, include "input_ids" on that node
   referencing the input ids.
 - Every DECISION node MUST include a structured "condition" object.
@@ -180,12 +185,30 @@ Rules:
     like an action (e.g., "Continue metformin"), it is still an output because it is
     the final recommendation of that branch.
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
-- Output node labels MUST be specific and distinguishable. Use the exact treatment/outcome
-  text from the diagram. Do NOT generalize to vague labels like "Continue current treatment" —
-  each output should have a unique, clinically actionable label.
+  - NO SUBTREE DUPLICATION: If two branches of a decision node lead to the same
+    downstream logic (same decision sequence, same outputs), you MUST NOT copy the
+    subtree. Instead, converge both branches to a shared continuation point.
+    Duplicate subtrees inflate the tree and produce wrong edge counts.
+- Output node labels MUST use the EXACT human-readable text from the diagram, verbatim.
+  Do NOT convert to programmatic snake_case names.
+  Do NOT invent "Continue X" variants — use the exact outcome text as written.
+  Do NOT split a single output into context-specific variants (e.g., do NOT create
+  "Refer to Insulin Initiator (CVD pathway)" AND "Refer to Insulin Initiator (standard pathway)"
+  when the diagram shows only "Refer to Insulin Initiator").
+  The "outputs" array names MUST match the output node labels exactly.
 - Every node id must be unique across the tree.
-- For all questions inside the "doubts" array, you MUST provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
-- CRITICAL: The question text MUST be self-contained and descriptive. It should be understandable even without seeing the exact dot location. Reference surrounding text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node represent?" instead of "What is this?").
+- DOUBTS — MANDATORY: You MUST generate at least 2-3 doubts about aspects of the diagram
+  that are ambiguous, unclear, or could be interpreted multiple ways. Even if the diagram
+  seems clear, identify potential ambiguities such as:
+  - Threshold values that are mentioned but not fully specified
+  - Branching conditions that could be interpreted differently
+  - Labels or text that is partially obscured or hard to read
+  - Logic paths that are not clearly connected
+  - Variables whose exact definition is uncertain
+  For all doubts, provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
+  CRITICAL: The question text MUST be self-contained and descriptive. Reference surrounding
+  text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node
+  represent?" instead of "What is this?").
 - SUBWORKFLOWS — CRITICAL: Check the "Side Information" section at the end of this prompt.
   When a linked guidance panel describes multi-step logic (treatment protocols, assessment
   criteria, step-by-step procedures) for a specific action node, you MUST create a subworkflow:
