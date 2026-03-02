@@ -6,8 +6,10 @@ from typing import Any, Dict, List
 
 
 def _map_node_type(raw_type: str) -> str:
+    """Map subagent/LLM node types to the canonical types expected by the system."""
     mapped = {
         "action": "process",
+        "output": "end",
     }
     return mapped.get(raw_type, raw_type)
 
@@ -42,9 +44,16 @@ def flowchart_from_tree(tree: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]
             "x": 0,
             "y": 0,
         }
+        # Propagate structured fields that downstream consumers need
+        # (e.g., WorkflowValidator checks condition on decision nodes).
         input_ids = node.get("input_ids")
         if isinstance(input_ids, list):
             node_entry["input_ids"] = input_ids
+        for key in ("condition", "calculation", "subworkflow_id",
+                     "input_mapping", "output_variable", "output_type",
+                     "output_value", "output_template"):
+            if key in node:
+                node_entry[key] = node[key]
         nodes.append(node_entry)
 
         for child in node.get("children") or []:
