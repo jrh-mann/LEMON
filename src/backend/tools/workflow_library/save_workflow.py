@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, extract_session_deps
 
 
 class SaveWorkflowToLibrary(Tool):
@@ -85,34 +85,12 @@ class SaveWorkflowToLibrary(Tool):
                 "error_code": "MISSING_WORKFLOW_ID",
             }
         
-        # Get session state
-        session_state = kwargs.get("session_state", {})
-        if not session_state:
-            return {
-                "success": False,
-                "error": "No session state provided",
-                "error_code": "NO_SESSION",
-                "message": "Unable to save workflow - no session context.",
-            }
-        
-        workflow_store = session_state.get("workflow_store")
-        user_id = session_state.get("user_id")
-        
-        if not workflow_store:
-            return {
-                "success": False,
-                "error": "No workflow_store in session",
-                "error_code": "NO_STORE",
-                "message": "Unable to save workflow - storage not available.",
-            }
-        
-        if not user_id:
-            return {
-                "success": False,
-                "error": "No user_id in session",
-                "error_code": "NO_USER",
-                "message": "Unable to save workflow - user not authenticated.",
-            }
+        # Get session state and validate dependencies
+        session_state, workflow_store, user_id, err = extract_session_deps(
+            kwargs, action="save workflow",
+        )
+        if err:
+            return err
         
         try:
             # First, verify the workflow exists and belongs to this user

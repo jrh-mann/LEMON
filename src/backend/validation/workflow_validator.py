@@ -27,9 +27,6 @@ VALID_COMPARATORS_BY_TYPE = {
     "enum": {"enum_eq", "enum_neq"},
 }
 
-# Valid output types for workflows (matches database schema)
-VALID_OUTPUT_TYPES = {"string", "number", "bool", "json"}
-
 # Regex to extract template variables like {var_name}
 TEMPLATE_VAR_PATTERN = re.compile(r'\{([^}]+)\}')
 

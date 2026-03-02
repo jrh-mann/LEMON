@@ -13,9 +13,6 @@ from typing import Any, Dict, List, Optional
 # Valid variable source types
 VALID_SOURCES = {"input", "subprocess", "calculated", "constant"}
 
-# Valid internal types for variables
-# Note: 'number' is the unified numeric type (stored as float internally)
-VALID_TYPES = {"number", "bool", "string", "enum", "date"}
 
 
 def ensure_workflow_analysis(session_state: Dict[str, Any]) -> Dict[str, Any]:

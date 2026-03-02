@@ -2,11 +2,18 @@
 
 Contains constants and validation functions for workflow nodes,
 including subprocess (subflow) nodes that reference other workflows.
+
+Also contains ``build_new_node`` which is the single source of truth for
+creating a fully-configured workflow node from caller-supplied parameters.
+Both ``AddNodeTool`` and ``BatchEditWorkflowTool`` delegate to it so that
+validation logic (decision conditions, calculations, subprocess, end-node
+output config) is never duplicated.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
 def resolve_node_id(
     identifier: str,
@@ -265,6 +272,235 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
 
 
 # ============================================================================
+# Unified Node Builder
+# ============================================================================
+#
+# ``build_new_node`` is the single source of truth for creating a new node
+# dict from caller-supplied parameters.  Both ``AddNodeTool.execute()`` and
+# the ``add_node`` branch inside ``BatchEditWorkflowTool.execute()`` delegate
+# to it so that validation and construction logic is never duplicated.
+# ============================================================================
+
+
+def build_new_node(
+    params: Dict[str, Any],
+    variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+    *,
+    node_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
+    """Build a fully-configured workflow node from raw parameters.
+
+    This is the **single source of truth** for node construction.  It handles:
+
+    * Basic fields (id, type, label, x, y, colour)
+    * Decision condition validation (simple & compound)
+    * Calculation validation + auto-register output variable
+    * End-node output config (output_type, template, variable, value)
+    * Subprocess field handling + auto-register output variable + validation
+    * Pass-through of subprocess fields on non-subprocess node types
+
+    Args:
+        params: Dict with node parameters.  Expected keys mirror ``AddNodeTool``
+            parameters: ``type`` (required), ``label`` (required), ``x``, ``y``,
+            ``condition``, ``calculation``, ``output_type``, ``output_template``,
+            ``output_variable``, ``output_value``, ``subworkflow_id``,
+            ``input_mapping``.
+        variables: Current list of workflow variable dicts.  **Not mutated** —
+            any new variables are returned in the second element.
+        session_state: Session state dict (used for subprocess validation).
+        node_id: Pre-generated node ID.  If ``None`` a UUID-based ID is created.
+
+    Returns:
+        ``(new_node, new_variables, error_message)`` where:
+
+        * ``new_node`` — the constructed node dict (empty dict on error).
+        * ``new_variables`` — list of variable dicts to **append** to the
+          workflow's variable list (may be empty).
+        * ``error_message`` — ``None`` on success, or an error string on
+          failure.  Callers decide how to surface the error (return dict vs
+          raise ``ValueError``).
+    """
+    # Lazy imports to avoid circular deps at module level
+    from .add_node import validate_decision_condition, validate_calculation
+    from ..workflow_input.add import generate_variable_id
+    from ..workflow_input.helpers import normalize_variable_name
+
+    node_type: str = params["type"]
+    label: str = params["label"]
+
+    if node_id is None:
+        node_id = f"node_{uuid.uuid4().hex[:8]}"
+
+    # ------------------------------------------------------------------
+    # 1. Decision condition validation
+    # ------------------------------------------------------------------
+    condition = params.get("condition")
+    if node_type == "decision":
+        if not condition:
+            return {}, [], (
+                f"Decision node '{label}' requires a 'condition' object. "
+                "Provide: {input_id: '<var_id>', comparator: '<comparator>', value: <value>}"
+            )
+        cond_err = validate_decision_condition(condition, variables)
+        if cond_err:
+            return {}, [], f"Invalid condition for decision node '{label}': {cond_err}"
+
+    # ------------------------------------------------------------------
+    # 2. Calculation validation
+    # ------------------------------------------------------------------
+    calculation = params.get("calculation")
+    if node_type == "calculation":
+        if not calculation:
+            return {}, [], (
+                f"Calculation node '{label}' requires a 'calculation' object. "
+                "Provide: {output: {name: 'VarName'}, operator: 'add', operands: [...]}"
+            )
+        calc_err = validate_calculation(calculation, variables)
+        if calc_err:
+            return {}, [], f"Invalid calculation for node '{label}': {calc_err}"
+
+    # ------------------------------------------------------------------
+    # 3. Build the base node dict
+    # ------------------------------------------------------------------
+    new_node: Dict[str, Any] = {
+        "id": node_id,
+        "type": node_type,
+        "label": label,
+        "x": params.get("x", 0),
+        "y": params.get("y", 0),
+        "color": get_node_color(node_type),
+    }
+
+    new_variables: List[Dict[str, Any]] = []
+
+    # ------------------------------------------------------------------
+    # 4. Attach condition (decision or otherwise)
+    # ------------------------------------------------------------------
+    if condition:
+        new_node["condition"] = condition
+
+    # ------------------------------------------------------------------
+    # 5. Attach calculation + auto-register output variable
+    # ------------------------------------------------------------------
+    if node_type == "calculation" and calculation:
+        new_node["calculation"] = calculation
+
+        output_def = calculation["output"]
+        output_name = output_def["name"]
+        output_desc = output_def.get("description")
+
+        existing_var_names = [
+            normalize_variable_name(v.get("name", "")) for v in variables
+        ]
+        if normalize_variable_name(output_name) not in existing_var_names:
+            var_id = generate_variable_id(output_name, "number", "calculated")
+            new_variables.append({
+                "id": var_id,
+                "name": output_name,
+                "type": "number",           # Calculation output is always number
+                "source": "calculated",      # Derived from calculation
+                "source_node_id": node_id,   # Which node produces this
+                "description": output_desc or f"Calculated by '{label}'",
+            })
+    elif calculation:
+        # Allow calculation on other node types (unlikely but consistent)
+        new_node["calculation"] = calculation
+
+    # ------------------------------------------------------------------
+    # 6. End-node output config
+    # ------------------------------------------------------------------
+    if node_type == "end":
+        new_node["output_type"] = params.get("output_type", "string")
+        if params.get("output_variable"):
+            new_node["output_variable"] = params["output_variable"]
+        elif params.get("output_template"):
+            new_node["output_template"] = params["output_template"]
+        if params.get("output_value") is not None:
+            new_node["output_value"] = params["output_value"]
+    else:
+        # Pass through output fields on non-end nodes (for type changes)
+        if "output_type" in params:
+            new_node["output_type"] = params["output_type"]
+        if "output_variable" in params:
+            new_node["output_variable"] = params["output_variable"]
+        if "output_template" in params:
+            new_node["output_template"] = params["output_template"]
+        if "output_value" in params:
+            new_node["output_value"] = params["output_value"]
+
+    # ------------------------------------------------------------------
+    # 7. Subprocess-specific fields
+    # ------------------------------------------------------------------
+    if node_type == "subprocess":
+        subworkflow_id_param = params.get("subworkflow_id")
+        input_mapping = params.get("input_mapping")
+        output_variable = params.get("output_variable")
+
+        if subworkflow_id_param:
+            new_node["subworkflow_id"] = subworkflow_id_param
+        if input_mapping is not None:
+            new_node["input_mapping"] = input_mapping
+        if output_variable:
+            new_node["output_variable"] = output_variable
+
+            # Auto-register output_variable as a derived variable
+            existing_var_names = [
+                normalize_variable_name(v.get("name", "")) for v in variables
+            ]
+            # Also check variables we're about to add (from calculation above)
+            for nv in new_variables:
+                existing_var_names.append(normalize_variable_name(nv.get("name", "")))
+
+            if normalize_variable_name(output_variable) not in existing_var_names:
+                # Infer type from subworkflow output definition
+                output_info = get_subworkflow_output_type(
+                    subworkflow_id_param or "", session_state,
+                )
+                output_type_val = (
+                    output_info.get("type", "string") if output_info else "string"
+                )
+                output_desc = output_info.get("description") if output_info else None
+
+                var_id = generate_variable_id(
+                    output_variable, output_type_val, "subprocess",
+                )
+                new_variables.append({
+                    "id": var_id,
+                    "name": output_variable,
+                    "type": output_type_val,
+                    "source": "subprocess",
+                    "source_node_id": node_id,
+                    "subworkflow_id": subworkflow_id_param,
+                    "description": (
+                        output_desc or f"Output from subprocess '{label}'"
+                    ),
+                })
+
+        # Validate subprocess node (with new_variables merged)
+        all_vars = list(variables) + new_variables
+        mock_session = {
+            **session_state,
+            "workflow_analysis": {"variables": all_vars},
+        }
+        subprocess_errors = validate_subprocess_node(
+            new_node, mock_session, check_workflow_exists=True,
+        )
+        if subprocess_errors:
+            return {}, [], "\n".join(subprocess_errors)
+    else:
+        # Pass through subprocess fields on non-subprocess nodes (for type changes)
+        if "subworkflow_id" in params:
+            new_node["subworkflow_id"] = params["subworkflow_id"]
+        if "input_mapping" in params:
+            new_node["input_mapping"] = params["input_mapping"]
+        if "output_variable" in params:
+            new_node["output_variable"] = params["output_variable"]
+
+    return new_node, new_variables, None
+
+
+# ============================================================================
 # Workflow Load/Save Helpers for Multi-Workflow ID-Centric Architecture
 # ============================================================================
 #
@@ -278,9 +514,6 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
 #
 # This pattern ensures all changes persist automatically with no "Save" button.
 # ============================================================================
-
-from typing import Tuple
-
 
 def load_workflow_for_tool(
     workflow_id: str,

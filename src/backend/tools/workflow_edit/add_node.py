@@ -15,17 +15,12 @@ Multi-workflow architecture:
 
 from __future__ import annotations
 
-import uuid
 from typing import Any, Dict, List, Optional
 
 from ...execution.operators import get_operator, get_operator_names, validate_operator_arity
 from ..core import WorkflowTool, ToolParameter
-from ..workflow_input.add import generate_variable_id
-from ..workflow_input.helpers import normalize_variable_name
 from .helpers import (
-    get_node_color,
-    validate_subprocess_node,
-    get_subworkflow_output_type,
+    build_new_node,
     save_workflow_changes,
 )
 
@@ -383,188 +378,23 @@ class AddNodeTool(WorkflowTool):
         edges = workflow_data["edges"]
         variables = workflow_data["variables"]
 
-        # Validate condition for decision nodes
-        node_type = args["type"]
-        condition = args.get("condition")
-        calculation = args.get("calculation")
-        
-        if node_type == "decision":
-            if not condition:
-                return {
-                    "success": False,
-                    "error": (
-                        "Decision nodes require a 'condition' parameter. "
-                        "Provide: {input_id: '<var_id>', comparator: '<comparator>', value: <value>}"
-                    ),
-                    "error_code": "MISSING_CONDITION",
-                }
-            
-            condition_error = validate_decision_condition(condition, variables)
-            if condition_error:
-                return {
-                    "success": False,
-                    "error": condition_error,
-                    "error_code": "INVALID_CONDITION",
-                }
-        
-        # Validate calculation for calculation nodes
-        if node_type == "calculation":
-            if not calculation:
-                return {
-                    "success": False,
-                    "error": (
-                        "Calculation nodes require a 'calculation' parameter. "
-                        "Provide: {output: {name: 'VarName'}, operator: 'add', operands: [{kind: 'variable', ref: 'var_id'}, ...]}"
-                    ),
-                    "error_code": "MISSING_CALCULATION",
-                }
-            
-            calculation_error = validate_calculation(calculation, variables)
-            if calculation_error:
-                return {
-                    "success": False,
-                    "error": calculation_error,
-                    "error_code": "INVALID_CALCULATION",
-                }
-
-        # Create new node
-        node_id = f"node_{uuid.uuid4().hex[:8]}"
-        new_node = {
-            "id": node_id,
-            "type": node_type,
-            "label": args["label"],
-            "x": args.get("x", 0),
-            "y": args.get("y", 0),
-            "color": get_node_color(node_type),
-        }
-        
-        # Track if variables list is modified (for auto-save)
-        variables_modified = False
-
-        # Add condition for decision nodes
-        if condition:
-            new_node["condition"] = condition
-        
-        # Add calculation for calculation nodes and auto-register output variable
-        if node_type == "calculation" and calculation:
-            new_node["calculation"] = calculation
-            
-            # Auto-register the output variable as a calculated variable
-            output_def = calculation["output"]
-            output_name = output_def["name"]
-            output_desc = output_def.get("description")
-            
-            existing_var_names = [
-                normalize_variable_name(v.get("name", ""))
-                for v in variables
-            ]
-            
-            if normalize_variable_name(output_name) not in existing_var_names:
-                # Calculate output is always 'number' type
-                var_id = generate_variable_id(output_name, "number", "calculated")
-                
-                new_variable: Dict[str, Any] = {
-                    "id": var_id,
-                    "name": output_name,
-                    "type": "number",  # Calculation output is always number
-                    "source": "calculated",  # Derived from calculation
-                    "source_node_id": node_id,  # Which node produces this
-                    "description": output_desc or f"Calculated by '{args['label']}'",
-                }
-                
-                variables.append(new_variable)
-                variables_modified = True
-        
-        # Add output configuration for 'end' nodes
-        if node_type == "end":
-            new_node["output_type"] = args.get("output_type", "string")
-            # For number/bool outputs, prefer output_variable over output_template
-            if args.get("output_variable"):
-                new_node["output_variable"] = args["output_variable"]
-            elif args.get("output_template"):
-                new_node["output_template"] = args["output_template"]
-            if args.get("output_value") is not None:
-                new_node["output_value"] = args["output_value"]
-        else:
-            # Still allow manual setting for other types if passed (future proofing)
-            if "output_type" in args:
-                new_node["output_type"] = args["output_type"]
-            if "output_variable" in args:
-                new_node["output_variable"] = args["output_variable"]
-            if "output_template" in args:
-                new_node["output_template"] = args["output_template"]
-            if "output_value" in args:
-                new_node["output_value"] = args["output_value"]
-
-        # Add subprocess-specific fields
-        if node_type == "subprocess":
-            subworkflow_id_param = args.get("subworkflow_id")
-            input_mapping = args.get("input_mapping")
-            output_variable = args.get("output_variable")
-            
-            if subworkflow_id_param:
-                new_node["subworkflow_id"] = subworkflow_id_param
-            if input_mapping is not None:
-                new_node["input_mapping"] = input_mapping
-            if output_variable:
-                new_node["output_variable"] = output_variable
-                
-                # Auto-register output_variable as a DERIVED variable (source='subprocess')
-                # with type inferred from the subworkflow's output definition
-                existing_var_names = [
-                    normalize_variable_name(v.get("name", ""))
-                    for v in variables
-                ]
-                
-                if normalize_variable_name(output_variable) not in existing_var_names:
-                    # Get output type from subworkflow
-                    output_info = get_subworkflow_output_type(subworkflow_id_param or "", session_state)
-                    output_type_val = output_info.get("type", "string") if output_info else "string"
-                    output_desc = output_info.get("description") if output_info else None
-                    
-                    # Generate variable ID with subprocess source
-                    var_id = generate_variable_id(output_variable, output_type_val, "subprocess")
-                    
-                    # Create derived variable with source='subprocess'
-                    new_variable: Dict[str, Any] = {
-                        "id": var_id,
-                        "name": output_variable,
-                        "type": output_type_val,
-                        "source": "subprocess",  # Derived from subprocess execution
-                        "source_node_id": node_id,  # Which node produces this
-                        "subworkflow_id": subworkflow_id_param,  # Which subworkflow it comes from
-                        "description": output_desc or f"Output from subprocess '{args['label']}'",
-                    }
-                    
-                    # Add to variables list
-                    variables.append(new_variable)
-                    variables_modified = True
-            
-            # Validate subprocess node configuration
-            # Build a mock session_state for validation that includes the updated variables
-            mock_session = {
-                **session_state,
-                "workflow_analysis": {"variables": variables},
+        # Delegate all node construction + validation to the shared builder
+        new_node, new_variables, build_error = build_new_node(
+            params=args,
+            variables=variables,
+            session_state=session_state,
+        )
+        if build_error:
+            return {
+                "success": False,
+                "error": build_error,
+                "error_code": "NODE_BUILD_FAILED",
             }
-            subprocess_errors = validate_subprocess_node(
-                new_node,
-                mock_session,
-                check_workflow_exists=True,
-            )
-            if subprocess_errors:
-                return {
-                    "success": False,
-                    "error": "\n".join(subprocess_errors),
-                    "error_code": "SUBPROCESS_VALIDATION_FAILED",
-                }
-        else:
-            # Still allow subprocess fields on other types (for type changes)
-            if "subworkflow_id" in args:
-                new_node["subworkflow_id"] = args["subworkflow_id"]
-            if "input_mapping" in args:
-                new_node["input_mapping"] = args["input_mapping"]
-            if "output_variable" in args:
-                new_node["output_variable"] = args["output_variable"]
+
+        # Append auto-registered variables
+        variables_modified = bool(new_variables)
+        for var in new_variables:
+            variables.append(var)
 
         # Add node to list
         nodes.append(new_node)
@@ -598,5 +428,5 @@ class AddNodeTool(WorkflowTool):
             "workflow_id": workflow_id,
             "action": "add_node",
             "node": new_node,
-            "message": f"Added {node_type} node '{args['label']}' to workflow {workflow_id}",
+            "message": f"Added {args['type']} node '{args['label']}' to workflow {workflow_id}",
         }

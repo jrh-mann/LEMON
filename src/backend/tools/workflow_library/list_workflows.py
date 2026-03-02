@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Set
 
-from ..core import Tool
+from ..core import Tool, extract_session_deps
 
 
 class ListWorkflowsInLibrary(Tool):
@@ -84,32 +84,12 @@ class ListWorkflowsInLibrary(Tool):
         domain = args.get("domain")
         limit = args.get("limit", 50)
 
-        # Get session_state from kwargs
-        session_state = kwargs.get("session_state", {})
-        # Validate session state
-        if not session_state:
-            return {
-                "success": False,
-                "error": "No session state provided",
-                "message": "Unable to access workflow library - no session context. This tool requires direct mode (MCP mode not supported).",
-            }
-
-        workflow_store = session_state.get("workflow_store")
-        user_id = session_state.get("user_id")
-
-        if not workflow_store:
-            return {
-                "success": False,
-                "error": "No workflow_store in session",
-                "message": "Unable to access workflow library - storage not available. This tool requires direct mode (not MCP mode).",
-            }
-
-        if not user_id:
-            return {
-                "success": False,
-                "error": "No user_id in session",
-                "message": "Unable to access workflow library - user not authenticated. Please ensure user is logged in.",
-            }
+        # Get session state and validate dependencies
+        session_state, workflow_store, user_id, err = extract_session_deps(
+            kwargs, action="list workflows",
+        )
+        if err:
+            return err
 
         # Clamp limit to valid range
         limit = max(1, min(limit, 100))

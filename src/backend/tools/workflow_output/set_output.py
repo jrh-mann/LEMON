@@ -16,11 +16,8 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..core import WorkflowTool, ToolParameter
+from ..constants import VALID_VARIABLE_TYPES
 from ..workflow_edit.helpers import save_workflow_changes
-
-
-# Valid output types that can be declared
-VALID_OUTPUT_TYPES = {"string", "number", "bool", "enum", "date"}
 
 
 class SetWorkflowOutputTool(WorkflowTool):
@@ -98,10 +95,10 @@ class SetWorkflowOutputTool(WorkflowTool):
                 "error": "Output 'type' is required. Valid types: string, int, float, bool, enum, date"
             }
         
-        if output_type not in VALID_OUTPUT_TYPES:
+        if output_type not in VALID_VARIABLE_TYPES:
             return {
                 "success": False,
-                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_OUTPUT_TYPES))}"
+                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_VARIABLE_TYPES))}"
             }
 
         # Create output definition with required type

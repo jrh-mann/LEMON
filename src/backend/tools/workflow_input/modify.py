@@ -15,25 +15,10 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..core import WorkflowTool, ToolParameter
+from ..constants import USER_TYPE_TO_INTERNAL
 from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
 from .add import generate_variable_id
-
-
-# Valid internal types for variables
-VALID_TYPES = {"string", "number", "bool", "enum", "date"}
-
-# Map user-friendly types to internal types
-USER_TYPE_TO_INTERNAL = {
-    "string": "string",
-    "number": "number",
-    "integer": "number",
-    "boolean": "bool",
-    "enum": "enum",
-    "date": "date",
-    # Also accept internal types directly
-    "bool": "bool",
-}
 
 
 class ModifyWorkflowVariableTool(WorkflowTool):

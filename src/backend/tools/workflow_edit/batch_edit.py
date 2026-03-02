@@ -8,16 +8,12 @@ Multi-workflow architecture:
 
 from __future__ import annotations
 
-import uuid
 from typing import Any, Dict, List
 
 from ..core import WorkflowTool, ToolParameter
-from ..workflow_input.add import generate_variable_id
-from ..workflow_input.helpers import normalize_variable_name
 from .helpers import (
-    get_node_color,
+    build_new_node,
     resolve_node_id,
-    validate_subprocess_node,
     save_workflow_changes,
 )
 from .add_node import validate_decision_condition
@@ -131,154 +127,26 @@ class BatchEditWorkflowTool(WorkflowTool):
 
                 if op_type == "add_node":
                     temp_id = op.get("id")
-                    real_id = f"node_{uuid.uuid4().hex[:8]}"
+
+                    # Delegate node construction + validation to shared builder
+                    # build_new_node generates a UUID-based node_id internally
+                    new_node, new_vars, build_err = build_new_node(
+                        params=op,
+                        variables=variables,
+                        session_state=session_state,
+                    )
+                    if build_err:
+                        raise ValueError(build_err)
+
+                    # Map temp ID to the real generated ID
+                    real_id = new_node["id"]
                     if temp_id:
                         temp_id_map[temp_id] = real_id
 
-                    node_type = op["type"]
-                    new_node = {
-                        "id": real_id,
-                        "type": node_type,
-                        "label": op["label"],
-                        "x": op.get("x", 0),
-                        "y": op.get("y", 0),
-                        "color": get_node_color(node_type),
-                    }
-                    
-                    # Handle decision node condition (required for decision nodes)
-                    condition = op.get("condition")
-                    if node_type == "decision":
-                        if not condition:
-                            raise ValueError(
-                                f"Decision node '{op['label']}' requires a 'condition' object. "
-                                f"Provide: {{input_id: '<input_id>', comparator: '<comparator>', value: <value>}}"
-                            )
-                        condition_error = validate_decision_condition(condition, variables)
-                        if condition_error:
-                            raise ValueError(f"Invalid condition for decision node '{op['label']}': {condition_error}")
-                        new_node["condition"] = condition
-                    elif condition:
-                        # Allow condition on other node types for future proofing / type changes
-                        new_node["condition"] = condition
-
-                    # Handle calculation node config (required for calculation nodes)
-                    calculation = op.get("calculation")
-                    if node_type == "calculation":
-                        if not calculation:
-                            raise ValueError(
-                                f"Calculation node '{op['label']}' requires a 'calculation' object. "
-                                f"Provide: {{output: {{name: 'VarName'}}, operator: 'add', operands: [...]}}"
-                            )
-                        
-                        # Validate calculation
-                        from .add_node import validate_calculation  # Import here to avoid circular dependencies if any
-                        calculation_error = validate_calculation(calculation, variables)
-                        if calculation_error:
-                            raise ValueError(f"Invalid calculation for node '{op['label']}': {calculation_error}")
-                        
-                        new_node["calculation"] = calculation
-                        
-                        # Auto-register the output variable as a calculated variable
-                        output_def = calculation["output"]
-                        output_name = output_def["name"]
-                        output_desc = output_def.get("description")
-                        
-                        existing_var_names = [
-                            normalize_variable_name(v.get("name", ""))
-                            for v in variables
-                        ]
-                        
-                        if normalize_variable_name(output_name) not in existing_var_names:
-                            # Calculate output is always 'number' type
-                            var_id = generate_variable_id(output_name, "number", "calculated")
-                            
-                            new_variable = {
-                                "id": var_id,
-                                "name": output_name,
-                                "type": "number",  # Calculation output is always number
-                                "source": "calculated",  # Derived from calculation
-                                "source_node_id": real_id,  # Which node produces this
-                                "description": output_desc or f"Calculated by '{op['label']}'",
-                            }
-                            
-                            variables.append(new_variable)
-                            variables_modified = True
-                    elif calculation:
-                        # Allow calculation on other node types (unlikely but consistent)
-                        new_node["calculation"] = calculation
-                    
-                    # Add output configuration for 'end' nodes
-                    if node_type == "end":
-                        new_node["output_type"] = op.get("output_type", "string")
-                        # For number/bool outputs, prefer output_variable over output_template
-                        if op.get("output_variable"):
-                            new_node["output_variable"] = op["output_variable"]
-                        elif op.get("output_template"):
-                            new_node["output_template"] = op["output_template"]
-                        if op.get("output_value") is not None:
-                            new_node["output_value"] = op["output_value"]
-                    else:
-                        if "output_type" in op:
-                            new_node["output_type"] = op["output_type"]
-                        if "output_variable" in op:
-                            new_node["output_variable"] = op["output_variable"]
-                        if "output_template" in op:
-                            new_node["output_template"] = op["output_template"]
-                        if "output_value" in op:
-                            new_node["output_value"] = op["output_value"]
-
-                    # Handle subprocess-specific fields
-                    if node_type == "subprocess":
-                        subworkflow_id = op.get("subworkflow_id")
-                        input_mapping = op.get("input_mapping")
-                        output_variable = op.get("output_variable")
-                        
-                        if subworkflow_id:
-                            new_node["subworkflow_id"] = subworkflow_id
-                        if input_mapping is not None:
-                            new_node["input_mapping"] = input_mapping
-                        if output_variable:
-                            new_node["output_variable"] = output_variable
-                            
-                            # Auto-register output_variable as a workflow variable
-                            existing_var_names = [
-                                normalize_variable_name(v.get("name", ""))
-                                for v in variables
-                            ]
-                            if normalize_variable_name(output_variable) not in existing_var_names:
-                                # Generate variable ID with subprocess source
-                                var_id = generate_variable_id(output_variable, "string", "subprocess")
-                                new_variable = {
-                                    "id": var_id,
-                                    "name": output_variable,
-                                    "type": "string",  # Default - ideally inferred from subworkflow
-                                    "source": "subprocess",
-                                    "source_node_id": real_id,
-                                    "description": f"Output from subprocess '{op['label']}'",
-                                }
-                                variables.append(new_variable)
-                                variables_modified = True
-                        
-                        # Validate subprocess node configuration
-                        mock_session = {
-                            **session_state,
-                            "workflow_analysis": {"variables": variables},
-                        }
-                        subprocess_errors = validate_subprocess_node(
-                            new_node,
-                            mock_session,
-                            check_workflow_exists=True,
-                        )
-                        if subprocess_errors:
-                            raise ValueError("\n".join(subprocess_errors))
-                    else:
-                        # Still allow subprocess fields on other types (for type changes)
-                        if "subworkflow_id" in op:
-                            new_node["subworkflow_id"] = op["subworkflow_id"]
-                        if "input_mapping" in op:
-                            new_node["input_mapping"] = op["input_mapping"]
-                        if "output_variable" in op:
-                            new_node["output_variable"] = op["output_variable"]
+                    # Append auto-registered variables
+                    if new_vars:
+                        variables.extend(new_vars)
+                        variables_modified = True
 
                     nodes.append(new_node)
                     applied_operations.append({"op": "add_node", "node": new_node})

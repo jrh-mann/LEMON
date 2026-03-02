@@ -11,11 +11,9 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, extract_session_deps
+from ..constants import VALID_WORKFLOW_OUTPUT_TYPES
 
-
-# Valid output types for workflows
-VALID_OUTPUT_TYPES = frozenset({"string", "number", "bool", "json"})
 
 
 def generate_workflow_id() -> str:
@@ -99,41 +97,19 @@ class CreateWorkflowTool(Tool):
             }
         
         output_type = args.get("output_type")
-        if not output_type or output_type not in VALID_OUTPUT_TYPES:
+        if not output_type or output_type not in VALID_WORKFLOW_OUTPUT_TYPES:
             return {
                 "success": False,
-                "error": f"Workflow 'output_type' must be one of: {', '.join(sorted(VALID_OUTPUT_TYPES))}",
+                "error": f"Workflow 'output_type' must be one of: {', '.join(sorted(VALID_WORKFLOW_OUTPUT_TYPES))}",
                 "error_code": "INVALID_OUTPUT_TYPE",
             }
         
-        # Get session state
-        session_state = kwargs.get("session_state", {})
-        if not session_state:
-            return {
-                "success": False,
-                "error": "No session state provided",
-                "error_code": "NO_SESSION",
-                "message": "Unable to create workflow - no session context.",
-            }
-        
-        workflow_store = session_state.get("workflow_store")
-        user_id = session_state.get("user_id")
-        
-        if not workflow_store:
-            return {
-                "success": False,
-                "error": "No workflow_store in session",
-                "error_code": "NO_STORE",
-                "message": "Unable to create workflow - storage not available.",
-            }
-        
-        if not user_id:
-            return {
-                "success": False,
-                "error": "No user_id in session",
-                "error_code": "NO_USER",
-                "message": "Unable to create workflow - user not authenticated.",
-            }
+        # Get session state and validate dependencies
+        session_state, workflow_store, user_id, err = extract_session_deps(
+            kwargs, action="create workflow",
+        )
+        if err:
+            return err
         
         # Extract optional parameters
         description = args.get("description", "")

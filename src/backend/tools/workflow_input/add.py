@@ -16,19 +16,10 @@ import re
 from typing import Any, Dict
 
 from ..core import WorkflowTool, ToolParameter
+from ..constants import USER_TYPE_TO_INTERNAL
 from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
 
-
-# Map user-friendly types to internal types used by condition validation
-# and the execution interpreter. 'number' is now a unified numeric type
-# that supports both integers and floats (stored as float internally).
-USER_TYPE_TO_INTERNAL = {
-    "string": "string",
-    "number": "number",  # Unified numeric type (stored as float)
-    "boolean": "bool",
-    "enum": "enum",
-}
 
 
 def generate_variable_id(name: str, internal_type: str, source: str = "input") -> str:

@@ -88,3 +88,53 @@ class ToolRegistry:
         if tool is None:
             raise ValueError(f"Unknown tool: {name}")
         return tool.execute(args, **kwargs)
+
+
+def extract_session_deps(
+    kwargs: Dict[str, Any],
+    *,
+    action: str = "perform action",
+) -> Tuple[Dict[str, Any], Any, str, Optional[Dict[str, Any]]]:
+    """Extract session_state, workflow_store, and user_id from kwargs.
+
+    This eliminates the ~15 lines of repeated validation that every
+    library-level tool (create, save, list) duplicates.
+
+    Args:
+        kwargs: The **kwargs passed to Tool.execute()
+        action: Human-readable action name for error messages
+            (e.g., "create workflow", "list workflows").
+
+    Returns:
+        ``(session_state, workflow_store, user_id, error)`` where *error*
+        is ``None`` on success, or a dict the caller should return directly.
+    """
+    session_state = kwargs.get("session_state", {})
+    if not session_state:
+        return {}, None, "", {
+            "success": False,
+            "error": "No session state provided",
+            "error_code": "NO_SESSION",
+            "message": f"Unable to {action} - no session context.",
+        }
+
+    workflow_store = session_state.get("workflow_store")
+    user_id = session_state.get("user_id")
+
+    if not workflow_store:
+        return session_state, None, "", {
+            "success": False,
+            "error": "No workflow_store in session",
+            "error_code": "NO_STORE",
+            "message": f"Unable to {action} - storage not available.",
+        }
+
+    if not user_id:
+        return session_state, workflow_store, "", {
+            "success": False,
+            "error": "No user_id in session",
+            "error_code": "NO_USER",
+            "message": f"Unable to {action} - user not authenticated.",
+        }
+
+    return session_state, workflow_store, user_id, None
