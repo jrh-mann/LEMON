@@ -664,24 +664,32 @@ body {
   height: 18px;
 }
 
-.var-name-input {
+/* Read-only variable name label */
+.var-name {
   flex: 1;
   min-width: 0;
-  border: none;
-  background: transparent;
-  font-family: inherit;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--ink);
-  padding: 2px 0;
-  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.var-name-input:focus {
-  border-bottom: 1px solid var(--teal);
+/* Action buttons container (edit + delete) */
+.var-card-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
-.var-delete-btn {
+.var-card:hover .var-card-actions {
+  opacity: 1;
+}
+
+/* Small icon button used for edit and delete actions */
+.var-action-btn {
   flex-shrink: 0;
   width: 22px;
   height: 22px;
@@ -695,14 +703,14 @@ body {
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
-  opacity: 0;
 }
 
-.var-card:hover .var-delete-btn {
-  opacity: 1;
+.var-action-btn:hover {
+  background: var(--edge);
+  color: var(--ink);
 }
 
-.var-delete-btn:hover {
+.var-action-btn.var-action-delete:hover {
   background: var(--rose-light);
   color: var(--rose);
 }
@@ -715,20 +723,14 @@ body {
   padding-left: 26px; /* align under name (icon 18px + gap 8px) */
 }
 
-.var-type-select {
-  border: 1px solid var(--edge);
-  border-radius: 6px;
-  padding: 2px 6px;
+/* Read-only type label (replaces the old select dropdown) */
+.var-type-label {
   font-size: 0.75rem;
-  font-family: inherit;
+  font-weight: 500;
   color: var(--muted);
+  padding: 1px 6px;
+  border-radius: 6px;
   background: var(--bg);
-  cursor: pointer;
-  outline: none;
-}
-
-.var-type-select:focus {
-  border-color: var(--teal);
 }
 
 .var-source-badge {
@@ -753,8 +755,79 @@ body {
   padding-left: 26px;
 }
 
+/* Truncated description preview on the read-only card */
+.var-description-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
+  padding-left: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .add-var-btn {
   margin-top: 8px;
+}
+
+/* ── Variable Modal ──────────────────────────────────────── */
+
+/* Slightly wider than the default modal for comfortable form editing */
+.variable-modal-content {
+  max-width: 440px;
+}
+
+/* Select elements inside the variable modal — match input styling */
+.variable-modal-content select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.variable-modal-content select:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+/* Fieldset for type-specific option groups (range, enum values, etc.) */
+.var-modal-fieldset {
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin: 0 0 20px 0;
+}
+
+.var-modal-fieldset legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+/* Side-by-side min/max row for number range */
+.var-modal-range-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.var-modal-range-row .form-group {
+  margin-bottom: 0;
+}
+
+/* Footer with cancel + save buttons */
+.var-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--edge);
 }
 
 .sidebar-empty-hint {
