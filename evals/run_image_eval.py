@@ -118,11 +118,13 @@ def _generate_doubt_answers(
     doubts: List[Dict[str, Any]],
     case_config: Dict[str, Any],
     ground_truth_module: Any,
+    analysis: Dict[str, Any] | None = None,
 ) -> str:
     """Use an LLM to answer the subagent's doubt questions using ground truth.
 
-    Returns a feedback string with answers and a trigger phrase so the
-    subagent regenerates the full JSON.
+    When ``analysis`` is provided (turn-1 output), the LLM also compares
+    the predicted workflow against the ground truth and flags concrete errors.
+    Returns a feedback string that triggers JSON regeneration.
     """
     import inspect
 
@@ -133,30 +135,42 @@ def _generate_doubt_answers(
     gt_source = inspect.getsource(ground_truth_module.determine_workflow_outcome)
     node_labels = [n["label"] for n in case_config.get("canonical_expected_nodes", [])]
     expected_outputs = case_config.get("expected_outputs", [])
-
-    # Also include the expected variables for richer context
     expected_variables = case_config.get("expected_variables", [])
 
+    # Build a summary of what the model actually produced for comparison
+    model_summary = ""
+    if analysis:
+        pred_outputs = [o.get("name", str(o)) for o in analysis.get("outputs", [])]
+        pred_vars = [v.get("name", str(v)) for v in analysis.get("variables", [])]
+        model_summary = (
+            "\n\n## What the model produced (check for errors)\n"
+            f"Model's outputs: {pred_outputs}\n"
+            f"Model's variables: {pred_vars}\n"
+        )
+
     prompt = (
-        "You are answering clarifying questions about a workflow diagram analysis.\n"
+        "You are reviewing a workflow diagram analysis and providing corrections.\n"
         "The correct logic is:\n\n"
         f"```python\n{gt_source}\n```\n\n"
-        f"Decision nodes: {node_labels}\n"
-        f"Outputs: {expected_outputs}\n"
-        f"Expected variables: {expected_variables}\n\n"
-        "First, answer each question concisely based on the ground truth:\n\n"
+        f"Expected decision nodes: {node_labels}\n"
+        f"Expected outputs: {expected_outputs}\n"
+        f"Expected variables: {expected_variables}\n"
+        f"{model_summary}\n"
+        "## Doubts to answer\n\n"
         + "\n".join(questions)
-        + "\n\nThen, proactively flag any corrections the workflow needs:\n"
-        "- If any outputs are missing or use generic names instead of specific labels, list the correct ones.\n"
-        "- If any decision ordering or nesting is wrong, describe the correct order.\n"
-        "- If any variables are missing or should be stage-specific, list them.\n"
-        "- If any threshold values or comparators are wrong, give the correct ones.\n\n"
+        + "\n\n## Instructions\n"
+        "1. Answer each doubt concisely based on the ground truth.\n"
+        "2. Compare the model's outputs/variables against the expected ones.\n"
+        "   Flag any that are MISSING, WRONG, or use generic names.\n"
+        "3. If any decision branches are in the wrong order or use wrong\n"
+        "   conditions/thresholds, describe the correct logic.\n"
+        "4. Be specific: name the exact variable, threshold, or output.\n\n"
         'End with: "Please regenerate the full JSON with these corrections."\n'
     )
 
     return call_llm(
         [{"role": "user", "content": prompt}],
-        max_completion_tokens=2000,
+        max_completion_tokens=3000,
         caller="eval_doubt_answerer",
         request_tag="doubt_answers",
     )
@@ -189,8 +203,8 @@ def _run_analysis_with_clarification(
     if not doubts or not session_id:
         return result  # No doubts → return as-is
 
-    # Turn 2: answer doubts and re-analyze
-    feedback = _generate_doubt_answers(doubts, case_config, ground_truth_module)
+    # Turn 2: answer doubts and compare model output to ground truth
+    feedback = _generate_doubt_answers(doubts, case_config, ground_truth_module, analysis)
     result2 = tool.execute({"session_id": session_id, "feedback": feedback})
 
     # If followup returned plain text (no JSON), keep original
