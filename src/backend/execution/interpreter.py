@@ -25,7 +25,7 @@ import logging
 import re
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
-from .evaluator import evaluate_condition, EvaluationError
+from .evaluator import evaluate_condition, is_compound_condition, EvaluationError
 from .operators import execute_operator, OperatorError
 
 logger = logging.getLogger(__name__)
@@ -1130,33 +1130,50 @@ Args:
                 f"Decision nodes must have a structured 'condition' field."
             )
 
-        # Get the input value for logging
-        input_id = condition.get('input_id', '')
-        input_value = context.get(input_id)
-        comparator = condition.get('comparator', '')
-        compare_value = condition.get('value')
-        compare_value2 = condition.get('value2')
-
-        # Build a human-readable condition expression
+        # Comparator symbols for human-readable expression building
         comparator_symbols = {
-            'eq': '==', 'ne': '!=', 'lt': '<', 'lte': '<=',
+            'eq': '==', 'neq': '!=', 'lt': '<', 'lte': '<=',
             'gt': '>', 'gte': '>=', 'between': 'between',
-            'contains': 'contains', 'startswith': 'starts with',
-            'endswith': 'ends with', 'in': 'in'
+            'within_range': 'in range', 'is_true': 'is true', 'is_false': 'is false',
+            'str_eq': '==', 'str_neq': '!=', 'str_contains': 'contains',
+            'str_starts_with': 'starts with', 'str_ends_with': 'ends with',
+            'date_eq': '==', 'date_before': 'before', 'date_after': 'after',
+            'date_between': 'between', 'enum_eq': '==', 'enum_neq': '!=',
         }
-        comparator_sym = comparator_symbols.get(comparator, comparator)
-        
-        # Try to get the variable name for display
-        input_name = input_id
-        for name, var_id in self.name_to_id.items():
-            if var_id == input_id:
-                input_name = name
-                break
-        
-        if comparator == 'between':
-            condition_expr = f"{input_name} between {compare_value} and {compare_value2}"
+
+        compound = is_compound_condition(condition)
+
+        if compound:
+            # Build compound expression string: "a is true AND b > 58"
+            operator = condition.get('operator', 'and')
+            joiner = f" {operator.upper()} "
+            sub_exprs = []
+            for sub in condition.get('conditions', []):
+                sub_exprs.append(
+                    self._format_simple_condition_expr(sub, comparator_symbols)
+                )
+            condition_expr = joiner.join(sub_exprs)
+            # For compound conditions, input_name/value are not single-valued
+            input_name = condition_expr
+            input_value = None
+            comparator = operator
+            compare_value = None
+            compare_value2 = None
         else:
-            condition_expr = f"{input_name} {comparator_sym} {compare_value}"
+            # Simple condition — existing behaviour
+            input_id = condition.get('input_id', '')
+            input_value = context.get(input_id)
+            comparator = condition.get('comparator', '')
+            compare_value = condition.get('value')
+            compare_value2 = condition.get('value2')
+            condition_expr = self._format_simple_condition_expr(
+                condition, comparator_symbols
+            )
+            input_name = input_id
+            for name, var_id in self.name_to_id.items():
+                if var_id == input_id:
+                    input_name = name
+                    break
 
         # Evaluate the structured condition against execution context
         try:
@@ -1178,7 +1195,7 @@ Args:
         # Emit detailed decision evaluation info
         if on_step is not None:
             try:
-                on_step({
+                event_payload: Dict[str, Any] = {
                     "event_type": "decision_evaluated",
                     "node_id": node_id,
                     "node_label": node_label,
@@ -1190,7 +1207,10 @@ Args:
                     "compare_value2": compare_value2,
                     "result": condition_result,
                     "branch_taken": "true" if condition_result else "false",
-                })
+                }
+                if compound:
+                    event_payload["is_compound"] = True
+                on_step(event_payload)
             except Exception as e:
                 logger.warning(f"on_step decision callback error at node '{node_id}': {e}")
 
@@ -1209,6 +1229,32 @@ Args:
             )
 
         return next_node
+
+    def _format_simple_condition_expr(
+        self,
+        condition: Dict[str, Any],
+        symbols: Dict[str, str],
+    ) -> str:
+        """Build a human-readable expression string for a single simple condition."""
+        input_id = condition.get('input_id', '?')
+        comparator = condition.get('comparator', '?')
+        value = condition.get('value')
+        value2 = condition.get('value2')
+
+        # Resolve variable name
+        display_name = input_id
+        for name, var_id in self.name_to_id.items():
+            if var_id == input_id:
+                display_name = name
+                break
+
+        comp_sym = symbols.get(comparator, comparator)
+
+        if comparator in ('is_true', 'is_false'):
+            return f"{display_name} {comp_sym}"
+        if comparator in ('within_range', 'date_between', 'between'):
+            return f"{display_name} {comp_sym} [{value}, {value2}]"
+        return f"{display_name} {comp_sym} {value}"
 
     def _find_branch(self, children: List[Dict[str, Any]], condition_result: bool) -> Optional[Dict[str, Any]]:
         """Find child node matching condition result
