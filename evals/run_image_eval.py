@@ -134,15 +134,24 @@ def _generate_doubt_answers(
     node_labels = [n["label"] for n in case_config.get("canonical_expected_nodes", [])]
     expected_outputs = case_config.get("expected_outputs", [])
 
+    # Also include the expected variables for richer context
+    expected_variables = case_config.get("expected_variables", [])
+
     prompt = (
-        "Answer these clarifying questions about a workflow diagram.\n"
+        "You are answering clarifying questions about a workflow diagram analysis.\n"
         "The correct logic is:\n\n"
         f"```python\n{gt_source}\n```\n\n"
         f"Decision nodes: {node_labels}\n"
-        f"Outputs: {expected_outputs}\n\n"
-        "Answer each question concisely based on the ground truth.\n"
-        'End with: "Please regenerate the full JSON with these corrections."\n\n'
+        f"Outputs: {expected_outputs}\n"
+        f"Expected variables: {expected_variables}\n\n"
+        "First, answer each question concisely based on the ground truth:\n\n"
         + "\n".join(questions)
+        + "\n\nThen, proactively flag any corrections the workflow needs:\n"
+        "- If any outputs are missing or use generic names instead of specific labels, list the correct ones.\n"
+        "- If any decision ordering or nesting is wrong, describe the correct order.\n"
+        "- If any variables are missing or should be stage-specific, list them.\n"
+        "- If any threshold values or comparators are wrong, give the correct ones.\n\n"
+        'End with: "Please regenerate the full JSON with these corrections."\n'
     )
 
     return call_llm(

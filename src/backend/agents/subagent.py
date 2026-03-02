@@ -144,10 +144,6 @@ Return ONLY a JSON object with this structure:
 }
 
 Rules:
-- TRACE EVERY PATH: Before writing JSON, mentally trace every path from start to
-  each output through the diagram, following arrows exactly. Verify that your tree
-  reproduces each path faithfully — same decisions in the same order, same
-  conditions, same thresholds. Do not guess the order of decisions; read the arrows.
 - Use exact text from the diagram.
 - Every input must include an "id" computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
@@ -166,10 +162,6 @@ Rules:
   "input_a1c_after_metformin_float", "input_a1c_after_sglt2i_float",
   "input_a1c_after_dual_therapy_float". Each represents a distinct clinical timepoint.
   Do NOT reuse a single variable for multiple stage-specific checks.
-- CONDITION ACCURACY: Each decision's condition must use the EXACT variable and
-  threshold visible in the diagram. Do not substitute your own medical knowledge for
-  what the diagram actually shows. If the diagram says "A1c > 58", use comparator
-  "gt" and value 58 — do not round, reinterpret, or use a different threshold.
 - If a decision/action depends on one or more inputs, include "input_ids" on that node
   referencing the input ids.
 - Every DECISION node MUST include a structured "condition" object.
