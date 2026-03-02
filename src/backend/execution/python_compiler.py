@@ -18,6 +18,7 @@ Example output:
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
@@ -307,8 +308,6 @@ class PythonCodeGenerator:
             print(result.code)
     """
 
-    def __init__(self):
-        """Initialize the generator."""
     def __init__(
         self,
         nodes: List[Dict[str, Any]],
@@ -317,19 +316,19 @@ class PythonCodeGenerator:
         outputs: Optional[List[Dict[str, Any]]] = None,
         workflow_name: str = "workflow",
         include_main: bool = False,
-        fetch_subworkflow: Optional[callable] = None,
+        fetch_subworkflow: Optional[Any] = None,
         _processed_subflows: Optional[Set[str]] = None,
     ):
         """Initialize the compiler.
 
         Args:
-            nodes: Workflow nodes
-            edges: Workflow edges
-            variables: Variable definitions
+            nodes: Workflow nodes (list of node dicts with 'id', 'type', 'label', etc.)
+            edges: Workflow edges (list of edge dicts with 'from', 'to', 'label')
+            variables: Variable definitions (list of variable dicts with 'id', 'name', 'type')
             outputs: Optional end node output definitions
             workflow_name: Name of the generated Python function
             include_main: Whether to include an if __name__ == '__main__' block
-            fetch_subworkflow: Optional callback `(workflow_id) -> Workflow` for resolving subflows.
+            fetch_subworkflow: Optional callback (workflow_id) -> Workflow for resolving subflows.
             _processed_subflows: Optional set of already processed subflow IDs to prevent infinite cycles.
         """
         self.nodes = {node.get('id'): node for node in nodes if node.get('id')}
@@ -547,7 +546,7 @@ class PythonCodeGenerator:
         self._indent_level += 1
         self._add_line("# Example usage")
 
-# Generate example call with placeholder values
+        # Generate example call with placeholder values
         example_args = []
         for var in input_vars:
             var_type = var.get('type', 'string')
@@ -571,11 +570,12 @@ class PythonCodeGenerator:
         
         children = []
         for edge in self.edges:
-            if edge.get('source') == node_id:
-                target_id = edge.get('target')
+            # Edges use 'from'/'to' keys (canonical format throughout the codebase)
+            if edge.get('from') == node_id:
+                target_id = edge.get('to')
                 if target_id in self.nodes:
                     child_node = self.nodes[target_id]
-                    child_node['edge_label'] = edge.get('label', '') # Attach edge label for decision nodes
+                    child_node['edge_label'] = edge.get('label', '')
                     children.append(child_node)
         
         # Sort children to ensure consistent order (e.g., for decision branches)
@@ -672,7 +672,7 @@ class PythonCodeGenerator:
             # Try by ID
             if var_name in self.resolver.id_to_python:
                 return '{' + self.resolver.resolve(var_name) + '}'
-# Keep as-is (will use local variable if exists)
+            # Keep as-is (will use local variable if exists)
             return '{' + var_name.lower().replace(' ', '_') + '}'
 
         converted = re.sub(pattern, replace_var, template)
@@ -685,7 +685,6 @@ class PythonCodeGenerator:
         elif output_type == 'bool':
             return 'True' if str(value).lower() in ('true', '1', 'yes') else 'False'
         elif output_type == 'json':
-            import json
             return repr(json.loads(value) if isinstance(value, str) else value)
         else:
             return repr(str(value))
@@ -936,20 +935,20 @@ def compile_workflow_to_python(
     include_imports: bool = True,
     include_docstring: bool = True,
     include_main: bool = False,
-    fetch_subworkflow: Optional[callable] = None,
+    fetch_subworkflow: Optional[Any] = None,
 ) -> CompilationResult:
     """Helper function to compile a workflow to Python.
 
     Args:
         nodes: Workflow nodes
-        edges: Workflow edges
+        edges: Workflow edges (using 'from'/'to' keys)
         variables: Variable definitions
         outputs: Optional end node output definitions
         workflow_name: Name of the generated Python function
-        include_imports: Whether to include typing imports at the top
-        include_docstring: Whether to include docstring and parameter descriptions
+        include_imports: Whether to include typing imports at the top (currently always true)
+        include_docstring: Whether to include docstring (currently always true)
         include_main: Whether to include an if __name__ == "__main__" block
-        fetch_subworkflow: Optional callback `(workflow_id) -> Workflow` for resolving subflows.
+        fetch_subworkflow: Optional callback (workflow_id) -> Workflow for resolving subflows.
 
     Returns:
         CompilationResult

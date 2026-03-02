@@ -225,9 +225,9 @@ class TestPythonCodeGenerator:
             {"id": "node_minor", "type": "end", "label": "Minor"}
         ]
         edges = [
-            {"source": "node_start", "target": "node_decision"},
-            {"source": "node_decision", "target": "node_adult", "label": "true"},
-            {"source": "node_decision", "target": "node_minor", "label": "false"}
+            {"from": "node_start", "to": "node_decision"},
+            {"from": "node_decision", "to": "node_adult", "label": "true"},
+            {"from": "node_decision", "to": "node_minor", "label": "false"}
         ]
         
         variables = [
@@ -273,11 +273,11 @@ class TestPythonCodeGenerator:
             {"id": "node_rejected", "type": "end", "label": "Rejected: Underage"}
         ]
         edges = [
-            {"source": "node_start", "target": "node_d1"},
-            {"source": "node_d1", "target": "node_d2", "label": "true"},
-            {"source": "node_d1", "target": "node_rejected", "label": "false"},
-            {"source": "node_d2", "target": "node_approved", "label": "true"},
-            {"source": "node_d2", "target": "node_conditional", "label": "false"}
+            {"from": "node_start", "to": "node_d1"},
+            {"from": "node_d1", "to": "node_d2", "label": "true"},
+            {"from": "node_d1", "to": "node_rejected", "label": "false"},
+            {"from": "node_d2", "to": "node_approved", "label": "true"},
+            {"from": "node_d2", "to": "node_conditional", "label": "false"}
         ]
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
@@ -303,7 +303,7 @@ class TestPythonCodeGenerator:
             {"id": "node_end", "type": "end", "label": "Result", "output_template": "BMI is {BMI}"}
         ]
         edges = [
-            {"source": "node_start", "target": "node_end"}
+            {"from": "node_start", "to": "node_end"}
         ]
         variables = [
             {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "input"},
@@ -334,7 +334,7 @@ class TestPythonCodeGenerator:
             {"id": "node_end", "type": "end", "label": "Done"}
         ]
         edges = [
-            {"source": "node_start", "target": "node_end"}
+            {"from": "node_start", "to": "node_end"}
         ]
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
@@ -362,8 +362,8 @@ class TestPythonCodeGenerator:
             {"id": "node_end", "type": "end", "label": "Complete"}
         ]
         edges = [
-            {"source": "node_start", "target": "node_sub"},
-            {"source": "node_sub", "target": "node_end"}
+            {"from": "node_start", "to": "node_sub"},
+            {"from": "node_sub", "to": "node_end"}
         ]
         variables = []
 
@@ -402,9 +402,9 @@ class TestCompileWorkflowToPython:
             {"id": "n4", "type": "end", "label": "No", "x": 150, "y": 300},
         ]
         edges = [
-            {"source": "n1", "target": "n2", "label": ""},
-            {"source": "n2", "target": "n3", "label": "true"},
-            {"source": "n2", "target": "n4", "label": "false"},
+            {"from": "n1", "to": "n2", "label": ""},
+            {"from": "n2", "to": "n3", "label": "true"},
+            {"from": "n2", "to": "n4", "label": "false"},
         ]
         variables = [
             {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
