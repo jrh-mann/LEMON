@@ -299,7 +299,7 @@ export type ReviewStatus = 'unreviewed' | 'reviewed'
 // Variable source types - indicates where the variable value comes from
 export type VariableSource = 'input' | 'subprocess' | 'calculated' | 'constant'
 
-// Unified variable type - replaces the old WorkflowInput
+// Workflow variable definition — describes an input, calculated, or subprocess-derived variable
 export interface WorkflowVariable {
   id: string                          // e.g., "var_patient_age_number", "var_creditscore_number"
   name: string                        // Human-readable name, e.g., "Patient Age"
@@ -323,8 +323,7 @@ export interface WorkflowVariable {
   value?: unknown                     // The constant value
 }
 
-// Legacy type alias for backwards compatibility during transition
-export type WorkflowInput = WorkflowVariable
+
 
 // Workflow output definition - now with required type for subprocess variable inference
 export interface WorkflowOutput {

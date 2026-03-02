@@ -11,7 +11,7 @@ import {
   stopWorkflowExecution,
 } from '../api/socket'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { WorkflowInput, WorkflowVariable } from '../types'
+import type { WorkflowVariable } from '../types'
 
 export default function Modals() {
   const { modalOpen, closeModal } = useUIStore()
@@ -644,7 +644,7 @@ function ExecuteWorkflowForm() {
   }, [inputValues, execution.executionSpeed, closeModal, setGlobalInputValues])
 
   // Render input field based on type
-  const renderInputField = (input: WorkflowInput) => {
+  const renderInputField = (input: WorkflowVariable) => {
     const inputId = `exec-input-${input.id}`
     const value = inputValues[input.id]
 

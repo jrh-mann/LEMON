@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react'
-import type { FlowNode, WorkflowInput, WorkflowSummary } from '../../types'
+import type { FlowNode, WorkflowVariable, WorkflowSummary } from '../../types'
 
 export function SubprocessConfig({
   node,
@@ -16,7 +16,7 @@ export function SubprocessConfig({
 }: {
   node: FlowNode
   workflows: WorkflowSummary[]
-  analysisInputs: WorkflowInput[]
+  analysisInputs: WorkflowVariable[]
   currentWorkflowId?: string
   onUpdate: (updates: Partial<FlowNode>) => void
 }) {

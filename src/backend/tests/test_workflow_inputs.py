@@ -94,8 +94,8 @@ class TestWorkflowVariableManagement:
         assert result.data["variable"]["id"] == "var_patient_age_number"
 
         # Verify it was added to orchestrator state
-        assert len(orch.workflow["inputs"]) == 1
-        assert orch.workflow["inputs"][0]["name"] == "Patient Age"
+        assert len(orch.workflow["variables"]) == 1
+        assert orch.workflow["variables"][0]["name"] == "Patient Age"
 
     def test_add_workflow_variable_with_enum(self, orchestrator_with_workflow):
         """Test adding an enum variable."""
@@ -176,7 +176,7 @@ class TestWorkflowVariableManagement:
         
         # Add variable
         orch.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
-        assert len(orch.workflow["inputs"]) == 1
+        assert len(orch.workflow["variables"]) == 1
 
         # Remove variable (case-insensitive)
         result = orch.run_tool("remove_workflow_variable", {"name": "patient age"})
@@ -184,7 +184,7 @@ class TestWorkflowVariableManagement:
         print(f"\n[DEBUG] Remove variable result: {json.dumps(result.data, indent=2)}")
 
         assert result.success
-        assert len(orch.workflow["inputs"]) == 0
+        assert len(orch.workflow["variables"]) == 0
 
     def test_remove_variable_with_condition_references_fails(self, orchestrator_with_workflow):
         """Test that removing a variable fails if nodes reference it in condition (without force)."""
@@ -263,7 +263,7 @@ class TestWorkflowVariableManagement:
         assert result.data["affected_nodes"] == 2
 
         # Variable should be removed
-        assert len(orch.workflow["inputs"]) == 0
+        assert len(orch.workflow["variables"]) == 0
 
         # Nodes should no longer have condition
         for node in orch.workflow["nodes"]:

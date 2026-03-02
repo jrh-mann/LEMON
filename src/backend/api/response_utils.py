@@ -48,7 +48,7 @@ def summarize_response(response_text: str) -> str:
         return response_text
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     analysis = data.get("analysis") if isinstance(data.get("analysis"), dict) else {}
-    inputs = analysis.get("inputs") if isinstance(analysis.get("inputs"), list) else []
+    inputs = analysis.get("variables") if isinstance(analysis.get("variables"), list) else []
     outputs = analysis.get("outputs") if isinstance(analysis.get("outputs"), list) else []
     doubts = analysis.get("doubts") if isinstance(analysis.get("doubts"), list) else []
 

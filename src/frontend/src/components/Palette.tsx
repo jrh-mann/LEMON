@@ -138,15 +138,14 @@ export default function Palette() {
       // New export format: { id, metadata, flowchart: { nodes, edges }, variables, outputs }
       nodes = parsed.flowchart.nodes
       edges = parsed.flowchart.edges || []
-      // Extract analysis data - check multiple possible keys for backwards compatibility
-      variables = parsed.variables || parsed.inputs || parsed.flowchart.variables || parsed.flowchart.inputs
+      // Extract analysis data from export format
+      variables = parsed.variables || parsed.flowchart.variables
       outputs = parsed.outputs || parsed.flowchart.outputs
     } else if (Array.isArray(parsed.nodes)) {
       // Old format: { nodes, edges } at root level
       nodes = parsed.nodes
       edges = parsed.edges || []
-      // Check both 'variables' and 'inputs' for backwards compatibility
-      variables = parsed.variables || parsed.inputs
+      variables = parsed.variables
       outputs = parsed.outputs
     } else {
       throw new Error('Invalid format: JSON must have "nodes" array (either at root or under "flowchart")')

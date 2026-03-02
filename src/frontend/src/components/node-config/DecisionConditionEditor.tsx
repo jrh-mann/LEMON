@@ -8,7 +8,7 @@
 
 import type {
   FlowNode,
-  WorkflowInput,
+  WorkflowVariable,
   DecisionCondition,
   SimpleCondition,
   CompoundCondition,
@@ -20,7 +20,7 @@ import { COMPARATORS_BY_TYPE, COMPARATOR_LABELS, isCompoundCondition } from '../
 /**
  * Format a single simple condition as a human-readable string.
  */
-function formatSimpleConditionPreview(condition: SimpleCondition, inputs: WorkflowInput[]): string {
+function formatSimpleConditionPreview(condition: SimpleCondition, inputs: WorkflowVariable[]): string {
   if (!condition.input_id) return '(no input)'
 
   const input = inputs.find(inp => inp.id === condition.input_id)
@@ -42,7 +42,7 @@ function formatSimpleConditionPreview(condition: SimpleCondition, inputs: Workfl
 /**
  * Format a condition (simple or compound) as a human-readable string.
  */
-export function formatConditionPreview(condition: DecisionCondition, inputs: WorkflowInput[]): string {
+export function formatConditionPreview(condition: DecisionCondition, inputs: WorkflowVariable[]): string {
   if (isCompoundCondition(condition)) {
     const joiner = ` ${condition.operator.toUpperCase()} `
     const parts = condition.conditions.map(sub => formatSimpleConditionPreview(sub, inputs))
@@ -63,7 +63,7 @@ function SimpleConditionRow({
   showRemoveButton,
 }: {
   condition: SimpleCondition
-  analysisInputs: WorkflowInput[]
+  analysisInputs: WorkflowVariable[]
   onChange: (updated: SimpleCondition) => void
   onRemove?: () => void
   showRemoveButton: boolean
@@ -188,7 +188,7 @@ export function DecisionConditionEditor({
   onUpdate,
 }: {
   node: FlowNode
-  analysisInputs: WorkflowInput[]
+  analysisInputs: WorkflowVariable[]
   onUpdate: (updates: Partial<FlowNode>) => void
 }) {
   const condition = node.condition

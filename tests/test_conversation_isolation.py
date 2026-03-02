@@ -70,12 +70,12 @@ class TestConversationIsolation:
         })
 
         # Conversation B should have empty analysis
-        assert convo_b.workflow["inputs"] == []
+        assert convo_b.workflow["variables"] == []
         assert convo_b.workflow["outputs"] == []
 
         # Conversation A should have the variable
-        assert len(convo_a.workflow["inputs"]) == 1
-        assert convo_a.workflow["inputs"][0]["id"] == "var_age_int"
+        assert len(convo_a.workflow["variables"]) == 1
+        assert convo_a.workflow["variables"][0]["id"] == "var_age_int"
 
     def test_orchestrator_message_history_isolated(self):
         """Messages added to one orchestrator should not appear in another."""

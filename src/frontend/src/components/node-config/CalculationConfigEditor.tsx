@@ -10,7 +10,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import type {
   FlowNode,
-  WorkflowInput,
+  WorkflowVariable,
   CalculationConfig as CalculationConfigType,
   Operand,
 } from '../../types'
@@ -19,7 +19,7 @@ import { getOperator, getOperatorsByCategory } from '../../types'
 /**
  * Format a calculation as a human-readable formula for preview.
  */
-export function formatCalculationPreview(calc: CalculationConfigType, inputs: WorkflowInput[]): string {
+export function formatCalculationPreview(calc: CalculationConfigType, inputs: WorkflowVariable[]): string {
   const op = getOperator(calc.operator)
   if (!op) return '(invalid operator)'
 
@@ -69,7 +69,7 @@ export function CalculationConfigEditor({
   onUpdate,
 }: {
   node: FlowNode
-  analysisInputs: WorkflowInput[]
+  analysisInputs: WorkflowVariable[]
   onUpdate: (updates: Partial<FlowNode>) => void
 }) {
   // Get current calculation config or create empty one

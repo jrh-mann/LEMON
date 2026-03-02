@@ -8,7 +8,7 @@ import type {
   InputBlock,
   InputType,
   WorkflowAnalysis,
-  WorkflowInput,
+  WorkflowVariable,
   FlowNode,
 } from '../types'
 
@@ -111,7 +111,7 @@ export default function RightSidebar() {
   }, [setWorkflows])
 
   // Derive analysis variables for display
-  const analysisInputs: WorkflowInput[] = currentAnalysis?.variables || []
+  const analysisInputs: WorkflowVariable[] = currentAnalysis?.variables || []
 
   // Selected node / edge helpers
   const selectedNode: FlowNode | undefined = selectedNodeId
@@ -124,7 +124,7 @@ export default function RightSidebar() {
 
   // Variable add handler
   const handleAddVariable = useCallback(() => {
-    const newVar: WorkflowInput = {
+    const newVar: WorkflowVariable = {
       id: buildVariableId('New Variable', 'string'),
       name: 'New Variable',
       type: 'string',
@@ -140,7 +140,7 @@ export default function RightSidebar() {
 
   // Variable update handler
   const handleVariableUpdate = useCallback(
-    (index: number, updates: Partial<WorkflowInput>) => {
+    (index: number, updates: Partial<WorkflowVariable>) => {
       const newVars = [...analysisInputs]
       const old = newVars[index]
       const merged = { ...old, ...updates }

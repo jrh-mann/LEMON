@@ -81,7 +81,7 @@ class TestForceDeleteIntegration:
 
         print(f"\n[TEST] Add variable result: {json.dumps(result1.data, indent=2)}")
         assert result1.success
-        assert len(orchestrator.workflow["inputs"]) == 1
+        assert len(orchestrator.workflow["variables"]) == 1
         var_id = result1.data["variable"]["id"]  # e.g., "var_patient_age_int"
 
         # Step 2: Add a node with condition that references the variable
@@ -120,7 +120,7 @@ class TestForceDeleteIntegration:
         assert "force=true" in result3.error
 
         # Variable should still exist
-        assert len(orchestrator.workflow["inputs"]) == 1
+        assert len(orchestrator.workflow["variables"]) == 1
 
         # Node should still have condition
         assert len(orchestrator.workflow["nodes"]) == 1
@@ -182,7 +182,7 @@ class TestForceDeleteIntegration:
         assert orchestrator.workflow["nodes"][1]["condition"]["input_id"] == var_id
 
         print(f"\n[TEST] Workflow before force delete:")
-        print(f"  Variables: {len(orchestrator.workflow['inputs'])}")
+        print(f"  Variables: {len(orchestrator.workflow['variables'])}")
         print(f"  Nodes: {len(orchestrator.workflow['nodes'])}")
         for i, node in enumerate(orchestrator.workflow['nodes']):
             print(f"    Node {i}: id={node['id']}, label={node['label']}, condition={node.get('condition')}")
@@ -202,10 +202,10 @@ class TestForceDeleteIntegration:
         assert result4.data.get("affected_nodes") == 2
 
         # Variable should be removed
-        assert len(orchestrator.workflow["inputs"]) == 0
+        assert len(orchestrator.workflow["variables"]) == 0
 
         print(f"\n[TEST] Workflow after force delete:")
-        print(f"  Variables: {len(orchestrator.workflow['inputs'])}")
+        print(f"  Variables: {len(orchestrator.workflow['variables'])}")
         print(f"  Nodes: {len(orchestrator.workflow['nodes'])}")
         for i, node in enumerate(orchestrator.workflow['nodes']):
             print(f"    Node {i}: id={node['id']}, label={node['label']}, condition={node.get('condition')}")
@@ -294,7 +294,7 @@ class TestForceDeleteIntegration:
 
         assert result2.success
         assert "Removed variable 'Unused Variable'" in result2.message
-        assert len(orchestrator.workflow["inputs"]) == 0
+        assert len(orchestrator.workflow["variables"]) == 0
 
 
 if __name__ == "__main__":

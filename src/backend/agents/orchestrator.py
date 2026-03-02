@@ -34,11 +34,11 @@ class Orchestrator:
         self.tools = tools
         self.last_session_id: Optional[str] = None
 
-        # Single canonical workflow dict (nodes + edges + inputs + outputs + metadata)
+        # Single canonical workflow dict (nodes + edges + variables + outputs + metadata)
         self.workflow: Dict[str, Any] = {
             "nodes": [],
             "edges": [],
-            "inputs": [],
+            "variables": [],
             "outputs": [],
             "tree": {},
             "doubts": [],
@@ -60,10 +60,9 @@ class Orchestrator:
         # All open tabs with workflows (for list_workflows_in_library to show drafts)
         self.open_tabs: List[Dict[str, Any]] = []
 
-    # Backward-compatible properties for existing code
     @property
     def current_workflow(self) -> Dict[str, Any]:
-        """View of workflow structure (nodes/edges only) for backward compatibility."""
+        """View of workflow structure (nodes/edges only) for session_state."""
         return {
             "nodes": self.workflow.get("nodes", []),
             "edges": self.workflow.get("edges", [])
@@ -82,13 +81,9 @@ class Orchestrator:
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata for tools.
-        
-        Exposes 'variables' key (unified variable system) instead of 'inputs'.
-        Storage layer still uses 'inputs' key for backwards compatibility.
-        """
+        """View of workflow metadata (variables/outputs/tree/doubts) for tools."""
         return {
-            "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
+            "variables": self.workflow.get("variables", []),
             "outputs": self.workflow.get("outputs", []),
             "tree": self.workflow.get("tree", {}),
             "doubts": self.workflow.get("doubts", []),
@@ -98,18 +93,13 @@ class Orchestrator:
 
     @workflow_analysis.setter
     def workflow_analysis(self, value: Dict[str, Any]) -> None:
-        """Set workflow metadata from dict.
-        
-        Accepts both 'variables' key (new format) and 'inputs' key (legacy).
-        Data is stored under 'inputs' key internally for backwards compatibility.
-        """
+        """Set workflow metadata from dict."""
         if not isinstance(value, dict):
             return
-        # Accept 'variables' key (standard format)
         variables = value.get("variables", [])
         outputs = value.get("outputs", [])
         if isinstance(variables, list):
-            self.workflow["inputs"] = variables  # Store as 'inputs' internally
+            self.workflow["variables"] = variables
         if isinstance(outputs, list):
             self.workflow["outputs"] = outputs
         if "tree" in value and isinstance(value.get("tree"), dict):
@@ -166,12 +156,11 @@ class Orchestrator:
         """Sync workflow metadata (variables/outputs/tree/doubts) from external source.
 
         Args:
-            analysis_provider: Callable that returns workflow analysis.
+            analysis_provider: Callable that returns workflow analysis with 'variables' key.
                               None = use existing memory state (no-op).
 
         Design: Uses dependency injection to decouple from storage.
                 Caller controls WHERE state comes from.
-                Accepts both 'variables' (new) and 'inputs' (legacy) keys.
         """
         if analysis_provider is None:
             return  # No sync needed
@@ -185,13 +174,11 @@ class Orchestrator:
         if not isinstance(analysis_data, dict):
             return
 
-        # Accept 'variables' key (standard format)
         variables = analysis_data.get("variables", [])
         outputs = analysis_data.get("outputs", [])
 
         if isinstance(variables, list) and isinstance(outputs, list):
-            # Update the unified workflow dict (stored as 'inputs' internally)
-            self.workflow["inputs"] = variables
+            self.workflow["variables"] = variables
             self.workflow["outputs"] = outputs
             if "tree" in analysis_data:
                 self.workflow["tree"] = analysis_data.get("tree", {})
@@ -287,19 +274,18 @@ class Orchestrator:
         if tool_name == "analyze_workflow" and result.success and isinstance(result.data, dict):
             analysis = result.data.get("analysis")
             if isinstance(analysis, dict):
-                for key in ("inputs", "outputs", "tree", "doubts", "reasoning", "guidance"):
-                    # Map 'variables' key from analysis to internal 'inputs' key
-                    src_key = "variables" if key == "inputs" else key
-                    if src_key in analysis:
-                        self.workflow[key] = analysis[src_key]
+                # analyze_workflow returns 'variables' key (normalized by normalize_analysis)
+                for key in ("variables", "outputs", "tree", "doubts", "reasoning", "guidance"):
+                    if key in analysis:
+                        self.workflow[key] = analysis[key]
                 # Also store flowchart nodes/edges if present
                 flowchart = result.data.get("flowchart")
                 if isinstance(flowchart, dict) and flowchart.get("nodes"):
                     self.workflow["nodes"] = flowchart.get("nodes", [])
                     self.workflow["edges"] = flowchart.get("edges", [])
                 self._logger.info(
-                    "Stored analyze_workflow result: %d inputs, %d outputs, %d nodes",
-                    len(self.workflow.get("inputs", [])),
+                    "Stored analyze_workflow result: %d variables, %d outputs, %d nodes",
+                    len(self.workflow.get("variables", [])),
                     len(self.workflow.get("outputs", [])),
                     len(self.workflow.get("nodes", [])),
                 )
@@ -415,7 +401,7 @@ class Orchestrator:
         workflow_dict = {
             "nodes": nodes,
             "edges": self.workflow.get("edges", []),
-            "variables": self.workflow.get("inputs", []),
+            "variables": self.workflow.get("variables", []),
         }
         is_valid, errors = self._workflow_validator.validate(workflow_dict, strict=False)
         if is_valid:
@@ -438,21 +424,14 @@ class Orchestrator:
 
         For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
         For MCP calls: Tools return workflow_analysis in response, we must sync it back.
-        
-        Tools use 'variables' key (unified format), but storage uses 'inputs' key
-        for backwards compatibility.
         """
         if tool_name in WORKFLOW_INPUT_TOOLS:
             # MCP mode: Extract workflow_analysis from response and sync
             if "workflow_analysis" in result:
                 returned_analysis = result["workflow_analysis"]
                 if isinstance(returned_analysis, dict):
-                    # Tools return 'variables' key - sync to internal 'inputs' storage
                     if "variables" in returned_analysis:
-                        self.workflow["inputs"] = returned_analysis["variables"]
-                    # Also accept legacy 'inputs' key for backwards compatibility
-                    elif "inputs" in returned_analysis:
-                        self.workflow["inputs"] = returned_analysis["inputs"]
+                        self.workflow["variables"] = returned_analysis["variables"]
                     if "outputs" in returned_analysis:
                         self.workflow["outputs"] = returned_analysis["outputs"]
                     if "reasoning" in returned_analysis:
@@ -461,7 +440,7 @@ class Orchestrator:
                         self.workflow["guidance"] = returned_analysis["guidance"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d variables, %d outputs",
-                        len(self.workflow.get("inputs", [])),
+                        len(self.workflow.get("variables", [])),
                         len(self.workflow.get("outputs", [])),
                     )
 
@@ -795,7 +774,7 @@ def _summarize_tool_results(results: List[ToolResult]) -> str:
         analysis = result.data.get("analysis") if isinstance(result.data, dict) else {}
         if not isinstance(analysis, dict):
             analysis = {}
-        inputs = analysis.get("inputs") if isinstance(analysis.get("inputs"), list) else []
+        inputs = analysis.get("variables") if isinstance(analysis.get("variables"), list) else []
         outputs = analysis.get("outputs") if isinstance(analysis.get("outputs"), list) else []
         doubts = analysis.get("doubts") if isinstance(analysis.get("doubts"), list) else []
 

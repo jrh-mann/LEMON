@@ -5,7 +5,7 @@
  * For other types, "Static value" shows a type-aware input.
  */
 
-import type { FlowNode, WorkflowInput } from '../../types'
+import type { FlowNode, WorkflowVariable } from '../../types'
 
 export function EndNodeConfig({
   node,
@@ -14,7 +14,7 @@ export function EndNodeConfig({
   onUpdate,
 }: {
   node: FlowNode
-  analysisInputs: WorkflowInput[]
+  analysisInputs: WorkflowVariable[]
   workflowOutputType: string
   onUpdate: (updates: Partial<FlowNode>) => void
 }) {

@@ -111,7 +111,7 @@ def register_peer_review_routes(
             },
             "nodes": workflow.nodes,
             "edges": workflow.edges,
-            "inputs": workflow.inputs,
+            "variables": workflow.inputs,  # Storage field is 'inputs', API exposes as 'variables'
             "outputs": workflow.outputs,
             "tree": workflow.tree,
             # Peer review fields

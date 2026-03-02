@@ -133,7 +133,7 @@ export default function WorkflowPage() {
                 setFlowchart(fc)
 
                 const analysis: WorkflowAnalysis = {
-                    variables: workflowData.inputs || [],
+                    variables: workflowData.variables || [],
                     outputs: workflowData.outputs || [],
                     tree: workflowData.tree || {},
                     doubts: workflowData.doubts || [],

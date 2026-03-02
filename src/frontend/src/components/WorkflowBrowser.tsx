@@ -257,10 +257,10 @@ export default function WorkflowBrowser() {
       setCurrentWorkflow(workflow)
       setFlowchart(flowchart)
 
-      // Set analysis data if available (map backend 'inputs' to frontend 'variables')
-      if (workflowData.inputs || workflowData.outputs || workflowData.tree || workflowData.doubts) {
+      // Set analysis data if available
+      if (workflowData.variables || workflowData.outputs || workflowData.tree || workflowData.doubts) {
         const analysis: WorkflowAnalysis = {
-          variables: workflowData.inputs || [],  // Backend sends 'inputs', frontend uses 'variables'
+          variables: workflowData.variables || [],
           outputs: workflowData.outputs || [],
           tree: workflowData.tree || {},
           doubts: workflowData.doubts || [],

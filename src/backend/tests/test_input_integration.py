@@ -92,17 +92,17 @@ class TestVariableDoubleAppendBug:
         )
 
         print(f"\n[DEBUG] Tool result: {json.dumps(result, indent=2)}")
-        print(f"[DEBUG] Orchestrator variables BEFORE update: {orch.workflow['inputs']}")
+        print(f"[DEBUG] Orchestrator variables BEFORE update: {orch.workflow['variables']}")
 
         assert result["success"] is True
 
         # Simulate what orchestrator.run_tool does
         orch._update_analysis_from_tool_result("add_workflow_variable", result)
 
-        print(f"[DEBUG] Orchestrator variables AFTER update: {orch.workflow['inputs']}")
+        print(f"[DEBUG] Orchestrator variables AFTER update: {orch.workflow['variables']}")
 
         # Check for duplicates - this will fail if double-append bug exists
-        variables = orch.workflow["inputs"]
+        variables = orch.workflow["variables"]
         assert len(variables) == 1, f"Expected 1 variable, got {len(variables)}: {variables}"
         assert variables[0]["name"] == "Patient Age"
 
@@ -133,10 +133,10 @@ class TestVariableDoubleAppendBug:
             # Simulate orchestrator update
             orch._update_analysis_from_tool_result("add_workflow_variable", result)
 
-        print(f"\n[DEBUG] Final variables: {json.dumps(orch.workflow['inputs'], indent=2)}")
+        print(f"\n[DEBUG] Final variables: {json.dumps(orch.workflow['variables'], indent=2)}")
 
         # Should have exactly 3 variables, no duplicates
-        variables = orch.workflow["inputs"]
+        variables = orch.workflow["variables"]
         assert len(variables) == 3, f"Expected 3 variables, got {len(variables)}: {variables}"
 
         var_names_result = [var["name"] for var in variables]
@@ -183,8 +183,8 @@ class TestVariableStateSync:
 
         # After orchestrator syncs, state should be updated
         orch._update_analysis_from_tool_result("add_workflow_variable", result)
-        assert len(orch.workflow["inputs"]) == 1
-        assert orch.workflow["inputs"][0]["name"] == "Patient Age"
+        assert len(orch.workflow["variables"]) == 1
+        assert orch.workflow["variables"][0]["name"] == "Patient Age"
 
     def test_orchestrator_run_tool_updates_state(self, orchestrator_with_workflow):
         """Test that orchestrator.run_tool properly updates workflow_analysis."""
@@ -197,12 +197,12 @@ class TestVariableStateSync:
         )
 
         print(f"\n[DEBUG] Run tool result: {json.dumps(result.data, indent=2)}")
-        print(f"[DEBUG] Orchestrator variables: {orch.workflow['inputs']}")
+        print(f"[DEBUG] Orchestrator variables: {orch.workflow['variables']}")
 
         assert result.data["success"] is True
 
         # Check orchestrator state was updated
-        variables = orch.workflow["inputs"]
+        variables = orch.workflow["variables"]
 
         # This will fail if there's a double-append bug
         assert len(variables) == 1, f"Expected 1 variable, got {len(variables)}: {variables}"
@@ -221,7 +221,7 @@ class TestVariableToolSequence:
             "add_workflow_variable",
             {"name": "Patient Age", "type": "number"}
         )
-        print(f"\n[DEBUG] After variable 1: {orch.workflow['inputs']}")
+        print(f"\n[DEBUG] After variable 1: {orch.workflow['variables']}")
         assert result1.data["success"] is True
 
         # Add second variable
@@ -229,7 +229,7 @@ class TestVariableToolSequence:
             "add_workflow_variable",
             {"name": "Blood Glucose", "type": "number"}
         )
-        print(f"[DEBUG] After variable 2: {orch.workflow['inputs']}")
+        print(f"[DEBUG] After variable 2: {orch.workflow['variables']}")
         assert result2.data["success"] is True
 
         # Add third variable
@@ -237,11 +237,11 @@ class TestVariableToolSequence:
             "add_workflow_variable",
             {"name": "Patient Gender", "type": "enum", "enum_values": ["Male", "Female", "Other"]}
         )
-        print(f"[DEBUG] After variable 3: {orch.workflow['inputs']}")
+        print(f"[DEBUG] After variable 3: {orch.workflow['variables']}")
         assert result3.data["success"] is True
 
         # Verify final state
-        variables = orch.workflow["inputs"]
+        variables = orch.workflow["variables"]
         print(f"\n[DEBUG] Final variables: {json.dumps(variables, indent=2)}")
 
         assert len(variables) == 3, f"Expected 3 variables, got {len(variables)}"
@@ -307,7 +307,7 @@ class TestVariableAndNodeLinking:
         assert node_result.data["node"]["condition"]["input_id"] == var_id
 
         # Verify orchestrator state
-        assert len(orch.workflow["inputs"]) == 1
+        assert len(orch.workflow["variables"]) == 1
         assert len(orch.current_workflow["nodes"]) == 1
         assert orch.current_workflow["nodes"][0]["condition"]["input_id"] == var_id
 
@@ -347,11 +347,11 @@ class TestVariableAndNodeLinking:
             }
         )
 
-        print(f"\n[DEBUG] Final variables: {orch.workflow['inputs']}")
+        print(f"\n[DEBUG] Final variables: {orch.workflow['variables']}")
         print(f"[DEBUG] Final nodes: {orch.current_workflow['nodes']}")
 
         # Verify no duplicates
-        assert len(orch.workflow["inputs"]) == 2
+        assert len(orch.workflow["variables"]) == 2
         assert len(orch.current_workflow["nodes"]) == 2
 
         # Verify conditions reference correct variables
