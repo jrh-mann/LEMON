@@ -8,8 +8,8 @@ Covers:
 3. Mixed standalone + linked items both returned
 4. Empty response returns []
 5. build_system_prompt splits standalone vs linked formatting
-6. build_system_prompt includes ## Subflow Guidance when linked items exist
-7. build_system_prompt omits ## Subflow Guidance when no linked items
+6. Subagent subworkflows in analysis prompt and result defaulting
+7. _process_subworkflows creates workflows and replaces nodes
 """
 
 import json
@@ -123,7 +123,128 @@ class TestLinkedGuidanceExtraction:
 
 
 # ---------------------------------------------------------------------------
-# Step 2 tests: build_system_prompt formatting for linked vs standalone
+# Subworkflow prompt & result tests
+# ---------------------------------------------------------------------------
+
+class TestSubworkflowPromptAndDefaults:
+    """Verify subworkflows are in the prompt schema and default to [] in results."""
+
+    def test_analyze_preserves_subworkflows_from_llm(self):
+        """When LLM returns subworkflows, they should be preserved in the result."""
+        subagent = _make_subagent()
+        subagent.history.list_messages.return_value = []
+
+        # Analysis JSON with a subworkflow entry
+        analysis_json = json.dumps({
+            "inputs": [
+                {"id": "input_ldl_float", "name": "ldl", "type": "float", "description": "LDL level"}
+            ],
+            "outputs": [{"name": "result", "description": "Result"}],
+            "tree": {
+                "start": {
+                    "id": "start", "type": "start", "label": "Begin",
+                    "children": [
+                        {"id": "n1", "type": "output", "label": "Done"}
+                    ],
+                }
+            },
+            "doubts": [],
+            "subworkflows": [
+                {
+                    "name": "Treatment Protocol",
+                    "linked_to_node": "n3",
+                    "output_type": "string",
+                    "output_variable": "treatment_result",
+                    "input_mapping": {"ldl": "ldl_input"},
+                    "inputs": [{"id": "input_ldl_float", "name": "ldl", "type": "float"}],
+                    "outputs": [{"name": "treatment_result", "description": "Rec"}],
+                    "tree": {
+                        "start": {
+                            "id": "start", "type": "start", "label": "Sub Start",
+                            "children": [{"id": "s1", "type": "output", "label": "Sub Done"}],
+                        }
+                    },
+                }
+            ],
+        })
+
+        with patch("src.backend.agents.subagent.call_llm", return_value=analysis_json), \
+             patch("src.backend.agents.subagent.call_llm_stream", return_value=analysis_json), \
+             patch("src.backend.agents.subagent.image_to_data_url", return_value="data:image/png;base64,abc"):
+            result = subagent.analyze(
+                image_path=MagicMock(name="test.png"),
+                session_id="test-session",
+                stream=lambda x: None,
+            )
+
+        assert "subworkflows" in result
+        assert len(result["subworkflows"]) == 1
+        assert result["subworkflows"][0]["name"] == "Treatment Protocol"
+
+    def test_analyze_defaults_subworkflows_to_empty(self):
+        """When LLM omits subworkflows, result should default to []."""
+        subagent = _make_subagent()
+        subagent.history.list_messages.return_value = []
+
+        # Analysis JSON without subworkflows key
+        analysis_json = json.dumps({
+            "inputs": [],
+            "outputs": [],
+            "tree": {
+                "start": {
+                    "id": "start", "type": "start", "label": "Begin",
+                    "children": [{"id": "n1", "type": "output", "label": "Done"}],
+                }
+            },
+            "doubts": [],
+        })
+
+        with patch("src.backend.agents.subagent.call_llm", return_value=analysis_json), \
+             patch("src.backend.agents.subagent.call_llm_stream", return_value=analysis_json), \
+             patch("src.backend.agents.subagent.image_to_data_url", return_value="data:image/png;base64,abc"):
+            result = subagent.analyze(
+                image_path=MagicMock(name="test.png"),
+                session_id="test-session",
+                stream=lambda x: None,
+            )
+
+        assert "subworkflows" in result
+        assert result["subworkflows"] == []
+
+    def test_analyze_multi_defaults_subworkflows_to_empty(self):
+        """analyze_multi should also default subworkflows to [] if missing."""
+        subagent = _make_subagent()
+
+        analysis_json = json.dumps({
+            "inputs": [],
+            "outputs": [],
+            "tree": {
+                "start": {
+                    "id": "start", "type": "start", "label": "Begin",
+                    "children": [{"id": "n1", "type": "output", "label": "Done"}],
+                }
+            },
+            "doubts": [],
+        })
+
+        with patch("src.backend.agents.subagent.call_llm", return_value=analysis_json), \
+             patch("src.backend.agents.subagent.call_llm_stream", return_value=analysis_json), \
+             patch("src.backend.agents.subagent.file_to_data_url", return_value="data:image/png;base64,abc"):
+            result = subagent.analyze_multi(
+                classified_files=[{
+                    "id": "f1", "name": "test.png", "abs_path": "/tmp/test.png",
+                    "file_type": "image", "purpose": "flowchart",
+                }],
+                session_id="test-multi",
+                stream=lambda x: None,
+            )
+
+        assert "subworkflows" in result
+        assert result["subworkflows"] == []
+
+
+# ---------------------------------------------------------------------------
+# build_system_prompt formatting for linked vs standalone
 # ---------------------------------------------------------------------------
 
 class TestBuildSystemPromptLinkedFormatting:

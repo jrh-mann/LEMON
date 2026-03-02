@@ -122,6 +122,24 @@ Return ONLY a JSON object with this structure:
       "y": 300,
       "question": "question or ambiguity related to this specific location"
     }
+  ],
+  "subworkflows": [
+    {
+      "name": "Treatment Protocol",
+      "linked_to_node": "n3",
+      "output_type": "string",
+      "output_variable": "treatment_result",
+      "input_mapping": {"parent_var_name": "sub_input_name"},
+      "inputs": [
+        {"id": "input_ldl_float", "name": "ldl", "type": "float", "description": "LDL level"}
+      ],
+      "outputs": [
+        {"name": "treatment_result", "description": "Treatment recommendation"}
+      ],
+      "tree": {
+        "start": { "...same structure as main tree..." }
+      }
+    }
   ]
 }
 
@@ -168,6 +186,14 @@ Rules:
 - Every node id must be unique across the tree.
 - For all questions inside the "doubts" array, you MUST provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
 - CRITICAL: The question text MUST be self-contained and descriptive. It should be understandable even without seeing the exact dot location. Reference surrounding text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node represent?" instead of "What is this?").
+- subworkflows: When linked guidance panels describe 3+ steps of detailed logic
+  for a specific action node, create a subworkflow for that node.
+  - linked_to_node: the ID of the action node in the main tree this replaces
+  - input_mapping: maps parent input names to subworkflow input names
+  - output_variable: name for the result variable
+  - output_type: one of "string", "number", "bool", "json"
+  - The subworkflow tree follows the same rules as the main tree
+  - If no linked guidance warrants subworkflows, return "subworkflows": []
 - Return JSON only, no extra text.
 
 Once you've received clarifications via feedback, adjust the analysis accordingly, preserving ids
@@ -349,6 +375,9 @@ by recomputing them deterministically from name + type. Respond only with the up
         data["reasoning"] = "".join(thinking_parts)
         # Attach extracted side information (guidance) from the image
         data["guidance"] = guidance
+        # Default subworkflows to empty list if the LLM didn't produce any
+        if "subworkflows" not in data:
+            data["subworkflows"] = []
 
         # Map 0-1000 LLM output coordinates back to absolute hardware pixels
         if img_w > 0 and img_h > 0:
@@ -511,7 +540,8 @@ by recomputing them deterministically from name + type. Respond only with the up
       ]
     }
   },
-  "doubts": []
+  "doubts": [],
+  "subworkflows": []
 }
 
 Rules:
@@ -521,6 +551,14 @@ Rules:
 - Every DECISION node MUST include a structured "condition" object.
 - For binary branches, set child edge_label to EXACTLY "true" or "false".
 - This must be a single rooted tree starting at tree.start.
+- subworkflows: When linked guidance panels describe 3+ steps of detailed logic
+  for a specific action node, create a subworkflow for that node.
+  - linked_to_node: the ID of the action node in the main tree this replaces
+  - input_mapping: maps parent input names to subworkflow input names
+  - output_variable: name for the result variable
+  - output_type: one of "string", "number", "bool", "json"
+  - The subworkflow tree follows the same rules as the main tree
+  - If no linked guidance warrants subworkflows, return "subworkflows": []
 - Return JSON only, no extra text.
 """
 
@@ -610,6 +648,9 @@ Rules:
 
         data["reasoning"] = "".join(thinking_parts)
         data["guidance"] = all_guidance
+        # Default subworkflows to empty list if the LLM didn't produce any
+        if "subworkflows" not in data:
+            data["subworkflows"] = []
 
         # Persist to history so publish_latest_analysis can load it later
         self.history.add_message(session_id, "user", multi_prompt)
