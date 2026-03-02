@@ -494,6 +494,7 @@ class Orchestrator:
             allow_tools=allow_tools,
             reasoning=self.workflow.get("reasoning", ""),
             guidance=self.workflow.get("guidance", []),
+            current_workflow_id=self.current_workflow_id,
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow

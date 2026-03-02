@@ -20,6 +20,7 @@ def build_system_prompt(
     allow_tools: bool,
     reasoning: str = "",
     guidance: Optional[List[Dict[str, Any]]] = None,
+    current_workflow_id: Optional[str] = None,
 ) -> str:
     """Build the system prompt for the orchestrator LLM.
 
@@ -34,6 +35,9 @@ def build_system_prompt(
         allow_tools: Whether tool calling is enabled for this response.
         reasoning: Analysis reasoning context from subagent.
         guidance: Guidance notes extracted from the workflow image.
+        current_workflow_id: ID of the workflow currently open on the
+            canvas, if any.  Injected so the LLM can pass it to tools
+            without a discovery step.
 
     Returns:
         Complete system prompt string.
@@ -51,6 +55,18 @@ def build_system_prompt(
         "Then use that workflow_id in ALL subsequent tool calls.\n\n"
         "### Editing an Existing Workflow\n"
         "If the user mentions an existing workflow by name, call list_workflows_in_library to find its ID first.\n\n"
+    )
+
+    # Inject the current workflow ID so the LLM can reference it directly
+    # without needing a discovery tool call.
+    if current_workflow_id:
+        system += (
+            f"### Current Workflow\n"
+            f"The workflow currently open on the canvas has ID: `{current_workflow_id}`.\n"
+            f"Use this ID for all tool calls that operate on the current workflow.\n\n"
+        )
+
+    system += (
         "## CRITICAL: When to Call Tools\n"
         "ALWAYS call tools immediately when the user uses action verbs:\n"
         "- CREATE NEW WORKFLOW → call create_workflow (FIRST!)\n"
