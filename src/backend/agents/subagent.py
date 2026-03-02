@@ -188,15 +188,9 @@ Rules:
     like an action (e.g., "Continue metformin"), it is still an output because it is
     the final recommendation of that branch.
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
-  - DECISION ORDER: The first decision after Start must match the FIRST decision
-    visible in the diagram's flow direction. Do NOT reorder decisions for logical
-    convenience — faithfully reproduce the diagram's structure top-to-bottom.
-  - NO SUBTREE DUPLICATION: A decision node and its subtree MUST appear exactly ONCE
-    in the tree. NEVER copy a subtree for multiple branches. If two paths through the
-    diagram converge to the same decision point, the tree must converge there too — do
-    NOT create copies like "node_ref1", "node_ref2". Each decision from the diagram
-    should map to exactly one node in the JSON tree. If you find yourself creating
-    duplicate subtrees, restructure so the shared logic appears once.
+  - CLARITY: Structure the tree so it is clear and interpretable. You may reorder
+    decisions or duplicate subtrees if it makes the logic clearer, as long as no
+    detail is lost and all paths remain logically correct.
 - Output node labels MUST use the EXACT human-readable text from the diagram, verbatim.
   Do NOT convert to programmatic snake_case names.
   Do NOT invent generic labels like "Continue current therapy" — use the specific

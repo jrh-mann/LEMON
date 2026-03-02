@@ -9,15 +9,17 @@ import re
 from src.backend.execution.interpreter import TreeInterpreter
 from src.backend.utils.flowchart import tree_from_flowchart
 from src.backend.validation.workflow_validator import WorkflowValidator
+from evals.llm_judge import llm_judge_score
 
 
 WEIGHTS: Dict[str, float] = {
-    "node_f1": 0.25,
-    "edge_f1": 0.25,
-    "variable_f1": 0.15,
-    "output_f1": 0.10,
-    "semantic_score": 0.20,
-    "validity_score": 0.05,
+    "llm_judge": 0.50,
+    "semantic_score": 0.25,
+    "validity_score": 0.10,
+    "node_f1": 0.05,
+    "edge_f1": 0.05,
+    "variable_f1": 0.025,
+    "output_f1": 0.025,
 }
 
 
@@ -409,7 +411,7 @@ def score_trial(
     pred_variables = analysis.get("variables") if isinstance(analysis.get("variables"), list) else []
     pred_outputs = analysis.get("outputs") if isinstance(analysis.get("outputs"), list) else []
 
-    # Nodes
+    # Nodes (kept for diagnostics, low weight in composite)
     pred_node_tokens = _node_tokens(pred_nodes)
     ref_node_tokens = _node_tokens(ref_nodes)
     node_prf = _compute_prf(
@@ -418,7 +420,7 @@ def score_trial(
         reference_total=len(ref_node_tokens),
     )
 
-    # Edges
+    # Edges (kept for diagnostics, low weight in composite)
     pred_id_to_label = {str(n.get("id")): str(n.get("label") or "") for n in pred_nodes if isinstance(n, Mapping)}
     ref_id_to_label = {str(n.get("id")): str(n.get("label") or "") for n in ref_nodes if isinstance(n, Mapping)}
     pred_edge_tokens = _edge_tokens(pred_edges, pred_id_to_label)
@@ -429,7 +431,7 @@ def score_trial(
         reference_total=len(ref_edge_tokens),
     )
 
-    # Variables
+    # Variables (kept for diagnostics, low weight)
     pred_var_tokens = _variable_tokens(pred_variables)
     ref_var_tokens = _variable_tokens(ref_variables)
     variable_prf = _compute_prf(
@@ -438,7 +440,7 @@ def score_trial(
         reference_total=len(ref_var_tokens),
     )
 
-    # Outputs
+    # Outputs (kept for diagnostics, low weight)
     pred_out_tokens = _output_tokens(pred_outputs)
     if not pred_out_tokens:
         pred_out_tokens = _output_tokens([n.get("label") for n in pred_nodes if canonicalize_node_type(n.get("type")) == "end"])
@@ -449,10 +451,10 @@ def score_trial(
         reference_total=len(ref_out_tokens),
     )
 
-    # Semantic
+    # Semantic — execute test cases against predicted tree
     semantic = _semantic_score(analysis, flowchart, ground_truth_module)
 
-    # Validity
+    # Validity — structural validation
     validator = WorkflowValidator()
     valid, validation_errors = validator.validate(
         {
@@ -464,13 +466,22 @@ def score_trial(
     )
     validity_score = 1.0 if valid else 0.0
 
+    # LLM judge — holistic logical correctness assessment
+    judge = llm_judge_score(
+        analysis=analysis,
+        flowchart=flowchart,
+        ground_truth_module=ground_truth_module,
+        case_config=case_config,
+    )
+
     metrics = {
+        "llm_judge": judge["composite"],
+        "semantic_score": float(semantic.get("score", 0.0)),
+        "validity_score": validity_score,
         "node_f1": node_prf.f1,
         "edge_f1": edge_prf.f1,
         "variable_f1": variable_prf.f1,
         "output_f1": output_prf.f1,
-        "semantic_score": float(semantic.get("score", 0.0)),
-        "validity_score": validity_score,
     }
 
     composite_raw = 0.0
@@ -478,6 +489,7 @@ def score_trial(
         composite_raw += metrics[metric] * weight
 
     details = {
+        "llm_judge": judge,
         "node": {
             "matched": node_prf.matched,
             "predicted_total": node_prf.predicted_total,

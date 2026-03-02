@@ -193,12 +193,13 @@ def _run_analysis_with_clarification(
 
 def _mean_metrics(score_entries: Sequence[Mapping[str, Any]]) -> Dict[str, float]:
     metric_names = [
+        "llm_judge",
+        "semantic_score",
+        "validity_score",
         "node_f1",
         "edge_f1",
         "variable_f1",
         "output_f1",
-        "semantic_score",
-        "validity_score",
     ]
     aggregate: Dict[str, float] = {}
     for name in metric_names:
@@ -351,12 +352,13 @@ def run_evaluation(
             "eval_data_dir": str(lemon_data_dir(repo_root)),
             "history_db_path": str(lemon_data_dir(repo_root) / "history.sqlite"),
             "weights": {
-                "node_f1": 0.25,
-                "edge_f1": 0.25,
-                "variable_f1": 0.15,
-                "output_f1": 0.10,
-                "semantic_score": 0.20,
-                "validity_score": 0.05,
+                "llm_judge": 0.50,
+                "semantic_score": 0.25,
+                "validity_score": 0.10,
+                "node_f1": 0.05,
+                "edge_f1": 0.05,
+                "variable_f1": 0.025,
+                "output_f1": 0.025,
             },
             "aggregate": overall_aggregate,
             "cases": case_summaries,
