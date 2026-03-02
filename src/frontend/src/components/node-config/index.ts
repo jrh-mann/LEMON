@@ -8,5 +8,5 @@
 
 export { EndNodeConfig } from './EndNodeConfig'
 export { SubprocessConfig } from './SubprocessConfig'
-export { DecisionConditionEditor, formatConditionPreview } from './DecisionConditionEditor'
-export { CalculationConfigEditor, formatCalculationPreview } from './CalculationConfigEditor'
+export { DecisionConditionEditor } from './DecisionConditionEditor'
+export { CalculationConfigEditor } from './CalculationConfigEditor'

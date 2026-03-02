@@ -78,12 +78,6 @@ export function disconnectSocket(): void {
   }
 }
 
-/** Disconnect and reconnect the socket */
-export function reconnectSocket(): void {
-  disconnectSocket()
-  connectSocket()
-}
-
 // Re-export all action functions so existing imports from '../api/socket' still work
 export {
   sendChatMessage,
