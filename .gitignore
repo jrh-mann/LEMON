@@ -3,7 +3,7 @@
 .venv/
 vision.md
 .azure/
-
+evals/results/
 data/
 
 diagram.png
