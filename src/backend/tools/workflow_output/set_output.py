@@ -15,15 +15,15 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
-from ..workflow_edit.helpers import load_workflow_for_tool, save_workflow_changes
+from ..core import WorkflowTool, ToolParameter
+from ..workflow_edit.helpers import save_workflow_changes
 
 
 # Valid output types that can be declared
 VALID_OUTPUT_TYPES = {"string", "number", "bool", "enum", "date"}
 
 
-class SetWorkflowOutputTool(Tool):
+class SetWorkflowOutputTool(WorkflowTool):
     """Set the workflow's output definition including its type.
     
     The output type is required for subprocess variable inference. When this
@@ -32,6 +32,8 @@ class SetWorkflowOutputTool(Tool):
     
     Requires workflow_id - the workflow must exist in the library first.
     """
+
+    uses_validator = False
 
     name = "set_workflow_output"
     description = (
@@ -69,15 +71,11 @@ class SetWorkflowOutputTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
 
         # Extract outputs from loaded workflow
         outputs = list(workflow_data["outputs"])

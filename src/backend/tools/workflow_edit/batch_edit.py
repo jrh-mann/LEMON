@@ -11,21 +11,19 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
+from ..core import WorkflowTool, ToolParameter
 from ..workflow_input.add import generate_variable_id
 from ..workflow_input.helpers import normalize_variable_name
 from .helpers import (
     get_node_color,
     resolve_node_id,
     validate_subprocess_node,
-    load_workflow_for_tool,
     save_workflow_changes,
 )
 from .add_node import validate_decision_condition
 
 
-class BatchEditWorkflowTool(Tool):
+class BatchEditWorkflowTool(WorkflowTool):
     """Apply multiple workflow changes atomically.
     
     Requires workflow_id - the workflow must exist in the library first
@@ -88,9 +86,6 @@ class BatchEditWorkflowTool(Tool):
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         Operations format:
@@ -109,15 +104,11 @@ class BatchEditWorkflowTool(Tool):
 
         Temporary IDs: Use "temp_X" or any ID for new nodes. They'll be replaced with real UUIDs.
         """
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
 
         operations = args.get("operations", [])
         if not isinstance(operations, list):

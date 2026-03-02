@@ -19,15 +19,13 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ...execution.operators import get_operator, get_operator_names, validate_operator_arity
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
+from ..core import WorkflowTool, ToolParameter
 from ..workflow_input.add import generate_variable_id
 from ..workflow_input.helpers import normalize_variable_name
 from .helpers import (
     get_node_color,
     validate_subprocess_node,
     get_subworkflow_output_type,
-    load_workflow_for_tool,
     save_workflow_changes,
 )
 
@@ -247,7 +245,7 @@ def validate_calculation(
     return None
 
 
-class AddNodeTool(Tool):
+class AddNodeTool(WorkflowTool):
     """Add a new node to the workflow.
     
     Supports all node types including subprocess nodes that reference
@@ -373,19 +371,12 @@ class AddNodeTool(Tool):
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-        
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
         
         # Extract workflow components
         nodes = workflow_data["nodes"]

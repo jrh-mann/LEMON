@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
-from ..workflow_edit.helpers import load_workflow_for_tool, save_workflow_changes
+from ..core import WorkflowTool, ToolParameter
+from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
 from .add import generate_variable_id
 
@@ -36,7 +36,7 @@ USER_TYPE_TO_INTERNAL = {
 }
 
 
-class ModifyWorkflowVariableTool(Tool):
+class ModifyWorkflowVariableTool(WorkflowTool):
     """Modify an existing workflow variable's properties.
     
     This tool can change the type, description, range, or enum values of any
@@ -48,6 +48,8 @@ class ModifyWorkflowVariableTool(Tool):
     
     Requires workflow_id - the workflow must exist in the library first.
     """
+
+    uses_validator = False
 
     name = "modify_workflow_variable"
     description = (
@@ -110,15 +112,11 @@ class ModifyWorkflowVariableTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
 
         # Extract variables from loaded workflow
         variables = list(workflow_data["variables"])

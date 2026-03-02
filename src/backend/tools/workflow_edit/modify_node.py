@@ -10,18 +10,16 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
+from ..core import WorkflowTool, ToolParameter
 from .helpers import (
     resolve_node_id,
     validate_subprocess_node,
-    load_workflow_for_tool,
     save_workflow_changes,
 )
 from .add_node import validate_decision_condition, validate_calculation
 
 
-class ModifyNodeTool(Tool):
+class ModifyNodeTool(WorkflowTool):
     """Modify an existing node's properties.
     
     For decision nodes, you can update the 'condition' field with a structured
@@ -114,19 +112,12 @@ class ModifyNodeTool(Tool):
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-        
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
         
         # Extract workflow components
         nodes = workflow_data["nodes"]

@@ -10,12 +10,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
-from .helpers import resolve_node_id, load_workflow_for_tool, save_workflow_changes
+from ..core import WorkflowTool, ToolParameter
+from .helpers import resolve_node_id, save_workflow_changes
 
 
-class AddConnectionTool(Tool):
+class AddConnectionTool(WorkflowTool):
     """Connect two nodes with an edge."""
 
     name = "add_connection"
@@ -37,19 +36,12 @@ class AddConnectionTool(Tool):
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-        
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
         
         # Extract workflow components
         nodes = workflow_data["nodes"]

@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
-from ..workflow_edit.helpers import load_workflow_for_tool
+from ..core import WorkflowTool, ToolParameter
 
 
-class ListWorkflowVariablesTool(Tool):
+class ListWorkflowVariablesTool(WorkflowTool):
     """List all workflow variables.
     
     Returns all variables available in the workflow, including:
@@ -23,6 +22,8 @@ class ListWorkflowVariablesTool(Tool):
     
     Requires workflow_id - the workflow must exist in the library first.
     """
+
+    uses_validator = False
 
     name = "list_workflow_variables"
     description = (
@@ -43,14 +44,9 @@ class ListWorkflowVariablesTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
 
         # Get ALL variables from loaded workflow

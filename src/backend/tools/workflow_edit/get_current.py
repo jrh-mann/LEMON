@@ -11,8 +11,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
-from .helpers import load_workflow_for_tool
+from ..core import WorkflowTool, ToolParameter
 
 
 # Human-readable labels for comparators
@@ -136,7 +135,7 @@ def format_variable_description(var: Dict[str, Any]) -> str:
     return f"- {var['id']}: {var.get('name', '?')} ({type_info}){source_info}"
 
 
-class GetCurrentWorkflowTool(Tool):
+class GetCurrentWorkflowTool(WorkflowTool):
     """Get the current workflow from the database.
     
     Returns workflow structure including nodes, edges, and variables.
@@ -144,6 +143,8 @@ class GetCurrentWorkflowTool(Tool):
     For subprocess nodes, includes subworkflow reference information.
     Variables are organized by source (inputs, subprocess outputs, etc).
     """
+
+    uses_validator = False
 
     name = "get_current_workflow"
     description = "Get a workflow from the library as JSON (nodes, edges, variables). Requires workflow_id."
@@ -157,14 +158,9 @@ class GetCurrentWorkflowTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-        
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
         
         # Deep copy to avoid any issues

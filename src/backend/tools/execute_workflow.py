@@ -6,12 +6,10 @@ from typing import Any, Dict
 
 from ..execution.interpreter import TreeInterpreter
 from ..utils.flowchart import tree_from_flowchart
-from ..validation.workflow_validator import WorkflowValidator
-from .core import Tool, ToolParameter
-from .workflow_edit.helpers import load_workflow_for_tool
+from .core import WorkflowTool, ToolParameter
 
 
-class ExecuteWorkflowTool(Tool):
+class ExecuteWorkflowTool(WorkflowTool):
     """Execute a workflow with provided input values.
 
     Loads the workflow from the database by ID, builds a tree from its
@@ -45,25 +43,12 @@ class ExecuteWorkflowTool(Tool):
         ),
     ]
 
-    def __init__(self) -> None:
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        workflow_id = args.get("workflow_id")
-
-        if not workflow_id:
-            return {
-                "success": False,
-                "error": "workflow_id is required",
-            }
-
-        # Load workflow from database
-        workflow_data, error = load_workflow_for_tool(workflow_id, session_state)
+        workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
             return error
-        # Use the workflow_id from loaded data (handles fallback to current_workflow_id)
         workflow_id = workflow_data["workflow_id"]
+        session_state = kwargs.get("session_state", {})
 
         nodes = workflow_data["nodes"]
         edges = workflow_data["edges"]
