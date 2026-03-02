@@ -56,7 +56,11 @@ Return ONLY a JSON object:
   "output_correctness": <0-10>,
   "logical_consistency": <0-10>,
   "subworkflow_quality": <0-10>,
-  "reasoning": "Brief explanation of major strengths and weaknesses."
+  "reasoning": "Brief explanation of major strengths and weaknesses.",
+  "specific_errors": [
+    "Concrete error 1: e.g. 'Decision X checks variable Y but should check Z'",
+    "Concrete error 2: e.g. 'Output Foo is missing, model routes to Bar instead'"
+  ]
 }}
 ```
 
@@ -82,7 +86,12 @@ Expected outputs: {expected_outputs}
 ### Subworkflows
 {pred_subworkflows}
 
-Now score the predicted workflow against the ground truth.
+### Model's reasoning (extended thinking)
+{model_reasoning}
+
+Now score the predicted workflow against the ground truth. Pay attention to
+the model's reasoning to understand WHY it made specific choices — flag cases
+where its reasoning was wrong or where it misread the diagram.
 Return ONLY JSON, no extra text.
 """
 
@@ -116,6 +125,8 @@ def llm_judge_score(
     pred_outputs = analysis.get("outputs", [])
     pred_tree = analysis.get("tree", {})
     pred_subworkflows = analysis.get("subworkflows", [])
+    # Model's extended thinking — truncated to avoid blowing up the context
+    model_reasoning = str(analysis.get("reasoning", ""))[:4000] or "(none)"
 
     prompt = _JUDGE_PROMPT.format(
         gt_source=gt_source,
@@ -124,6 +135,7 @@ def llm_judge_score(
         pred_outputs=_safe_json(pred_outputs),
         pred_tree=_safe_json(pred_tree),
         pred_subworkflows=_safe_json(pred_subworkflows) if pred_subworkflows else "(none)",
+        model_reasoning=model_reasoning,
     )
 
     try:
@@ -183,6 +195,7 @@ def llm_judge_score(
         "composite": round(composite, 4),
         "composite_pct": round(composite * 100, 2),
         "reasoning": result.get("reasoning", ""),
+        "specific_errors": result.get("specific_errors", []),
     }
 
 

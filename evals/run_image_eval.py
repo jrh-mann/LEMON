@@ -292,6 +292,8 @@ def run_evaluation(
                 flowchart = dict(tool_result.get("flowchart") or {})
 
                 raw_model_output = analysis.pop("_raw_model_output", "")
+                # Extract reasoning (extended thinking) for separate storage
+                reasoning = analysis.get("reasoning", "")
 
                 score = score_trial(
                     case_config=case,
@@ -304,11 +306,18 @@ def run_evaluation(
                 analysis_path = trial_dir / "normalized_analysis.json"
                 flowchart_path = trial_dir / "flowchart.json"
                 score_path = trial_dir / "score.json"
+                reasoning_path = trial_dir / "reasoning.txt"
+                doubts_path = trial_dir / "doubts.json"
 
                 raw_path.write_text(str(raw_model_output), encoding="utf-8")
                 analysis_path.write_text(json.dumps(analysis, indent=2, ensure_ascii=True), encoding="utf-8")
                 flowchart_path.write_text(json.dumps(flowchart, indent=2, ensure_ascii=True), encoding="utf-8")
                 score_path.write_text(json.dumps(score, indent=2, ensure_ascii=True), encoding="utf-8")
+                reasoning_path.write_text(str(reasoning), encoding="utf-8")
+                doubts_path.write_text(
+                    json.dumps(analysis.get("doubts", []), indent=2, ensure_ascii=True),
+                    encoding="utf-8",
+                )
 
                 trial_record = {
                     "case_id": case_id,
