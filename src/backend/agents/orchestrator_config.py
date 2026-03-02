@@ -294,10 +294,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names. Example: {\"ParentAge\": \"SubAge\", \"ParentIncome\": \"SubIncome\"}",
                             "additionalProperties": {"type": "string"},
                         },
-                        "output_variable": {
-                            "type": "string",
-                            "description": "For 'subprocess' nodes: Name for the variable that will hold the subworkflow's output. This becomes available as a new input for subsequent nodes.",
-                        },
                         "calculation": {
                             "type": "object",
                             "description": (
