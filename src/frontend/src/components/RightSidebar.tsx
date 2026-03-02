@@ -20,9 +20,6 @@ import {
   CalculationConfigEditor,
 } from './node-config'
 
-/** Re-export config editors so any legacy imports from './RightSidebar' still resolve */
-export { EndNodeConfig, SubprocessConfig, DecisionConditionEditor, CalculationConfigEditor }
-
 const slugifyInputName = (name: string): string =>
   name
     .trim()

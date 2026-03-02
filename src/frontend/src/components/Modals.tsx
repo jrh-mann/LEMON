@@ -369,8 +369,7 @@ function SaveWorkflowForm() {
         output_type: outputType,
         nodes: flowchart.nodes,
         edges: flowchart.edges,
-        variables: currentAnalysis?.variables || [],  // Unified variable system
-        inputs: currentAnalysis?.variables || [],     // Backend compatibility
+        variables: currentAnalysis?.variables || [],
         outputs: currentAnalysis?.outputs || [],
         tree: currentAnalysis?.tree || {},
         doubts: currentAnalysis?.doubts || [],

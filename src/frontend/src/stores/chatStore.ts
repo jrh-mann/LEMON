@@ -3,10 +3,9 @@ import type { Message, ToolCall } from '../types'
 import { useWorkflowStore } from './workflowStore'
 
 interface ChatState {
-  // Conversation - NOTE: conversationId is now per-tab, stored in workflowStore
-  // This field is kept for backwards compatibility but delegates to workflowStore
+  // Conversation — conversationId is per-tab in workflowStore, mirrored here for socket operations
   messages: Message[]
-  conversationId: string | null  // Mirrors active tab's conversationId
+  conversationId: string | null
 
   // Streaming state
   isStreaming: boolean
