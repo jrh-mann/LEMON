@@ -174,8 +174,11 @@ Rules:
   - string comparators: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
   - enum comparators: enum_eq, enum_neq
   - date comparators: date_eq, date_before, date_after, date_between
-- For binary branches, set child edge_label to EXACTLY "true" or "false".
+- For binary yes/no branches, set child edge_label to EXACTLY "true" or "false".
   Do not use "Yes"/"No" in output JSON.
+- For ENUM or categorical decisions (e.g., "Primary or Secondary prevention?"),
+  use the actual category VALUE as the edge_label (e.g., "primary", "secondary"),
+  NOT "true"/"false". Only use "true"/"false" for boolean decisions.
 - Tree rules:
   - This must be a single rooted tree starting at tree.start.
   - Allowed node types: start, decision, action, output.
@@ -185,16 +188,24 @@ Rules:
     like an action (e.g., "Continue metformin"), it is still an output because it is
     the final recommendation of that branch.
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
-  - NO SUBTREE DUPLICATION: If two branches of a decision node lead to the same
-    downstream logic (same decision sequence, same outputs), you MUST NOT copy the
-    subtree. Instead, converge both branches to a shared continuation point.
-    Duplicate subtrees inflate the tree and produce wrong edge counts.
+  - DECISION ORDER: The first decision after Start must match the FIRST decision
+    visible in the diagram's flow direction. Do NOT reorder decisions for logical
+    convenience — faithfully reproduce the diagram's structure top-to-bottom.
+  - NO SUBTREE DUPLICATION: A decision node and its subtree MUST appear exactly ONCE
+    in the tree. NEVER copy a subtree for multiple branches. If two paths through the
+    diagram converge to the same decision point, the tree must converge there too — do
+    NOT create copies like "node_ref1", "node_ref2". Each decision from the diagram
+    should map to exactly one node in the JSON tree. If you find yourself creating
+    duplicate subtrees, restructure so the shared logic appears once.
 - Output node labels MUST use the EXACT human-readable text from the diagram, verbatim.
   Do NOT convert to programmatic snake_case names.
-  Do NOT invent "Continue X" variants — use the exact outcome text as written.
+  Do NOT invent generic labels like "Continue current therapy" — use the specific
+  treatment/medication name visible in the diagram (e.g., "Metformin (continue and
+  review in 3 months)", "Ozempic titrate to full dose with 3 monthly A1c's").
   Do NOT split a single output into context-specific variants (e.g., do NOT create
   "Refer to Insulin Initiator (CVD pathway)" AND "Refer to Insulin Initiator (standard pathway)"
   when the diagram shows only "Refer to Insulin Initiator").
+  Each distinct clinical outcome in the diagram MUST have its own unique output node.
   The "outputs" array names MUST match the output node labels exactly.
 - Every node id must be unique across the tree.
 - DOUBTS — MANDATORY: You MUST generate at least 2-3 doubts about aspects of the diagram

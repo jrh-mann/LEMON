@@ -565,6 +565,9 @@ class WorkflowValidator:
                 )
                 if matching_var and comparator:
                     var_type = matching_var.get("type", "string")
+                    # Normalize float/int to number for comparator lookup
+                    if var_type in ("float", "int"):
+                        var_type = "number"
                     valid_comparators = VALID_COMPARATORS_BY_TYPE.get(var_type, set())
                     if comparator not in valid_comparators:
                         errors.append(
