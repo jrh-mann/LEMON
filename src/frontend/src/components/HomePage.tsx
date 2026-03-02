@@ -103,7 +103,7 @@ export default function HomePage() {
 
     return (
         <div className="home-page">
-            <header className="home-header">
+            <header className="home-header animate-slide-down-1">
                 <div className="logo">
                     <span className="logo-mark">L</span>
                     <span className="logo-text">LEMON</span>
@@ -116,13 +116,13 @@ export default function HomePage() {
             </header>
 
             <main className="home-content">
-                <div className="home-greeting">
+                <div className="home-greeting animate-slide-down-2">
                     <span className="greeting-sparkle">✦</span>
                     <h2 className="greeting-subtitle">Hi there</h2>
                     <h1 className="greeting-title">Where should we start?</h1>
                 </div>
 
-                <div className="home-chat-bar">
+                <div className="home-chat-bar animate-slide-down-3">
                     <textarea
                         className="home-chat-input"
                         placeholder="Describe a workflow to build..."
@@ -147,7 +147,7 @@ export default function HomePage() {
                     </div>
                 </div>
 
-                <div className="home-chips">
+                <div className="home-chips animate-slide-down-4">
                     <button className="home-chip" onClick={() => { window.location.hash = '#/library' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
