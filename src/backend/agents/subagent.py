@@ -186,13 +186,19 @@ Rules:
 - Every node id must be unique across the tree.
 - For all questions inside the "doubts" array, you MUST provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
 - CRITICAL: The question text MUST be self-contained and descriptive. It should be understandable even without seeing the exact dot location. Reference surrounding text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node represent?" instead of "What is this?").
-- subworkflows: When linked guidance panels describe 3+ steps of detailed logic
-  for a specific action node, create a subworkflow for that node.
-  - linked_to_node: the ID of the action node in the main tree this replaces
-  - input_mapping: maps parent input names to subworkflow input names
-  - output_variable: name for the result variable
-  - output_type: one of "string", "number", "bool", "json"
-  - The subworkflow tree follows the same rules as the main tree
+- SUBWORKFLOWS — CRITICAL: Check the "Side Information" section at the end of this prompt.
+  When a linked guidance panel describes multi-step logic (treatment protocols, assessment
+  criteria, step-by-step procedures) for a specific action node, you MUST create a subworkflow:
+  - In the main tree, keep the action node as a placeholder (it will be replaced by code).
+  - In the "subworkflows" array, create a full entry with:
+    - "name": descriptive name for the subworkflow
+    - "linked_to_node": the ID of the action node in the main tree
+    - "input_mapping": maps parent variable names to subworkflow input names
+    - "output_variable": name for the result variable returned to parent
+    - "output_type": one of "string", "number", "bool", "json"
+    - "inputs": variables needed by the subworkflow (same format as main inputs)
+    - "outputs": what the subworkflow returns
+    - "tree": a complete tree following ALL the same rules as the main tree
   - If no linked guidance warrants subworkflows, return "subworkflows": []
 - Return JSON only, no extra text.
 
@@ -551,13 +557,19 @@ Rules:
 - Every DECISION node MUST include a structured "condition" object.
 - For binary branches, set child edge_label to EXACTLY "true" or "false".
 - This must be a single rooted tree starting at tree.start.
-- subworkflows: When linked guidance panels describe 3+ steps of detailed logic
-  for a specific action node, create a subworkflow for that node.
-  - linked_to_node: the ID of the action node in the main tree this replaces
-  - input_mapping: maps parent input names to subworkflow input names
-  - output_variable: name for the result variable
-  - output_type: one of "string", "number", "bool", "json"
-  - The subworkflow tree follows the same rules as the main tree
+- SUBWORKFLOWS — CRITICAL: Check the "Guidance Notes" section at the end of this prompt.
+  When a linked guidance panel describes multi-step logic (treatment protocols, assessment
+  criteria, step-by-step procedures) for a specific action node, you MUST create a subworkflow:
+  - In the main tree, keep the action node as a placeholder (it will be replaced by code).
+  - In the "subworkflows" array, create a full entry with:
+    - "name": descriptive name for the subworkflow
+    - "linked_to_node": the ID of the action node in the main tree
+    - "input_mapping": maps parent variable names to subworkflow input names
+    - "output_variable": name for the result variable returned to parent
+    - "output_type": one of "string", "number", "bool", "json"
+    - "inputs": variables needed by the subworkflow (same format as main inputs)
+    - "outputs": what the subworkflow returns
+    - "tree": a complete tree following ALL the same rules as the main tree
   - If no linked guidance warrants subworkflows, return "subworkflows": []
 - Return JSON only, no extra text.
 """
@@ -1018,6 +1030,12 @@ def _format_guidance(guidance: List[Dict[str, Any]], *, header: str) -> str:
                 f'({g.get("location", "")}) -> linked to node: '
                 f'"{g["linked_to"]}"{link_via}'
             )
+        # Explicit hint connecting linked guidance to the subworkflow rule
+        parts.append(
+            "\nIMPORTANT: Each linked guidance panel above describes detailed logic "
+            "for a specific node. You MUST create a subworkflow for each one "
+            "(see the SUBWORKFLOWS rule above)."
+        )
 
     return "\n".join(parts)
 

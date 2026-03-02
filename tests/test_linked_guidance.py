@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backend.agents.subagent import Subagent
+from src.backend.agents.subagent import Subagent, _format_guidance
 from src.backend.agents.orchestrator_config import build_system_prompt
 from src.backend.storage.history import HistoryStore
 from src.backend.tools.workflow_analysis.analyze import AnalyzeWorkflowTool
@@ -490,6 +490,23 @@ class TestBuildSystemPromptLinkedFormatting:
         assert "Start Treatment" in prompt
         assert "Treatment protocol steps" in prompt
 
+    def test_linked_guidance_includes_subworkflow_hint(self):
+        """Linked guidance in subagent _format_guidance should include a subworkflow hint."""
+        result = _format_guidance(
+            [
+                {
+                    "text": "Treatment protocol steps",
+                    "location": "green box",
+                    "category": "treatment_detail",
+                    "linked_to": "Start Treatment",
+                    "link_type": "arrow",
+                },
+            ],
+            header="Side Information Found in Image",
+        )
+
+        assert "MUST create a subworkflow" in result
+
     def test_standalone_only_omits_linked_to_text(self):
         """Standalone-only guidance should not contain 'linked to node:' text."""
         prompt = build_system_prompt(
@@ -509,6 +526,23 @@ class TestBuildSystemPromptLinkedFormatting:
 
         assert "Normal threshold is 5" in prompt
         assert "linked to node:" not in prompt
+
+    def test_standalone_only_omits_subworkflow_hint(self):
+        """Standalone-only guidance in subagent _format_guidance omits subworkflow hint."""
+        result = _format_guidance(
+            [
+                {
+                    "text": "Normal threshold is 5",
+                    "location": "sticky note",
+                    "category": "definition",
+                    "linked_to": None,
+                    "link_type": None,
+                },
+            ],
+            header="Side Information Found in Image",
+        )
+
+        assert "MUST create a subworkflow" not in result
 
 
 # ---------------------------------------------------------------------------
