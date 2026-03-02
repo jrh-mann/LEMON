@@ -150,18 +150,15 @@ export default function VariableModal({ variable, onSave, onClose }: VariableMod
             </select>
           </div>
 
-          {/* Source */}
+          {/* Source — read-only display. Source is a structural property
+              determined by how the variable was created (user input, subprocess
+              output, calculation result, or constant). It should not be changed
+              after creation. */}
           <div className="form-group">
-            <label htmlFor="var-source">Source</label>
-            <select
-              id="var-source"
-              value={draft.source}
-              onChange={e => update({ source: e.target.value as VariableSource })}
-            >
-              {VARIABLE_SOURCES.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
+            <label>Source</label>
+            <span className={`var-source-badge source-${draft.source}`}>
+              {VARIABLE_SOURCES.find(s => s.value === draft.source)?.label ?? draft.source}
+            </span>
           </div>
 
           {/* Description */}

@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { listWorkflows } from '../api/workflows'
 import VariableModal from './VariableModal'
@@ -71,7 +70,6 @@ const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 0
 
 export default function RightSidebar() {
-  const { openModal } = useUIStore()
   const {
     currentWorkflow,
     currentAnalysis,
@@ -140,6 +138,13 @@ export default function RightSidebar() {
   const selectedEdgeObj = selectedEdge
     ? flowchart.edges.find(e => e.from === selectedEdge.from && e.to === selectedEdge.to)
     : undefined
+
+  // Check whether the selected edge originates from a decision node.
+  // Decision edges must be labelled "true" or "false" — show a toggle
+  // instead of free-text input.
+  const isDecisionEdge = selectedEdgeObj
+    ? flowchart.nodes.find(n => n.id === selectedEdgeObj.from)?.type === 'decision'
+    : false
 
   /* ── Variable modal state ─────────────────────────────── */
   // null = modal closed, WorkflowVariable = editing, undefined-like handled via isModalOpen
@@ -238,85 +243,47 @@ export default function RightSidebar() {
           <div className="resize-grip" />
         </div>
 
+        {/* Mutually exclusive panels: edge props > node props > variables.
+            Only one panel is visible at a time so the sidebar stays focused. */}
         {!isCollapsed && (
           <>
-            {/* ── Variables panel ─────────────────────────── */}
-            {currentAnalysis && (
+            {selectedEdgeObj ? (
+              /* ── Edge properties (highest priority) ───── */
               <div className="sidebar-section">
-                <p className="eyebrow">VARIABLES</p>
-
-                {analysisInputs.length === 0 && (
-                  <p className="sidebar-empty-hint">No variables yet.</p>
-                )}
-
-                <div className="var-list">
-                  {analysisInputs.map((v, idx) => (
-                    <div key={v.id} className="var-card" data-source={v.source}>
-                      {/* Row 1: icon + name (read-only) + action buttons */}
-                      <div className="var-card-header">
-                        <span className="var-icon" title={v.type}>
-                          {TYPE_ICONS[v.type] ?? TYPE_ICONS.string}
-                        </span>
-                        <span className="var-name">{v.name || 'Unnamed'}</span>
-                        <div className="var-card-actions">
-                          <button
-                            className="var-action-btn"
-                            onClick={() => handleEditVariable(v, idx)}
-                            title="Edit variable"
-                          >
-                            {/* Pencil icon */}
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-                              <path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z" />
-                            </svg>
-                          </button>
-                          <button
-                            className="var-action-btn var-action-delete"
-                            onClick={() => handleVariableDelete(idx)}
-                            title="Delete variable"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Row 2: type label + source badge (read-only) */}
-                      <div className="var-card-meta">
-                        <span className="var-type-label">{TYPE_LABELS[v.type] ?? v.type}</span>
-                        <span className={`var-source-badge source-${v.source}`}>
-                          {SOURCE_LABELS[v.source] ?? v.source}
-                        </span>
-                      </div>
-
-                      {/* Optional: enum values preview */}
-                      {v.type === 'enum' && v.enum_values && v.enum_values.length > 0 && (
-                        <p className="var-enum-hint">
-                          {v.enum_values.join(', ')}
-                        </p>
-                      )}
-
-                      {/* Optional: range preview for numbers */}
-                      {v.type === 'number' && v.range && (
-                        <p className="var-range-hint">
-                          Range: {v.range.min ?? '−∞'} – {v.range.max ?? '∞'}
-                        </p>
-                      )}
-
-                      {/* Optional: description preview */}
-                      {v.description && (
-                        <p className="var-description-hint">{v.description}</p>
-                      )}
+                <p className="eyebrow">EDGE PROPERTIES</p>
+                <div className="form-group">
+                  <label>Label</label>
+                  {isDecisionEdge ? (
+                    /* Decision edges: true/false toggle. updateEdgeLabel
+                       auto-swaps the sibling edge to the opposite value. */
+                    <div className="sidebar-toggle-group">
+                      <button
+                        className={`sidebar-toggle-btn ${selectedEdgeObj.label === 'true' ? 'active' : ''}`}
+                        onClick={() => updateEdgeLabel(selectedEdgeObj.from, selectedEdgeObj.to, 'true')}
+                      >
+                        True
+                      </button>
+                      <button
+                        className={`sidebar-toggle-btn ${selectedEdgeObj.label === 'false' ? 'active' : ''}`}
+                        onClick={() => updateEdgeLabel(selectedEdgeObj.from, selectedEdgeObj.to, 'false')}
+                      >
+                        False
+                      </button>
                     </div>
-                  ))}
+                  ) : (
+                    /* Non-decision edges: free-text label input */
+                    <input
+                      type="text"
+                      value={selectedEdgeObj.label || ''}
+                      onChange={e =>
+                        updateEdgeLabel(selectedEdgeObj.from, selectedEdgeObj.to, e.target.value)
+                      }
+                    />
+                  )}
                 </div>
-
-                <button className="ghost full-width add-var-btn" onClick={handleNewVariable}>
-                  + Add Variable
-                </button>
               </div>
-            )}
-
-            {/* ── Node properties panel ──────────────────── */}
-            {selectedNode && (
+            ) : selectedNode ? (
+              /* ── Node properties ────────────────────────── */
               <div className="sidebar-section">
                 <p className="eyebrow">NODE PROPERTIES</p>
 
@@ -366,33 +333,86 @@ export default function RightSidebar() {
                     onUpdate={handleNodeUpdate}
                   />
                 )}
+              </div>
+            ) : currentAnalysis ? (
+              /* ── Variables (default when nothing selected) ── */
+              <div className="sidebar-section">
+                <p className="eyebrow">VARIABLES</p>
 
-                <button
-                  className="ghost full-width"
-                  onClick={() => openModal('nodeProperties', { nodeId: selectedNode.id })}
-                  style={{ marginTop: 8 }}
-                >
-                  Open in modal
+                {analysisInputs.length === 0 && (
+                  <p className="sidebar-empty-hint">No variables yet.</p>
+                )}
+
+                <div className="var-list">
+                  {analysisInputs.map((v, idx) => (
+                    <div key={v.id} className="var-card" data-source={v.source}>
+                      {/* Row 1: icon + name (read-only) + action buttons */}
+                      <div className="var-card-header">
+                        <span className="var-icon" title={v.type}>
+                          {TYPE_ICONS[v.type] ?? TYPE_ICONS.string}
+                        </span>
+                        <span className="var-name">{v.name || 'Unnamed'}</span>
+                        {/* Only input/constant variables are user-editable.
+                            Subprocess/calculated variables are managed by their
+                            corresponding nodes and removed when those nodes are deleted. */}
+                        {(v.source === 'input' || v.source === 'constant') && (
+                          <div className="var-card-actions">
+                            <button
+                              className="var-action-btn"
+                              onClick={() => handleEditVariable(v, idx)}
+                              title="Edit variable"
+                            >
+                              {/* Pencil icon */}
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                                <path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z" />
+                              </svg>
+                            </button>
+                            <button
+                              className="var-action-btn var-action-delete"
+                              onClick={() => handleVariableDelete(idx)}
+                              title="Delete variable"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Row 2: type label + source badge (read-only) */}
+                      <div className="var-card-meta">
+                        <span className="var-type-label">{TYPE_LABELS[v.type] ?? v.type}</span>
+                        <span className={`var-source-badge source-${v.source}`}>
+                          {SOURCE_LABELS[v.source] ?? v.source}
+                        </span>
+                      </div>
+
+                      {/* Optional: enum values preview */}
+                      {v.type === 'enum' && v.enum_values && v.enum_values.length > 0 && (
+                        <p className="var-enum-hint">
+                          {v.enum_values.join(', ')}
+                        </p>
+                      )}
+
+                      {/* Optional: range preview for numbers */}
+                      {v.type === 'number' && v.range && (
+                        <p className="var-range-hint">
+                          Range: {v.range.min ?? '−∞'} – {v.range.max ?? '∞'}
+                        </p>
+                      )}
+
+                      {/* Optional: description preview */}
+                      {v.description && (
+                        <p className="var-description-hint">{v.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <button className="ghost full-width add-var-btn" onClick={handleNewVariable}>
+                  + Add Variable
                 </button>
               </div>
-            )}
-
-            {/* ── Edge properties ────────────────────────── */}
-            {selectedEdgeObj && (
-              <div className="sidebar-section">
-                <p className="eyebrow">EDGE PROPERTIES</p>
-                <div className="form-group">
-                  <label>Label</label>
-                  <input
-                    type="text"
-                    value={selectedEdgeObj.label || ''}
-                    onChange={e =>
-                      updateEdgeLabel(selectedEdgeObj.from, selectedEdgeObj.to, e.target.value)
-                    }
-                  />
-                </div>
-              </div>
-            )}
+            ) : null}
           </>
         )}
       </aside>
