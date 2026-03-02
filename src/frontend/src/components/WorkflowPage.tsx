@@ -41,7 +41,7 @@ export default function WorkflowPage() {
     const clearError = useUIStore(s => s.clearError)
     
     // Workflow Store
-    const { setCurrentWorkflow, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
+    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
 
@@ -54,14 +54,20 @@ export default function WorkflowPage() {
     }, [revealWorkspace, setIsTransitioning])
 
     /**
+     * Generate a canonical workflow ID: wf_{32_hex_chars}.
+     * This is the single ID format used by frontend, backend, and DB.
+     */
+    const generateWorkflowId = () => `wf_${crypto.randomUUID().replace(/-/g, '')}`
+
+    /**
      * Orchestrates the transition from Home to Workspace:
      * 1. Trigger Home Exit animation
      * 2. Wait for animation to finish
-     * 3. Navigate to route with ID (generate if needed)
+     * 3. Navigate to route with ID (generate canonical wf_ ID if needed)
      * 4. Trigger Workspace Reveal animation
      */
     const startWorkflowSession = useCallback(async (existingId?: string) => {
-        const id = existingId || crypto.randomUUID()
+        const id = existingId || generateWorkflowId()
         
         // 1. Play Home Exit animation
         setHomeExited(true)
@@ -104,7 +110,7 @@ export default function WorkflowPage() {
         return () => { isActive = false }
     }, [setError, navigate])
 
-    // Load workflow from URL params
+    // Load workflow from URL params, or sync URL ID to store for new workflows
     useEffect(() => {
         if (!authReady || !workflowId) {
             return
@@ -151,13 +157,22 @@ export default function WorkflowPage() {
                     setTimeout(triggerReveal, 50)
                 }
             } catch (err) {
+                if (!isActive) return
+
+                // 404 = new workflow (not in DB yet) — sync URL ID to store
+                if (err instanceof ApiError && err.status === 404) {
+                    setCurrentWorkflowId(workflowId)
+                    loadedWorkflowIdRef.current = workflowId
+                    return
+                }
+
                 const msg = err instanceof Error ? err.message : 'Unknown error'
                 setError(`Failed to load workflow (${workflowId}): ${msg}`)
             }
         }
         loadWorkflow()
         return () => { isActive = false }
-    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setError, setFlowchart, triggerReveal, setHomeExited])
+    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited])
 
     // Error toast auto-dismiss
     useEffect(() => {

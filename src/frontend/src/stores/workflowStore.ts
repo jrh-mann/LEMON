@@ -154,10 +154,6 @@ const initialExecutionState: ExecutionState = {
   logIndentationStack: [],
 }
 
-// Generate unique workflow ID (used for new workflows before they're saved)
-// Format matches backend: wf_{uuid hex}
-const generateWorkflowId = () => `wf_${crypto.randomUUID().replace(/-/g, '')}`
-
 // Helper to sync edges to backend (fire-and-forget, logs errors)
 // This persists UI-triggered edge changes without blocking the UI
 const syncEdgesToBackend = async (workflowId: string | undefined, edges: FlowEdge[]) => {
@@ -176,8 +172,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflows: [],
   isLoadingWorkflows: false,
 
+  // ID starts empty — WorkflowPage sets it from the URL (single source of truth)
   currentWorkflow: {
-    id: generateWorkflowId(),
+    id: '',
     metadata: { name: 'New Workflow' },
     blocks: [],
     connections: [],
@@ -532,8 +529,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Reset
   reset: () =>
     set({
+      // ID starts empty — WorkflowPage sets it from the URL
       currentWorkflow: {
-        id: generateWorkflowId(),
+        id: '',
         metadata: { name: 'New Workflow' },
         blocks: [],
         connections: [],

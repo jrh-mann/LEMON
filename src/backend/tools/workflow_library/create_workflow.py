@@ -19,9 +19,10 @@ from ..constants import VALID_WORKFLOW_OUTPUT_TYPES
 def generate_workflow_id() -> str:
     """Generate a unique workflow ID.
     
-    Format: wf_{8_hex_chars} for readability and uniqueness.
+    Format: wf_{32_hex_chars} — canonical format used by frontend, backend,
+    and REST API. Uses full UUID4 hex for guaranteed uniqueness.
     """
-    return f"wf_{uuid.uuid4().hex[:8]}"
+    return f"wf_{uuid.uuid4().hex}"
 
 
 class CreateWorkflowTool(Tool):
