@@ -168,59 +168,18 @@ class WorkflowValidator:
             if node_type == "decision":
                 condition = node.get("condition")
                 if condition:
-                    # Validate structured condition
-                    input_id = condition.get("input_id")
-                    comparator = condition.get("comparator")
-                    
-                    if not input_id:
-                        errors.append(
-                            ValidationError(
-                                code="MISSING_CONDITION_INPUT_ID",
-                                message=f"Decision node '{node.get('label', node_id)}' has condition without input_id",
-                                node_id=node_id,
-                            )
+                    if "operator" in condition:
+                        # Compound condition — validate operator and each sub-condition
+                        compound_errors = self._validate_compound_condition(
+                            node, condition, workflow_variables
                         )
-                    elif workflow_variables:
-                        # Check if input_id matches any registered variable's id
-                        var_ids = [v.get("id") for v in workflow_variables if v.get("id")]
-                        if input_id not in var_ids:
-                            errors.append(
-                                ValidationError(
-                                    code="INVALID_CONDITION_INPUT_ID",
-                                    message=f"Decision node '{node.get('label', node_id)}' references unknown variable id '{input_id}'",
-                                    node_id=node_id,
-                                )
-                            )
-                        else:
-                            # Validate comparator is valid for the variable's type
-                            matching_var = next(
-                                (v for v in workflow_variables if v.get("id") == input_id),
-                                None
-                            )
-                            if matching_var and comparator:
-                                var_type = matching_var.get("type", "string")
-                                valid_comparators = VALID_COMPARATORS_BY_TYPE.get(var_type, set())
-                                if comparator not in valid_comparators:
-                                    errors.append(
-                                        ValidationError(
-                                            code="INVALID_COMPARATOR_FOR_TYPE",
-                                            message=(
-                                                f"Decision node '{node.get('label', node_id)}': "
-                                                f"comparator '{comparator}' is not valid for variable type '{var_type}'. "
-                                                f"Valid comparators: {sorted(valid_comparators)}"
-                                            ),
-                                            node_id=node_id,
-                                        )
-                                    )
-                    
-                    if not comparator:
-                        errors.append(
-                            ValidationError(
-                                code="MISSING_CONDITION_COMPARATOR",
-                                message=f"Decision node '{node.get('label', node_id)}' has condition without comparator",
-                                node_id=node_id,
-                            )
+                        errors.extend(compound_errors)
+                    else:
+                        # Simple condition
+                        simple_errors = self._validate_simple_condition(
+                            node, condition, workflow_variables
                         )
+                        errors.extend(simple_errors)
                 else:
                     # Decision nodes MUST have a structured condition
                     errors.append(
@@ -564,6 +523,129 @@ class WorkflowValidator:
             variables.update(self._get_variables(expr.right))
 
         return variables
+
+    def _validate_simple_condition(
+        self,
+        node: Dict[str, Any],
+        condition: Dict[str, Any],
+        workflow_variables: List[Dict[str, Any]],
+    ) -> List[ValidationError]:
+        """Validate a single simple condition on a decision node.
+
+        Checks input_id exists, comparator is present, and comparator
+        is valid for the referenced variable's type.
+        """
+        errors: List[ValidationError] = []
+        node_id = node.get("id")
+        node_label = node.get("label", node_id)
+        input_id = condition.get("input_id")
+        comparator = condition.get("comparator")
+
+        if not input_id:
+            errors.append(
+                ValidationError(
+                    code="MISSING_CONDITION_INPUT_ID",
+                    message=f"Decision node '{node_label}' has condition without input_id",
+                    node_id=node_id,
+                )
+            )
+        elif workflow_variables:
+            var_ids = [v.get("id") for v in workflow_variables if v.get("id")]
+            if input_id not in var_ids:
+                errors.append(
+                    ValidationError(
+                        code="INVALID_CONDITION_INPUT_ID",
+                        message=f"Decision node '{node_label}' references unknown variable id '{input_id}'",
+                        node_id=node_id,
+                    )
+                )
+            else:
+                matching_var = next(
+                    (v for v in workflow_variables if v.get("id") == input_id), None
+                )
+                if matching_var and comparator:
+                    var_type = matching_var.get("type", "string")
+                    # Normalize float/int to number for comparator lookup
+                    if var_type in ("float", "int"):
+                        var_type = "number"
+                    valid_comparators = VALID_COMPARATORS_BY_TYPE.get(var_type, set())
+                    if comparator not in valid_comparators:
+                        errors.append(
+                            ValidationError(
+                                code="INVALID_COMPARATOR_FOR_TYPE",
+                                message=(
+                                    f"Decision node '{node_label}': "
+                                    f"comparator '{comparator}' is not valid for variable type '{var_type}'. "
+                                    f"Valid comparators: {sorted(valid_comparators)}"
+                                ),
+                                node_id=node_id,
+                            )
+                        )
+
+        if not comparator:
+            errors.append(
+                ValidationError(
+                    code="MISSING_CONDITION_COMPARATOR",
+                    message=f"Decision node '{node_label}' has condition without comparator",
+                    node_id=node_id,
+                )
+            )
+
+        return errors
+
+    def _validate_compound_condition(
+        self,
+        node: Dict[str, Any],
+        condition: Dict[str, Any],
+        workflow_variables: List[Dict[str, Any]],
+    ) -> List[ValidationError]:
+        """Validate a compound (AND/OR) condition on a decision node.
+
+        Checks operator is valid, conditions list has >= 2 entries,
+        no nesting, and validates each sub-condition individually.
+        """
+        errors: List[ValidationError] = []
+        node_id = node.get("id")
+        node_label = node.get("label", node_id)
+        operator = condition.get("operator")
+
+        if operator not in ("and", "or"):
+            errors.append(
+                ValidationError(
+                    code="INVALID_COMPOUND_OPERATOR",
+                    message=f"Decision node '{node_label}': compound operator must be 'and' or 'or', got '{operator}'",
+                    node_id=node_id,
+                )
+            )
+
+        sub_conditions = condition.get("conditions", [])
+        if not isinstance(sub_conditions, list) or len(sub_conditions) < 2:
+            errors.append(
+                ValidationError(
+                    code="COMPOUND_TOO_FEW_CONDITIONS",
+                    message=f"Decision node '{node_label}': compound condition must have at least 2 sub-conditions",
+                    node_id=node_id,
+                )
+            )
+            return errors
+
+        for i, sub in enumerate(sub_conditions):
+            if not isinstance(sub, dict):
+                continue
+            if "operator" in sub:
+                errors.append(
+                    ValidationError(
+                        code="NESTED_COMPOUND_NOT_ALLOWED",
+                        message=f"Decision node '{node_label}': sub-condition[{i}] cannot be compound (no nesting)",
+                        node_id=node_id,
+                    )
+                )
+                continue
+            errors.extend(
+                self._validate_simple_condition(node, sub, workflow_variables)
+            )
+
+        return errors
 
     def _validate_subprocess_node(
         self,

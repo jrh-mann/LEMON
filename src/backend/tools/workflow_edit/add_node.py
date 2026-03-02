@@ -51,44 +51,41 @@ ALL_COMPARATORS = [
 ]
 
 
-def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
-    """Validate a decision condition object.
-    
+def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> str | None:
+    """Validate a single simple condition (input_id + comparator + value).
+
     Args:
-        condition: The condition dict with input_id, comparator, value, value2
-        variables: List of workflow variable definitions
-        
+        condition: Simple condition dict with input_id, comparator, value, value2.
+        variables: List of workflow variable definitions.
+
     Returns:
         Error message if invalid, None if valid.
     """
-    if not isinstance(condition, dict):
-        return "condition must be an object with input_id, comparator, and value"
-    
     input_id = condition.get("input_id")
     comparator = condition.get("comparator")
     value = condition.get("value")
-    
+
     if not input_id:
         return "condition.input_id is required"
     if not comparator:
         return "condition.comparator is required"
     if value is None and comparator not in ("is_true", "is_false"):
         return f"condition.value is required for comparator '{comparator}'"
-    
+
     # Validate comparator is known
     if comparator not in ALL_COMPARATORS:
         return f"Unknown comparator '{comparator}'. Valid: {ALL_COMPARATORS}"
-    
+
     # Find the variable to check type compatibility
     var_def = None
     for var in variables:
         if var.get("id") == input_id:
             var_def = var
             break
-    
+
     if not var_def:
         return f"condition.input_id '{input_id}' not found in workflow variables"
-    
+
     # Check comparator is valid for this variable type
     var_type = var_def.get("type", "string")
     valid_comparators = COMPARATORS_BY_TYPE.get(var_type, [])
@@ -97,13 +94,58 @@ def validate_decision_condition(condition: Dict[str, Any], variables: list) -> s
             f"Comparator '{comparator}' is not valid for variable type '{var_type}'. "
             f"Valid comparators: {valid_comparators}"
         )
-    
+
     # Check value2 is provided for range comparators
     if comparator in ("within_range", "date_between"):
         if condition.get("value2") is None:
             return f"condition.value2 is required for comparator '{comparator}'"
-    
+
     return None
+
+
+def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
+    """Validate a decision condition — simple or compound (AND/OR).
+
+    Simple conditions have input_id/comparator/value.
+    Compound conditions have operator ("and"/"or") and a conditions array
+    of 2+ simple conditions.  Nesting is not allowed.
+
+    Args:
+        condition: The condition dict (simple or compound).
+        variables: List of workflow variable definitions.
+
+    Returns:
+        Error message if invalid, None if valid.
+    """
+    if not isinstance(condition, dict):
+        return "condition must be an object with input_id, comparator, and value"
+
+    # Compound condition path
+    if "operator" in condition:
+        operator = condition.get("operator")
+        if operator not in ("and", "or"):
+            return f"condition.operator must be 'and' or 'or', got '{operator}'"
+
+        sub_conditions = condition.get("conditions")
+        if not isinstance(sub_conditions, list):
+            return "condition.conditions must be a list"
+        if len(sub_conditions) < 2:
+            return f"condition.conditions must have at least 2 items, got {len(sub_conditions)}"
+
+        # Validate each sub-condition is simple (no nesting)
+        for i, sub in enumerate(sub_conditions):
+            if not isinstance(sub, dict):
+                return f"condition.conditions[{i}] must be a dict"
+            if "operator" in sub:
+                return f"condition.conditions[{i}] cannot be compound (no nesting allowed)"
+            error = _validate_simple_condition(sub, variables)
+            if error:
+                return f"condition.conditions[{i}]: {error}"
+
+        return None
+
+    # Simple condition path
+    return _validate_simple_condition(condition, variables)
 
 
 def validate_calculation(

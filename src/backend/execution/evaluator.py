@@ -4,13 +4,24 @@ Evaluates DecisionCondition objects against execution context.
 Supports type-specific comparators for int, float, bool, string, date, and enum types.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime, date
 
 
 class EvaluationError(Exception):
     """Raised when condition evaluation fails."""
     pass
+
+
+def is_compound_condition(condition: Any) -> bool:
+    """Check whether a condition is compound (AND/OR) vs simple.
+
+    Single source of truth — import this everywhere instead of
+    duplicating the ``"operator" in condition`` check.
+
+    Returns True when *condition* is a dict containing an ``"operator"`` key.
+    """
+    return isinstance(condition, dict) and "operator" in condition
 
 
 # ============ Valid Comparators by Type ============
@@ -63,6 +74,10 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bo
     if not isinstance(condition, dict):
         raise EvaluationError(f"Condition must be a dict, got {type(condition).__name__}")
 
+    # Dispatch: compound (AND/OR) vs simple
+    if is_compound_condition(condition):
+        return _evaluate_compound_condition(condition, context)
+
     input_id = condition.get('input_id')
     comparator = condition.get('comparator')
     compare_value = condition.get('value')
@@ -83,6 +98,41 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bo
 
     # Apply the comparator
     return _apply_comparator(actual_value, comparator, compare_value, compare_value2)
+
+
+def _evaluate_compound_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """Evaluate a compound (AND/OR) condition against execution context.
+
+    Args:
+        condition: Compound condition dict with keys:
+            - operator: "and" or "or"
+            - conditions: list of 2+ simple conditions
+        context: Execution context mapping input IDs to their values.
+
+    Returns:
+        bool — AND: all sub-conditions true; OR: any sub-condition true.
+
+    Raises:
+        EvaluationError: If operator is invalid or conditions list is malformed.
+    """
+    operator = condition.get("operator")
+    if operator not in ("and", "or"):
+        raise EvaluationError(
+            f"Unknown compound operator '{operator}'. Must be 'and' or 'or'."
+        )
+
+    sub_conditions = condition.get("conditions")
+    if not isinstance(sub_conditions, list):
+        raise EvaluationError("Compound condition 'conditions' must be a list.")
+    if len(sub_conditions) < 2:
+        raise EvaluationError(
+            f"Compound condition must have at least 2 sub-conditions, got {len(sub_conditions)}."
+        )
+
+    if operator == "and":
+        return all(evaluate_condition(c, context) for c in sub_conditions)
+    else:  # "or"
+        return any(evaluate_condition(c, context) for c in sub_conditions)
 
 
 def _apply_comparator(

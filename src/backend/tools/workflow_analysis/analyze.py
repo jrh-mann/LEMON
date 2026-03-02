@@ -14,6 +14,7 @@ from ...utils.cancellation import CancellationError
 from ...utils.flowchart import flowchart_from_tree
 from ...utils.paths import lemon_data_dir
 from ...utils.uploads import load_annotations, save_annotations
+from ...validation.tree_validator import TreeValidator
 from ..core import Tool, ToolParameter
 
 
@@ -84,13 +85,17 @@ class AnalyzeWorkflowTool(Tool):
 
         # Path 2: Multi-file analysis with classifications
         if file_classifications and uploaded_files:
-            return self._analyze_multi_file(
+            response = self._analyze_multi_file(
                 uploaded_files, file_classifications, stream, should_cancel,
                 on_progress=on_progress, relationship=relationship, on_thinking=on_thinking,
             )
+        else:
+            # Path 3: Single file analysis (existing behaviour)
+            response = self._analyze_single_file(stream, should_cancel, on_thinking=on_thinking)
 
-        # Path 3: Single file analysis (existing behaviour)
-        return self._analyze_single_file(stream, should_cancel, on_thinking=on_thinking)
+        # Post-process: create subworkflows from linked guidance
+        response = self._process_subworkflows(response, session_state)
+        return response
 
     def _analyze_followup(
         self,
@@ -124,7 +129,7 @@ class AnalyzeWorkflowTool(Tool):
             should_cancel=should_cancel,
             on_thinking=on_thinking,
         )
-        return self._build_response(session_id, data)
+        return self._build_response(session_id, data, image_annotations=annotations, image_path=image_path)
 
     def _analyze_single_file(
         self,
@@ -156,7 +161,7 @@ class AnalyzeWorkflowTool(Tool):
             should_cancel=should_cancel,
             on_thinking=on_thinking,
         )
-        return self._build_response(session_id, data)
+        return self._build_response(session_id, data, image_annotations=annotations, image_path=image_path)
 
     def _analyze_multi_file(
         self,
@@ -226,12 +231,25 @@ class AnalyzeWorkflowTool(Tool):
             relationship=relationship,
             on_thinking=on_thinking,
         )
-        return self._build_response(session_id, data)
+        # Multi-file has no single image_path for annotations, pass empty list
+        return self._build_response(session_id, data, image_annotations=[])
 
     def _build_response(
-        self, session_id: str, data: Dict[str, Any]
+        self, session_id: str, data: Dict[str, Any],
+        image_annotations: List[Dict[str, Any]] = None,
+        image_path: Path = None,
     ) -> Dict[str, Any]:
-        """Normalize subagent output into the standard tool response."""
+        """Normalize subagent output into the standard tool response.
+
+        Args:
+            image_annotations: Existing annotations loaded for this image. Used to
+                deduplicate doubt-based annotations. Defaults to empty list.
+            image_path: Absolute path to the image file, needed to persist new
+                annotations back to disk.
+        """
+        if image_annotations is None:
+            image_annotations = []
+
         if isinstance(data, dict) and "message" in data and "analysis" not in data:
             return {
                 "session_id": session_id,
@@ -248,7 +266,7 @@ class AnalyzeWorkflowTool(Tool):
             for doubt in doubts:
                 if isinstance(doubt, dict) and "question" in doubt and "x" in doubt and "y" in doubt:
                     is_dup = False
-                    for a in annotations:
+                    for a in image_annotations:
                         if a.get("type") == "question" and a.get("question") == str(doubt["question"]):
                             if abs(a.get("x", 0) - doubt["x"]) < 10 and abs(a.get("y", 0) - doubt["y"]) < 10:
                                 is_dup = True
@@ -262,18 +280,212 @@ class AnalyzeWorkflowTool(Tool):
                             "question": str(doubt["question"]),
                             "status": "pending",
                         }
-                        annotations.append(ann)
+                        image_annotations.append(ann)
                         new_annotations.append(ann)
-            
-            if new_annotations:
-                save_annotations(image_path, annotations, repo_root=self.repo_root)
+
+            if new_annotations and image_path:
+                save_annotations(image_path, image_annotations, repo_root=self.repo_root)
 
         return {
             "session_id": session_id,
             "analysis": analysis,
             "flowchart": flowchart,
-            "annotations": annotations,
+            "annotations": image_annotations,
         }
+
+    # ------------------------------------------------------------------
+    # Subworkflow post-processing
+    # ------------------------------------------------------------------
+
+    _tree_validator = TreeValidator()
+
+    def _process_subworkflows(
+        self,
+        response: Dict[str, Any],
+        session_state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Create real workflows from subworkflow definitions in the analysis.
+
+        For each subworkflow entry in analysis["subworkflows"]:
+        1. Validate the sub-tree
+        2. Normalize inputs/tree
+        3. Create workflow in WorkflowStore
+        4. Replace the linked action node with a subprocess node (tree + flowchart)
+        5. Register the output variable on the parent analysis
+
+        All failures are non-blocking — the main analysis is always returned.
+        """
+        analysis = response.get("analysis")
+        if not isinstance(analysis, dict):
+            return response
+
+        subworkflows = analysis.get("subworkflows")
+        if not isinstance(subworkflows, list) or not subworkflows:
+            return response
+
+        # Lazy imports to avoid circular dependency (add_node -> workflow_input.add)
+        from ..workflow_input.add import generate_variable_id
+        from ..workflow_library.create_workflow import generate_workflow_id
+
+        workflow_store = session_state.get("workflow_store")
+        user_id = session_state.get("user_id")
+        if not workflow_store:
+            self._logger.warning("_process_subworkflows: no workflow_store in session_state, skipping")
+            return response
+        if not user_id:
+            self._logger.warning("_process_subworkflows: no user_id in session_state, skipping")
+            return response
+
+        created: List[Dict[str, Any]] = []
+
+        for idx, sub in enumerate(subworkflows):
+            if not isinstance(sub, dict):
+                continue
+
+            # Validate required fields
+            name = sub.get("name")
+            linked_to_node = sub.get("linked_to_node")
+            sub_tree = sub.get("tree")
+            output_type = sub.get("output_type")
+            output_variable = sub.get("output_variable")
+            input_mapping = sub.get("input_mapping")
+            if not all([name, linked_to_node, sub_tree, output_type, output_variable, input_mapping]):
+                self._logger.warning(
+                    "_process_subworkflows[%d]: missing required fields, skipping (name=%s)",
+                    idx, name,
+                )
+                continue
+
+            # Validate the sub-tree structure
+            sub_analysis = {
+                "tree": sub_tree,
+                "variables": sub.get("inputs", []),
+            }
+            is_valid, errors = self._tree_validator.validate(sub_analysis)
+            if not is_valid:
+                self._logger.warning(
+                    "_process_subworkflows[%d]: invalid sub-tree for '%s': %s",
+                    idx, name, TreeValidator.format_errors(errors),
+                )
+                continue
+
+            # Normalize sub-inputs and tree
+            sub_data = normalize_analysis({
+                "inputs": sub.get("inputs", []),
+                "outputs": sub.get("outputs", []),
+                "tree": sub_tree,
+            })
+
+            # Create workflow in the database
+            workflow_id = generate_workflow_id()
+            sub_flowchart = flowchart_from_tree(sub_data.get("tree") or {})
+            try:
+                workflow_store.create_workflow(
+                    workflow_id=workflow_id,
+                    user_id=user_id,
+                    name=name,
+                    description=f"Subworkflow for node '{linked_to_node}'",
+                    nodes=sub_flowchart.get("nodes", []),
+                    edges=sub_flowchart.get("edges", []),
+                    inputs=sub_data.get("variables", []),
+                    outputs=sub_data.get("outputs", []),
+                    tree=sub_data.get("tree", {}),
+                    output_type=output_type,
+                    is_draft=False,
+                )
+            except Exception as exc:
+                self._logger.error(
+                    "_process_subworkflows[%d]: failed to create workflow '%s': %s",
+                    idx, name, exc,
+                )
+                continue
+
+            # Replace node in main flowchart (action "process" -> "subprocess")
+            flowchart_nodes = response.get("flowchart", {}).get("nodes", [])
+            node_found_in_flowchart = False
+            for fnode in flowchart_nodes:
+                if fnode.get("id") == linked_to_node:
+                    fnode["type"] = "subprocess"
+                    fnode["subworkflow_id"] = workflow_id
+                    fnode["input_mapping"] = input_mapping
+                    fnode["output_variable"] = output_variable
+                    node_found_in_flowchart = True
+                    break
+
+            # Replace node in main tree (action -> subprocess)
+            node_found_in_tree = self._replace_tree_node(
+                analysis.get("tree", {}),
+                linked_to_node,
+                workflow_id,
+                input_mapping,
+                output_variable,
+            )
+
+            if not node_found_in_flowchart and not node_found_in_tree:
+                self._logger.warning(
+                    "_process_subworkflows[%d]: linked_to_node '%s' not found in tree or flowchart",
+                    idx, linked_to_node,
+                )
+
+            # Register output variable on parent analysis
+            var_id = generate_variable_id(output_variable, output_type, "subprocess")
+            variables = analysis.get("variables", [])
+            variables.append({
+                "id": var_id,
+                "name": output_variable,
+                "type": output_type,
+                "source": "subprocess",
+                "source_node_id": linked_to_node,
+                "subworkflow_id": workflow_id,
+                "description": f"Output from subworkflow '{name}'",
+            })
+            analysis["variables"] = variables
+
+            created.append({
+                "workflow_id": workflow_id,
+                "name": name,
+                "linked_to_node": linked_to_node,
+            })
+            self._logger.info(
+                "_process_subworkflows[%d]: created subworkflow '%s' (id=%s) for node '%s'",
+                idx, name, workflow_id, linked_to_node,
+            )
+
+        # Attach created subworkflows list for visibility
+        if created:
+            response["created_subworkflows"] = created
+
+        return response
+
+    @staticmethod
+    def _replace_tree_node(
+        tree: Dict[str, Any],
+        node_id: str,
+        subworkflow_id: str,
+        input_mapping: Dict[str, str],
+        output_variable: str,
+    ) -> bool:
+        """Walk the nested tree and replace the node matching node_id with subprocess type.
+
+        Returns True if the node was found and replaced.
+        """
+        start = tree.get("start")
+        if not isinstance(start, dict):
+            return False
+
+        stack = [start]
+        while stack:
+            node = stack.pop()
+            if node.get("id") == node_id:
+                node["type"] = "subprocess"
+                node["subworkflow_id"] = subworkflow_id
+                node["input_mapping"] = input_mapping
+                node["output_variable"] = output_variable
+                return True
+            for child in node.get("children", []):
+                if isinstance(child, dict):
+                    stack.append(child)
+        return False
 
     def _latest_uploaded_file(self) -> Optional[str]:
         """Find the most recently uploaded file (image or PDF)."""

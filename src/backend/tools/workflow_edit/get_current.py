@@ -45,46 +45,59 @@ COMPARATOR_LABELS = {
 }
 
 
-def format_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
-    """Format a decision condition as a human-readable string.
-    
-    Args:
-        condition: The condition dict with input_id, comparator, value, value2
-        variables: List of workflow variable definitions (to get variable name)
-        
-    Returns:
-        Human-readable string like "Age >= 18" or "Name contains 'John'"
-    """
-    if not condition:
-        return "(no condition)"
-    
+def _format_simple_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
+    """Format a single simple condition as a human-readable string."""
     input_id = condition.get("input_id", "?")
     comparator = condition.get("comparator", "?")
     value = condition.get("value")
     value2 = condition.get("value2")
-    
+
     # Try to get human-readable variable name
     var_name = input_id
     for var in variables:
         if var.get("id") == input_id:
             var_name = var.get("name", input_id)
             break
-    
+
     # Get comparator symbol/label
     comp_label = COMPARATOR_LABELS.get(comparator, comparator)
-    
+
     # Format based on comparator type
     if comparator in ("is_true", "is_false"):
         return f"{var_name} {comp_label}"
     elif comparator in ("within_range", "date_between"):
         return f"{var_name} {comp_label} [{value}, {value2}]"
     else:
-        # Format value for display
         if isinstance(value, str):
             value_str = f"'{value}'"
         else:
             value_str = str(value)
         return f"{var_name} {comp_label} {value_str}"
+
+
+def format_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
+    """Format a decision condition (simple or compound) as a human-readable string.
+
+    Args:
+        condition: Simple or compound condition dict.
+        variables: List of workflow variable definitions (to resolve variable names).
+
+    Returns:
+        Human-readable string like "Age >= 18" or "smoker is true AND Age > 40".
+    """
+    if not condition:
+        return "(no condition)"
+
+    # Compound condition: join sub-conditions with AND / OR
+    if "operator" in condition:
+        operator = condition.get("operator", "and")
+        joiner = f" {operator.upper()} "
+        sub_conditions = condition.get("conditions", [])
+        parts = [_format_simple_condition(sub, variables) for sub in sub_conditions]
+        return joiner.join(parts) if parts else "(empty compound)"
+
+    # Simple condition
+    return _format_simple_condition(condition, variables)
 
 
 def format_variable_description(var: Dict[str, Any]) -> str:

@@ -200,7 +200,7 @@ class TestAnalyzeMulti:
 
             # Only guidance extraction should have been called, not the full analysis
             # Result should have guidance but empty tree
-            assert result["guidance"] == [{"text": "note1", "location": "p1", "category": "note"}]
+            assert result["guidance"] == [{"text": "note1", "location": "p1", "category": "note", "linked_to": None, "link_type": None}]
             assert result["tree"] == {}
             assert result["variables"] == []
 

@@ -14,6 +14,8 @@ from ..llm import call_llm, call_llm_stream
 from ..utils.image import image_to_data_url, file_to_data_url
 from ..utils.analysis import normalize_analysis
 from ..utils.cancellation import CancellationError
+from ..validation.tree_validator import TreeValidator
+from ..validation.retry_harness import validate_and_retry
 
 
 class Subagent:
@@ -21,24 +23,42 @@ class Subagent:
 
     # Prompt for extracting side information (sticky notes, annotations, legends)
     # from workflow images before the main analysis pass.
+    # Prompt for extracting both standalone side information AND detailed guidance
+    # panels that are linked to specific flowchart nodes (e.g., treatment protocol
+    # boxes, asterisk-referenced panels, color-coded detail panels).
     _GUIDANCE_PROMPT = (
-        "Examine this image for any written notes, annotations, or clarifications that "
-        "exist OUTSIDE or ALONGSIDE the main flowchart structure. These might be:\n"
+        "Examine this image for guidance information. There are TWO types:\n\n"
+        "## Type 1: Standalone Side Notes\n"
+        "Notes, annotations, or clarifications that exist OUTSIDE the main flowchart:\n"
         "- Sticky notes or post-it notes\n"
         "- Margin annotations or handwritten text\n"
         "- Legends or keys explaining symbols\n"
-        "- Clarification text or callout boxes\n"
         "- Definitions of terms or thresholds written near the diagram\n\n"
+        "## Type 2: Referenced Guidance Panels\n"
+        "Detailed guidance panels that are LINKED to specific flowchart nodes via:\n"
+        "- Asterisk (*) or footnote references (e.g., a node says 'Treatment*' and a "
+        "panel elsewhere describes the treatment steps)\n"
+        "- Arrows or lines connecting a panel to a node\n"
+        "- Color-coded boxes that elaborate on a node (e.g., green boxes with treatment "
+        "protocols, blue boxes with assessment criteria)\n"
+        "- Proximity — a detailed panel positioned next to a node it describes\n\n"
         "CRITICAL RULES:\n"
         "- ONLY report text that is LITERALLY VISIBLE in the image.\n"
         "- Do NOT infer, guess, or fabricate any information.\n"
-        "- Do NOT extract text that is part of the flowchart nodes/arrows themselves.\n"
-        "- If there are NO side notes or annotations, return an empty array: []\n"
-        "- It is completely fine to return an empty array. Most images have no side notes.\n\n"
+        "- Do NOT extract simple node labels or short arrow labels.\n"
+        "- DO extract detailed guidance panels even if they look like part of the diagram, "
+        "as long as they contain multi-sentence or multi-step information.\n"
+        "- If there are NO guidance items, return an empty array: []\n"
+        "- It is completely fine to return an empty array.\n\n"
         'Return ONLY a JSON array. Each item:\n'
         '- "text": the EXACT text content as written in the image\n'
-        '- "location": brief description of where it appears (e.g., "sticky note, top-right")\n'
-        '- "category": one of "clarification", "definition", "constraint", "note", "legend"\n\n'
+        '- "location": brief description of where it appears (e.g., "green box, right side")\n'
+        '- "category": one of "clarification", "definition", "constraint", "note", '
+        '"legend", "treatment_detail", "criteria"\n'
+        '- "linked_to": the exact text of the flowchart node this guidance references, '
+        "or null if standalone\n"
+        '- "link_type": one of "asterisk", "footnote", "arrow", "color_group", '
+        '"proximity", or null if standalone\n\n'
         "If nothing found, return: []\n"
         "Return JSON only, no extra text."
     )
@@ -102,36 +122,112 @@ Return ONLY a JSON object with this structure:
       "y": 300,
       "question": "question or ambiguity related to this specific location"
     }
+  ],
+  "subworkflows": [
+    {
+      "name": "Treatment Protocol",
+      "linked_to_node": "n3",
+      "output_type": "string",
+      "output_variable": "treatment_result",
+      "input_mapping": {"parent_var_name": "sub_input_name"},
+      "inputs": [
+        {"id": "input_ldl_float", "name": "ldl", "type": "float", "description": "LDL level"}
+      ],
+      "outputs": [
+        {"name": "treatment_result", "description": "Treatment recommendation"}
+      ],
+      "tree": {
+        "start": { "...same structure as main tree..." }
+      }
+    }
   ]
 }
 
 Rules:
 - Use exact text from the diagram.
-- If there are no doubts, return "doubts": [].
 - Every input must include an "id" computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
 - Input "name" should be canonical and reusable (short snake_case concept), not a long sentence.
   Example: "A1c after metformin" -> "a1c_after_metformin".
+- PREFER numeric/float variables with threshold comparators over pre-baked booleans.
+  When a diagram says "Is A1c > 58?" or "A1c controlled?", model the variable as
+  {"id": "input_a1c_float", "name": "a1c", "type": "float"} and the decision condition as
+  {"input_id": "input_a1c_float", "comparator": "gt", "value": 58}.
+  Do NOT create a boolean like "a1c_controlled: bool" — use the raw measurable value.
+  Only use type "bool" for genuinely binary clinical facts (e.g., "metformin_tolerated",
+  "admission_required") that have no underlying numeric threshold.
+- STAGE-SPECIFIC VARIABLES: When a workflow checks the SAME measurement at different
+  treatment stages (e.g., A1c checked after metformin, then after SGLT2i, then after
+  dual therapy), each check MUST use a SEPARATE input variable. For example:
+  "input_a1c_after_metformin_float", "input_a1c_after_sglt2i_float",
+  "input_a1c_after_dual_therapy_float". Each represents a distinct clinical timepoint.
+  Do NOT reuse a single variable for multiple stage-specific checks.
 - If a decision/action depends on one or more inputs, include "input_ids" on that node
   referencing the input ids.
-- Every DECISION node MUST include a structured "condition" object:
-  {"input_id": "...", "comparator": "...", "value": ..., "value2": ... optional}
+- Every DECISION node MUST include a structured "condition" object.
+  Simple condition: {"input_id": "...", "comparator": "...", "value": ..., "value2": ... optional}
+  Compound condition (AND/OR): {"operator": "and"|"or", "conditions": [simple, simple, ...]}
+  - Use compound when a decision checks MULTIPLE variables (e.g., "Symptoms present AND A1c > 58").
+  - Compound conditions must have >= 2 sub-conditions. No nesting allowed.
   - int/float comparators: eq, neq, lt, lte, gt, gte, within_range
   - bool comparators: is_true, is_false
   - string comparators: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
   - enum comparators: enum_eq, enum_neq
   - date comparators: date_eq, date_before, date_after, date_between
-- For binary branches, set child edge_label to EXACTLY "true" or "false".
+- For binary yes/no branches, set child edge_label to EXACTLY "true" or "false".
   Do not use "Yes"/"No" in output JSON.
+- For ENUM or categorical decisions (e.g., "Primary or Secondary prevention?"),
+  use the actual category VALUE as the edge_label (e.g., "primary", "secondary"),
+  NOT "true"/"false". Only use "true"/"false" for boolean decisions.
 - Tree rules:
   - This must be a single rooted tree starting at tree.start.
   - Allowed node types: start, decision, action, output.
   - Only decision nodes may have multiple children. Action/start nodes must have at most one child. Outputs have no children.
   - Outputs MUST be leaf nodes (no children).
+  - Every leaf node (no children) MUST have type "output". If a terminal step looks
+    like an action (e.g., "Continue metformin"), it is still an output because it is
+    the final recommendation of that branch.
   - edge_label is required when the diagram shows branch labels (Yes/No); otherwise omit or set to "".
+  - CLARITY: Structure the tree so it is clear and interpretable. You may reorder
+    decisions or duplicate subtrees if it makes the logic clearer, as long as no
+    detail is lost and all paths remain logically correct.
+- Output node labels MUST use the EXACT human-readable text from the diagram, verbatim.
+  Do NOT convert to programmatic snake_case names.
+  Do NOT invent generic labels like "Continue current therapy" — use the specific
+  treatment/medication name visible in the diagram (e.g., "Metformin (continue and
+  review in 3 months)", "Ozempic titrate to full dose with 3 monthly A1c's").
+  Do NOT split a single output into context-specific variants (e.g., do NOT create
+  "Refer to Insulin Initiator (CVD pathway)" AND "Refer to Insulin Initiator (standard pathway)"
+  when the diagram shows only "Refer to Insulin Initiator").
+  Each distinct clinical outcome in the diagram MUST have its own unique output node.
+  The "outputs" array names MUST match the output node labels exactly.
 - Every node id must be unique across the tree.
-- For all questions inside the "doubts" array, you MUST provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
-- CRITICAL: The question text MUST be self-contained and descriptive. It should be understandable even without seeing the exact dot location. Reference surrounding text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node represent?" instead of "What is this?").
+- DOUBTS — MANDATORY: You MUST generate at least 2-3 doubts about aspects of the diagram
+  that are ambiguous, unclear, or could be interpreted multiple ways. Even if the diagram
+  seems clear, identify potential ambiguities such as:
+  - Threshold values that are mentioned but not fully specified
+  - Branching conditions that could be interpreted differently
+  - Labels or text that is partially obscured or hard to read
+  - Logic paths that are not clearly connected
+  - Variables whose exact definition is uncertain
+  For all doubts, provide "x" and "y" integer coordinates representing where on the image the ambiguity exists.
+  CRITICAL: The question text MUST be self-contained and descriptive. Reference surrounding
+  text, shapes, or colors (e.g., "What does the blue oval below the 'Check Status' node
+  represent?" instead of "What is this?").
+- SUBWORKFLOWS — CRITICAL: Check the "Side Information" section at the end of this prompt.
+  When a linked guidance panel describes multi-step logic (treatment protocols, assessment
+  criteria, step-by-step procedures) for a specific action node, you MUST create a subworkflow:
+  - In the main tree, keep the action node as a placeholder (it will be replaced by code).
+  - In the "subworkflows" array, create a full entry with:
+    - "name": descriptive name for the subworkflow
+    - "linked_to_node": the ID of the action node in the main tree
+    - "input_mapping": maps parent variable names to subworkflow input names
+    - "output_variable": name for the result variable returned to parent
+    - "output_type": one of "string", "number", "bool", "json"
+    - "inputs": variables needed by the subworkflow (same format as main inputs)
+    - "outputs": what the subworkflow returns
+    - "tree": a complete tree following ALL the same rules as the main tree
+  - If no linked guidance warrants subworkflows, return "subworkflows": []
 - Return JSON only, no extra text.
 
 Once you've received clarifications via feedback, adjust the analysis accordingly, preserving ids
@@ -155,6 +251,8 @@ by recomputing them deterministically from name + type. Respond only with the up
         }
         # guidance is populated for initial analysis only (not follow-ups)
         guidance: List[Dict[str, Any]] = []
+        # Image dimensions for coordinate mapping (set during initial analysis)
+        img_w, img_h = 0, 0
 
         wants_json = _wants_json(feedback or "")
         if is_followup:
@@ -218,14 +316,8 @@ by recomputing them deterministically from name + type. Respond only with the up
 
             # Inject extracted guidance into the analysis prompt
             if guidance:
-                lines = [
-                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
-                    for g in guidance
-                ]
-                full_prompt += (
-                    "\n\n## Side Information Found in Image\n"
-                    "The following notes and annotations were found alongside the flowchart. "
-                    "Use them to inform your analysis:\n" + "\n".join(lines)
+                full_prompt += _format_guidance(
+                    guidance, header="Side Information Found in Image"
                 )
 
             user_msg = {
@@ -299,10 +391,27 @@ by recomputing them deterministically from name + type. Respond only with the up
 
         data = self._parse_json(raw, prompt, history_messages, system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+
+        # Structural validation of the nested tree — retry via LLM if invalid.
+        data, remaining_errors = self._validate_tree_with_retry(
+            data,
+            system_msg=system_msg,
+            history_messages=history_messages,
+            user_msg=user_msg,
+            assistant_raw=raw,
+            should_cancel=should_cancel,
+        )
+        # Surface remaining structural errors as doubts so the user sees them.
+        if remaining_errors:
+            self._attach_validation_doubts(data, remaining_errors)
+
         # Attach the model's extended thinking as reasoning context
         data["reasoning"] = "".join(thinking_parts)
         # Attach extracted side information (guidance) from the image
         data["guidance"] = guidance
+        # Default subworkflows to empty list if the LLM didn't produce any
+        if "subworkflows" not in data:
+            data["subworkflows"] = []
 
         # Map 0-1000 LLM output coordinates back to absolute hardware pixels
         if img_w > 0 and img_h > 0:
@@ -465,7 +574,8 @@ by recomputing them deterministically from name + type. Respond only with the up
       ]
     }
   },
-  "doubts": []
+  "doubts": [],
+  "subworkflows": []
 }
 
 Rules:
@@ -475,19 +585,28 @@ Rules:
 - Every DECISION node MUST include a structured "condition" object.
 - For binary branches, set child edge_label to EXACTLY "true" or "false".
 - This must be a single rooted tree starting at tree.start.
+- SUBWORKFLOWS — CRITICAL: Check the "Guidance Notes" section at the end of this prompt.
+  When a linked guidance panel describes multi-step logic (treatment protocols, assessment
+  criteria, step-by-step procedures) for a specific action node, you MUST create a subworkflow:
+  - In the main tree, keep the action node as a placeholder (it will be replaced by code).
+  - In the "subworkflows" array, create a full entry with:
+    - "name": descriptive name for the subworkflow
+    - "linked_to_node": the ID of the action node in the main tree
+    - "input_mapping": maps parent variable names to subworkflow input names
+    - "output_variable": name for the result variable returned to parent
+    - "output_type": one of "string", "number", "bool", "json"
+    - "inputs": variables needed by the subworkflow (same format as main inputs)
+    - "outputs": what the subworkflow returns
+    - "tree": a complete tree following ALL the same rules as the main tree
+  - If no linked guidance warrants subworkflows, return "subworkflows": []
 - Return JSON only, no extra text.
 """
 
         # Inject accumulated guidance into the prompt
         if all_guidance:
-            lines = [
-                f'- [{g.get("category", "note")}] "{g.get("text", "")}" ({g.get("location", "")})'
-                for g in all_guidance
-            ]
-            multi_prompt += (
-                "\n\n## Guidance Notes (extracted from accompanying files)\n"
-                "The following notes, definitions, and annotations were found in the guidance files. "
-                "Use them to inform your analysis of the workflow:\n" + "\n".join(lines)
+            multi_prompt += _format_guidance(
+                all_guidance,
+                header="Guidance Notes (extracted from accompanying files)",
             )
 
         content_blocks.append({"type": "text", "text": multi_prompt})
@@ -554,8 +673,24 @@ Rules:
         user_msg = {"role": "user", "content": content_blocks}
         data = self._parse_json(raw, multi_prompt, [], system_msg, user_msg, should_cancel=should_cancel)
         data = normalize_analysis(data)
+
+        # Structural validation of the nested tree — retry via LLM if invalid.
+        data, remaining_errors = self._validate_tree_with_retry(
+            data,
+            system_msg=system_msg,
+            history_messages=[],
+            user_msg=user_msg,
+            assistant_raw=raw,
+            should_cancel=should_cancel,
+        )
+        if remaining_errors:
+            self._attach_validation_doubts(data, remaining_errors)
+
         data["reasoning"] = "".join(thinking_parts)
         data["guidance"] = all_guidance
+        # Default subworkflows to empty list if the LLM didn't produce any
+        if "subworkflows" not in data:
+            data["subworkflows"] = []
 
         # Persist to history so publish_latest_analysis can load it later
         self.history.add_message(session_id, "user", multi_prompt)
@@ -592,7 +727,7 @@ Rules:
             ]
             raw = call_llm(
                 messages,
-                max_completion_tokens=4000,
+                max_completion_tokens=5000,
                 response_format=None,
                 caller="subagent",
                 request_tag="extract_guidance",
@@ -617,10 +752,15 @@ Rules:
                 self._logger.warning("Failed to parse guidance JSON array")
                 return []
 
-            # Validate each item has required keys
+            # Validate each item has required keys and normalize optional fields
             valid = []
             for item in parsed:
                 if isinstance(item, dict) and "text" in item:
+                    # Ensure linked guidance fields always present
+                    if "linked_to" not in item:
+                        item["linked_to"] = None
+                    if "link_type" not in item:
+                        item["link_type"] = None
                     valid.append(item)
             return valid
 
@@ -693,6 +833,97 @@ Rules:
             return parsed_retry
         self._logger.error("Retry JSON parse failed")
         raise ValueError(f"Invalid JSON from LLM: {retry_raw}")
+
+    # ------------------------------------------------------------------
+    # Tree structural validation helpers
+    # ------------------------------------------------------------------
+
+    _tree_validator = TreeValidator()
+
+    def _validate_tree_with_retry(
+        self,
+        data: Dict[str, Any],
+        *,
+        system_msg: dict,
+        history_messages: list,
+        user_msg: dict,
+        assistant_raw: str,
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> tuple:
+        """Run TreeValidator on *data*, retrying via the LLM if invalid.
+
+        Returns ``(data, remaining_errors)`` — remaining_errors is empty
+        when validation passes (possibly after retries).
+        """
+
+        def _retry_llm(error_text: str) -> str:
+            """Re-call the LLM with the original conversation + error feedback."""
+            if should_cancel and should_cancel():
+                raise CancellationError("Subagent cancelled before structural retry.")
+            retry_messages = [
+                system_msg,
+                *history_messages,
+                user_msg,
+                {"role": "assistant", "content": assistant_raw},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous JSON response had structural errors in the "
+                        "tree. Each error below includes a FIX hint explaining "
+                        "what is expected.\n\n"
+                        f"{error_text}\n\n"
+                        "Return the COMPLETE corrected JSON with these issues "
+                        "fixed. Keep everything else unchanged. Return ONLY "
+                        "valid JSON, no extra text."
+                    ),
+                },
+            ]
+            return call_llm(
+                retry_messages,
+                max_completion_tokens=60000,
+                response_format=None,
+                caller="subagent",
+                request_tag="tree_structure_retry",
+                should_cancel=should_cancel,
+            ).strip()
+
+        def _parse_and_normalize(raw: str) -> Dict[str, Any]:
+            """Parse raw LLM output and normalize it."""
+            cleaned = raw.strip()
+            if cleaned.startswith("```") and cleaned.endswith("```"):
+                cleaned = cleaned.strip("`").strip()
+                if cleaned.lower().startswith("json"):
+                    cleaned = cleaned[4:].strip()
+            parsed = json.loads(cleaned)
+            if not isinstance(parsed, dict):
+                raise ValueError("Expected a JSON object.")
+            return normalize_analysis(parsed)
+
+        return validate_and_retry(
+            data=data,
+            validate_fn=self._tree_validator.validate,
+            format_errors_fn=TreeValidator.format_errors,
+            retry_llm_fn=_retry_llm,
+            parse_fn=_parse_and_normalize,
+            max_retries=2,
+            logger=self._logger,
+        )
+
+    @staticmethod
+    def _attach_validation_doubts(
+        data: Dict[str, Any],
+        errors: list,
+    ) -> None:
+        """Append remaining validation errors as doubts so the user sees them."""
+        doubts = data.get("doubts")
+        if not isinstance(doubts, list):
+            doubts = []
+            data["doubts"] = doubts
+        for err in errors:
+            doubts.append({
+                "text": f"[{err.code}] {err.message}",
+                "source": "tree_validator",
+            })
 
 
 def _parse_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
@@ -787,6 +1018,54 @@ def _wants_json(feedback: str) -> bool:
         "json object",
     )
     return any(t in text for t in triggers)
+
+
+def _format_guidance(guidance: List[Dict[str, Any]], *, header: str) -> str:
+    """Format guidance items into a prompt section, splitting standalone vs linked.
+
+    Standalone items (linked_to is None) are shown as simple category/text/location
+    lines. Linked items include a reference to the flowchart node they describe.
+
+    Args:
+        guidance: List of guidance dicts with text, location, category, linked_to, link_type.
+        header: Section header text (e.g., "Side Information Found in Image").
+    """
+    if not guidance:
+        return ""
+
+    standalone = [g for g in guidance if not g.get("linked_to")]
+    linked = [g for g in guidance if g.get("linked_to")]
+
+    parts: list[str] = [f"\n\n## {header}\n"]
+
+    if standalone:
+        parts.append("The following notes and annotations provide context:\n")
+        for g in standalone:
+            parts.append(
+                f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                f'({g.get("location", "")})'
+            )
+
+    if linked:
+        parts.append(
+            "\nThe following detailed guidance panels are linked to specific "
+            "flowchart nodes:\n"
+        )
+        for g in linked:
+            link_via = f" via {g['link_type']}" if g.get("link_type") else ""
+            parts.append(
+                f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                f'({g.get("location", "")}) -> linked to node: '
+                f'"{g["linked_to"]}"{link_via}'
+            )
+        # Explicit hint connecting linked guidance to the subworkflow rule
+        parts.append(
+            "\nIMPORTANT: Each linked guidance panel above describes detailed logic "
+            "for a specific node. You MUST create a subworkflow for each one "
+            "(see the SUBWORKFLOWS rule above)."
+        )
+
+    return "\n".join(parts)
 
 
 def _format_annotations(annotations: List[Dict[str, Any]]) -> str:

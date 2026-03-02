@@ -9,15 +9,17 @@ import re
 from src.backend.execution.interpreter import TreeInterpreter
 from src.backend.utils.flowchart import tree_from_flowchart
 from src.backend.validation.workflow_validator import WorkflowValidator
+from evals.llm_judge import llm_judge_score
 
 
 WEIGHTS: Dict[str, float] = {
-    "node_f1": 0.25,
-    "edge_f1": 0.25,
-    "variable_f1": 0.15,
-    "output_f1": 0.10,
-    "semantic_score": 0.20,
-    "validity_score": 0.05,
+    "llm_judge": 0.50,
+    "semantic_score": 0.25,
+    "validity_score": 0.10,
+    "node_f1": 0.05,
+    "edge_f1": 0.05,
+    "variable_f1": 0.025,
+    "output_f1": 0.025,
 }
 
 
@@ -212,6 +214,26 @@ def _infer_defaults_for_variables(variables: Sequence[Mapping[str, Any]]) -> Dic
     return defaults
 
 
+def _gt_value_type(value: Any) -> str:
+    """Classify a ground-truth input value into a broad type category."""
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, (int, float)):
+        return "number"
+    return "string"
+
+
+def _types_compatible(gt_type: str, var_type: str) -> bool:
+    """Check if a ground-truth value type is compatible with a predicted variable type."""
+    var_type = var_type.lower()
+    if gt_type == "bool":
+        return var_type == "bool"
+    if gt_type == "number":
+        return var_type in ("int", "float", "number")
+    # string/enum are loosely compatible
+    return True
+
+
 def _match_ground_truth_inputs_to_predicted_ids(
     gt_inputs: Mapping[str, Any],
     predicted_variables: Sequence[Mapping[str, Any]],
@@ -219,19 +241,26 @@ def _match_ground_truth_inputs_to_predicted_ids(
     mapping: Dict[str, str] = {}
 
     normalized_gt = {key: normalize_label(key) for key in gt_inputs.keys()}
-    candidates: List[Tuple[str, str, str]] = []
+    candidates: List[Tuple[str, str, str, str]] = []  # (id, name, slug, type)
     for var in predicted_variables:
         var_id = str(var.get("id") or "")
         var_name = normalize_label(var.get("name") or "")
+        var_type = str(var.get("type") or "string").lower()
         if not var_id:
             continue
-        candidates.append((var_id, var_name, _slug_like(var_id)))
+        candidates.append((var_id, var_name, _slug_like(var_id), var_type))
 
     for original_key, gt_name in normalized_gt.items():
         best_var_id = ""
         best_score = -1
         gt_slug = _slug_like(gt_name)
-        for var_id, var_name, var_slug in candidates:
+        gt_type = _gt_value_type(gt_inputs[original_key])
+
+        for var_id, var_name, var_slug, var_type in candidates:
+            # Skip type-incompatible matches (e.g., float value → bool variable)
+            if not _types_compatible(gt_type, var_type):
+                continue
+
             score = 0
             if gt_name == var_name:
                 score = 100
@@ -352,6 +381,23 @@ def _semantic_score(
             if pred_id:
                 runtime_inputs[pred_id] = value
 
+        # Coerce values to match predicted variable types so fuzzy-mapped
+        # inputs don't cause type errors in the interpreter.
+        var_type_map = {v.get("id"): v.get("type", "") for v in variables}
+        for vid, val in runtime_inputs.items():
+            expected_type = var_type_map.get(vid, "")
+            if expected_type == "bool" and not isinstance(val, bool):
+                runtime_inputs[vid] = bool(val)
+            elif expected_type in ("int", "float", "number") and isinstance(val, bool):
+                runtime_inputs[vid] = int(val)
+            elif expected_type in ("int", "float", "number") and isinstance(val, str):
+                try:
+                    runtime_inputs[vid] = float(val)
+                except ValueError:
+                    pass
+            elif expected_type in ("string", "enum") and not isinstance(val, str):
+                runtime_inputs[vid] = str(val)
+
         result = interpreter.execute(runtime_inputs)
         if not result.success:
             execution_failures += 1
@@ -409,7 +455,7 @@ def score_trial(
     pred_variables = analysis.get("variables") if isinstance(analysis.get("variables"), list) else []
     pred_outputs = analysis.get("outputs") if isinstance(analysis.get("outputs"), list) else []
 
-    # Nodes
+    # Nodes (kept for diagnostics, low weight in composite)
     pred_node_tokens = _node_tokens(pred_nodes)
     ref_node_tokens = _node_tokens(ref_nodes)
     node_prf = _compute_prf(
@@ -418,7 +464,7 @@ def score_trial(
         reference_total=len(ref_node_tokens),
     )
 
-    # Edges
+    # Edges (kept for diagnostics, low weight in composite)
     pred_id_to_label = {str(n.get("id")): str(n.get("label") or "") for n in pred_nodes if isinstance(n, Mapping)}
     ref_id_to_label = {str(n.get("id")): str(n.get("label") or "") for n in ref_nodes if isinstance(n, Mapping)}
     pred_edge_tokens = _edge_tokens(pred_edges, pred_id_to_label)
@@ -429,7 +475,7 @@ def score_trial(
         reference_total=len(ref_edge_tokens),
     )
 
-    # Variables
+    # Variables (kept for diagnostics, low weight)
     pred_var_tokens = _variable_tokens(pred_variables)
     ref_var_tokens = _variable_tokens(ref_variables)
     variable_prf = _compute_prf(
@@ -438,7 +484,7 @@ def score_trial(
         reference_total=len(ref_var_tokens),
     )
 
-    # Outputs
+    # Outputs (kept for diagnostics, low weight)
     pred_out_tokens = _output_tokens(pred_outputs)
     if not pred_out_tokens:
         pred_out_tokens = _output_tokens([n.get("label") for n in pred_nodes if canonicalize_node_type(n.get("type")) == "end"])
@@ -449,10 +495,10 @@ def score_trial(
         reference_total=len(ref_out_tokens),
     )
 
-    # Semantic
+    # Semantic — execute test cases against predicted tree
     semantic = _semantic_score(analysis, flowchart, ground_truth_module)
 
-    # Validity
+    # Validity — structural validation
     validator = WorkflowValidator()
     valid, validation_errors = validator.validate(
         {
@@ -464,13 +510,22 @@ def score_trial(
     )
     validity_score = 1.0 if valid else 0.0
 
+    # LLM judge — holistic logical correctness assessment
+    judge = llm_judge_score(
+        analysis=analysis,
+        flowchart=flowchart,
+        ground_truth_module=ground_truth_module,
+        case_config=case_config,
+    )
+
     metrics = {
+        "llm_judge": judge["composite"],
+        "semantic_score": float(semantic.get("score", 0.0)),
+        "validity_score": validity_score,
         "node_f1": node_prf.f1,
         "edge_f1": edge_prf.f1,
         "variable_f1": variable_prf.f1,
         "output_f1": output_prf.f1,
-        "semantic_score": float(semantic.get("score", 0.0)),
-        "validity_score": validity_score,
     }
 
     composite_raw = 0.0
@@ -478,6 +533,7 @@ def score_trial(
         composite_raw += metrics[metric] * weight
 
     details = {
+        "llm_judge": judge,
         "node": {
             "matched": node_prf.matched,
             "predicted_total": node_prf.predicted_total,
