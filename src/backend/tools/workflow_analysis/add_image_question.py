@@ -8,7 +8,6 @@ from typing import Any, Dict
 from uuid import uuid4
 
 from ...utils.uploads import load_annotations, save_annotations
-from ...utils.paths import lemon_data_dir
 from ..core import Tool, ToolParameter
 
 

@@ -664,7 +664,6 @@ class TreeInterpreter:
                     'abs': 'abs', 'round': 'round', 'floor': 'floor', 'ceil': 'ceil'
                 }
                 op_sym = operator_symbols.get(operator_name, operator_name)
-                operand_strs = [f"{d['name']}={d['value']}" for d in operand_details]
                 formula = f"{output_name} = {' '.join([d['name'] for d in operand_details])} ({op_sym})"
                 
                 on_step({

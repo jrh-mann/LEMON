@@ -4,7 +4,7 @@ Evaluates DecisionCondition objects against execution context.
 Supports type-specific comparators for int, float, bool, string, date, and enum types.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, date
 
 
