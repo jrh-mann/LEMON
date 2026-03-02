@@ -909,7 +909,7 @@ def register_routes(
         authenticated session, so tools work the same as via the orchestrator.
         Returns the tool execution result.
         """
-        from ..tools import ToolRegistry
+        from ..tools import build_tool_registry
         
         payload = request.get_json(force=True, silent=True) or {}
         
@@ -925,8 +925,8 @@ def register_routes(
         }
         
         try:
-            # Use ToolRegistry directly (like orchestrator in direct mode)
-            tools = ToolRegistry()
+            # Build a fully populated registry with all discovered tools
+            tools = build_tool_registry(repo_root)
             result = tools.execute(
                 tool_name,
                 payload,
