@@ -24,7 +24,7 @@ import pytest
 from src.backend.agents.subagent import Subagent
 from src.backend.utils.analysis import normalize_analysis
 from src.backend.agents.orchestrator import Orchestrator
-from src.backend.agents.orchestrator_config import build_system_prompt
+from src.backend.agents.system_prompt import build_system_prompt
 from src.backend.api.conversations import Conversation
 from src.backend.tools import ToolRegistry
 from src.backend.storage.history import HistoryStore

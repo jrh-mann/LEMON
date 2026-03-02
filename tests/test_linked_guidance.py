@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.backend.agents.subagent import Subagent, _format_guidance
-from src.backend.agents.orchestrator_config import build_system_prompt
+from src.backend.agents.system_prompt import build_system_prompt
 from src.backend.storage.history import HistoryStore
 from src.backend.tools.workflow_analysis.analyze import AnalyzeWorkflowTool
 
