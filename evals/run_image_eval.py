@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import importlib
 import json
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 from statistics import mean
 import sys
+import time
 from typing import Any, Dict, List, Mapping, Sequence
 
 # Allow running this file directly via absolute path.
@@ -59,18 +61,6 @@ def _select_cases(all_cases: Sequence[Mapping[str, Any]], requested: str) -> Lis
     return selected
 
 
-def _set_eval_environment(run_id: str) -> Dict[str, str | None]:
-    previous = {
-        "LEMON_DATA_DIR": os.environ.get("LEMON_DATA_DIR"),
-        "LEMON_INCLUDE_RAW_ANALYSIS": os.environ.get("LEMON_INCLUDE_RAW_ANALYSIS"),
-    }
-
-    eval_data_dir = Path("/tmp") / f"lemon_eval_{run_id}"
-    os.environ["LEMON_DATA_DIR"] = str(eval_data_dir)
-    os.environ["LEMON_INCLUDE_RAW_ANALYSIS"] = "1"
-    return previous
-
-
 def _restore_environment(previous: Mapping[str, str | None]) -> None:
     for key, value in previous.items():
         if value is None:
@@ -79,24 +69,47 @@ def _restore_environment(previous: Mapping[str, str | None]) -> None:
             os.environ[key] = value
 
 
-def _upload_image_for_trial(repo_root: Path, image_path: Path, case_id: str, trial_index: int) -> str:
+def _upload_image_for_trial(data_dir: Path, image_path: Path, case_id: str, trial_index: int) -> str:
+    """Upload image into a specific data_dir (not the global LEMON_DATA_DIR)."""
     data_url = image_to_data_url(image_path)
-    return save_uploaded_image(
-        data_url,
-        repo_root=repo_root,
-        filename_prefix=f"eval_{case_id}_trial{trial_index}_",
-    )
+    uploads_dir = data_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    # Inline the save logic to target the specific data_dir
+    import base64
+    header, b64data = data_url.split(",", 1)
+    ext = "png"
+    if "jpeg" in header or "jpg" in header:
+        ext = "jpg"
+    elif "webp" in header:
+        ext = "webp"
+    filename = f"eval_{case_id}_trial{trial_index}_.{ext}"
+    dest = uploads_dir / filename
+    dest.write_bytes(base64.b64decode(b64data))
+    return str(dest.relative_to(data_dir))
+
+
+def _make_trial_tool(repo_root: Path, run_id: str, case_id: str, trial_index: int) -> AnalyzeWorkflowTool:
+    """Create an AnalyzeWorkflowTool with an isolated data directory per trial."""
+    trial_data_dir = Path("/tmp") / f"lemon_eval_{run_id}" / f"{case_id}_t{trial_index}"
+    trial_data_dir.mkdir(parents=True, exist_ok=True)
+    tool = AnalyzeWorkflowTool(repo_root)
+    # Override the data_dir to isolate this trial's uploads/history
+    tool.data_dir = trial_data_dir
+    from src.backend.storage.history import HistoryStore
+    tool.history = HistoryStore(trial_data_dir / "history.sqlite")
+    from src.backend.agents.subagent import Subagent
+    tool.subagent = Subagent(tool.history)
+    return tool
 
 
 def _run_analysis_direct(
     *,
     tool: AnalyzeWorkflowTool,
-    repo_root: Path,
     image_path: Path,
     case_id: str,
     trial_index: int,
 ) -> Dict[str, Any]:
-    _upload_image_for_trial(repo_root, image_path, case_id, trial_index)
+    _upload_image_for_trial(tool.data_dir, image_path, case_id, trial_index)
     return tool.execute({})
 
 
@@ -179,7 +192,6 @@ def _generate_doubt_answers(
 def _run_analysis_with_clarification(
     *,
     tool: AnalyzeWorkflowTool,
-    repo_root: Path,
     image_path: Path,
     case_id: str,
     trial_index: int,
@@ -193,7 +205,7 @@ def _run_analysis_with_clarification(
     to the subagent so it regenerates the JSON.
     """
     # Turn 1: initial analysis (same as one-shot)
-    _upload_image_for_trial(repo_root, image_path, case_id, trial_index)
+    _upload_image_for_trial(tool.data_dir, image_path, case_id, trial_index)
     result = tool.execute({})
 
     session_id = result.get("session_id")
@@ -238,6 +250,130 @@ def _mean_metrics(score_entries: Sequence[Mapping[str, Any]]) -> Dict[str, float
     return aggregate
 
 
+# ── Single-trial worker (called concurrently) ────────────────────────
+
+def _run_single_trial(
+    *,
+    repo_root: Path,
+    run_id: str,
+    case: Dict[str, Any],
+    image_path: Path,
+    trial_index: int,
+    results_dir: Path,
+    transport: str,
+    clarify: bool,
+    ground_truth_module: Any,
+) -> Dict[str, Any]:
+    """Execute one trial and return its record. Thread-safe."""
+    case_id = str(case.get("case_id"))
+    trial_dir = results_dir / case_id / f"trial_{trial_index:02d}"
+    trial_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.perf_counter()
+
+    if transport == "direct":
+        # Each trial gets its own tool with isolated data directory
+        tool = _make_trial_tool(repo_root, run_id, case_id, trial_index)
+
+        if clarify:
+            tool_result = _run_analysis_with_clarification(
+                tool=tool,
+                image_path=image_path,
+                case_id=case_id,
+                trial_index=trial_index,
+                case_config=case,
+                ground_truth_module=ground_truth_module,
+            )
+        else:
+            tool_result = _run_analysis_direct(
+                tool=tool,
+                image_path=image_path,
+                case_id=case_id,
+                trial_index=trial_index,
+            )
+    elif transport == "mcp":
+        tool_result = _run_analysis_mcp(image_path=image_path)
+    else:
+        raise ValueError(f"Unsupported transport: {transport}")
+
+    session_id = str(tool_result.get("session_id", ""))
+    analysis = dict(tool_result.get("analysis") or {})
+    flowchart = dict(tool_result.get("flowchart") or {})
+
+    raw_model_output = analysis.pop("_raw_model_output", "")
+    reasoning = analysis.get("reasoning", "")
+
+    score = score_trial(
+        case_config=case,
+        analysis=analysis,
+        flowchart=flowchart,
+        ground_truth_module=ground_truth_module,
+    )
+
+    elapsed_s = time.perf_counter() - t0
+
+    # Persist artifacts
+    (trial_dir / "raw_model_output.txt").write_text(str(raw_model_output), encoding="utf-8")
+    (trial_dir / "normalized_analysis.json").write_text(json.dumps(analysis, indent=2, ensure_ascii=True), encoding="utf-8")
+    (trial_dir / "flowchart.json").write_text(json.dumps(flowchart, indent=2, ensure_ascii=True), encoding="utf-8")
+    (trial_dir / "score.json").write_text(json.dumps(score, indent=2, ensure_ascii=True), encoding="utf-8")
+    (trial_dir / "reasoning.txt").write_text(str(reasoning), encoding="utf-8")
+    (trial_dir / "doubts.json").write_text(
+        json.dumps(analysis.get("doubts", []), indent=2, ensure_ascii=True),
+        encoding="utf-8",
+    )
+
+    print(
+        f"  [{case_id} t{trial_index}] composite={score.get('composite_score', 0):.1f}  "
+        f"llm_judge={score.get('percentage_metrics', {}).get('llm_judge', 0):.0f}%  "
+        f"semantic={score.get('percentage_metrics', {}).get('semantic_score', 0):.0f}%  "
+        f"({elapsed_s:.0f}s)",
+        flush=True,
+    )
+
+    return {
+        "case_id": case_id,
+        "image_path": str(case.get("image_path")),
+        "trial_index": trial_index,
+        "session_id": session_id,
+        "analysis": analysis,
+        "flowchart": flowchart,
+        "score": score,
+        "elapsed_s": round(elapsed_s, 1),
+        "artifacts": {
+            "raw_model_output": str(trial_dir / "raw_model_output.txt"),
+            "normalized_analysis": str(trial_dir / "normalized_analysis.json"),
+            "flowchart": str(trial_dir / "flowchart.json"),
+            "score": str(trial_dir / "score.json"),
+        },
+    }
+
+
+# ── Token tracking ───────────────────────────────────────────────────
+
+def _read_token_snapshot() -> Dict[str, int]:
+    """Read current cumulative token counts from the tokens summary file."""
+    try:
+        tokens_path = lemon_data_dir() / "tokens.json"
+        if not tokens_path.exists():
+            # Try the eval-scoped path
+            tokens_path = Path(os.environ.get("LEMON_DATA_DIR", "")) / "tokens.json"
+        if tokens_path.exists():
+            data = json.loads(tokens_path.read_text(encoding="utf-8"))
+            return data.get("total", {})
+    except Exception:
+        pass
+    return {}
+
+
+def _token_diff(before: Dict[str, int], after: Dict[str, int]) -> Dict[str, int]:
+    """Compute the difference in token counts between two snapshots."""
+    keys = set(before) | set(after)
+    return {k: after.get(k, 0) - before.get(k, 0) for k in keys if after.get(k, 0) - before.get(k, 0) != 0}
+
+
+# ── Main evaluation loop ─────────────────────────────────────────────
+
 def run_evaluation(
     *,
     repo_root: Path,
@@ -254,124 +390,90 @@ def run_evaluation(
     results_dir = repo_root / "evals" / "results" / run_id
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    previous_env = _set_eval_environment(run_id)
-    trial_records: List[Dict[str, Any]] = []
-    case_summaries: List[Dict[str, Any]] = []
+    # Set up isolated eval environment
+    previous_env = {
+        "LEMON_DATA_DIR": os.environ.get("LEMON_DATA_DIR"),
+        "LEMON_INCLUDE_RAW_ANALYSIS": os.environ.get("LEMON_INCLUDE_RAW_ANALYSIS"),
+    }
+    eval_data_dir = Path("/tmp") / f"lemon_eval_{run_id}"
+    os.environ["LEMON_DATA_DIR"] = str(eval_data_dir)
+    os.environ["LEMON_INCLUDE_RAW_ANALYSIS"] = "1"
+
+    tokens_before = _read_token_snapshot()
+    wall_start = time.perf_counter()
 
     try:
-        tool = AnalyzeWorkflowTool(repo_root) if transport == "direct" else None
-
+        # Build (case, trial_index) work items
+        work_items = []
         for case in selected_cases:
             case_id = str(case.get("case_id"))
             image_rel = str(case.get("image_path"))
             image_path = repo_root / image_rel
             if not image_path.exists():
                 raise FileNotFoundError(f"Image for case '{case_id}' not found: {image_path}")
-
             gt_module_name = str(case.get("ground_truth_module"))
             ground_truth_module = importlib.import_module(gt_module_name)
 
-            case_trials: List[Dict[str, Any]] = []
-
             for trial_index in range(1, trials + 1):
-                trial_dir = results_dir / case_id / f"trial_{trial_index:02d}"
-                trial_dir.mkdir(parents=True, exist_ok=True)
-
-                if clarify and transport == "direct":
-                    assert tool is not None
-                    tool_result = _run_analysis_with_clarification(
-                        tool=tool,
-                        repo_root=repo_root,
-                        image_path=image_path,
-                        case_id=case_id,
-                        trial_index=trial_index,
-                        case_config=case,
-                        ground_truth_module=ground_truth_module,
-                    )
-                elif transport == "direct":
-                    assert tool is not None
-                    tool_result = _run_analysis_direct(
-                        tool=tool,
-                        repo_root=repo_root,
-                        image_path=image_path,
-                        case_id=case_id,
-                        trial_index=trial_index,
-                    )
-                elif transport == "mcp":
-                    tool_result = _run_analysis_mcp(image_path=image_path)
-                else:
-                    raise ValueError(f"Unsupported transport: {transport}")
-                session_id = str(tool_result.get("session_id", ""))
-                analysis = dict(tool_result.get("analysis") or {})
-                flowchart = dict(tool_result.get("flowchart") or {})
-
-                raw_model_output = analysis.pop("_raw_model_output", "")
-                # Extract reasoning (extended thinking) for separate storage
-                reasoning = analysis.get("reasoning", "")
-
-                score = score_trial(
-                    case_config=case,
-                    analysis=analysis,
-                    flowchart=flowchart,
-                    ground_truth_module=ground_truth_module,
-                )
-
-                raw_path = trial_dir / "raw_model_output.txt"
-                analysis_path = trial_dir / "normalized_analysis.json"
-                flowchart_path = trial_dir / "flowchart.json"
-                score_path = trial_dir / "score.json"
-                reasoning_path = trial_dir / "reasoning.txt"
-                doubts_path = trial_dir / "doubts.json"
-
-                raw_path.write_text(str(raw_model_output), encoding="utf-8")
-                analysis_path.write_text(json.dumps(analysis, indent=2, ensure_ascii=True), encoding="utf-8")
-                flowchart_path.write_text(json.dumps(flowchart, indent=2, ensure_ascii=True), encoding="utf-8")
-                score_path.write_text(json.dumps(score, indent=2, ensure_ascii=True), encoding="utf-8")
-                reasoning_path.write_text(str(reasoning), encoding="utf-8")
-                doubts_path.write_text(
-                    json.dumps(analysis.get("doubts", []), indent=2, ensure_ascii=True),
-                    encoding="utf-8",
-                )
-
-                trial_record = {
-                    "case_id": case_id,
-                    "image_path": image_rel,
+                work_items.append({
+                    "repo_root": repo_root,
+                    "run_id": run_id,
+                    "case": case,
+                    "image_path": image_path,
                     "trial_index": trial_index,
-                    "session_id": session_id,
-                    "analysis": analysis,
-                    "flowchart": flowchart,
-                    "score": score,
-                    "artifacts": {
-                        "raw_model_output": str(raw_path),
-                        "normalized_analysis": str(analysis_path),
-                        "flowchart": str(flowchart_path),
-                        "score": str(score_path),
-                    },
-                }
-                trial_records.append(trial_record)
-                case_trials.append(trial_record)
+                    "results_dir": results_dir,
+                    "transport": transport,
+                    "clarify": clarify,
+                    "ground_truth_module": ground_truth_module,
+                })
 
-            case_summaries.append(
-                {
-                    "case_id": case_id,
-                    "image_path": image_rel,
-                    "ground_truth_module": gt_module_name,
-                    "trial_count": len(case_trials),
-                    "aggregate": _mean_metrics([trial["score"] for trial in case_trials]),
-                    "trials": [
-                        {
-                            "trial_index": trial["trial_index"],
-                            "session_id": trial["session_id"],
-                            "composite_score": trial["score"].get("composite_score"),
-                            "percentage_metrics": trial["score"].get("percentage_metrics", {}),
-                            "artifacts": trial["artifacts"],
-                        }
-                        for trial in case_trials
-                    ],
-                }
-            )
+        # Run all trials concurrently
+        print(f"Running {len(work_items)} trials concurrently...", flush=True)
+        trial_records: List[Dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=len(work_items)) as pool:
+            futures = {pool.submit(_run_single_trial, **item): item for item in work_items}
+            for future in as_completed(futures):
+                try:
+                    record = future.result()
+                    trial_records.append(record)
+                except Exception as exc:
+                    item = futures[future]
+                    print(f"  [ERROR {item['case']['case_id']} t{item['trial_index']}] {exc}", flush=True)
 
-        overall_aggregate = _mean_metrics([trial["score"] for trial in trial_records])
+        # Sort records by case_id then trial_index for stable output
+        trial_records.sort(key=lambda r: (r["case_id"], r["trial_index"]))
+
+        # Aggregate per-case
+        case_summaries: List[Dict[str, Any]] = []
+        for case in selected_cases:
+            case_id = str(case.get("case_id"))
+            case_trials = [r for r in trial_records if r["case_id"] == case_id]
+            gt_module_name = str(case.get("ground_truth_module"))
+            image_rel = str(case.get("image_path"))
+
+            case_summaries.append({
+                "case_id": case_id,
+                "image_path": image_rel,
+                "ground_truth_module": gt_module_name,
+                "trial_count": len(case_trials),
+                "aggregate": _mean_metrics([t["score"] for t in case_trials]),
+                "trials": [
+                    {
+                        "trial_index": t["trial_index"],
+                        "session_id": t["session_id"],
+                        "composite_score": t["score"].get("composite_score"),
+                        "percentage_metrics": t["score"].get("percentage_metrics", {}),
+                        "elapsed_s": t.get("elapsed_s"),
+                        "artifacts": t["artifacts"],
+                    }
+                    for t in case_trials
+                ],
+            })
+
+        overall_aggregate = _mean_metrics([t["score"] for t in trial_records])
+        wall_elapsed = time.perf_counter() - wall_start
+        tokens_after = _read_token_snapshot()
+        token_usage = _token_diff(tokens_before, tokens_after)
 
         summary = {
             "run_id": run_id,
@@ -381,8 +483,9 @@ def run_evaluation(
             "total_trials": len(trial_records),
             "transport": transport,
             "clarify": clarify,
-            "eval_data_dir": str(lemon_data_dir(repo_root)),
-            "history_db_path": str(lemon_data_dir(repo_root) / "history.sqlite"),
+            "wall_time_s": round(wall_elapsed, 1),
+            "token_usage": token_usage,
+            "eval_data_dir": str(eval_data_dir),
             "weights": {
                 "llm_judge": 0.50,
                 "semantic_score": 0.25,
@@ -397,10 +500,11 @@ def run_evaluation(
         }
 
         if emit_report:
+            history_db_path = eval_data_dir / "history.sqlite"
             diagnostics_paths = emit_diagnostics(
                 run_id=run_id,
                 trials=trial_records,
-                history_db_path=Path(summary["history_db_path"]),
+                history_db_path=history_db_path,
                 results_dir=results_dir,
             )
             summary["diagnostics"] = diagnostics_paths
@@ -453,13 +557,26 @@ def main() -> None:
         clarify=args.clarify,
     )
 
+    # Print compact summary with token usage
+    token_info = summary.get("token_usage", {})
+    token_str = ""
+    if token_info:
+        inp = token_info.get("input_tokens", 0)
+        out = token_info.get("output_tokens", 0)
+        total = token_info.get("total_tokens", 0)
+        token_str = f"  tokens: {total:,} total ({inp:,} in, {out:,} out)"
+
     print(json.dumps({
         "run_id": summary["run_id"],
         "summary_path": summary["summary_path"],
         "aggregate": summary["aggregate"],
         "cases_selected": summary["cases_selected"],
         "total_trials": summary["total_trials"],
+        "wall_time_s": summary.get("wall_time_s"),
+        "token_usage": token_info,
     }, indent=2, ensure_ascii=True))
+    if token_str:
+        print(token_str)
 
 
 if __name__ == "__main__":
