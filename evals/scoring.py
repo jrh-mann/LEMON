@@ -214,6 +214,26 @@ def _infer_defaults_for_variables(variables: Sequence[Mapping[str, Any]]) -> Dic
     return defaults
 
 
+def _gt_value_type(value: Any) -> str:
+    """Classify a ground-truth input value into a broad type category."""
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, (int, float)):
+        return "number"
+    return "string"
+
+
+def _types_compatible(gt_type: str, var_type: str) -> bool:
+    """Check if a ground-truth value type is compatible with a predicted variable type."""
+    var_type = var_type.lower()
+    if gt_type == "bool":
+        return var_type == "bool"
+    if gt_type == "number":
+        return var_type in ("int", "float", "number")
+    # string/enum are loosely compatible
+    return True
+
+
 def _match_ground_truth_inputs_to_predicted_ids(
     gt_inputs: Mapping[str, Any],
     predicted_variables: Sequence[Mapping[str, Any]],
@@ -221,19 +241,26 @@ def _match_ground_truth_inputs_to_predicted_ids(
     mapping: Dict[str, str] = {}
 
     normalized_gt = {key: normalize_label(key) for key in gt_inputs.keys()}
-    candidates: List[Tuple[str, str, str]] = []
+    candidates: List[Tuple[str, str, str, str]] = []  # (id, name, slug, type)
     for var in predicted_variables:
         var_id = str(var.get("id") or "")
         var_name = normalize_label(var.get("name") or "")
+        var_type = str(var.get("type") or "string").lower()
         if not var_id:
             continue
-        candidates.append((var_id, var_name, _slug_like(var_id)))
+        candidates.append((var_id, var_name, _slug_like(var_id), var_type))
 
     for original_key, gt_name in normalized_gt.items():
         best_var_id = ""
         best_score = -1
         gt_slug = _slug_like(gt_name)
-        for var_id, var_name, var_slug in candidates:
+        gt_type = _gt_value_type(gt_inputs[original_key])
+
+        for var_id, var_name, var_slug, var_type in candidates:
+            # Skip type-incompatible matches (e.g., float value → bool variable)
+            if not _types_compatible(gt_type, var_type):
+                continue
+
             score = 0
             if gt_name == var_name:
                 score = 100
