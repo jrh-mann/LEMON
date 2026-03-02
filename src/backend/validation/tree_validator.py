@@ -96,6 +96,9 @@ class TreeValidator:
         "OUTPUT_HAS_CHILDREN": "Output nodes are leaf nodes — remove the \"children\" array or set it to [].",
         "ACTION_MULTIPLE_CHILDREN": "Action and start nodes can have at most 1 child. If the flow branches, use a decision node instead.",
         "INVALID_INPUT_REFERENCE": "The condition's \"input_id\" must match an id or name from the variables list.",
+        "INVALID_COMPOUND_OPERATOR": "Compound condition operator must be \"and\" or \"or\".",
+        "COMPOUND_TOO_FEW_CONDITIONS": "Compound conditions must have at least 2 sub-conditions.",
+        "NESTED_COMPOUND_NOT_ALLOWED": "Sub-conditions inside a compound condition cannot themselves be compound (no nesting).",
         "LEAF_NOT_OUTPUT": "Leaf nodes (no children) must have type \"output\". If a terminal step looks like an action, change its type to \"output\".",
     }
 
@@ -264,30 +267,84 @@ class TreeValidator:
                     node_id=node_id,
                 )
             )
-        else:
-            input_id = condition.get("input_id")
-            comparator = condition.get("comparator")
-            if not input_id or not comparator:
+        elif "operator" in condition:
+            # --- Compound condition (AND/OR) ---
+            operator = condition.get("operator")
+            if operator not in ("and", "or"):
                 errors.append(
                     ValidationError(
-                        code="DECISION_MISSING_CONDITION",
-                        message=f"Decision node '{node_id}' condition must have "
-                        f"'input_id' and 'comparator'.",
+                        code="INVALID_COMPOUND_OPERATOR",
+                        message=f"Decision node '{node_id}' compound condition has "
+                        f"invalid operator '{operator}'. Must be 'and' or 'or'.",
                         node_id=node_id,
                     )
                 )
-
-            # --- INVALID_INPUT_REFERENCE (soft — only when variables are known) ---
-            if var_names and isinstance(input_id, str) and input_id:
-                if input_id not in var_names:
-                    errors.append(
-                        ValidationError(
-                            code="INVALID_INPUT_REFERENCE",
-                            message=f"Decision node '{node_id}' references input "
-                            f"'{input_id}' which is not in the variables list.",
-                            node_id=node_id,
-                        )
+            sub_conditions = condition.get("conditions", [])
+            if not isinstance(sub_conditions, list) or len(sub_conditions) < 2:
+                errors.append(
+                    ValidationError(
+                        code="COMPOUND_TOO_FEW_CONDITIONS",
+                        message=f"Decision node '{node_id}' compound condition must "
+                        f"have at least 2 sub-conditions.",
+                        node_id=node_id,
                     )
+                )
+            else:
+                for sub in sub_conditions:
+                    if not isinstance(sub, dict):
+                        continue
+                    # Reject nested compound
+                    if "operator" in sub:
+                        errors.append(
+                            ValidationError(
+                                code="NESTED_COMPOUND_NOT_ALLOWED",
+                                message=f"Decision node '{node_id}': nested compound "
+                                f"conditions are not allowed.",
+                                node_id=node_id,
+                            )
+                        )
+                        continue
+                    # Validate each sub-condition's input_id/comparator
+                    self._validate_simple_tree_condition(
+                        sub, node_id, var_names, errors
+                    )
+        else:
+            # --- Simple condition ---
+            self._validate_simple_tree_condition(
+                condition, node_id, var_names, errors
+            )
+
+    def _validate_simple_tree_condition(
+        self,
+        condition: Dict[str, Any],
+        node_id: Any,
+        var_names: Set[str],
+        errors: List[ValidationError],
+    ) -> None:
+        """Validate a single simple condition's input_id/comparator and input reference."""
+        input_id = condition.get("input_id")
+        comparator = condition.get("comparator")
+        if not input_id or not comparator:
+            errors.append(
+                ValidationError(
+                    code="DECISION_MISSING_CONDITION",
+                    message=f"Decision node '{node_id}' condition must have "
+                    f"'input_id' and 'comparator'.",
+                    node_id=node_id,
+                )
+            )
+
+        # --- INVALID_INPUT_REFERENCE (soft — only when variables are known) ---
+        if var_names and isinstance(input_id, str) and input_id:
+            if input_id not in var_names:
+                errors.append(
+                    ValidationError(
+                        code="INVALID_INPUT_REFERENCE",
+                        message=f"Decision node '{node_id}' references input "
+                        f"'{input_id}' which is not in the variables list.",
+                        node_id=node_id,
+                    )
+                )
 
     def _validate_output(
         self,

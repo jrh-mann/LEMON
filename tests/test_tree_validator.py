@@ -404,3 +404,121 @@ class TestTreeValidator:
         result = TreeValidator.format_errors(errors)
         assert "[FOO]" in result
         assert "bar" in result
+
+    # --- Compound condition support ---
+
+    def test_valid_compound_and_condition(self):
+        """Decision with valid compound AND condition passes."""
+        decision = _valid_decision_node(
+            condition={
+                "operator": "and",
+                "conditions": [
+                    {"input_id": "age", "comparator": "gte"},
+                    {"input_id": "smoker", "comparator": "is_true"},
+                ],
+            }
+        )
+        start = _valid_start_node(children=[decision])
+        analysis = _make_analysis(
+            tree_start=start,
+            variables=[
+                {"id": "age", "name": "age", "type": "number"},
+                {"id": "smoker", "name": "smoker", "type": "bool"},
+            ],
+        )
+        ok, errors = self.validator.validate(analysis)
+        assert ok is True
+        assert errors == []
+
+    def test_valid_compound_or_condition(self):
+        """Decision with valid compound OR condition passes."""
+        decision = _valid_decision_node(
+            condition={
+                "operator": "or",
+                "conditions": [
+                    {"input_id": "cvd_known", "comparator": "is_true"},
+                    {"input_id": "cvd_risk", "comparator": "is_true"},
+                ],
+            }
+        )
+        start = _valid_start_node(children=[decision])
+        analysis = _make_analysis(
+            tree_start=start,
+            variables=[
+                {"id": "cvd_known", "name": "cvd_known", "type": "bool"},
+                {"id": "cvd_risk", "name": "cvd_risk", "type": "bool"},
+            ],
+        )
+        ok, errors = self.validator.validate(analysis)
+        assert ok is True
+
+    def test_compound_bad_operator(self):
+        """Compound condition with invalid operator flagged."""
+        decision = _valid_decision_node(
+            condition={
+                "operator": "xor",
+                "conditions": [
+                    {"input_id": "a", "comparator": "is_true"},
+                    {"input_id": "b", "comparator": "is_true"},
+                ],
+            }
+        )
+        start = _valid_start_node(children=[decision])
+        ok, errors = self.validator.validate(_make_analysis(tree_start=start))
+        assert ok is False
+        assert any(e.code == "INVALID_COMPOUND_OPERATOR" for e in errors)
+
+    def test_compound_fewer_than_two_conditions(self):
+        """Compound condition with < 2 sub-conditions flagged."""
+        decision = _valid_decision_node(
+            condition={
+                "operator": "and",
+                "conditions": [{"input_id": "a", "comparator": "is_true"}],
+            }
+        )
+        start = _valid_start_node(children=[decision])
+        ok, errors = self.validator.validate(_make_analysis(tree_start=start))
+        assert ok is False
+        assert any(e.code == "COMPOUND_TOO_FEW_CONDITIONS" for e in errors)
+
+    def test_compound_nested_rejected(self):
+        """Nested compound conditions are rejected."""
+        decision = _valid_decision_node(
+            condition={
+                "operator": "and",
+                "conditions": [
+                    {"input_id": "a", "comparator": "is_true"},
+                    {
+                        "operator": "or",
+                        "conditions": [
+                            {"input_id": "b", "comparator": "is_true"},
+                            {"input_id": "c", "comparator": "is_true"},
+                        ],
+                    },
+                ],
+            }
+        )
+        start = _valid_start_node(children=[decision])
+        ok, errors = self.validator.validate(_make_analysis(tree_start=start))
+        assert ok is False
+        assert any(e.code == "NESTED_COMPOUND_NOT_ALLOWED" for e in errors)
+
+    def test_compound_invalid_input_reference(self):
+        """Compound condition with invalid input_id in sub-condition flagged."""
+        decision = _valid_decision_node(
+            condition={
+                "operator": "and",
+                "conditions": [
+                    {"input_id": "age", "comparator": "gte"},
+                    {"input_id": "nonexistent", "comparator": "is_true"},
+                ],
+            }
+        )
+        start = _valid_start_node(children=[decision])
+        analysis = _make_analysis(
+            tree_start=start,
+            variables=[{"id": "age", "name": "age", "type": "number"}],
+        )
+        ok, errors = self.validator.validate(analysis)
+        assert ok is False
+        assert any(e.code == "INVALID_INPUT_REFERENCE" for e in errors)
