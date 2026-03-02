@@ -100,10 +100,20 @@ class RemoveWorkflowVariableTool(Tool):
             }
 
         # Check for nodes that reference this input in their condition
+        # Handles both simple conditions and compound (AND/OR) conditions
         referencing_nodes = []
+        var_id = found_var.get("id")
         for node in nodes:
             condition = node.get("condition")
-            if condition and condition.get("input_id") == found_var.get("id"):
+            if not condition:
+                continue
+            if "operator" in condition:
+                # Compound condition — check each sub-condition
+                for sub in condition.get("conditions", []):
+                    if isinstance(sub, dict) and sub.get("input_id") == var_id:
+                        referencing_nodes.append(node)
+                        break  # Only add node once
+            elif condition.get("input_id") == var_id:
                 referencing_nodes.append(node)
 
         # If references exist and force is not enabled, reject deletion
@@ -128,13 +138,25 @@ class RemoveWorkflowVariableTool(Tool):
                 "referencing_nodes": [node.get("id") for node in referencing_nodes],
             }
 
-        # If force=true, clear condition from all referencing nodes
+        # If force=true, clear condition from all referencing nodes.
+        # For compound conditions referencing the variable in any sub-condition,
+        # we clear the entire condition (partial removal would break the compound).
         nodes_modified = False
         affected_node_labels = []
         if referencing_nodes:
             for node in nodes:
                 condition = node.get("condition")
-                if condition and condition.get("input_id") == found_var.get("id"):
+                if not condition:
+                    continue
+                should_clear = False
+                if "operator" in condition:
+                    for sub in condition.get("conditions", []):
+                        if isinstance(sub, dict) and sub.get("input_id") == var_id:
+                            should_clear = True
+                            break
+                elif condition.get("input_id") == var_id:
+                    should_clear = True
+                if should_clear:
                     del node["condition"]
                     affected_node_labels.append(node.get("label", node.get("id", "unknown")))
                     nodes_modified = True
