@@ -1316,4 +1316,24 @@ def build_system_prompt(
                     f'"{g["linked_to"]}"{link_via}\n'
                 )
 
+            # Instruct the LLM to create subworkflows from linked guidance
+            # when the guidance describes complex multi-step logic.
+            system += (
+                "\n## Subflow Guidance\n"
+                "Some guidance panels above are linked to specific flowchart nodes, "
+                "describing detailed logic (treatment protocols, assessment criteria, "
+                "step-by-step procedures).\n\n"
+                "WHEN TO CREATE SUBWORKFLOWS from linked guidance:\n"
+                "- The guidance describes 3+ steps of detailed logic for a specific node\n"
+                "- The node branches into a complex independent path with its own "
+                "treatment protocol\n"
+                "- The guidance includes conditional logic (if/then, step ordering) "
+                "that can be modeled as a workflow\n\n"
+                "HOW: create_workflow() -> add variables/nodes/connections -> "
+                "set_workflow_output() -> in parent, add subprocess node with "
+                "subworkflow_id, input_mapping, output_variable.\n\n"
+                "Use the linked guidance text as the specification for what the "
+                "subworkflow should contain.\n"
+            )
+
     return system
