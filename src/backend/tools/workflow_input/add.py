@@ -59,12 +59,6 @@ def generate_variable_id(name: str, internal_type: str, source: str = "input") -
         return f"var_{source_prefix}_{slug}_{internal_type}"
 
 
-# Backwards compatibility alias
-def generate_input_id(name: str, internal_type: str) -> str:
-    """Generate input variable ID (backwards compatibility wrapper)."""
-    return generate_variable_id(name, internal_type, "input")
-
-
 class AddWorkflowVariableTool(Tool):
     """Register a user-input variable for the workflow.
     
@@ -76,7 +70,6 @@ class AddWorkflowVariableTool(Tool):
     """
 
     name = "add_workflow_variable"
-    aliases = ["add_workflow_input"]  # Backwards compatibility
     description = (
         "Register an input variable for the workflow. Requires workflow_id. "
         "This variable will appear in the Variables tab where users can provide values at execution time. "

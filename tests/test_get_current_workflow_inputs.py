@@ -40,8 +40,6 @@ class TestGetCurrentWorkflowVariables:
         assert "variable_descriptions" in summary
         assert "Age" in summary["variable_descriptions"]
         assert "Smoker" in summary["variable_descriptions"]
-        # Backwards compat alias should also work
-        assert "input_descriptions" in summary
 
     def test_handles_no_variables(self, workflow_store, test_user_id):
         """Should handle missing variables gracefully"""

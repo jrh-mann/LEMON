@@ -887,11 +887,7 @@ export default function Canvas() {
 
     if (!fromNode || !toNode) return null
 
-    // Calculate index of this edge among all edges from the same source
-    const edgesFromSameSource = flowchart.edges.filter(e => e.from === edge.from)
-    const indexFromSource = edgesFromSameSource.findIndex(e => e.from === edge.from && e.to === edge.to)
-
-    const path = calculateEdgePath(fromNode, toNode, edge.label, indexFromSource)
+    const path = calculateEdgePath(fromNode, toNode)
 
     // Calculate label position along the path (closer to source for decision outputs)
     let labelX = (fromNode.x + toNode.x) / 2

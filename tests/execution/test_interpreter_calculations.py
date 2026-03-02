@@ -307,7 +307,7 @@ class TestCalculationNodeExecution:
         """Test variadic add operator with large sum."""
         interpreter = TreeInterpreter(
             tree=SIMPLE_SUM_WORKFLOW["tree"],
-            inputs=SIMPLE_SUM_WORKFLOW["inputs"],
+            variables=SIMPLE_SUM_WORKFLOW["inputs"],
             outputs=SIMPLE_SUM_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -323,7 +323,7 @@ class TestCalculationNodeExecution:
         """Test variadic add operator with small sum."""
         interpreter = TreeInterpreter(
             tree=SIMPLE_SUM_WORKFLOW["tree"],
-            inputs=SIMPLE_SUM_WORKFLOW["inputs"],
+            variables=SIMPLE_SUM_WORKFLOW["inputs"],
             outputs=SIMPLE_SUM_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -338,7 +338,7 @@ class TestCalculationNodeExecution:
         """Test calculation with literal (constant) operand."""
         interpreter = TreeInterpreter(
             tree=LITERAL_OPERAND_WORKFLOW["tree"],
-            inputs=LITERAL_OPERAND_WORKFLOW["inputs"],
+            variables=LITERAL_OPERAND_WORKFLOW["inputs"],
             outputs=LITERAL_OPERAND_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"var_value_number": 10.0})
@@ -350,7 +350,7 @@ class TestCalculationNodeExecution:
         """Test that calculated values are available in context."""
         interpreter = TreeInterpreter(
             tree=SIMPLE_SUM_WORKFLOW["tree"],
-            inputs=SIMPLE_SUM_WORKFLOW["inputs"],
+            variables=SIMPLE_SUM_WORKFLOW["inputs"],
             outputs=SIMPLE_SUM_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -371,7 +371,7 @@ class TestBMICalculationWorkflow:
         """Test BMI calculation for underweight person."""
         interpreter = TreeInterpreter(
             tree=BMI_CALCULATION_WORKFLOW["tree"],
-            inputs=BMI_CALCULATION_WORKFLOW["inputs"],
+            variables=BMI_CALCULATION_WORKFLOW["inputs"],
             outputs=BMI_CALCULATION_WORKFLOW["outputs"]
         )
         # BMI = 50 / (1.8^2) = 50 / 3.24 = 15.43 (underweight)
@@ -389,7 +389,7 @@ class TestBMICalculationWorkflow:
         """Test BMI calculation for normal weight person."""
         interpreter = TreeInterpreter(
             tree=BMI_CALCULATION_WORKFLOW["tree"],
-            inputs=BMI_CALCULATION_WORKFLOW["inputs"],
+            variables=BMI_CALCULATION_WORKFLOW["inputs"],
             outputs=BMI_CALCULATION_WORKFLOW["outputs"]
         )
         # BMI = 70 / (1.75^2) = 70 / 3.0625 = 22.86 (normal)
@@ -404,7 +404,7 @@ class TestBMICalculationWorkflow:
         """Test BMI calculation for overweight person."""
         interpreter = TreeInterpreter(
             tree=BMI_CALCULATION_WORKFLOW["tree"],
-            inputs=BMI_CALCULATION_WORKFLOW["inputs"],
+            variables=BMI_CALCULATION_WORKFLOW["inputs"],
             outputs=BMI_CALCULATION_WORKFLOW["outputs"]
         )
         # BMI = 90 / (1.7^2) = 90 / 2.89 = 31.14 (overweight)
@@ -423,7 +423,7 @@ class TestChainedCalculations:
         """Test multiple chained calculations."""
         interpreter = TreeInterpreter(
             tree=CHAINED_CALCULATIONS_WORKFLOW["tree"],
-            inputs=CHAINED_CALCULATIONS_WORKFLOW["inputs"],
+            variables=CHAINED_CALCULATIONS_WORKFLOW["inputs"],
             outputs=CHAINED_CALCULATIONS_WORKFLOW["outputs"]
         )
         # Sum1 = 10 + 20 = 30
@@ -454,7 +454,7 @@ class TestCalculationOnStepCallback:
         """Test that on_step callback is called for calculation nodes."""
         interpreter = TreeInterpreter(
             tree=SIMPLE_SUM_WORKFLOW["tree"],
-            inputs=SIMPLE_SUM_WORKFLOW["inputs"],
+            variables=SIMPLE_SUM_WORKFLOW["inputs"],
             outputs=SIMPLE_SUM_WORKFLOW["outputs"]
         )
         
@@ -479,7 +479,7 @@ class TestCalculationOnStepCallback:
         """Test that callback context includes calculated values after calculation node."""
         interpreter = TreeInterpreter(
             tree=SIMPLE_SUM_WORKFLOW["tree"],
-            inputs=SIMPLE_SUM_WORKFLOW["inputs"],
+            variables=SIMPLE_SUM_WORKFLOW["inputs"],
             outputs=SIMPLE_SUM_WORKFLOW["outputs"]
         )
         
@@ -547,7 +547,7 @@ class TestCalculationErrorHandling:
         
         interpreter = TreeInterpreter(
             tree=divide_by_zero_workflow["tree"],
-            inputs=divide_by_zero_workflow["inputs"],
+            variables=divide_by_zero_workflow["inputs"],
             outputs=divide_by_zero_workflow["outputs"]
         )
         result = interpreter.execute({
@@ -598,7 +598,7 @@ class TestCalculationErrorHandling:
         
         interpreter = TreeInterpreter(
             tree=sqrt_negative_workflow["tree"],
-            inputs=sqrt_negative_workflow["inputs"],
+            variables=sqrt_negative_workflow["inputs"],
             outputs=sqrt_negative_workflow["outputs"]
         )
         result = interpreter.execute({"var_x_number": -4.0})

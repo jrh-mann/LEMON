@@ -25,7 +25,6 @@ class RemoveWorkflowVariableTool(Tool):
     """
 
     name = "remove_workflow_variable"
-    aliases = ["remove_workflow_input"]  # Backwards compatibility
     description = (
         "Remove a registered workflow input variable by name (case-insensitive). "
         "Requires workflow_id. "

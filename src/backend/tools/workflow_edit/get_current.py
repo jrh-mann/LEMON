@@ -292,9 +292,5 @@ class GetCurrentWorkflowTool(Tool):
                 "variable_descriptions": (
                     "\n".join(input_descriptions) if input_descriptions else "No variables"
                 ),
-                # Backwards compatibility alias
-                "input_descriptions": (
-                    "\n".join(input_descriptions) if input_descriptions else "No variables"
-                ),
             },
         }

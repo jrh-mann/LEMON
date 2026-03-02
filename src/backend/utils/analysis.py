@@ -6,16 +6,18 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
-def slugify_input_name(name: str) -> str:
+def slugify_variable_name(name: str) -> str:
+    """Slugify a variable name for use in IDs."""
     text = name.strip().lower()
     text = re.sub(r"[^a-z0-9]+", "_", text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text
 
 
-def deterministic_input_id(name: str, input_type: str) -> str:
-    base = slugify_input_name(name) or "input"
-    return f"input_{base}_{input_type}"
+def deterministic_variable_id(name: str, var_type: str) -> str:
+    """Generate a deterministic variable ID from name and type."""
+    base = slugify_variable_name(name) or "var"
+    return f"var_{base}_{var_type}"
 
 
 def normalize_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -44,11 +46,11 @@ def normalize_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
         input_type = str(raw.get("type") or "").strip()
         if not name or not input_type:
             continue
-        key = f"{slugify_input_name(name)}:{input_type}"
+        key = f"{slugify_variable_name(name)}:{input_type}"
         if key in seen:
             duplicates.append(name)
             continue
-        input_id = str(raw.get("id") or deterministic_input_id(name, input_type)).strip()
+        input_id = str(raw.get("id") or deterministic_variable_id(name, input_type)).strip()
         if input_id in seen_ids:
             duplicates.append(name)
             continue
@@ -69,7 +71,7 @@ def normalize_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
         input_id = str(inferred.get("id") or "").strip()
         if not name or not input_type or not input_id:
             continue
-        key = f"{slugify_input_name(name)}:{input_type}"
+        key = f"{slugify_variable_name(name)}:{input_type}"
         if key in seen or input_id in seen_ids:
             continue
         seen.add(key)
@@ -203,8 +205,8 @@ def _infer_inputs_from_tree(tree: Any) -> List[Dict[str, Any]]:
                 raw_name = input_id
             suffix = f"_{input_type}"
             name = raw_name[: -len(suffix)] if raw_name.endswith(suffix) else raw_name
-            name = slugify_input_name(name) or "input"
-            normalized_id = deterministic_input_id(name, input_type)
+            name = slugify_variable_name(name) or "input"
+            normalized_id = deterministic_variable_id(name, input_type)
 
         inferred.append(
             {

@@ -249,20 +249,13 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
         workflows, _ = workflow_store.list_workflows(user_id, limit=100, offset=0)
         result = []
         for wf in workflows:
-            # Get input variables from the workflow
-            # The storage still uses 'inputs' field but we expose as 'variables'
+            # Storage uses 'inputs' field but we expose as 'variables'
             variables = wf.inputs if hasattr(wf, 'inputs') else []
-            # Filter to only input-type variables for subflow mapping
-            input_variables = [
-                v for v in variables 
-                if v.get("source", "input") == "input"
-            ]
             
             result.append({
                 "id": wf.id,
                 "name": wf.name,
                 "description": wf.description,
-                "inputs": input_variables,  # For backwards compat in input_mapping
                 "variables": variables,     # Full variable list
                 "outputs": wf.outputs,
             })

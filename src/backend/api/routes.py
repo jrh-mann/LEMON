@@ -1037,7 +1037,7 @@ def register_routes(
         # Create interpreter with workflow_store for subflow support
         interpreter = TreeInterpreter(
             tree=workflow.tree,
-            inputs=workflow.inputs,
+            variables=workflow.inputs,  # Storage field is 'inputs', maps to variables param
             outputs=workflow.outputs,
             workflow_id=workflow_id,
             call_stack=[],

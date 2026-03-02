@@ -70,7 +70,7 @@ class TestNumericOutputType:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"],
             output_type="number"
         )
@@ -122,7 +122,7 @@ class TestNumericOutputType:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"],
             output_type="number"
         )
@@ -169,7 +169,7 @@ class TestNumericOutputType:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 
@@ -213,7 +213,7 @@ class TestNumericOutputType:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"],
             output_type="bool"
         )
@@ -346,7 +346,7 @@ class TestSubworkflowNumericOutputType:
 
         interpreter = TreeInterpreter(
             tree=parent_workflow["tree"],
-            inputs=parent_workflow["inputs"],
+            variables=parent_workflow["inputs"],
             outputs=parent_workflow["outputs"],
             workflow_store=MockWorkflowStore(),
             user_id="test_user"
@@ -481,7 +481,7 @@ class TestSubworkflowNumericOutputType:
 
         interpreter = TreeInterpreter(
             tree=parent_workflow["tree"],
-            inputs=parent_workflow["inputs"],
+            variables=parent_workflow["inputs"],
             outputs=parent_workflow["outputs"],
             workflow_store=MockWorkflowStore(),
             user_id="test_user"

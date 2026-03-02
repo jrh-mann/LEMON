@@ -492,7 +492,7 @@ class SteppedExecutionTask:
             # Create interpreter with on_step callback
             interpreter = TreeInterpreter(
                 tree=tree,
-                inputs=workflow_variables,
+                variables=workflow_variables,  # Unified variable system
                 outputs=workflow_outputs,
                 workflow_store=self.workflow_store,
                 user_id=self.user_id,

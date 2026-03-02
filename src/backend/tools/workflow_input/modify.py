@@ -50,7 +50,6 @@ class ModifyWorkflowVariableTool(Tool):
     """
 
     name = "modify_workflow_variable"
-    aliases = ["modify_workflow_input"]  # Backwards compatibility
     description = (
         "Modify an existing workflow variable's properties (type, description, range, enum values). "
         "Requires workflow_id. "

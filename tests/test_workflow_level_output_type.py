@@ -21,7 +21,7 @@ class TestWorkflowLevelOutputType:
         # This will fail until we add output_type param to __init__
         interpreter = TreeInterpreter(
             tree=tree,
-            inputs=[],
+            variables=[],
             outputs=[],
             output_type="number"
         )
@@ -47,7 +47,7 @@ class TestWorkflowLevelOutputType:
         
         interpreter = TreeInterpreter(
             tree=tree,
-            inputs=[],
+            variables=[],
             outputs=[],
             output_type="bool"
         )
@@ -74,7 +74,7 @@ class TestWorkflowLevelOutputType:
         # No output_type specified -> defaults to string
         interpreter = TreeInterpreter(
             tree=tree,
-            inputs=[],
+            variables=[],
             outputs=[]
         )
         result = interpreter.execute({})
@@ -101,7 +101,7 @@ class TestWorkflowLevelOutputType:
         
         interpreter = TreeInterpreter(
             tree=tree,
-            inputs=[],
+            variables=[],
             outputs=[],
             output_type="number"
         )

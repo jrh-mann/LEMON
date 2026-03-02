@@ -77,7 +77,7 @@ class TestEmptyEdgeLabelBranchSelection:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 
@@ -148,7 +148,7 @@ class TestEmptyEdgeLabelBranchSelection:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 
@@ -218,7 +218,7 @@ class TestEmptyEdgeLabelBranchSelection:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 
@@ -295,7 +295,7 @@ class TestPositionBasedFallback:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 
@@ -363,7 +363,7 @@ class TestPositionBasedFallback:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 
@@ -464,7 +464,7 @@ class TestAllComparatorsWithEmptyLabels:
 
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"]
         )
 

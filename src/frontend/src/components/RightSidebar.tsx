@@ -38,9 +38,6 @@ const buildVariableId = (name: string, type: InputType): string => {
   return `var_${slug}_${type}`
 }
 
-// Backwards compatibility alias
-const buildInputId = buildVariableId
-
 const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 0
 
@@ -187,7 +184,7 @@ export default function RightSidebar() {
 
     const nextInputs: WorkflowInput[] = [...analysisInputs]
     const nextInput: WorkflowInput = {
-      id: buildInputId(name, draftType),
+      id: buildVariableId(name, draftType),
       name,
       type: draftType,
       source: 'input',  // Manual inputs are user-provided values

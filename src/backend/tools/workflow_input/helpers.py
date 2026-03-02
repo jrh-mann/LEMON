@@ -35,18 +35,9 @@ def ensure_workflow_analysis(session_state: Dict[str, Any]) -> Dict[str, Any]:
     
     workflow_analysis = session_state["workflow_analysis"]
     
-    # Ensure 'variables' key exists (replaces old 'inputs')
+    # Ensure 'variables' key exists
     if "variables" not in workflow_analysis:
         workflow_analysis["variables"] = []
-    
-    # Migrate legacy 'inputs' to 'variables' if present
-    if "inputs" in workflow_analysis and workflow_analysis["inputs"]:
-        for inp in workflow_analysis["inputs"]:
-            # Add source='input' if migrating from old format
-            if "source" not in inp:
-                inp["source"] = "input"
-            workflow_analysis["variables"].append(inp)
-        workflow_analysis["inputs"] = []  # Clear legacy field
     
     if "outputs" not in workflow_analysis:
         workflow_analysis["outputs"] = []
@@ -64,10 +55,6 @@ def normalize_variable_name(name: str) -> str:
         Lowercase, trimmed version of the name
     """
     return name.strip().lower()
-
-
-# Alias for backwards compatibility
-normalize_input_name = normalize_variable_name
 
 
 def get_variables_by_source(

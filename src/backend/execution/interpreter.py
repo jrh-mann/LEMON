@@ -80,7 +80,6 @@ class TreeInterpreter:
     def __init__(
         self,
         tree: Dict[str, Any],
-        inputs: Optional[List[Dict[str, Any]]] = None,
         outputs: Optional[List[Dict[str, Any]]] = None,
         workflow_id: Optional[str] = None,
         call_stack: Optional[List[str]] = None,
@@ -93,24 +92,20 @@ class TreeInterpreter:
         
         Args:
             tree: Workflow tree (must have 'start' key)
-            inputs: DEPRECATED - List of input definitions. Use 'variables' instead.
             outputs: List of output definitions with name
             workflow_id: ID of this workflow (for cycle detection in subflows)
             call_stack: Stack of workflow IDs currently being executed (for cycle detection)
             workflow_store: Store for loading subworkflows (required for subprocess nodes)
             user_id: User ID for loading subworkflows (required for subprocess nodes)
-            variables: List of variable definitions (unified system - replaces inputs)
+            variables: List of variable definitions (unified variable system)
             output_type: Workflow-level output type ('string', 'number', 'bool', 'json')
         """
         self.tree = tree
         
-        # Unified variable system: prefer 'variables', fallback to 'inputs' for backwards compat
-        # Variables include both user inputs (source='input') and derived values (source='subprocess')
-        var_list = variables if variables is not None else (inputs or [])
+        # Unified variable system: all variables (inputs, subprocess outputs, etc.)
+        var_list = variables or []
         
         self.variables_schema = {var['id']: var for var in var_list}
-        # Backwards compat alias
-        self.inputs_schema = self.variables_schema
         
         self.outputs_schema = {out['name']: out for out in (outputs or [])}
 
@@ -417,7 +412,7 @@ class TreeInterpreter:
         # Create interpreter for subworkflow
         sub_interpreter = TreeInterpreter(
             tree=sub_tree,  # Use rebuilt tree (handles empty stored tree)
-            inputs=subworkflow.inputs,
+            variables=subworkflow.inputs,  # Storage field is 'inputs', maps to variables
             outputs=subworkflow.outputs,
             workflow_id=subworkflow_id,
             call_stack=new_call_stack,
@@ -875,22 +870,6 @@ Args:
                 "constant": "const",
             }.get(source, source[:4])
             return f"var_{source_prefix}_{slug}_{var_type}"
-
-    def _generate_input_id(self, name: str, input_type: str) -> str:
-        """DEPRECATED: Use _generate_variable_id() instead.
-        
-        Kept for backwards compatibility. Generates legacy input_* format IDs.
-        
-Args:
-            name: Input name (e.g., "Credit Score")
-            input_type: Input type (e.g., "number")
-            
-        Returns:
-            Legacy input ID (e.g., "input_credit_score_number")
-        """
-        # Slugify: lowercase, replace non-alphanumeric with underscore
-        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
-        return f"input_{slug}_{input_type}"
 
     def _resolve_output_value(self, node: Dict[str, Any], context: Dict[str, Any]) -> Any:
         """Resolve output value from node configuration.

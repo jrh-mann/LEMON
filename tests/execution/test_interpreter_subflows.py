@@ -331,7 +331,7 @@ class TestSimpleSubflowExecution:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -358,7 +358,7 @@ class TestSimpleSubflowExecution:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -383,7 +383,7 @@ class TestSimpleSubflowExecution:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -416,7 +416,7 @@ class TestSubflowInputMapping:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -469,7 +469,7 @@ class TestSubflowInputMapping:
         
         interpreter = TreeInterpreter(
             tree=bad_workflow["tree"],
-            inputs=bad_workflow["inputs"],
+            variables=bad_workflow["inputs"],
             outputs=bad_workflow["outputs"],
             workflow_store=workflow_store,
             user_id="test_user",
@@ -492,7 +492,7 @@ class TestCycleDetection:
         
         interpreter = TreeInterpreter(
             tree=SELF_CALLING_WORKFLOW.tree,
-            inputs=SELF_CALLING_WORKFLOW.inputs,
+            variables=SELF_CALLING_WORKFLOW.inputs,
             outputs=SELF_CALLING_WORKFLOW.outputs,
             workflow_id="wf_self_caller",
             workflow_store=workflow_store,
@@ -514,7 +514,7 @@ class TestCycleDetection:
         
         interpreter = TreeInterpreter(
             tree=WORKFLOW_A.tree,
-            inputs=WORKFLOW_A.inputs,
+            variables=WORKFLOW_A.inputs,
             outputs=WORKFLOW_A.outputs,
             workflow_id="wf_a",
             workflow_store=workflow_store,
@@ -578,7 +578,7 @@ class TestSubflowErrorPropagation:
         
         interpreter = TreeInterpreter(
             tree=parent_workflow["tree"],
-            inputs=parent_workflow["inputs"],
+            variables=parent_workflow["inputs"],
             outputs=parent_workflow["outputs"],
             workflow_store=workflow_store,
             user_id="test_user",
@@ -622,7 +622,7 @@ class TestMissingSubflowConfiguration:
         
         interpreter = TreeInterpreter(
             tree=bad_workflow["tree"],
-            inputs=bad_workflow["inputs"],
+            variables=bad_workflow["inputs"],
             outputs=bad_workflow["outputs"],
             workflow_store=MockWorkflowStore({}),
             user_id="test_user",
@@ -661,7 +661,7 @@ class TestMissingSubflowConfiguration:
         
         interpreter = TreeInterpreter(
             tree=bad_workflow["tree"],
-            inputs=bad_workflow["inputs"],
+            variables=bad_workflow["inputs"],
             outputs=bad_workflow["outputs"],
             workflow_store=MockWorkflowStore({}),
             user_id="test_user",
@@ -701,7 +701,7 @@ class TestMissingSubflowConfiguration:
         # Empty workflow store
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"],
             workflow_store=MockWorkflowStore({}),
             user_id="test_user",
@@ -741,7 +741,7 @@ class TestMissingSubflowConfiguration:
         # No workflow_store
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"],
             # workflow_store=None (default)
             user_id="test_user",
@@ -764,7 +764,7 @@ class TestOutputVariableInjection:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -789,7 +789,7 @@ class TestOutputVariableInjection:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -819,7 +819,7 @@ class TestSubflowTypeInference:
         
         interpreter = TreeInterpreter(
             tree=LOAN_APPROVAL_WORKFLOW["tree"],
-            inputs=LOAN_APPROVAL_WORKFLOW["inputs"],
+            variables=LOAN_APPROVAL_WORKFLOW["inputs"],
             outputs=LOAN_APPROVAL_WORKFLOW["outputs"],
             workflow_id="wf_loan_approval",
             workflow_store=workflow_store,
@@ -833,8 +833,8 @@ class TestSubflowTypeInference:
         })
         
         # Check that CreditScore was registered with number type (unified numeric type)
-        assert "var_sub_creditscore_number" in interpreter.inputs_schema
-        assert interpreter.inputs_schema["var_sub_creditscore_number"]["type"] == "number"
+        assert "var_sub_creditscore_number" in interpreter.variables_schema
+        assert interpreter.variables_schema["var_sub_creditscore_number"]["type"] == "number"
 
 
 class TestSubflowWithNoChildren:
@@ -868,7 +868,7 @@ class TestSubflowWithNoChildren:
         
         interpreter = TreeInterpreter(
             tree=workflow["tree"],
-            inputs=workflow["inputs"],
+            variables=workflow["inputs"],
             outputs=workflow["outputs"],
             workflow_store=workflow_store,
             user_id="test_user",

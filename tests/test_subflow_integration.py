@@ -451,7 +451,7 @@ class TestSubflowExecutionIntegration:
         # Test case 1: High value (>= 50) should result in "Approved"
         interpreter = TreeInterpreter(
             tree=parent_tree,
-            inputs=parent_inputs,
+            variables=parent_inputs,
             outputs=parent_outputs,
             workflow_id="wf_parent",
             workflow_store=workflow_store,
@@ -468,7 +468,7 @@ class TestSubflowExecutionIntegration:
         # Test case 2: Low value (< 50) should result in "Denied"
         interpreter2 = TreeInterpreter(
             tree=parent_tree,
-            inputs=parent_inputs,
+            variables=parent_inputs,
             outputs=parent_outputs,
             workflow_id="wf_parent",
             workflow_store=workflow_store,
@@ -575,7 +575,7 @@ class TestSubflowExecutionIntegration:
         
         interpreter = TreeInterpreter(
             tree=parent_tree,
-            inputs=[{"id": "input_value_int", "name": "Value", "type": "int", "range": {"min": 0, "max": 100}}],
+            variables=[{"id": "input_value_int", "name": "Value", "type": "int", "range": {"min": 0, "max": 100}}],
             outputs=[{"name": "Final"}],
             workflow_id="wf_parent",
             workflow_store=workflow_store,
@@ -654,7 +654,7 @@ class TestSubflowTreeRebuild:
         
         interpreter = TreeInterpreter(
             tree=parent_tree,
-            inputs=[],
+            variables=[],
             outputs=[{"name": "Done", "type": "string"}],
             workflow_id="wf_parent",
             workflow_store=workflow_store,
@@ -719,7 +719,7 @@ class TestSubflowTreeRebuild:
         
         interpreter = TreeInterpreter(
             tree=parent_tree,
-            inputs=[],
+            variables=[],
             outputs=[{"name": "Done"}],
             workflow_id="wf_parent",
             workflow_store=workflow_store,

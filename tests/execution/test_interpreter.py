@@ -25,7 +25,7 @@ class TestSimpleAgeWorkflow:
         """Test age check workflow with various inputs"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute(inputs)
@@ -43,7 +43,7 @@ class TestCholesterolRiskWorkflow:
         """Test cholesterol risk assessment workflow"""
         interpreter = TreeInterpreter(
             tree=CHOLESTEROL_RISK_WORKFLOW["tree"],
-            inputs=CHOLESTEROL_RISK_WORKFLOW["inputs"],
+            variables=CHOLESTEROL_RISK_WORKFLOW["inputs"],
             outputs=CHOLESTEROL_RISK_WORKFLOW["outputs"]
         )
         result = interpreter.execute(inputs)
@@ -59,7 +59,7 @@ class TestMedicationWorkflow:
         """Test medication workflow with OR logic and enums"""
         interpreter = TreeInterpreter(
             tree=MEDICATION_WORKFLOW["tree"],
-            inputs=MEDICATION_WORKFLOW["inputs"],
+            variables=MEDICATION_WORKFLOW["inputs"],
             outputs=MEDICATION_WORKFLOW["outputs"]
         )
         result = interpreter.execute(inputs)
@@ -75,7 +75,7 @@ class TestBMIClassificationWorkflow:
         """Test BMI classification with ranges"""
         interpreter = TreeInterpreter(
             tree=BMI_CLASSIFICATION_WORKFLOW["tree"],
-            inputs=BMI_CLASSIFICATION_WORKFLOW["inputs"],
+            variables=BMI_CLASSIFICATION_WORKFLOW["inputs"],
             outputs=BMI_CLASSIFICATION_WORKFLOW["outputs"]
         )
         result = interpreter.execute(inputs)
@@ -91,7 +91,7 @@ class TestEligibilityWorkflow:
         """Test eligibility workflow with NOT operator"""
         interpreter = TreeInterpreter(
             tree=ELIGIBILITY_WORKFLOW["tree"],
-            inputs=ELIGIBILITY_WORKFLOW["inputs"],
+            variables=ELIGIBILITY_WORKFLOW["inputs"],
             outputs=ELIGIBILITY_WORKFLOW["outputs"]
         )
         result = interpreter.execute(inputs)
@@ -106,7 +106,7 @@ class TestErrorHandling:
         """Test error when required input is missing"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({})
@@ -117,7 +117,7 @@ class TestErrorHandling:
         """Test error when input has wrong type"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": "not a number"})
@@ -128,7 +128,7 @@ class TestErrorHandling:
         """Test error when input value out of range"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 150})
@@ -139,7 +139,7 @@ class TestErrorHandling:
         """Test error when enum value not in allowed list"""
         interpreter = TreeInterpreter(
             tree=MEDICATION_WORKFLOW["tree"],
-            inputs=MEDICATION_WORKFLOW["inputs"],
+            variables=MEDICATION_WORKFLOW["inputs"],
             outputs=MEDICATION_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -158,7 +158,7 @@ class TestExecutionPath:
         """Test that result.path contains all visited node IDs"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -170,7 +170,7 @@ class TestExecutionPath:
         """Test that path nodes are in traversal order"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -182,7 +182,7 @@ class TestExecutionPath:
         """Test path for simple 2-node workflow"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 17})
@@ -192,7 +192,7 @@ class TestExecutionPath:
         """Test path for deeply nested workflow"""
         interpreter = TreeInterpreter(
             tree=CHOLESTEROL_RISK_WORKFLOW["tree"],
-            inputs=CHOLESTEROL_RISK_WORKFLOW["inputs"],
+            variables=CHOLESTEROL_RISK_WORKFLOW["inputs"],
             outputs=CHOLESTEROL_RISK_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -212,7 +212,7 @@ class TestContextHandling:
         """Test that input context is preserved in ExecutionResult"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         input_values = {"input_age_int": 25}
@@ -223,7 +223,7 @@ class TestContextHandling:
         """Test that original input dict is not modified"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         input_values = {"input_age_int": 25}
@@ -235,7 +235,7 @@ class TestContextHandling:
         """Test that extra inputs don't cause errors"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -252,7 +252,7 @@ class TestEdgeLabelMatching:
         """Test matching Yes/No edge labels"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         # Yes branch
@@ -268,7 +268,7 @@ class TestEdgeLabelMatching:
         # The fixture uses "Yes"/"No" labels, which should work
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -284,7 +284,7 @@ class TestMultipleWorkflows:
             for inputs, expected_output, description in test_cases:
                 interpreter = TreeInterpreter(
                     tree=workflow["tree"],
-                    inputs=workflow["inputs"],
+                    variables=workflow["inputs"],
                     outputs=workflow["outputs"]
                 )
                 result = interpreter.execute(inputs)
@@ -299,7 +299,7 @@ class TestInputValidation:
         """Test validation of number type"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": "25"})
@@ -310,7 +310,7 @@ class TestInputValidation:
         """Test validation of number type (float values)"""
         interpreter = TreeInterpreter(
             tree=BMI_CLASSIFICATION_WORKFLOW["tree"],
-            inputs=BMI_CLASSIFICATION_WORKFLOW["inputs"],
+            variables=BMI_CLASSIFICATION_WORKFLOW["inputs"],
             outputs=BMI_CLASSIFICATION_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -324,7 +324,7 @@ class TestInputValidation:
         """Test validation of bool type"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         # Change input schema temporarily to have bool
@@ -335,7 +335,7 @@ class TestInputValidation:
         """Test validation of enum type"""
         interpreter = TreeInterpreter(
             tree=MEDICATION_WORKFLOW["tree"],
-            inputs=MEDICATION_WORKFLOW["inputs"],
+            variables=MEDICATION_WORKFLOW["inputs"],
             outputs=MEDICATION_WORKFLOW["outputs"]
         )
         result = interpreter.execute({
@@ -350,7 +350,7 @@ class TestInputValidation:
         """Test validation of minimum value in range"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": -5})
@@ -361,7 +361,7 @@ class TestInputValidation:
         """Test validation of maximum value in range"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 150})
@@ -372,7 +372,7 @@ class TestInputValidation:
         """Test validation that value is in enum list"""
         interpreter = TreeInterpreter(
             tree=MEDICATION_WORKFLOW["tree"],
-            inputs=MEDICATION_WORKFLOW["inputs"],
+            variables=MEDICATION_WORKFLOW["inputs"],
             outputs=MEDICATION_WORKFLOW["outputs"]
         )
         # Valid enum value
@@ -391,7 +391,7 @@ class TestExecutionResult:
         """Test that successful result has output field"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -402,7 +402,7 @@ class TestExecutionResult:
         """Test that result has path field"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -413,7 +413,7 @@ class TestExecutionResult:
         """Test that result has context field"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -424,7 +424,7 @@ class TestExecutionResult:
         """Test that result has success boolean"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({"input_age_int": 25})
@@ -435,7 +435,7 @@ class TestExecutionResult:
         """Test that failed result has error field"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         result = interpreter.execute({})
@@ -455,7 +455,7 @@ class TestOnStepCallback:
         """Test that on_step callback is called once per node visited"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         
@@ -477,7 +477,7 @@ class TestOnStepCallback:
         """Test that on_step callback receives correct step info structure"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         
@@ -501,7 +501,7 @@ class TestOnStepCallback:
         """Test that step_index increments correctly"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         
@@ -521,7 +521,7 @@ class TestOnStepCallback:
         """Test that on_step callback receives correct node types"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         
@@ -541,7 +541,7 @@ class TestOnStepCallback:
         """Test that on_step=None (default) works without errors"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         
@@ -554,7 +554,7 @@ class TestOnStepCallback:
         """Test on_step callback with deeper nested workflow"""
         interpreter = TreeInterpreter(
             tree=CHOLESTEROL_RISK_WORKFLOW["tree"],
-            inputs=CHOLESTEROL_RISK_WORKFLOW["inputs"],
+            variables=CHOLESTEROL_RISK_WORKFLOW["inputs"],
             outputs=CHOLESTEROL_RISK_WORKFLOW["outputs"]
         )
         
@@ -581,7 +581,7 @@ class TestOnStepCallback:
         """Test that callback exceptions are logged but don't break execution"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         
@@ -597,7 +597,7 @@ class TestOnStepCallback:
         """Test that callback receives current execution context"""
         interpreter = TreeInterpreter(
             tree=SIMPLE_AGE_WORKFLOW["tree"],
-            inputs=SIMPLE_AGE_WORKFLOW["inputs"],
+            variables=SIMPLE_AGE_WORKFLOW["inputs"],
             outputs=SIMPLE_AGE_WORKFLOW["outputs"]
         )
         

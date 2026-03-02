@@ -172,9 +172,6 @@ function pointsToPath(points: Point[]): string {
 export function calculateEdgePath(
   fromNode: FlowNode,
   toNode: FlowNode,
-  _edgeLabel?: string,  // Kept for API compatibility, but not used (position-based now)
-  _edgeIndex?: number,  // Kept for API compatibility, but not used
-  _pathOffset: number = 0  // Kept for API compatibility
 ): string {
   // 1. Determine directions
   const fromDir = getExitDirection(fromNode, toNode)
