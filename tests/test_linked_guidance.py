@@ -512,14 +512,18 @@ class TestBuildSystemPromptLinkedFormatting:
 
 
 # ---------------------------------------------------------------------------
-# Step 3 tests: ## Subflow Guidance section
+# Subflow Guidance section removed — subagent handles subworkflows now
 # ---------------------------------------------------------------------------
 
-class TestSubflowGuidanceSection:
-    """Verify ## Subflow Guidance section is conditionally injected."""
+class TestSubflowGuidanceSectionRemoved:
+    """Verify ## Subflow Guidance section is no longer in the orchestrator prompt.
 
-    def test_subflow_section_present_with_linked_guidance(self):
-        """When linked guidance exists, ## Subflow Guidance section should appear."""
+    Subworkflow creation is now handled by the subagent + _process_subworkflows,
+    so the orchestrator prompt should NOT contain ## Subflow Guidance.
+    """
+
+    def test_subflow_section_absent_with_linked_guidance(self):
+        """Even with linked guidance, ## Subflow Guidance should be absent."""
         prompt = build_system_prompt(
             last_session_id=None,
             has_files=[],
@@ -535,11 +539,13 @@ class TestSubflowGuidanceSection:
             ],
         )
 
-        assert "## Subflow Guidance" in prompt
-        assert "create_workflow" in prompt
+        assert "## Subflow Guidance" not in prompt
+        # Linked guidance text is still shown for context
+        assert "linked to node:" in prompt
+        assert "Treat Patient" in prompt
 
     def test_subflow_section_absent_without_linked_guidance(self):
-        """When no linked guidance exists, ## Subflow Guidance should be absent."""
+        """Without linked guidance, ## Subflow Guidance should be absent."""
         prompt = build_system_prompt(
             last_session_id=None,
             has_files=[],
@@ -564,17 +570,6 @@ class TestSubflowGuidanceSection:
             has_files=[],
             allow_tools=True,
             guidance=[],
-        )
-
-        assert "## Subflow Guidance" not in prompt
-
-    def test_subflow_section_absent_when_guidance_none(self):
-        """When guidance is None, ## Subflow Guidance should be absent."""
-        prompt = build_system_prompt(
-            last_session_id=None,
-            has_files=[],
-            allow_tools=True,
-            guidance=None,
         )
 
         assert "## Subflow Guidance" not in prompt
