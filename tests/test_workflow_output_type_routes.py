@@ -5,22 +5,10 @@ WorkflowStore, and that _infer_outputs_from_nodes uses the workflow-level
 output_type instead of per-node output_type.
 """
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from src.backend.storage.workflows import WorkflowStore
 from src.backend.api.routes import _infer_outputs_from_nodes
-
-
-@pytest.fixture
-def workflow_store():
-    """Create a temporary workflow store for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test_workflows.sqlite"
-        store = WorkflowStore(db_path)
-        yield store
 
 
 class TestOutputTypePersistence:

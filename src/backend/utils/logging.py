@@ -17,7 +17,8 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
     """Configure backend logging to rotating file handlers."""
     global _CONFIGURED
     if _CONFIGURED:
-        return _resolve_log_path(log_path)
+        prefix = os.environ.get("LEMON_LOG_PREFIX", "backend").strip()
+        return _resolve_log_path(log_path, prefix)
 
     prefix = os.environ.get("LEMON_LOG_PREFIX", "backend").strip()
     resolved = _resolve_log_path(log_path, prefix)

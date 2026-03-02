@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
+from unittest.mock import patch
 
-from evals.scoring import normalize_branch_label, normalize_label, score_trial
+from evals.scoring import normalize_branch_label, normalize_label, score_trial, WEIGHTS
 
 
 class _DummyGroundTruth:
@@ -110,7 +111,9 @@ def test_edge_matching_with_yes_no_normalization():
     case = _base_case_config()
     analysis, flowchart = _base_analysis_and_flowchart()
 
-    result = score_trial(case, analysis, flowchart, _DummyGroundTruth)
+    mock_judge = {"composite": 0.8, "dimensions": {}, "reasoning": "mocked"}
+    with patch("evals.scoring.llm_judge_score", return_value=mock_judge):
+        result = score_trial(case, analysis, flowchart, _DummyGroundTruth)
 
     assert result["metrics"]["edge_f1"] == 1.0
     assert result["metrics"]["node_f1"] == 1.0
@@ -130,26 +133,27 @@ def test_variable_and_output_scoring_penalizes_mismatch():
     ]
     analysis["outputs"] = [{"name": "Adult"}]
 
-    result = score_trial(case, analysis, flowchart, _DummyGroundTruth)
+    mock_judge = {"composite": 0.8, "dimensions": {}, "reasoning": "mocked"}
+    with patch("evals.scoring.llm_judge_score", return_value=mock_judge):
+        result = score_trial(case, analysis, flowchart, _DummyGroundTruth)
 
     assert result["metrics"]["variable_f1"] == 0.0
     assert result["metrics"]["output_f1"] < 1.0
 
 
 def test_composite_score_is_deterministic_weighted_sum():
+    """Verify composite_raw equals the weighted sum of all metrics using WEIGHTS."""
     case = _base_case_config()
     analysis, flowchart = _base_analysis_and_flowchart()
-    result = score_trial(case, analysis, flowchart, _DummyGroundTruth)
+
+    # Mock LLM judge to avoid real API calls — return a deterministic score
+    mock_judge = {"composite": 0.8, "dimensions": {}, "reasoning": "mocked"}
+    with patch("evals.scoring.llm_judge_score", return_value=mock_judge):
+        result = score_trial(case, analysis, flowchart, _DummyGroundTruth)
 
     metrics = result["metrics"]
-    expected = (
-        0.25 * metrics["node_f1"]
-        + 0.25 * metrics["edge_f1"]
-        + 0.15 * metrics["variable_f1"]
-        + 0.10 * metrics["output_f1"]
-        + 0.20 * metrics["semantic_score"]
-        + 0.05 * metrics["validity_score"]
-    )
+    # Compute expected composite from the canonical WEIGHTS dict
+    expected = sum(WEIGHTS[k] * metrics[k] for k in WEIGHTS)
 
     assert abs(result["composite_raw"] - expected) < 1e-9
     assert result["composite_score"] == round(expected * 100.0, 2)
