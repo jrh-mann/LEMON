@@ -115,7 +115,7 @@ export default function WorkflowPage() {
         let isActive = true
         const loadWorkflow = async () => {
             try {
-                const workflowData: any = await getWorkflow(workflowId)
+                const workflowData = await getWorkflow(workflowId)
                 if (!isActive) return
 
                 const workflow: Workflow = {

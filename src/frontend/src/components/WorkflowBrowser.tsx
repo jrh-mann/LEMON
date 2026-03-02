@@ -3,7 +3,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
 import { autoLayoutFlowchart } from '../utils/canvas'
-import type { WorkflowSummary, Block, FlowNode, Flowchart, WorkflowAnalysis, Workflow } from '../types'
+import type { WorkflowSummary, Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 // Tab options for the workflow browser
 type BrowserTab = 'my-workflows' | 'peer-review' | 'published'
@@ -199,39 +199,14 @@ export default function WorkflowBrowser() {
 
       // Wait for BOTH the 100ms UI expansion AND the network fetch to complete
       const [workflowData] = await Promise.all([
-        getWorkflow(workflowSummary.id) as Promise<any>,
+        getWorkflow(workflowSummary.id),
         new Promise(resolve => setTimeout(resolve, 100))
       ])
 
-      // Workflow can be in two formats:
-      // 1. Old format: blocks/connections (Block-based)
-      // 2. New format: nodes/edges (Flowchart-based)
-      let flowchart: Flowchart
-
-      if (workflowData.blocks && workflowData.connections) {
-        // Old format: convert blocks to flowchart nodes
-        const nodes: FlowNode[] = workflowData.blocks.map((block: Block) => ({
-          id: block.id,
-          type: blockTypeToFlowType(block.type),
-          label: getBlockLabel(block),
-          x: block.position.x,
-          y: block.position.y,
-          color: getBlockColor(block.type),
-        }))
-
-        const edges = workflowData.connections.map((conn: any) => ({
-          from: conn.from_block,
-          to: conn.to_block,
-          label: conn.from_port === 'default' ? '' : conn.from_port,
-        }))
-
-        flowchart = { nodes, edges }
-      } else {
-        // New format: use nodes/edges directly
-        flowchart = {
-          nodes: workflowData.nodes || [],
-          edges: workflowData.edges || [],
-        }
+      // Transform backend response to flowchart format
+      let flowchart: Flowchart = {
+        nodes: workflowData.nodes || [],
+        edges: workflowData.edges || [],
       }
 
       // Check if positions are all at (0,0) or overlapping - apply auto-layout
@@ -274,47 +249,6 @@ export default function WorkflowBrowser() {
       await new Promise(resolve => setTimeout(resolve, 100))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflow')
-    }
-  }
-
-  // Get color for block type
-  function getBlockColor(blockType: string): 'teal' | 'amber' | 'green' | 'slate' | 'rose' | 'sky' {
-    switch (blockType) {
-      case 'input': return 'teal'
-      case 'decision': return 'amber'
-      case 'output': return 'green'
-      case 'workflow_ref': return 'sky'
-      default: return 'teal'
-    }
-  }
-
-  // Convert block type to flow node type
-  function blockTypeToFlowType(blockType: string): 'start' | 'process' | 'decision' | 'subprocess' | 'end' {
-    switch (blockType) {
-      case 'input':
-        return 'process'
-      case 'decision':
-        return 'decision'
-      case 'output':
-        return 'end'
-      case 'workflow_ref':
-        return 'subprocess'
-      default:
-        return 'process'
-    }
-  }
-
-  // Get display label for block
-  function getBlockLabel(block: Block): string {
-    switch (block.type) {
-      case 'input':
-        return block.name
-      case 'decision':
-        return block.condition
-      case 'output':
-        return block.value
-      case 'workflow_ref':
-        return block.ref_name
     }
   }
 

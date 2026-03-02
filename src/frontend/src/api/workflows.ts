@@ -1,6 +1,7 @@
 import { api } from './client'
 import type {
   Workflow,
+  WorkflowDetailResponse,
   WorkflowSummary,
   SearchWorkflowsResponse,
   DomainsResponse,
@@ -14,9 +15,9 @@ export async function listWorkflows(): Promise<WorkflowSummary[]> {
   return response.workflows
 }
 
-// Get single workflow by ID
-export async function getWorkflow(workflowId: string): Promise<Workflow> {
-  return api.get<Workflow>(`/api/workflows/${workflowId}`)
+// Get single workflow by ID (returns backend-shaped response, not frontend Workflow)
+export async function getWorkflow(workflowId: string): Promise<WorkflowDetailResponse> {
+  return api.get<WorkflowDetailResponse>(`/api/workflows/${workflowId}`)
 }
 
 // Create new workflow

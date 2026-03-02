@@ -8,7 +8,7 @@ import type { Socket } from 'socket.io-client'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore } from '../../stores/uiStore'
 import { beautifyNodes } from '../../utils/beautifyNodes'
-import type { FlowNode, FlowEdge } from '../../types'
+import type { FlowNode, FlowEdge, ExecutionLogEntry } from '../../types'
 
 /** Register all execution-related socket event handlers */
 export function registerExecutionHandlers(socket: Socket): void {
@@ -203,7 +203,7 @@ export function registerExecutionHandlers(socket: Socket): void {
           output_value: data.output,
         }),
       }
-      workflowStore.addExecutionLog(logEntry as any)
+      workflowStore.addExecutionLog(logEntry as ExecutionLogEntry)
     }
   })
 

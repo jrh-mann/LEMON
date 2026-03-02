@@ -266,6 +266,19 @@ export interface Workflow {
   connections: Connection[]
 }
 
+/** Shape returned by GET /api/workflows/:id — backend-oriented before frontend transform */
+export interface WorkflowDetailResponse {
+  id: string
+  output_type: string
+  metadata: WorkflowMetadata
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  variables: WorkflowVariable[]
+  outputs: WorkflowOutput[]
+  tree: Record<string, unknown>
+  doubts: string[]
+}
+
 export interface WorkflowSummary {
   id: string
   name: string

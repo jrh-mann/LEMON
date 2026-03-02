@@ -21,6 +21,7 @@ export interface QuestionAnnotation {
     y: number
     question: string
     status: 'pending' | 'answered'
+    text?: string  // The user's answer text when status is 'answered'
 }
 
 // ─── Component ───────────────────────────────────────
@@ -278,7 +279,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
         if (dotIdx >= 0) {
             setEditingIdx(dotIdx)
             const ann = annotations[dotIdx]
-            setEditText(ann.type === 'label' ? ann.text : (ann as any).text || '')
+            setEditText(ann.type === 'label' ? ann.text : ann.text || '')
             return
         }
 
@@ -356,7 +357,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
             if (editText.trim()) {
                 // Update local annotation status first
                 const updated = [...annotations]
-                updated[editingIdx] = { ...updated[editingIdx], status: 'answered', text: editText.trim() } as any
+                updated[editingIdx] = { ...updated[editingIdx], status: 'answered', text: editText.trim() } as QuestionAnnotation
                 onChange(updated)
 
                 // Check if all questions are now answered
@@ -369,10 +370,12 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                     const { pendingFiles } = workflowStore
 
                     // Format a combined message
-                    const answeredQuestions = updated.filter(a => a.type === 'question')
+                    const answeredQuestions = updated.filter(
+                        (a): a is QuestionAnnotation => a.type === 'question'
+                    )
                     let combinedMessage = "I have answered all your questions on the image:\n"
 
-                    answeredQuestions.forEach((q: any, i) => {
+                    answeredQuestions.forEach((q, i) => {
                         combinedMessage += `\nQ${i + 1}: ${q.question}\nA: ${q.text}\n`
                     })
 
