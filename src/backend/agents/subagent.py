@@ -23,24 +23,42 @@ class Subagent:
 
     # Prompt for extracting side information (sticky notes, annotations, legends)
     # from workflow images before the main analysis pass.
+    # Prompt for extracting both standalone side information AND detailed guidance
+    # panels that are linked to specific flowchart nodes (e.g., treatment protocol
+    # boxes, asterisk-referenced panels, color-coded detail panels).
     _GUIDANCE_PROMPT = (
-        "Examine this image for any written notes, annotations, or clarifications that "
-        "exist OUTSIDE or ALONGSIDE the main flowchart structure. These might be:\n"
+        "Examine this image for guidance information. There are TWO types:\n\n"
+        "## Type 1: Standalone Side Notes\n"
+        "Notes, annotations, or clarifications that exist OUTSIDE the main flowchart:\n"
         "- Sticky notes or post-it notes\n"
         "- Margin annotations or handwritten text\n"
         "- Legends or keys explaining symbols\n"
-        "- Clarification text or callout boxes\n"
         "- Definitions of terms or thresholds written near the diagram\n\n"
+        "## Type 2: Referenced Guidance Panels\n"
+        "Detailed guidance panels that are LINKED to specific flowchart nodes via:\n"
+        "- Asterisk (*) or footnote references (e.g., a node says 'Treatment*' and a "
+        "panel elsewhere describes the treatment steps)\n"
+        "- Arrows or lines connecting a panel to a node\n"
+        "- Color-coded boxes that elaborate on a node (e.g., green boxes with treatment "
+        "protocols, blue boxes with assessment criteria)\n"
+        "- Proximity — a detailed panel positioned next to a node it describes\n\n"
         "CRITICAL RULES:\n"
         "- ONLY report text that is LITERALLY VISIBLE in the image.\n"
         "- Do NOT infer, guess, or fabricate any information.\n"
-        "- Do NOT extract text that is part of the flowchart nodes/arrows themselves.\n"
-        "- If there are NO side notes or annotations, return an empty array: []\n"
-        "- It is completely fine to return an empty array. Most images have no side notes.\n\n"
+        "- Do NOT extract simple node labels or short arrow labels.\n"
+        "- DO extract detailed guidance panels even if they look like part of the diagram, "
+        "as long as they contain multi-sentence or multi-step information.\n"
+        "- If there are NO guidance items, return an empty array: []\n"
+        "- It is completely fine to return an empty array.\n\n"
         'Return ONLY a JSON array. Each item:\n'
         '- "text": the EXACT text content as written in the image\n'
-        '- "location": brief description of where it appears (e.g., "sticky note, top-right")\n'
-        '- "category": one of "clarification", "definition", "constraint", "note", "legend"\n\n'
+        '- "location": brief description of where it appears (e.g., "green box, right side")\n'
+        '- "category": one of "clarification", "definition", "constraint", "note", '
+        '"legend", "treatment_detail", "criteria"\n'
+        '- "linked_to": the exact text of the flowchart node this guidance references, '
+        "or null if standalone\n"
+        '- "link_type": one of "asterisk", "footnote", "arrow", "color_group", '
+        '"proximity", or null if standalone\n\n'
         "If nothing found, return: []\n"
         "Return JSON only, no extra text."
     )
@@ -639,7 +657,7 @@ Rules:
             ]
             raw = call_llm(
                 messages,
-                max_completion_tokens=4000,
+                max_completion_tokens=5000,
                 response_format=None,
                 caller="subagent",
                 request_tag="extract_guidance",
@@ -664,10 +682,15 @@ Rules:
                 self._logger.warning("Failed to parse guidance JSON array")
                 return []
 
-            # Validate each item has required keys
+            # Validate each item has required keys and normalize optional fields
             valid = []
             for item in parsed:
                 if isinstance(item, dict) and "text" in item:
+                    # Ensure linked guidance fields always present
+                    if "linked_to" not in item:
+                        item["linked_to"] = None
+                    if "link_type" not in item:
+                        item["link_type"] = None
                     valid.append(item)
             return valid
 
