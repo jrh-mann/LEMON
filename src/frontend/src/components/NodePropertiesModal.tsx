@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { listWorkflows } from '../api/workflows'
-import { DecisionConditionEditor, EndNodeConfig, SubprocessConfig, CalculationConfigEditor } from './RightSidebar'
+import { DecisionConditionEditor, EndNodeConfig, SubprocessConfig, CalculationConfigEditor } from './node-config'
 import type { FlowNode } from '../types'
 import '../styles/NodePropertiesModal.css'
 

@@ -10,16 +10,18 @@ import type {
   WorkflowAnalysis,
   WorkflowInput,
   FlowNode,
-  WorkflowSummary,
-  DecisionCondition,
-  SimpleCondition,
-  CompoundCondition,
-  ConditionOperator,
-  Comparator,
-  CalculationConfig as CalculationConfigType,
-  Operand
 } from '../types'
-import { COMPARATORS_BY_TYPE, COMPARATOR_LABELS, isCompoundCondition, getOperator, getOperatorsByCategory } from '../types'
+
+/** Node configuration editors — extracted into node-config/ package */
+import {
+  EndNodeConfig,
+  SubprocessConfig,
+  DecisionConditionEditor,
+  CalculationConfigEditor,
+} from './node-config'
+
+/** Re-export config editors so any legacy imports from './RightSidebar' still resolve */
+export { EndNodeConfig, SubprocessConfig, DecisionConditionEditor, CalculationConfigEditor }
 
 const slugifyInputName = (name: string): string =>
   name
@@ -99,501 +101,303 @@ export default function RightSidebar() {
     setIsResizing(true)
   }, [])
 
+  // Execution state
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showAddInput, setShowAddInput] = useState(false)
-  const [draftName, setDraftName] = useState('')
-  const [draftType, setDraftType] = useState<InputType>('string')
-  const [draftDescription, setDraftDescription] = useState('')
-  const [draftEnum, setDraftEnum] = useState('')
-  const [draftRangeMin, setDraftRangeMin] = useState('')
-  const [draftRangeMax, setDraftRangeMax] = useState('')
-  const [inputError, setInputError] = useState<string | null>(null)
 
-  // Determine what's selected
-  const selectedNode = selectedNodeId
-    ? flowchart.nodes.find((n) => n.id === selectedNodeId)
-    : null
-  const selectedEdgeData = selectedEdge
-    ? flowchart.edges.find((e) => e.from === selectedEdge.from && e.to === selectedEdge.to)
-    : null
-  const selectedEdgeSourceNode = selectedEdge
-    ? flowchart.nodes.find((n) => n.id === selectedEdge.from)
-    : null
-  const selectedEdgeTargetNode = selectedEdge
-    ? flowchart.nodes.find((n) => n.id === selectedEdge.to)
-    : null
-  const isDecisionEdge = selectedEdgeSourceNode?.type === 'decision'
-  const showProperties = !!(selectedNode || selectedEdgeData)
-
-  // Load workflows if needed for subprocess config
+  // Load library workflows for subprocess node config
   useEffect(() => {
-    if (selectedNode?.type === 'subprocess' && workflows.length === 0) {
-      listWorkflows()
-        .then(setWorkflows)
-        .catch((err) => console.error('Failed to load workflows for subprocess config:', err))
+    listWorkflows().then(setWorkflows).catch(() => {})
+  }, [setWorkflows])
+
+  // Derive analysis variables for display
+  const analysisInputs: WorkflowInput[] = currentAnalysis?.variables || []
+
+  // Selected node / edge helpers
+  const selectedNode: FlowNode | undefined = selectedNodeId
+    ? flowchart.nodes.find(n => n.id === selectedNodeId)
+    : undefined
+
+  const selectedEdgeObj = selectedEdge
+    ? flowchart.edges.find(e => e.from === selectedEdge.from && e.to === selectedEdge.to)
+    : undefined
+
+  // Variable add handler
+  const handleAddVariable = useCallback(() => {
+    const newVar: WorkflowInput = {
+      id: buildVariableId('New Variable', 'string'),
+      name: 'New Variable',
+      type: 'string',
+      source: 'input',
     }
-  }, [selectedNode?.type, workflows.length, setWorkflows])
 
-  // Get input blocks from current workflow
-  const inputBlocks = currentWorkflow?.blocks.filter(
-    (b): b is InputBlock => b.type === 'input'
-  ) || []
-  const analysisInputs = currentAnalysis?.variables ?? []  // Unified variable system
-  const showAnalysisInputs = currentAnalysis !== null
-  const showAnalysisView = showAnalysisInputs || showAddInput
+    const updated: WorkflowAnalysis = {
+      ...currentAnalysis!,
+      variables: [...analysisInputs, newVar],
+    }
+    setAnalysis(updated)
+  }, [currentAnalysis, analysisInputs, setAnalysis])
 
-  // Handle input change
-  const handleInputChange = useCallback(
-    (name: string, value: unknown) => {
-      setInputValues({ ...inputValues, [name]: value })
+  // Variable update handler
+  const handleVariableUpdate = useCallback(
+    (index: number, updates: Partial<WorkflowInput>) => {
+      const newVars = [...analysisInputs]
+      const old = newVars[index]
+      const merged = { ...old, ...updates }
+
+      // Regenerate ID if name or type changed
+      if (updates.name !== undefined || updates.type !== undefined) {
+        merged.id = buildVariableId(merged.name, merged.type as InputType)
+      }
+
+      newVars[index] = merged
+      const updated: WorkflowAnalysis = {
+        ...currentAnalysis!,
+        variables: newVars,
+      }
+      setAnalysis(updated)
     },
-    [inputValues, setInputValues]
+    [currentAnalysis, analysisInputs, setAnalysis]
   )
 
-  const resetDraftInput = () => {
-    setDraftName('')
-    setDraftType('string')
-    setDraftDescription('')
-    setDraftEnum('')
-    setDraftRangeMin('')
-    setDraftRangeMax('')
-    setInputError(null)
-  }
-
-  const handleAddInput = () => {
-    const name = draftName.trim()
-    if (!name) {
-      setInputError('Input name is required.')
-      return
-    }
-    if (!draftType) {
-      setInputError('Input type is required.')
-      return
-    }
-    const key = `${slugifyInputName(name)}:${draftType}`
-    const existing = analysisInputs.some((input: WorkflowInput) => {
-      const existingKey = `${slugifyInputName(input.name)}:${input.type}`
-      return existingKey === key
-    })
-    if (existing) {
-      setInputError('Input name and type must be unique.')
-      return
-    }
-
-    const nextInputs: WorkflowInput[] = [...analysisInputs]
-    const nextInput: WorkflowInput = {
-      id: buildVariableId(name, draftType),
-      name,
-      type: draftType,
-      source: 'input',  // Manual inputs are user-provided values
-    }
-    if (draftDescription.trim()) {
-      nextInput.description = draftDescription.trim()
-    }
-    if (draftType === 'enum' && draftEnum.trim()) {
-      const values = draftEnum
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean)
-      if (values.length > 0) {
-        nextInput.enum_values = values  // Use enum_values, not enum
+  // Variable delete handler
+  const handleVariableDelete = useCallback(
+    (index: number) => {
+      const newVars = analysisInputs.filter((_, i) => i !== index)
+      const updated: WorkflowAnalysis = {
+        ...currentAnalysis!,
+        variables: newVars,
       }
-    }
-    if (draftType === 'number' && (draftRangeMin || draftRangeMax)) {
-      const min = draftRangeMin.trim() ? Number(draftRangeMin) : undefined
-      const max = draftRangeMax.trim() ? Number(draftRangeMax) : undefined
-      nextInput.range = {}
-      if (!Number.isNaN(min) && min !== undefined) {
-        nextInput.range.min = min
-      }
-      if (!Number.isNaN(max) && max !== undefined) {
-        nextInput.range.max = max
-      }
-      if (nextInput.range.min === undefined && nextInput.range.max === undefined) {
-        delete nextInput.range
-      }
-    }
+      setAnalysis(updated)
+    },
+    [currentAnalysis, analysisInputs, setAnalysis]
+  )
 
-    nextInputs.push(nextInput)
-    const baseAnalysis: WorkflowAnalysis = currentAnalysis ?? {
-      variables: [],
-      outputs: [],
-      tree: {},
-      doubts: [],
-    }
-    const nextAnalysis: WorkflowAnalysis = {
-      ...baseAnalysis,
-      variables: nextInputs,
-    }
-    setAnalysis(nextAnalysis)
-    resetDraftInput()
-    setShowAddInput(false)
-  }
-
-  const renderAnalysisInput = (input: WorkflowInput) => {
-    const enumValues = input.enum_values ?? []
-    const range = input.range
-    const hasRange = range && (range.min !== undefined || range.max !== undefined)
-    const isInput = input.source === 'input'
-
-    return (
-      <div className="input-card" key={input.id}>
-        <div className="input-card-header">
-          <div className="input-card-name">{input.name}</div>
-          {!isInput && (
-            <span className={`input-source-tag ${input.source}`}>
-              {input.source === 'subprocess' ? 'Derived' : 'Calculated'}
-            </span>
-          )}
-        </div>
-        <div className="input-card-type">{input.type}</div>
-        {input.description && <div className="input-card-desc">{input.description}</div>}
-        {Array.isArray(enumValues) && enumValues.length > 0 && (
-          <div className="input-card-enum">Enum: {enumValues.join(', ')}</div>
-        )}
-        {hasRange && (
-          <div className="input-card-range">
-            Range: {range?.min ?? 'any'} - {range?.max ?? 'any'}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Group variables for display (Inputs vs Expected)
-  const inputVariables = analysisInputs.filter(v => v.source === 'input')
-  const expectedVariables = analysisInputs.filter(v => v.source !== 'input')
-
-  // Handle execute
+  // Execute workflow handler
   const handleExecute = useCallback(async () => {
-    if (!currentWorkflow) return
-
+    if (!currentWorkflow?.id) return
     setIsExecuting(true)
-    setError(null)
     setExecutionResult(null)
-
     try {
       const result = await executeWorkflow(currentWorkflow.id, inputValues)
       setExecutionResult(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Execution failed')
+    } catch (err: unknown) {
+      setExecutionResult({
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        path: [],
+      })
     } finally {
       setIsExecuting(false)
     }
   }, [currentWorkflow, inputValues])
 
+  // Node update handler (wraps updateNode for config editors)
+  const handleNodeUpdate = useCallback(
+    (updates: Partial<FlowNode>) => {
+      if (selectedNode) {
+        updateNode(selectedNode.id, updates)
+      }
+    },
+    [selectedNode, updateNode]
+  )
 
-
-  const isCollapsed = sidebarWidth === 0
+  // Collapsed state — don't render content
+  if (sidebarWidth === 0) {
+    return (
+      <aside className="right-sidebar collapsed">
+        <div
+          className="sidebar-resize-handle"
+          onMouseDown={handleResizeStart}
+          title="Drag to resize"
+        />
+        <button
+          className="sidebar-expand-btn"
+          onClick={() => setSidebarWidth(DEFAULT_WIDTH)}
+          title="Expand sidebar"
+        >
+          ‹
+        </button>
+      </aside>
+    )
+  }
 
   return (
     <aside
       ref={sidebarRef}
-      className={`sidebar library-sidebar ${isResizing ? 'resizing' : ''} ${isCollapsed ? 'sidebar-collapsed right-collapsed' : ''}`}
-      style={{
-        width: isCollapsed ? 0 : sidebarWidth,
-        minWidth: isCollapsed ? 0 : sidebarWidth,
-        overflowX: isCollapsed ? 'visible' : 'hidden', // Required for the handle to float
-        paddingLeft: isCollapsed ? 0 : (sidebarWidth < 40 ? 0 : undefined),
-        paddingRight: isCollapsed ? 0 : (sidebarWidth < 40 ? 0 : undefined),
-      }}
+      className="right-sidebar"
+      style={{ width: sidebarWidth }}
     >
+      {/* Resize handle */}
       <div
         className="sidebar-resize-handle"
         onMouseDown={handleResizeStart}
-        title={isCollapsed ? "Drag to expand" : "Drag to resize"}
-      >
-        <div className="resize-grip"></div>
-      </div>
+        title="Drag to resize"
+      />
 
-      {!isCollapsed && (
+      {/* Variables panel */}
+      {currentAnalysis && (
         <>
-          {/* Auto-switch: Properties when node/edge selected, Variables otherwise */}
-          {showProperties ? (
-            <div className="sidebar-panel" data-panel="properties">
-              {selectedNode ? (
-                <div className="properties-panel">
-                  <div className="properties-header">
-                    <h4>Properties</h4>
-                    <p className="muted small">{selectedNode.type} node</p>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Label</label>
-                    <input
-                      type="text"
-                      value={selectedNode.label}
-                      onChange={(e) => updateNode(selectedNode.id, { label: e.target.value })}
-                      placeholder="Node label"
-                    />
-                    <p className="muted small">Display text for the node</p>
-                  </div>
-
-                  {selectedNode.type === 'decision' && (
-                    <DecisionConditionEditor
-                      node={selectedNode}
-                      analysisInputs={analysisInputs}
-                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-                    />
-                  )}
-
-                  {selectedNode.type === 'end' && (
-                    <EndNodeConfig
-                      node={selectedNode}
-                      analysisInputs={analysisInputs}
-                      workflowOutputType={currentWorkflow?.output_type || 'string'}
-                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-                    />
-                  )}
-
-                  {selectedNode.type === 'subprocess' && (
-                    <SubprocessConfig
-                      node={selectedNode}
-                      workflows={workflows}
-                      analysisInputs={analysisInputs}
-                      currentWorkflowId={currentWorkflow?.id}
-                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-                    />
-                  )}
-
-                  {selectedNode.type === 'calculation' && (
-                    <CalculationConfigEditor
-                      node={selectedNode}
-                      analysisInputs={analysisInputs}
-                      onUpdate={(updates) => updateNode(selectedNode.id, updates)}
-                    />
-                  )}
-                </div>
-              ) : selectedEdgeData ? (
-                <div className="properties-panel">
-                  <div className="properties-header">
-                    <h4>Edge Properties</h4>
-                    <p className="muted small">
-                      {selectedEdgeSourceNode?.label || selectedEdge?.from} → {selectedEdgeTargetNode?.label || selectedEdge?.to}
-                    </p>
-                  </div>
-
-                  {isDecisionEdge ? (
-                    <div className="form-group">
-                      <label>Branch Type</label>
-                      <select
-                        value={selectedEdgeData.label || ''}
-                        onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
-                      >
-                        <option value="">Select branch...</option>
-                        <option value="true">True (condition is met)</option>
-                        <option value="false">False (condition is not met)</option>
-                      </select>
-                      <p className="muted small">
-                        Decision nodes require exactly two branches: one for when the condition is true, and one for when it is false.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="form-group">
-                      <label>Label (Optional)</label>
-                      <input
-                        type="text"
-                        value={selectedEdgeData.label || ''}
-                        onChange={(e) => updateEdgeLabel(selectedEdge!.from, selectedEdge!.to, e.target.value)}
-                        placeholder="Edge label"
-                      />
-                      <p className="muted small">Optional text to display on the edge.</p>
-                    </div>
-                  )}
-                </div>
-              ) : null}
+          <h4>Variables</h4>
+          {analysisInputs.map((input, idx) => (
+            <div key={input.id} className="variable-row">
+              <input
+                type="text"
+                value={input.name}
+                onChange={(e) => handleVariableUpdate(idx, { name: e.target.value })}
+                className="variable-name-input"
+              />
+              <select
+                value={input.type}
+                onChange={(e) => handleVariableUpdate(idx, { type: e.target.value as InputType })}
+                className="variable-type-select"
+              >
+                <option value="string">string</option>
+                <option value="number">number</option>
+                <option value="bool">bool</option>
+                <option value="date">date</option>
+                <option value="enum">enum</option>
+                <option value="json">json</option>
+              </select>
+              <button
+                className="ghost variable-delete-btn"
+                onClick={() => handleVariableDelete(idx)}
+                title="Delete variable"
+              >
+                ×
+              </button>
             </div>
-          ) : (
-            <div className="sidebar-panel" data-panel="variables">
-              <div className="inputs-header">
-                <div>
-                  <h4>Variables</h4>
-                  <p className="muted small">Canonical list for this workflow.</p>
-                </div>
-                <button
-                  className="ghost inputs-add-btn"
-                  onClick={() => {
-                    if (!currentAnalysis) {
-                      setAnalysis({ variables: [], outputs: [], tree: {}, doubts: [] })
-                    }
-                    setInputError(null)
-                    setShowAddInput(true)
-                  }}
-                >
-                  + Input
-                </button>
-              </div>
+          ))}
+          <button className="ghost add-variable-btn" onClick={handleAddVariable}>
+            + Add Variable
+          </button>
+        </>
+      )}
 
-              {showAnalysisView ? (
+      {/* Node properties panel */}
+      {selectedNode && (
+        <>
+          <div className="form-divider" />
+          <h4>Node Properties</h4>
+          <div className="form-group">
+            <label>Label</label>
+            <input
+              type="text"
+              value={selectedNode.label}
+              onChange={(e) => handleNodeUpdate({ label: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Type</label>
+            <span className="node-type-badge">{selectedNode.type}</span>
+          </div>
+
+          {/* Node-type-specific config editors */}
+          {selectedNode.type === 'end' && (
+            <EndNodeConfig
+              node={selectedNode}
+              analysisInputs={analysisInputs}
+              workflowOutputType={currentWorkflow?.output_type || 'string'}
+              onUpdate={handleNodeUpdate}
+            />
+          )}
+          {selectedNode.type === 'subprocess' && (
+            <SubprocessConfig
+              node={selectedNode}
+              workflows={workflows}
+              analysisInputs={analysisInputs}
+              currentWorkflowId={currentWorkflow?.id}
+              onUpdate={handleNodeUpdate}
+            />
+          )}
+          {selectedNode.type === 'decision' && (
+            <DecisionConditionEditor
+              node={selectedNode}
+              analysisInputs={analysisInputs}
+              onUpdate={handleNodeUpdate}
+            />
+          )}
+          {selectedNode.type === 'calculation' && (
+            <CalculationConfigEditor
+              node={selectedNode}
+              analysisInputs={analysisInputs}
+              onUpdate={handleNodeUpdate}
+            />
+          )}
+
+          <button
+            className="ghost"
+            onClick={() => openModal('nodeProperties', { nodeId: selectedNode.id })}
+          >
+            Open in modal
+          </button>
+        </>
+      )}
+
+      {/* Edge properties */}
+      {selectedEdgeObj && (
+        <>
+          <div className="form-divider" />
+          <h4>Edge Properties</h4>
+          <div className="form-group">
+            <label>Label</label>
+            <input
+              type="text"
+              value={selectedEdgeObj.label || ''}
+              onChange={(e) => updateEdgeLabel(selectedEdgeObj.from, selectedEdgeObj.to, e.target.value)}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Execution section */}
+      {currentWorkflow && (
+        <>
+          <div className="form-divider" />
+          <h4>Execute</h4>
+
+          {/* Input fields for execution */}
+          {analysisInputs
+            .filter(v => v.source === 'input')
+            .map(input => {
+              const block: InputBlock = {
+                id: input.id,
+                name: input.name,
+                input_type: input.type,
+                description: input.description,
+                enum_values: input.enum_values,
+                range: input.range,
+              }
+              return (
+                <InputField
+                  key={input.id}
+                  input={block}
+                  value={inputValues[input.id]}
+                  onChange={(val) => setInputValues({ ...inputValues, [input.id]: val })}
+                />
+              )
+            })}
+
+          <button
+            className="btn primary"
+            onClick={handleExecute}
+            disabled={isExecuting}
+          >
+            {isExecuting ? 'Running...' : 'Run Workflow'}
+          </button>
+
+          {/* Execution result */}
+          {executionResult && (
+            <div className={`execution-result ${executionResult.success ? 'success' : 'error'}`}>
+              {executionResult.success ? (
                 <>
-                  {showAddInput && (
-                    <div className="input-add-form">
-                      <div className="input-add-row">
-                        <label>Name</label>
-                        <input
-                          type="text"
-                          value={draftName}
-                          onChange={(e) => setDraftName(e.target.value)}
-                          placeholder="e.g. Total Cholesterol"
-                        />
-                      </div>
-                      <div className="input-add-row">
-                        <label>Type</label>
-                        <select
-                          value={draftType}
-                          onChange={(e) => setDraftType(e.target.value as InputType)}
-                        >
-                          <option value="string">string</option>
-                          <option value="number">number</option>
-                          <option value="bool">bool</option>
-                          <option value="enum">enum</option>
-                          <option value="date">date</option>
-                        </select>
-                      </div>
-                      <div className="input-add-row">
-                        <label>Description</label>
-                        <input
-                          type="text"
-                          value={draftDescription}
-                          onChange={(e) => setDraftDescription(e.target.value)}
-                          placeholder="Optional"
-                        />
-                      </div>
-                      {draftType === 'enum' && (
-                        <div className="input-add-row">
-                          <label>Enum values</label>
-                          <input
-                            type="text"
-                            value={draftEnum}
-                            onChange={(e) => setDraftEnum(e.target.value)}
-                            placeholder="Comma-separated values"
-                          />
-                        </div>
-                      )}
-                      {draftType === 'number' && (
-                        <div className="input-add-row input-add-range">
-                          <label>Range</label>
-                          <div className="input-add-range-fields">
-                            <input
-                              type="number"
-                              value={draftRangeMin}
-                              onChange={(e) => setDraftRangeMin(e.target.value)}
-                              placeholder="Min"
-                            />
-                            <input
-                              type="number"
-                              value={draftRangeMax}
-                              onChange={(e) => setDraftRangeMax(e.target.value)}
-                              placeholder="Max"
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {inputError && <p className="error-text">{inputError}</p>}
-                      <div className="input-add-actions">
-                        <button className="primary" onClick={handleAddInput}>
-                          Add Input
-                        </button>
-                        <button
-                          className="ghost"
-                          onClick={() => {
-                            resetDraftInput()
-                            setShowAddInput(false)
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {analysisInputs.length === 0 ? (
-                    <div className="inputs-empty">
-                      <p className="muted">No variables listed yet.</p>
-                      <p className="muted small">Run analysis or add a variable to start the list.</p>
-                    </div>
-                  ) : (
-                    <div className="inputs-list">
-                      {inputVariables.length > 0 && (
-                        <div className="inputs-group">
-                          <h5 className="inputs-group-title">Inputs</h5>
-                          {inputVariables.map(renderAnalysisInput)}
-                        </div>
-                      )}
-
-                      {expectedVariables.length > 0 && (
-                        <div className="inputs-group">
-                          <h5 className="inputs-group-title">Expected Variables</h5>
-                          {expectedVariables.map(renderAnalysisInput)}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <p><strong>Result:</strong> {String(executionResult.output)}</p>
+                  <p className="muted small">
+                    Path: {executionResult.path?.map(p => p.label).join(' → ')}
+                  </p>
                 </>
-              ) : !currentWorkflow ? (
-                <div className="inputs-empty">
-                  <p className="muted">No variables defined.</p>
-                  <p className="muted small">Create or load a workflow to see its variables.</p>
-                </div>
-              ) : inputBlocks.length === 0 ? (
-                <div className="inputs-empty">
-                  <p className="muted">This workflow has no input blocks.</p>
-                </div>
               ) : (
-                <>
-                  <div className="inputs-list">
-                    {inputBlocks.map((input) => (
-                      <InputField
-                        key={input.id}
-                        input={input}
-                        value={inputValues[input.name]}
-                        onChange={(val) => handleInputChange(input.name, val)}
-                      />
-                    ))}
-                  </div>
-
-                  <div className="execute-section">
-                    <button
-                      className="primary full-width"
-                      onClick={handleExecute}
-                      disabled={isExecuting}
-                    >
-                      {isExecuting ? 'Executing...' : 'Execute Workflow'}
-                    </button>
-
-                    {error && <p className="error-text">{error}</p>}
-
-                    {executionResult && (
-                      <div className="execution-result">
-                        <h4>Result</h4>
-                        <div className={`result-output ${executionResult.success ? 'success' : 'error'}`}>
-                          {executionResult.output || executionResult.error || 'No output'}
-                        </div>
-                        {executionResult.path && (
-                          <details>
-                            <summary>Execution path ({executionResult.path.length} steps)</summary>
-                            <ol className="execution-path">
-                              {executionResult.path.map((step, i) => (
-                                <li key={i}>{step}</li>
-                              ))}
-                            </ol>
-                          </details>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="validate-section">
-                    <button
-                      className="ghost full-width"
-                      onClick={() => openModal('validation')}
-                    >
-                      Validate Workflow
-                    </button>
-                  </div>
-                </>
+                <p className="error-message">{executionResult.error}</p>
               )}
             </div>
           )}
@@ -603,7 +407,10 @@ export default function RightSidebar() {
   )
 }
 
-// Input field component
+/**
+ * InputField - Renders a typed input field (bool/enum/number/date/string)
+ * for workflow execution. Used only by RightSidebar's execution section.
+ */
 function InputField({
   input,
   value,
@@ -706,1080 +513,4 @@ function InputField({
         </div>
       )
   }
-}
-
-/**
- * EndNodeConfig - Configuration panel for end (output) nodes.
- * Shows a variable selector dropdown (filtered by workflow output type).
- * For 'string' workflows, "Static value" is replaced by "Value Template" (f-string).
- * For other types, "Static value" shows a type-aware input.
- */
-export function EndNodeConfig({
-  node,
-  analysisInputs,
-  workflowOutputType,
-  onUpdate,
-}: {
-  node: FlowNode
-  analysisInputs: WorkflowInput[]
-  workflowOutputType: string
-  onUpdate: (updates: Partial<FlowNode>) => void
-}) {
-  // Filter variables to only those matching the workflow output type
-  // Note: 'json' output type can accept 'json' variables
-  const filteredInputs = analysisInputs.filter(inp => inp.type === workflowOutputType)
-
-  // Determine current mode
-  const isVariableMode = Boolean(node.output_variable)
-
-  // For strings, the "static" option is actually a template
-  const isStringOutput = workflowOutputType === 'string'
-  const staticOptionLabel = isStringOutput ? 'Value Template (f-string)' : 'Static Value'
-  const staticOptionValue = isStringOutput ? '__template__' : '__static__'
-
-  // Handle switching source
-  const handleSourceChange = (value: string) => {
-    if (value === '__static__' || value === '__template__') {
-      // Switch to static/template mode: clear output_variable
-      onUpdate({ output_variable: undefined })
-    } else {
-      // Switch to variable mode: set output_variable
-      // We don't strictly need to clear output_value/template but it keeps things clean
-      onUpdate({ output_variable: value, output_value: undefined, output_template: undefined })
-    }
-  }
-
-  // Render the static value input based on workflow output_type
-  const renderStaticInput = () => {
-    switch (workflowOutputType) {
-      case 'number':
-        return (
-          <input
-            type="number"
-            step="any"
-            value={node.output_value !== undefined && node.output_value !== '' ? String(node.output_value) : ''}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value)
-              onUpdate({ output_value: isNaN(val) ? '' : val })
-            }}
-            placeholder="Enter a number"
-          />
-        )
-      case 'bool':
-        return (
-          <label className="checkbox-inline">
-            <input
-              type="checkbox"
-              checked={Boolean(node.output_value)}
-              onChange={(e) => onUpdate({ output_value: e.target.checked })}
-            />
-            <span>{node.output_value ? 'true' : 'false'}</span>
-          </label>
-        )
-      case 'json':
-        return (
-          <textarea
-            value={typeof node.output_value === 'string' ? node.output_value : JSON.stringify(node.output_value ?? '', null, 2)}
-            onChange={(e) => onUpdate({ output_value: e.target.value })}
-            placeholder='{"key": "value"}'
-            rows={4}
-          />
-        )
-      default:
-        return null
-    }
-  }
-
-  return (
-    <>
-      <div className="form-divider" />
-      <h5>Output Configuration</h5>
-      <p className="muted small">
-        Workflow output type: <strong>{workflowOutputType}</strong>
-      </p>
-
-      {/* Source selector */}
-      <div className="form-group">
-        <label>Output Source</label>
-        <select
-          value={isVariableMode ? (node.output_variable || '') : staticOptionValue}
-          onChange={(e) => handleSourceChange(e.target.value)}
-        >
-          <option value={staticOptionValue}>{staticOptionLabel}</option>
-          {filteredInputs.map(inp => (
-            <option key={inp.id} value={inp.name}>
-              {inp.name}
-            </option>
-          ))}
-        </select>
-
-        {/* Helper text */}
-        <p className="muted small">
-          {isVariableMode
-            ? 'Returns the selected variable\'s value directly.'
-            : isStringOutput
-              ? 'Returns a formatted string using a template.'
-              : 'Returns a fixed value you specify below.'}
-        </p>
-      </div>
-
-      {/* Inputs for non-variable mode */}
-      {!isVariableMode && (
-        <div className="form-group">
-          {isStringOutput ? (
-            <>
-              <label>Template</label>
-              <textarea
-                value={node.output_template || ''}
-                onChange={(e) => onUpdate({ output_template: e.target.value })}
-                placeholder="e.g. Result: {variable_name}"
-                rows={3}
-              />
-              <p className="muted small">
-                Use {'{variable}'} to insert input values.
-              </p>
-            </>
-          ) : (
-            <>
-              <label>Value</label>
-              {renderStaticInput()}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Warning if variables are hidden */}
-      {analysisInputs.length > 0 && filteredInputs.length === 0 && (
-        <p className="muted small warning">
-          No variables match the workflow output type ({workflowOutputType}).
-        </p>
-      )}
-    </>
-  )
-}
-
-/**
- * SubprocessConfig - Configuration panel for subprocess nodes.
- * Allows selecting a subworkflow, mapping parent inputs to subworkflow inputs,
- * and naming the output variable for use in subsequent nodes.
- */
-export function SubprocessConfig({
-  node,
-  workflows,
-  analysisInputs,
-  currentWorkflowId,
-  onUpdate,
-}: {
-  node: FlowNode
-  workflows: WorkflowSummary[]
-  analysisInputs: WorkflowInput[]
-  currentWorkflowId?: string
-  onUpdate: (updates: Partial<FlowNode>) => void
-}) {
-  // Local state for new mapping entry
-  const [newMappingParent, setNewMappingParent] = useState('')
-  const [newMappingSubflow, setNewMappingSubflow] = useState('')
-
-  // Get the selected subworkflow's input names for the mapping dropdown
-  const selectedWorkflow = workflows.find(w => w.id === node.subworkflow_id)
-  const subflowInputNames = selectedWorkflow?.input_names ?? []
-
-  // Current input mapping (parent input name -> subflow input name)
-  const inputMapping = node.input_mapping ?? {}
-
-  // Handle subworkflow selection change
-  const handleWorkflowChange = (workflowId: string) => {
-    onUpdate({
-      subworkflow_id: workflowId || undefined,
-      // Clear mappings when workflow changes since inputs may differ
-      input_mapping: {},
-    })
-  }
-
-  // Add a new input mapping entry
-  const handleAddMapping = () => {
-    if (!newMappingParent || !newMappingSubflow) return
-    // Prevent duplicate mappings for the same parent input
-    if (inputMapping[newMappingParent]) return
-
-    onUpdate({
-      input_mapping: {
-        ...inputMapping,
-        [newMappingParent]: newMappingSubflow,
-      },
-    })
-    setNewMappingParent('')
-    setNewMappingSubflow('')
-  }
-
-  // Remove a mapping entry by parent input name
-  const handleRemoveMapping = (parentKey: string) => {
-    const { [parentKey]: _, ...remaining } = inputMapping
-    onUpdate({ input_mapping: remaining })
-  }
-
-  // Filter out parent inputs already used in mappings
-  const availableParentInputs = analysisInputs.filter(
-    input => !inputMapping[input.name]
-  )
-
-  return (
-    <>
-      <div className="form-divider" />
-      <h5>Subprocess Configuration</h5>
-
-      {/* Subworkflow selector */}
-      <div className="form-group">
-        <label>Target Workflow</label>
-        <select
-          value={node.subworkflow_id || ''}
-          onChange={(e) => handleWorkflowChange(e.target.value)}
-        >
-          <option value="">Select a workflow...</option>
-          {workflows
-            .filter(w => w.id !== currentWorkflowId) // Prevent self-reference
-            .map(w => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-        </select>
-        <p className="muted small">The workflow to execute as a subprocess.</p>
-      </div>
-
-      {/* Show subflow details if selected */}
-      {selectedWorkflow && (
-        <div className="subprocess-info">
-          <p className="muted small">
-            <strong>Inputs:</strong> {subflowInputNames.length > 0 ? subflowInputNames.join(', ') : 'None'}
-          </p>
-          <p className="muted small">
-            <strong>Outputs:</strong> {selectedWorkflow.output_values?.join(', ') || 'None'}
-          </p>
-        </div>
-      )}
-
-      {/* Input mapping section */}
-      {node.subworkflow_id && (
-        <>
-          <div className="form-divider" />
-          <h5>Input Mapping</h5>
-          <p className="muted small">Map this workflow's inputs to the subprocess inputs.</p>
-
-          {/* Existing mappings */}
-          {Object.entries(inputMapping).length > 0 && (
-            <div className="mapping-list">
-              {Object.entries(inputMapping).map(([parentInput, subflowInput]) => (
-                <div className="mapping-row" key={parentInput}>
-                  <span className="mapping-parent">{parentInput}</span>
-                  <span className="mapping-arrow">→</span>
-                  <span className="mapping-subflow">{subflowInput}</span>
-                  <button
-                    className="mapping-remove ghost"
-                    onClick={() => handleRemoveMapping(parentInput)}
-                    title="Remove mapping"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add new mapping */}
-          {availableParentInputs.length > 0 && subflowInputNames.length > 0 && (
-            <div className="mapping-add">
-              <select
-                value={newMappingParent}
-                onChange={(e) => setNewMappingParent(e.target.value)}
-              >
-                <option value="">Parent input...</option>
-                {availableParentInputs.map(input => (
-                  <option key={input.id} value={input.name}>
-                    {input.name}
-                  </option>
-                ))}
-              </select>
-              <span className="mapping-arrow">→</span>
-              <select
-                value={newMappingSubflow}
-                onChange={(e) => setNewMappingSubflow(e.target.value)}
-              >
-                <option value="">Subflow input...</option>
-                {subflowInputNames.map(name => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="ghost"
-                onClick={handleAddMapping}
-                disabled={!newMappingParent || !newMappingSubflow}
-              >
-                Add
-              </button>
-            </div>
-          )}
-
-          {availableParentInputs.length === 0 && Object.keys(inputMapping).length > 0 && (
-            <p className="muted small">All parent inputs are mapped.</p>
-          )}
-
-          {analysisInputs.length === 0 && (
-            <p className="muted small warning">
-              No variables defined for this workflow. Add variables in the Variables panel.
-            </p>
-          )}
-        </>
-      )}
-
-      {/* Output variable name */}
-      {node.subworkflow_id && (
-        <>
-          <div className="form-divider" />
-          <h5>Output Variable</h5>
-          <div className="form-group">
-            <label>Variable Name</label>
-            <input
-              type="text"
-              value={node.output_variable || ''}
-              onChange={(e) => onUpdate({ output_variable: e.target.value })}
-              placeholder="e.g. subprocess_result"
-            />
-            <p className="muted small">
-              Name for the subprocess output. Use this variable in subsequent decision nodes.
-            </p>
-          </div>
-        </>
-      )}
-    </>
-  )
-}
-
-/**
- * Format a single simple condition as a human-readable string.
- */
-function formatSimpleConditionPreview(condition: SimpleCondition, inputs: WorkflowInput[]): string {
-  if (!condition.input_id) return '(no input)'
-
-  const input = inputs.find(inp => inp.id === condition.input_id)
-  const inputName = input?.name ?? condition.input_id
-  const compLabel = COMPARATOR_LABELS[condition.comparator] ?? condition.comparator
-
-  if (condition.comparator === 'is_true' || condition.comparator === 'is_false') {
-    return `${inputName} ${compLabel}`
-  }
-  if (condition.comparator === 'within_range' || condition.comparator === 'date_between') {
-    return `${inputName} ${compLabel} [${condition.value ?? '?'}, ${condition.value2 ?? '?'}]`
-  }
-  const valueStr = typeof condition.value === 'string'
-    ? `"${condition.value}"`
-    : String(condition.value ?? '?')
-  return `${inputName} ${compLabel} ${valueStr}`
-}
-
-/**
- * Format a condition (simple or compound) as a human-readable string.
- */
-function formatConditionPreview(condition: DecisionCondition, inputs: WorkflowInput[]): string {
-  if (isCompoundCondition(condition)) {
-    const joiner = ` ${condition.operator.toUpperCase()} `
-    const parts = condition.conditions.map(sub => formatSimpleConditionPreview(sub, inputs))
-    return parts.join(joiner) || '(empty compound)'
-  }
-  return formatSimpleConditionPreview(condition, inputs)
-}
-
-/**
- * SimpleConditionRow — a single sub-condition row used in both simple and compound modes.
- * Renders input selector, comparator, and value field(s).
- */
-function SimpleConditionRow({
-  condition,
-  analysisInputs,
-  onChange,
-  onRemove,
-  showRemoveButton,
-}: {
-  condition: SimpleCondition
-  analysisInputs: WorkflowInput[]
-  onChange: (updated: SimpleCondition) => void
-  onRemove?: () => void
-  showRemoveButton: boolean
-}) {
-  const selectedInput = analysisInputs.find(inp => inp.id === condition.input_id)
-  const inputType = selectedInput?.type ?? 'string'
-  const availableComparators = COMPARATORS_BY_TYPE[inputType] ?? COMPARATORS_BY_TYPE.string
-  const enumValues = selectedInput?.enum_values ?? []
-
-  const handleInputChange = (inputId: string) => {
-    const newInput = analysisInputs.find(inp => inp.id === inputId)
-    const newType = newInput?.type ?? 'string'
-    const validComps = COMPARATORS_BY_TYPE[newType] ?? COMPARATORS_BY_TYPE.string
-    const newComp = validComps.includes(condition.comparator) ? condition.comparator : validComps[0]
-    onChange({ input_id: inputId, comparator: newComp, value: '', value2: undefined })
-  }
-
-  const needsSecondValue = condition.comparator === 'within_range' || condition.comparator === 'date_between'
-  const noValueNeeded = condition.comparator === 'is_true' || condition.comparator === 'is_false'
-
-  // Render a value input appropriate for the variable type
-  const renderValueInput = (isSecondValue = false) => {
-    const currentValue = isSecondValue ? condition.value2 : condition.value
-    const placeholder = isSecondValue ? 'Max value' : needsSecondValue ? 'Min value' : 'Comparison value'
-    const valueKey = isSecondValue ? 'value2' : 'value'
-
-    if (inputType === 'enum' && enumValues.length > 0 && !isSecondValue) {
-      return (
-        <select
-          value={String(currentValue ?? '')}
-          onChange={(e) => onChange({ ...condition, [valueKey]: e.target.value })}
-        >
-          <option value="">Select value...</option>
-          {enumValues.map((val: string) => (
-            <option key={val} value={val}>{val}</option>
-          ))}
-        </select>
-      )
-    }
-    if (noValueNeeded) return null
-    if (inputType === 'date') {
-      return (
-        <input type="date" value={String(currentValue ?? '')}
-          onChange={(e) => onChange({ ...condition, [valueKey]: e.target.value })} />
-      )
-    }
-    if (inputType === 'number') {
-      return (
-        <input type="number" value={currentValue !== undefined && currentValue !== '' ? String(currentValue) : ''}
-          step="any" placeholder={placeholder}
-          onChange={(e) => { const v = parseFloat(e.target.value); onChange({ ...condition, [valueKey]: isNaN(v) ? '' : v }) }} />
-      )
-    }
-    return (
-      <input type="text" value={String(currentValue ?? '')} placeholder={placeholder}
-        onChange={(e) => onChange({ ...condition, [valueKey]: e.target.value })} />
-    )
-  }
-
-  return (
-    <div className="compound-condition-row">
-      {/* Input variable selector */}
-      <div className="form-group">
-        <label>Variable</label>
-        <select value={condition.input_id || ''} onChange={(e) => handleInputChange(e.target.value)}>
-          <option value="">Select input...</option>
-          {analysisInputs.map(inp => (
-            <option key={inp.id} value={inp.id}>{inp.name} ({inp.type})</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Comparator selector */}
-      {condition.input_id && (
-        <div className="form-group">
-          <label>Comparator</label>
-          <select value={condition.comparator}
-            onChange={(e) => onChange({
-              ...condition,
-              comparator: e.target.value as Comparator,
-              value2: (e.target.value === 'within_range' || e.target.value === 'date_between') ? condition.value2 : undefined
-            })}>
-            {availableComparators.map(comp => (
-              <option key={comp} value={comp}>{COMPARATOR_LABELS[comp]}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Value input(s) */}
-      {condition.input_id && !noValueNeeded && (
-        <div className="form-group">
-          <label>{needsSecondValue ? 'Range' : 'Value'}</label>
-          {needsSecondValue ? (
-            <div className="condition-range-inputs">
-              {renderValueInput(false)}
-              <span className="condition-range-separator">to</span>
-              {renderValueInput(true)}
-            </div>
-          ) : renderValueInput(false)}
-        </div>
-      )}
-
-      {/* Remove button for compound mode */}
-      {showRemoveButton && onRemove && (
-        <button className="btn-icon btn-remove-condition" onClick={onRemove} title="Remove condition">
-          &times;
-        </button>
-      )}
-    </div>
-  )
-}
-
-/**
- * DecisionConditionEditor - Configuration panel for decision node conditions.
- * Supports simple (single variable) and compound (AND/OR multiple variable) modes.
- */
-export function DecisionConditionEditor({
-  node,
-  analysisInputs,
-  onUpdate,
-}: {
-  node: FlowNode
-  analysisInputs: WorkflowInput[]
-  onUpdate: (updates: Partial<FlowNode>) => void
-}) {
-  const condition = node.condition
-  const compound = condition ? isCompoundCondition(condition) : false
-
-  // Default simple condition for new/empty state
-  const defaultSimple: SimpleCondition = { input_id: '', comparator: 'eq' as Comparator, value: '' }
-
-  // Extract current sub-conditions (compound) or single condition (simple)
-  const subConditions: SimpleCondition[] = compound
-    ? (condition as CompoundCondition).conditions
-    : condition && !isCompoundCondition(condition) ? [condition as SimpleCondition] : [defaultSimple]
-
-  const currentOperator: ConditionOperator = compound ? (condition as CompoundCondition).operator : 'and'
-
-  // Switch between simple and compound mode
-  const handleModeToggle = (mode: 'simple' | 'compound') => {
-    if (mode === 'compound' && !compound) {
-      // Convert simple → compound with the existing condition + an empty row
-      const existing = condition && !isCompoundCondition(condition)
-        ? (condition as SimpleCondition) : defaultSimple
-      const newCondition: CompoundCondition = {
-        operator: 'and',
-        conditions: [existing, { ...defaultSimple }],
-      }
-      onUpdate({ condition: newCondition })
-    } else if (mode === 'simple' && compound) {
-      // Convert compound → simple using the first sub-condition
-      const first = subConditions[0] ?? defaultSimple
-      onUpdate({ condition: first })
-    }
-  }
-
-  // Update a single sub-condition at index i
-  const handleSubConditionChange = (i: number, updated: SimpleCondition) => {
-    if (compound) {
-      const newSubs = [...subConditions]
-      newSubs[i] = updated
-      const newCondition: CompoundCondition = { operator: currentOperator, conditions: newSubs }
-      onUpdate({ condition: newCondition })
-    } else {
-      // Simple mode: just replace the whole condition
-      onUpdate({ condition: updated })
-    }
-  }
-
-  // Add a new empty sub-condition (compound only)
-  const handleAddSubCondition = () => {
-    const newSubs = [...subConditions, { ...defaultSimple }]
-    onUpdate({ condition: { operator: currentOperator, conditions: newSubs } as CompoundCondition })
-  }
-
-  // Remove a sub-condition at index i (compound only, min 2)
-  const handleRemoveSubCondition = (i: number) => {
-    if (subConditions.length <= 2) return
-    const newSubs = subConditions.filter((_, idx) => idx !== i)
-    onUpdate({ condition: { operator: currentOperator, conditions: newSubs } as CompoundCondition })
-  }
-
-  // Change AND/OR operator
-  const handleOperatorChange = (op: ConditionOperator) => {
-    if (compound) {
-      onUpdate({ condition: { operator: op, conditions: subConditions } as CompoundCondition })
-    }
-  }
-
-  return (
-    <>
-      <div className="form-divider" />
-      <h5>Decision Condition</h5>
-      <p className="muted small">Define when this decision evaluates to true.</p>
-
-      {analysisInputs.length === 0 ? (
-        <div className="condition-warning">
-          <p className="muted small warning">
-            No variables defined. Add variables in the Variables panel first.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Mode toggle: Simple / Compound */}
-          <div className="form-group">
-            <label>Mode</label>
-            <div className="condition-mode-toggle">
-              <button
-                className={`btn-toggle ${!compound ? 'active' : ''}`}
-                onClick={() => handleModeToggle('simple')}
-              >
-                Simple
-              </button>
-              <button
-                className={`btn-toggle ${compound ? 'active' : ''}`}
-                onClick={() => handleModeToggle('compound')}
-              >
-                Compound
-              </button>
-            </div>
-          </div>
-
-          {/* AND/OR selector for compound mode */}
-          {compound && (
-            <div className="form-group">
-              <label>Operator</label>
-              <div className="condition-mode-toggle">
-                <button
-                  className={`btn-toggle ${currentOperator === 'and' ? 'active' : ''}`}
-                  onClick={() => handleOperatorChange('and')}
-                >
-                  AND
-                </button>
-                <button
-                  className={`btn-toggle ${currentOperator === 'or' ? 'active' : ''}`}
-                  onClick={() => handleOperatorChange('or')}
-                >
-                  OR
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-condition rows */}
-          {subConditions.map((sub, i) => (
-            <div key={i}>
-              {compound && i > 0 && (
-                <div className="compound-operator-label">{currentOperator.toUpperCase()}</div>
-              )}
-              <SimpleConditionRow
-                condition={sub}
-                analysisInputs={analysisInputs}
-                onChange={(updated) => handleSubConditionChange(i, updated)}
-                onRemove={() => handleRemoveSubCondition(i)}
-                showRemoveButton={compound && subConditions.length > 2}
-              />
-            </div>
-          ))}
-
-          {/* Add sub-condition button (compound only) */}
-          {compound && (
-            <button className="btn btn-sm" onClick={handleAddSubCondition}>
-              + Add condition
-            </button>
-          )}
-
-          {/* Condition preview */}
-          {condition && (
-            <div className="condition-preview">
-              <p className="muted small">
-                <strong>Preview:</strong> {formatConditionPreview(condition, analysisInputs)}
-              </p>
-            </div>
-          )}
-        </>
-      )}
-    </>
-  )
-}
-
-/**
- * CalculationConfigEditor - Configuration panel for calculation nodes.
- * Allows selecting an operator, configuring operands (variable references or literals),
- * and specifying the output variable name.
- */
-export function CalculationConfigEditor({
-  node,
-  analysisInputs,
-  onUpdate,
-}: {
-  node: FlowNode
-  analysisInputs: WorkflowInput[]
-  onUpdate: (updates: Partial<FlowNode>) => void
-}) {
-  // Get current calculation config or create empty one
-  const calculation: CalculationConfigType = node.calculation ?? {
-    output: { name: '', description: '' },
-    operator: 'add',
-    operands: []
-  }
-
-  // Get the selected operator definition
-  const selectedOperator = getOperator(calculation.operator)
-  const minOperands = selectedOperator?.minArity ?? 2
-  const maxOperands = selectedOperator?.maxArity ?? null // null = unlimited
-
-  // Filter to only numeric variables
-  const numericVariables = analysisInputs.filter(v =>
-    v.type === 'number'
-  )
-
-  // Validation errors state
-  const [validationErrors, setValidationErrors] = useState<string[]>([])
-
-  // Validate the calculation configuration
-  const validateCalculation = useCallback((calc: CalculationConfigType): string[] => {
-    const errors: string[] = []
-
-    // Check output name
-    if (!calc.output.name.trim()) {
-      errors.push('Output variable name is required')
-    }
-
-    // Check operator
-    const op = getOperator(calc.operator)
-    if (!op) {
-      errors.push(`Unknown operator: ${calc.operator}`)
-    } else {
-      // Check operand count
-      if (calc.operands.length < op.minArity) {
-        errors.push(`${op.displayName} requires at least ${op.minArity} operand(s)`)
-      }
-      if (op.maxArity !== null && calc.operands.length > op.maxArity) {
-        errors.push(`${op.displayName} accepts at most ${op.maxArity} operand(s)`)
-      }
-    }
-
-    // Check each operand
-    calc.operands.forEach((operand, idx) => {
-      if (operand.kind === 'variable') {
-        if (!operand.ref) {
-          errors.push(`Operand ${idx + 1}: Variable reference is required`)
-        } else {
-          // Check if variable exists
-          const varExists = analysisInputs.some(v => v.id === operand.ref)
-          if (!varExists) {
-            errors.push(`Operand ${idx + 1}: Variable "${operand.ref}" not found`)
-          }
-        }
-      } else if (operand.kind === 'literal') {
-        if (operand.value === undefined || operand.value === null || isNaN(operand.value)) {
-          errors.push(`Operand ${idx + 1}: Numeric value is required`)
-        }
-      }
-    })
-
-    return errors
-  }, [analysisInputs])
-
-  // Validate on calculation change
-  useEffect(() => {
-    const errors = validateCalculation(calculation)
-    setValidationErrors(errors)
-  }, [calculation, validateCalculation])
-
-  // Update the calculation field on the node
-  const updateCalculation = (updates: Partial<CalculationConfigType>) => {
-    const newCalculation: CalculationConfigType = {
-      ...calculation,
-      ...updates,
-    }
-    onUpdate({ calculation: newCalculation })
-  }
-
-  // Update output name
-  const updateOutputName = (name: string) => {
-    updateCalculation({
-      output: { ...calculation.output, name }
-    })
-  }
-
-  // Update output description
-  const updateOutputDescription = (description: string) => {
-    updateCalculation({
-      output: { ...calculation.output, description }
-    })
-  }
-
-  // Handle operator change - reset operands if arity requirements change
-  const handleOperatorChange = (operatorName: string) => {
-    const newOp = getOperator(operatorName)
-    if (!newOp) return
-
-    // Adjust operands array to meet new arity requirements
-    let newOperands = [...calculation.operands]
-
-    // If we have fewer than min, add empty variable operands
-    while (newOperands.length < newOp.minArity) {
-      newOperands.push({ kind: 'variable', ref: '' })
-    }
-
-    // If we have more than max (and max is not null), truncate
-    if (newOp.maxArity !== null && newOperands.length > newOp.maxArity) {
-      newOperands = newOperands.slice(0, newOp.maxArity)
-    }
-
-    updateCalculation({
-      operator: operatorName,
-      operands: newOperands
-    })
-  }
-
-  // Update a specific operand
-  const updateOperand = (index: number, operand: Operand) => {
-    const newOperands = [...calculation.operands]
-    newOperands[index] = operand
-    updateCalculation({ operands: newOperands })
-  }
-
-  // Add a new operand (for variadic operators)
-  const addOperand = () => {
-    if (maxOperands !== null && calculation.operands.length >= maxOperands) return
-    updateCalculation({
-      operands: [...calculation.operands, { kind: 'variable', ref: '' }]
-    })
-  }
-
-  // Remove an operand (respecting minimum arity)
-  const removeOperand = (index: number) => {
-    if (calculation.operands.length <= minOperands) return
-    const newOperands = calculation.operands.filter((_, i) => i !== index)
-    updateCalculation({ operands: newOperands })
-  }
-
-  // Toggle operand between variable and literal
-  const toggleOperandKind = (index: number) => {
-    const current = calculation.operands[index]
-    if (current.kind === 'variable') {
-      updateOperand(index, { kind: 'literal', value: 0 })
-    } else {
-      updateOperand(index, { kind: 'variable', ref: '' })
-    }
-  }
-
-  // Group operators by category for the dropdown
-  const unaryOps = getOperatorsByCategory('unary')
-  const binaryOps = getOperatorsByCategory('binary')
-  const variadicOps = getOperatorsByCategory('variadic')
-
-  // Check if we can add more operands
-  const canAddOperand = maxOperands === null || calculation.operands.length < maxOperands
-  const canRemoveOperand = calculation.operands.length > minOperands
-
-  return (
-    <>
-      <div className="form-divider" />
-      <h5>Calculation Configuration</h5>
-      <p className="muted small">Define a mathematical operation on workflow variables.</p>
-
-      {/* Output variable name */}
-      <div className="form-group">
-        <label>Output Variable Name</label>
-        <input
-          type="text"
-          value={calculation.output.name}
-          onChange={(e) => updateOutputName(e.target.value)}
-          placeholder="e.g., BMI, TotalScore"
-        />
-        <p className="muted small">
-          Name for the calculated result. Will create variable: var_{'{slug}'}_number
-        </p>
-      </div>
-
-      {/* Output description (optional) */}
-      <div className="form-group">
-        <label>Description (optional)</label>
-        <input
-          type="text"
-          value={calculation.output.description || ''}
-          onChange={(e) => updateOutputDescription(e.target.value)}
-          placeholder="e.g., Body Mass Index"
-        />
-      </div>
-
-      <div className="form-divider" />
-
-      {/* Operator selector */}
-      <div className="form-group">
-        <label>Operator</label>
-        <select
-          value={calculation.operator}
-          onChange={(e) => handleOperatorChange(e.target.value)}
-        >
-          <optgroup label="Unary (1 operand)">
-            {unaryOps.map(op => (
-              <option key={op.name} value={op.name}>
-                {op.symbol} - {op.displayName}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Binary (2 operands)">
-            {binaryOps.map(op => (
-              <option key={op.name} value={op.name}>
-                {op.symbol} - {op.displayName}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Variadic (2+ operands)">
-            {variadicOps.map(op => (
-              <option key={op.name} value={op.name}>
-                {op.symbol} - {op.displayName}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        {selectedOperator && (
-          <p className="muted small">{selectedOperator.description}</p>
-        )}
-      </div>
-
-      <div className="form-divider" />
-
-      {/* Operands section */}
-      <div className="form-group">
-        <label>
-          Operands
-          {selectedOperator && (
-            <span className="operand-count">
-              {' '}({calculation.operands.length}/{maxOperands ?? '∞'})
-            </span>
-          )}
-        </label>
-
-        {numericVariables.length === 0 && (
-          <div className="calc-warning">
-            <p className="muted small warning">
-              No numeric variables defined. Add int, float, or number variables in the Variables panel.
-            </p>
-          </div>
-        )}
-
-        <div className="operands-list">
-          {calculation.operands.map((operand, index) => (
-            <div className="operand-row" key={index}>
-              <span className="operand-index">{index + 1}.</span>
-
-              {/* Kind toggle button */}
-              <button
-                className="operand-kind-toggle ghost"
-                onClick={() => toggleOperandKind(index)}
-                title={operand.kind === 'variable' ? 'Switch to literal value' : 'Switch to variable'}
-              >
-                {operand.kind === 'variable' ? 'var' : '123'}
-              </button>
-
-              {/* Operand value input */}
-              {operand.kind === 'variable' ? (
-                <select
-                  className="operand-input"
-                  value={operand.ref || ''}
-                  onChange={(e) => updateOperand(index, { kind: 'variable', ref: e.target.value })}
-                >
-                  <option value="">Select variable...</option>
-                  {numericVariables.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} ({v.type})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="number"
-                  className="operand-input"
-                  value={operand.value ?? ''}
-                  onChange={(e) => updateOperand(index, {
-                    kind: 'literal',
-                    value: parseFloat(e.target.value) || 0
-                  })}
-                  placeholder="Enter number"
-                  step="any"
-                />
-              )}
-
-              {/* Remove button */}
-              {canRemoveOperand && (
-                <button
-                  className="operand-remove ghost"
-                  onClick={() => removeOperand(index)}
-                  title="Remove operand"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Add operand button (for variadic) */}
-        {canAddOperand && (
-          <button
-            className="ghost add-operand-btn"
-            onClick={addOperand}
-          >
-            + Add Operand
-          </button>
-        )}
-      </div>
-
-      {/* Formula preview */}
-      <div className="form-divider" />
-      <div className="calc-preview">
-        <label>Preview</label>
-        <div className="calc-formula">
-          {formatCalculationPreview(calculation, analysisInputs)}
-        </div>
-      </div>
-
-      {/* Validation errors */}
-      {validationErrors.length > 0 && (
-        <div className="calc-validation-errors">
-          <label className="error-label">Validation Issues</label>
-          <ul className="error-list">
-            {validationErrors.map((err, i) => (
-              <li key={i}>{err}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  )
-}
-
-/**
- * Format a calculation as a human-readable formula for preview.
- */
-function formatCalculationPreview(calc: CalculationConfigType, inputs: WorkflowInput[]): string {
-  const op = getOperator(calc.operator)
-  if (!op) return '(invalid operator)'
-
-  // Format operands
-  const formatOperand = (operand: Operand): string => {
-    if (operand.kind === 'literal') {
-      return String(operand.value ?? '?')
-    }
-    // Variable reference - show name if found
-    const variable = inputs.find(v => v.id === operand.ref)
-    return variable?.name ?? (operand.ref || '?')
-  }
-
-  const operandStrs = calc.operands.map(formatOperand)
-  const outputName = calc.output.name || 'result'
-
-  // Format based on operator category
-  if (op.category === 'unary') {
-    const arg = operandStrs[0] ?? '?'
-    return `${outputName} = ${op.symbol.replace('x', arg)}`
-  }
-
-  if (op.category === 'binary') {
-    const [a, b] = operandStrs
-    // Replace 'a' and 'b' in symbol
-    let formula = op.symbol.replace('a', a ?? '?').replace('b', b ?? '?')
-    return `${outputName} = ${formula}`
-  }
-
-  // Variadic - join with symbol
-  if (operandStrs.length === 0) {
-    return `${outputName} = ${op.symbol}(?)`
-  }
-
-  // Special formatting for function-style operators
-  if (['min', 'max', 'sum', 'average', 'hypot', 'variance', 'std_dev', 'range', 'geometric_mean', 'harmonic_mean'].includes(op.name)) {
-    return `${outputName} = ${op.name}(${operandStrs.join(', ')})`
-  }
-
-  // Default: join with symbol
-  return `${outputName} = ${operandStrs.join(` ${op.symbol} `)}`
 }
