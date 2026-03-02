@@ -232,29 +232,58 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "For 'end' nodes: Static literal value to return (e.g., 42, true, 'fixed string').",
                         },
                         "condition": {
-                            "type": "object",
                             "description": (
-                                "REQUIRED for 'decision' nodes: Structured condition to evaluate. "
-                                "Must include input_id (e.g., 'input_age_int'), comparator, and value. "
-                                "See system prompt for valid comparators by input type."
+                                "REQUIRED for 'decision' nodes. Can be simple or compound.\n"
+                                "Simple: {input_id, comparator, value, value2?}\n"
+                                "Compound: {operator: 'and'|'or', conditions: [simple, simple, ...]}\n"
+                                "Use compound when a decision checks MULTIPLE variables (e.g., 'Symptoms AND A1c > 58').\n"
+                                "Compound must have >= 2 sub-conditions. No nesting."
                             ),
-                            "properties": {
-                                "input_id": {"type": "string", "description": "ID of the workflow input to check"},
-                                "comparator": {
-                                    "type": "string",
-                                    "enum": [
-                                        "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
-                                        "is_true", "is_false",
-                                        "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
-                                        "date_eq", "date_before", "date_after", "date_between",
-                                        "enum_eq", "enum_neq"
-                                    ],
-                                    "description": "Comparison operator"
+                            "oneOf": [
+                                {
+                                    "type": "object",
+                                    "description": "Simple condition",
+                                    "properties": {
+                                        "input_id": {"type": "string", "description": "ID of the workflow variable to check"},
+                                        "comparator": {
+                                            "type": "string",
+                                            "enum": [
+                                                "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
+                                                "is_true", "is_false",
+                                                "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
+                                                "date_eq", "date_before", "date_after", "date_between",
+                                                "enum_eq", "enum_neq"
+                                            ],
+                                            "description": "Comparison operator"
+                                        },
+                                        "value": {"description": "Value to compare against"},
+                                        "value2": {"description": "Second value for range comparators (within_range, date_between)"}
+                                    },
+                                    "required": ["input_id", "comparator"]
                                 },
-                                "value": {"description": "Value to compare against"},
-                                "value2": {"description": "Second value for range comparators (within_range, date_between)"}
-                            },
-                            "required": ["input_id", "comparator", "value"]
+                                {
+                                    "type": "object",
+                                    "description": "Compound condition (AND/OR)",
+                                    "properties": {
+                                        "operator": {"type": "string", "enum": ["and", "or"]},
+                                        "conditions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "input_id": {"type": "string"},
+                                                    "comparator": {"type": "string"},
+                                                    "value": {},
+                                                    "value2": {}
+                                                },
+                                                "required": ["input_id", "comparator"]
+                                            },
+                                            "minItems": 2
+                                        }
+                                    },
+                                    "required": ["operator", "conditions"]
+                                }
+                            ]
                         },
                         "subworkflow_id": {
                             "type": "string",
@@ -378,18 +407,30 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "For 'end' nodes: Static value (or JSON string).",
                         },
                         "condition": {
-                            "type": "object",
                             "description": (
-                                "For 'decision' nodes: Structured condition to evaluate. "
+                                "For 'decision' nodes: Simple or compound condition. "
                                 "See add_node for full schema details."
                             ),
-                            "properties": {
-                                "input_id": {"type": "string"},
-                                "comparator": {"type": "string"},
-                                "value": {},
-                                "value2": {}
-                            },
-                            "required": ["input_id", "comparator", "value"]
+                            "oneOf": [
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "input_id": {"type": "string"},
+                                        "comparator": {"type": "string"},
+                                        "value": {},
+                                        "value2": {}
+                                    },
+                                    "required": ["input_id", "comparator"]
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "operator": {"type": "string", "enum": ["and", "or"]},
+                                        "conditions": {"type": "array", "minItems": 2}
+                                    },
+                                    "required": ["operator", "conditions"]
+                                }
+                            ]
                         },
                         "subworkflow_id": {
                             "type": "string",
@@ -558,14 +599,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
                                     "condition": {
-                                        "type": "object",
-                                        "description": "For decision nodes: {input_id, comparator, value, value2?}",
-                                        "properties": {
-                                            "input_id": {"type": "string"},
-                                            "comparator": {"type": "string"},
-                                            "value": {},
-                                            "value2": {}
-                                        }
+                                        "description": "For decision nodes: simple {input_id, comparator, value} or compound {operator, conditions: [...]}",
                                     },
                                     "output_type": {"type": "string", "enum": ["string", "number", "bool", "json"]},
                                     "output_template": {"type": "string"},
@@ -1047,12 +1081,20 @@ def build_system_prompt(
         "Use list_workflow_variables(workflow_id) to see what variables already exist AND to get their IDs.\n\n"
         "## Decision Node Conditions (CRITICAL)\n"
         "EVERY decision node MUST have a structured `condition` that defines the logic.\n\n"
-        "### Condition Structure\n"
-"A condition is an object with these fields:\n"
-        "- `input_id`: ID of the workflow variable to check (e.g., 'var_patient_age_number' or 'var_sub_creditscore_number')\n"
+        "### Simple Condition\n"
+        "An object with these fields:\n"
+        "- `input_id`: ID of the workflow variable to check (e.g., 'var_patient_age_number')\n"
         "- `comparator`: The comparison operator (see table below)\n"
         "- `value`: Value to compare against\n"
         "- `value2`: (Optional) Second value for range comparators\n\n"
+        "### Compound Condition (AND/OR)\n"
+        "When a decision checks MULTIPLE variables, use a compound condition:\n"
+        "- `operator`: 'and' or 'or'\n"
+        "- `conditions`: Array of 2+ simple conditions (no nesting)\n\n"
+        "Example: {\"operator\": \"and\", \"conditions\": [\n"
+        "  {\"input_id\": \"var_symptoms_bool\", \"comparator\": \"is_true\"},\n"
+        "  {\"input_id\": \"var_a1c_number\", \"comparator\": \"gt\", \"value\": 58}\n"
+        "]}\n\n"
         "### Comparators by Variable Type\n"
         "| Variable Type | Valid Comparators |\n"
         "|---------------|-------------------|\n"
@@ -1067,7 +1109,8 @@ def build_system_prompt(
         "- For input variables: var_{slug}_{type}\n"
         "- For subprocess outputs: var_sub_{slug}_{type}\n"
         "- The comparator MUST be valid for the variable's type\n"
-        "- For within_range/date_between, you MUST provide both value and value2\n\n"
+        "- For within_range/date_between, you MUST provide both value and value2\n"
+        "- Use compound conditions when a single decision depends on MULTIPLE variables\n\n"
         "## Calculation Nodes (Mathematical Operations)\n"
         "Use calculation nodes to perform mathematical operations on workflow variables.\n\n"
         "WHEN TO USE CALCULATION:\n"

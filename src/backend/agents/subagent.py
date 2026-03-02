@@ -123,8 +123,11 @@ Rules:
   "admission_required") that have no underlying numeric threshold.
 - If a decision/action depends on one or more inputs, include "input_ids" on that node
   referencing the input ids.
-- Every DECISION node MUST include a structured "condition" object:
-  {"input_id": "...", "comparator": "...", "value": ..., "value2": ... optional}
+- Every DECISION node MUST include a structured "condition" object.
+  Simple condition: {"input_id": "...", "comparator": "...", "value": ..., "value2": ... optional}
+  Compound condition (AND/OR): {"operator": "and"|"or", "conditions": [simple, simple, ...]}
+  - Use compound when a decision checks MULTIPLE variables (e.g., "Symptoms present AND A1c > 58").
+  - Compound conditions must have >= 2 sub-conditions. No nesting allowed.
   - int/float comparators: eq, neq, lt, lte, gt, gte, within_range
   - bool comparators: is_true, is_false
   - string comparators: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
