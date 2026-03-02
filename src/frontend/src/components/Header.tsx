@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { logoutUser } from '../api/auth'
 import { useUIStore } from '../stores/uiStore'
@@ -6,6 +7,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import toast from 'react-hot-toast'
 
 export default function Header() {
+  const navigate = useNavigate()
   const { openModal, setError, devMode, toggleDevMode } = useUIStore()
   const { currentWorkflow, flowchart } = useWorkflowStore()
 
@@ -37,15 +39,15 @@ export default function Header() {
   const handleLogout = useCallback(async () => {
     try {
       await logoutUser()
-      window.location.hash = '#/auth'
+      navigate('/auth')
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Sign out failed.'
       setError(message)
     }
-  }, [setError])
+  }, [setError, navigate])
 
   return (
-    <header className="app-header">
+    <header className="app-header animate-slide-down-1">
       <div className="logo" onClick={handleLogoClick} style={{ cursor: 'pointer', position: 'relative' }}>
         <span className="logo-mark">L</span>
         <span className="logo-text">LEMON</span>
@@ -64,7 +66,7 @@ export default function Header() {
       </div>
 
       <div className="header-actions">
-        <button className="ghost" onClick={() => { window.location.hash = '#/library' }}>
+        <button className="ghost" onClick={() => navigate('/library')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
@@ -84,7 +86,7 @@ export default function Header() {
         <button
           className="ghost"
           disabled={!canExport}
-          onClick={() => { window.location.hash = '#/export' }}
+          onClick={() => navigate('/export')}
           title={canExport ? 'Export workflow' : 'No workflow to export'}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

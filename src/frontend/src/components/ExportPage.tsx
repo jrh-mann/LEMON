@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { exportAsJSON, exportAsPNG, exportAsPython } from '../utils/exportUtils'
 import '../styles/ExportPage.css'
 
 export default function ExportPage() {
+    const navigate = useNavigate()
     const { currentWorkflow, flowchart, currentAnalysis } = useWorkflowStore()
     const [exporting, setExporting] = useState<string | null>(null)
     const [lastResult, setLastResult] = useState<Record<string, string | null>>({})
@@ -46,7 +48,7 @@ export default function ExportPage() {
         <div className="export-page">
             <header className="export-header">
                 <div className="export-header-left">
-                    <button className="ghost export-back-btn" onClick={() => { window.location.hash = '#/workflow' }}>
+                    <button className="ghost export-back-btn" onClick={() => navigate('/workflow')}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>
@@ -65,7 +67,7 @@ export default function ExportPage() {
                 {!canExport ? (
                     <div className="export-empty">
                         <p>No workflow to export. Create or open a workflow first.</p>
-                        <button className="primary" onClick={() => { window.location.hash = '#/workflow' }}>
+                        <button className="primary" onClick={() => navigate('/workflow')}>
                             Go to Workflow Editor
                         </button>
                     </div>

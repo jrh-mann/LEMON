@@ -68,7 +68,7 @@ export async function apiRequest<T>(
   if (response.status === 401 && typeof window !== 'undefined') {
     const isAuthEndpoint = endpoint.includes('/api/auth/login')
     if (!isAuthEndpoint) {
-      window.location.hash = '#/auth'
+      window.location.href = '/auth'
     }
   }
 

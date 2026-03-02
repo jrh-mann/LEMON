@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
 import { Toaster } from 'react-hot-toast'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './styles.css'
 import AuthPage from './components/AuthPage'
 import Header from './components/Header'
@@ -8,28 +8,9 @@ import LibraryPage from './components/LibraryPage'
 import ExportPage from './components/ExportPage'
 import WorkflowTransitionLayer from './components/WorkflowTransitionLayer'
 
-type Route = 'auth' | 'workflow' | 'library' | 'export'
-
-function parseRoute(): Route {
-  const hash = window.location.hash
-  if (hash.startsWith('#/auth') || hash === '#auth') return 'auth'
-  if (hash.startsWith('#/library')) return 'library'
-  if (hash.startsWith('#/export')) return 'export'
-  // Both home and workflow now go to the unified WorkflowPage
-  return 'workflow'
-}
-
 function App() {
-  const [route, setRoute] = useState<Route>(() => parseRoute())
-
-  useEffect(() => {
-    const handleHashChange = () => setRoute(parseRoute())
-    window.addEventListener('hashchange', handleHashChange)
-    return () => window.removeEventListener('hashchange', handleHashChange)
-  }, [])
-
   return (
-    <>
+    <BrowserRouter>
       <div className="backdrop"></div>
       <Toaster position="bottom-right" toastOptions={{
         style: {
@@ -38,18 +19,28 @@ function App() {
           border: '1px solid var(--border-color, var(--edge))'
         }
       }} />
-      {route === 'auth' ? (
-        <AuthPage />
-      ) : (
-        <div className="page-transition-wrapper">
-          <Header />
-          {route === 'workflow' && <WorkflowPage />}
-          {route === 'library' && <LibraryPage />}
-          {route === 'export' && <ExportPage />}
-        </div>
-      )}
+      
+      <Routes>
+        {/* Auth page - no header */}
+        <Route path="/auth" element={<AuthPage />} />
+        
+        {/* All other pages - with header */}
+        <Route path="*" element={
+          <div className="page-transition-wrapper">
+            <Header />
+            <Routes>
+              <Route path="/library" element={<LibraryPage />} />
+              <Route path="/export" element={<ExportPage />} />
+              <Route path="/workflow/:id?" element={<WorkflowPage />} />
+              <Route path="/" element={<Navigate to="/workflow" replace />} />
+              <Route path="*" element={<Navigate to="/workflow" replace />} />
+            </Routes>
+          </div>
+        } />
+      </Routes>
+      
       <WorkflowTransitionLayer />
-    </>
+    </BrowserRouter>
   )
 }
 
