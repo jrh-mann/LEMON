@@ -3,7 +3,15 @@ import { useUIStore } from '../stores/uiStore'
 import '../styles/WorkflowTransitionLayer.css'
 
 export default function WorkflowTransitionLayer() {
-    const { zoomingCard, setZoomingCard, zoomPhase, setZoomPhase, revealWorkspace, setIsTransitioning } = useUIStore()
+    const { 
+        zoomingCard, 
+        setZoomingCard, 
+        zoomPhase, 
+        setZoomPhase, 
+        revealWorkspace, 
+        setIsTransitioning,
+        setHomeExited
+    } = useUIStore()
 
     useEffect(() => {
         if (zoomingCard && zoomPhase === 'idle') {
@@ -17,20 +25,26 @@ export default function WorkflowTransitionLayer() {
 
     useEffect(() => {
         if (zoomPhase === 'fading') {
+            // 1. Mark transition active
             setIsTransitioning(true)
+            
+            // 2. Ensure home is exited (center content hidden)
+            setHomeExited(true)
+            
+            // 3. Trigger reveal animation (sidebars slide in)
             revealWorkspace()
 
             const endTimer = setTimeout(() => {
                 setIsTransitioning(false)
                 setZoomingCard(null)
                 setZoomPhase('idle')
-            }, 400) // Wait for full 400ms animation to complete
+            }, 500) // Match the 500ms duration used in WorkflowPage triggerReveal
 
             return () => {
                 clearTimeout(endTimer)
             }
         }
-    }, [zoomPhase, setZoomingCard, setZoomPhase, revealWorkspace, setIsTransitioning])
+    }, [zoomPhase, setZoomingCard, setZoomPhase, revealWorkspace, setIsTransitioning, setHomeExited])
 
     if (!zoomingCard) return null
 

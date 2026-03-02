@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import Palette from './Palette'
 import Canvas from './Canvas'
 import RightSidebar from './RightSidebar'
@@ -21,29 +22,64 @@ import type { WorkflowAnalysis, Workflow } from '../types'
 import '../styles/HomePage.css'
 
 export default function WorkflowPage() {
+    const { id: workflowId } = useParams<{ id: string }>()
+    const navigate = useNavigate()
     const [authReady, setAuthReady] = useState(false)
-    // State
-    const {
-        workspaceRevealed,
-        revealWorkspace,
-        isTransitioning,
-        setIsTransitioning,
-        chatHeight,
-        setError,
-        error,
-        clearError
-    } = useUIStore()
+    
+    // UI Store state
+    const workspaceRevealed = useUIStore(s => s.workspaceRevealed)
+    const homeExited = useUIStore(s => s.homeExited)
+    const isTransitioning = useUIStore(s => s.isTransitioning)
+    const chatHeight = useUIStore(s => s.chatHeight)
+    const error = useUIStore(s => s.error)
+    
+    // UI Store actions
+    const revealWorkspace = useUIStore(s => s.revealWorkspace)
+    const setHomeExited = useUIStore(s => s.setHomeExited)
+    const setIsTransitioning = useUIStore(s => s.setIsTransitioning)
+    const setError = useUIStore(s => s.setError)
+    const clearError = useUIStore(s => s.clearError)
+    
+    // Workflow Store
     const { setCurrentWorkflow, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
+
+    // Trigger reveal with transition tracking
+    const triggerReveal = useCallback(() => {
+        setIsTransitioning(true)
+        revealWorkspace()
+        // Clear transition state after animation completes
+        setTimeout(() => setIsTransitioning(false), 500)
+    }, [revealWorkspace, setIsTransitioning])
+
+    /**
+     * Orchestrates the transition from Home to Workspace:
+     * 1. Trigger Home Exit animation
+     * 2. Wait for animation to finish
+     * 3. Navigate to route with ID (generate if needed)
+     * 4. Trigger Workspace Reveal animation
+     */
+    const startWorkflowSession = useCallback(async (existingId?: string) => {
+        const id = existingId || crypto.randomUUID()
+        
+        // 1. Play Home Exit animation
+        setHomeExited(true)
+        
+        // 2. Wait for exit animation (opacity/slide up) to finish
+        await new Promise(resolve => setTimeout(resolve, 400))
+        
+        // 3. Navigate to route with ID
+        navigate(`/workflow/${id}`)
+        
+        // 4. Trigger Workspace Reveal (sidebars slide in)
+        triggerReveal()
+    }, [navigate, setHomeExited, triggerReveal])
 
     // Home chatbox state
     const [homeChatInput, setHomeChatInput] = useState('')
     const [isHomeSending, setIsHomeSending] = useState(false)
     const homeFileInputRef = useRef<HTMLInputElement>(null)
-
-    // Track transition state for animations
-    // const [isTransitioning, setIsTransitioning] = useState(false) // Removed as per instruction
 
     // Initialize session and socket connection
     useSession(authReady)
@@ -58,7 +94,7 @@ export default function WorkflowPage() {
             } catch (err) {
                 if (!isActive) return
                 if (err instanceof ApiError && err.status === 401) {
-                    window.location.hash = '#/auth'
+                    navigate('/auth')
                     return
                 }
                 setError('Unable to verify your session. Please try again.')
@@ -66,22 +102,15 @@ export default function WorkflowPage() {
         }
         checkAuth()
         return () => { isActive = false }
-    }, [setError])
+    }, [setError, navigate])
 
     // Load workflow from URL params
     useEffect(() => {
-        if (!authReady) return
-        const params = new URLSearchParams(window.location.hash.split('?')[1] || '')
-        const workflowId = params.get('id')
-        if (!workflowId) return
-        if (loadedWorkflowIdRef.current === workflowId) return
-
-        // If loading a specific workflow, reveal workspace immediately
-        // BUT ONLY if we aren't currently transitioning from a card click
-        const { zoomingCard } = useUIStore.getState()
-        if (!workspaceRevealed && !zoomingCard) {
-            revealWorkspace()
+        if (!authReady || !workflowId) {
+            return
         }
+        
+        if (loadedWorkflowIdRef.current === workflowId) return
 
         let isActive = true
         const loadWorkflow = async () => {
@@ -111,6 +140,16 @@ export default function WorkflowPage() {
                 }
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId
+
+                // After state is set, trigger the staggered reveal if we are still hidden
+                // and NOT currently in a card-zoom transition
+                const state = useUIStore.getState()
+                if (!state.workspaceRevealed && !state.zoomingCard) {
+                    // Mark home as exited for direct loads
+                    setHomeExited(true)
+                    // Small delay to ensure React has rendered the nodes
+                    setTimeout(triggerReveal, 50)
+                }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : 'Unknown error'
                 setError(`Failed to load workflow (${workflowId}): ${msg}`)
@@ -118,7 +157,7 @@ export default function WorkflowPage() {
         }
         loadWorkflow()
         return () => { isActive = false }
-    }, [authReady, setAnalysis, setCurrentWorkflow, setError, setFlowchart, workspaceRevealed, revealWorkspace])
+    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setError, setFlowchart, triggerReveal, setHomeExited])
 
     // Error toast auto-dismiss
     useEffect(() => {
@@ -127,14 +166,6 @@ export default function WorkflowPage() {
             return () => clearTimeout(timer)
         }
     }, [error, clearError])
-
-    // Trigger reveal with transition tracking
-    const triggerReveal = useCallback(() => {
-        setIsTransitioning(true)
-        revealWorkspace()
-        // Clear transition state after animation completes
-        setTimeout(() => setIsTransitioning(false), 500)
-    }, [revealWorkspace, setIsTransitioning])
 
     // Home chatbox: send message and trigger transition
     const handleHomeSend = useCallback(async () => {
@@ -146,14 +177,15 @@ export default function WorkflowPage() {
         // Add user message to store locally so it appears in chat history right away
         sendUserMessage(text)
 
-        triggerReveal()
+        // Orchestrate exit sequence
+        await startWorkflowSession()
 
         // Small delay to let transition begin and socket initialize
         setTimeout(() => {
             sendChatMessage(text)
             setIsHomeSending(false)
         }, 300)
-    }, [homeChatInput, isHomeSending, triggerReveal, sendUserMessage])
+    }, [homeChatInput, isHomeSending, sendUserMessage, startWorkflowSession])
 
     // Home chatbox: key handler
     const handleHomeKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -217,13 +249,15 @@ export default function WorkflowPage() {
                 ? `File "${names[0]}" uploaded. You can now ask me to analyse it.`
                 : `Uploaded ${names.length} files: ${names.join(', ')}.`
             addAssistantMessage(msg)
-            triggerReveal()
+            
+            // Orchestrate exit sequence
+            startWorkflowSession()
         }
 
         if (homeFileInputRef.current) {
             homeFileInputRef.current.value = ''
         }
-    }, [addPendingFile, setError, triggerReveal])
+    }, [addPendingFile, setError, startWorkflowSession])
 
     const revealedClass = workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
 
@@ -239,15 +273,15 @@ export default function WorkflowPage() {
             </div>
 
             {/* Home content - floating on top of canvas when not revealed */}
-            <div className={`home-floating ${workspaceRevealed ? 'home-floating-exit' : ''}`}>
+            <div className={`home-floating ${homeExited ? 'home-floating-exit' : ''}`}>
                 <div className="home-content">
-                    <div className="home-greeting">
+                    <div className="home-greeting animate-slide-down-2">
                         <span className="greeting-sparkle">✦</span>
                         <h2 className="greeting-subtitle">Hi there</h2>
                         <h1 className="greeting-title">Where should we start?</h1>
                     </div>
 
-                    <div className="home-chat-bar">
+                    <div className="home-chat-bar animate-slide-down-3">
                         <textarea
                             className="home-chat-input"
                             placeholder="Describe a workflow to build..."
@@ -273,8 +307,8 @@ export default function WorkflowPage() {
                         </div>
                     </div>
 
-                    <div className="home-chips">
-                        <button className="home-chip" onClick={() => { window.location.hash = '#/library' }}>
+                    <div className="home-chips animate-slide-down-4">
+                        <button className="home-chip" onClick={() => navigate('/library')}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
                                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
@@ -300,7 +334,7 @@ export default function WorkflowPage() {
                             onChange={handleHomeFileUpload}
                         />
 
-                        <button className="home-chip" onClick={() => { triggerReveal() }}>
+                        <button className="home-chip" onClick={() => { startWorkflowSession() }}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M12 5v14M5 12h14" />
                             </svg>

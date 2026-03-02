@@ -12,7 +12,7 @@
     justify-content: center;
     pointer-events: none;
     /* Let canvas clicks through */
-    transition: opacity 0.35s ease, transform 0.35s ease;
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .home-floating>* {
@@ -23,7 +23,7 @@
 /* Exit animation when workspace reveals */
 .home-floating.home-floating-exit {
     opacity: 0;
-    transform: translateY(-30px);
+    transform: translateY(-40px);
     pointer-events: none !important;
 }
 

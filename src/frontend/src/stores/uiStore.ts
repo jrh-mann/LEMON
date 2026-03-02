@@ -47,6 +47,7 @@ interface UIState {
 
   // Workspace reveal (home -> workflow transition)
   workspaceRevealed: boolean
+  homeExited: boolean
   isTransitioning: boolean
 
   // Zooming card transition
@@ -88,6 +89,7 @@ interface UIState {
 
   // Workspace reveal
   revealWorkspace: () => void
+  setHomeExited: (exited: boolean) => void
   setIsTransitioning: (transitioning: boolean) => void
 
   // Set zooming card
@@ -121,6 +123,7 @@ export const useUIStore = create<UIState>((set) => ({
   trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
   executionLogModalOpen: false,
   workspaceRevealed: false,
+  homeExited: false,
   isTransitioning: false,
   zoomingCard: null,
   zoomPhase: 'idle',
@@ -201,7 +204,8 @@ export const useUIStore = create<UIState>((set) => ({
   setExecutionLogModalOpen: (open) => set({ executionLogModalOpen: open }),
 
   // Workspace reveal
-  revealWorkspace: () => set({ workspaceRevealed: true }),
+  revealWorkspace: () => set({ workspaceRevealed: true, homeExited: true }),
+  setHomeExited: (homeExited) => set({ homeExited }),
   setIsTransitioning: (transitioning) => set({ isTransitioning: transitioning }),
 
   setZoomingCard: (card) => set({ zoomingCard: card }),
@@ -223,6 +227,7 @@ export const useUIStore = create<UIState>((set) => ({
       panY: 0,
       chatHeight: 280,
       workspaceRevealed: false,
+      homeExited: false,
       isTransitioning: false,
       zoomingCard: null,
       zoomPhase: 'idle',
