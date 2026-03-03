@@ -119,17 +119,17 @@ class AnalyzeWorkflowTool(Tool):
         if not image_path.exists():
             return self._missing_image_response()
 
-        annotations = load_annotations(image_path, repo_root=self.repo_root)
+        img_annotations = load_annotations(image_path, repo_root=self.repo_root)
         data = self.subagent.analyze(
             image_path=image_path,
             session_id=session_id,
             feedback=feedback,
-            annotations=annotations or None,
+            img_annotations=img_annotations or None,
             stream=stream,
             should_cancel=should_cancel,
             on_thinking=on_thinking,
         )
-        return self._build_response(session_id, data, image_annotations=annotations, image_path=image_path)
+        return self._build_response(session_id, data, image_annotations=img_annotations, image_path=image_path)
 
     def _analyze_single_file(
         self,
@@ -150,18 +150,18 @@ class AnalyzeWorkflowTool(Tool):
 
         session_id = uuid4().hex
         self.history.create_session(session_id, file_name)
-        annotations = load_annotations(image_path, repo_root=self.repo_root)
+        img_annotations = load_annotations(image_path, repo_root=self.repo_root)
 
         data = self.subagent.analyze(
             image_path=image_path,
             session_id=session_id,
             feedback=None,
-            annotations=annotations or None,
+            img_annotations=img_annotations or None,
             stream=stream,
             should_cancel=should_cancel,
             on_thinking=on_thinking,
         )
-        return self._build_response(session_id, data, image_annotations=annotations, image_path=image_path)
+        return self._build_response(session_id, data, image_annotations=img_annotations, image_path=image_path)
 
     def _analyze_multi_file(
         self,

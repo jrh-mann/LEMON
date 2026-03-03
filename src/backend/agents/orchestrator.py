@@ -743,6 +743,7 @@ class Orchestrator:
                         "tool_error name=%s error=%s",
                         tool_name,
                         str(exc),
+                        exc_info=True,
                     )
                     error_msg = f"Tool error ({tool_name}): {exc}"
                     # Save to history before returning error

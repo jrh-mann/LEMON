@@ -114,7 +114,7 @@ class SocketChatTask:
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
     did_stream: bool = False
     convo: Optional[Conversation] = None
-    annotations: Optional[list[dict[str, Any]]] = None
+    img_annotations: Optional[list[dict[str, Any]]] = None
     saved_file_paths: list[dict[str, Any]] = field(default_factory=list)  # Saved file metadata
 
     def is_cancelled(self) -> bool:
@@ -313,12 +313,12 @@ class SocketChatTask:
                 self.emit_error(f"Invalid file '{file_info.get('name', '?')}': {exc}")
                 return False
         # Save annotations alongside the first image if provided
-        if self.annotations and isinstance(self.annotations, list) and self.saved_file_paths:
+        if self.img_annotations and isinstance(self.img_annotations, list) and self.saved_file_paths:
             first_image = next(
                 (f for f in self.saved_file_paths if f["file_type"] == "image"), None
             )
             if first_image:
-                save_annotations(first_image["path"], self.annotations, repo_root=self.repo_root)
+                save_annotations(first_image["path"], self.img_annotations, repo_root=self.repo_root)
         return True
 
     def _sync_payload_workflow(self) -> None:
@@ -452,7 +452,7 @@ def handle_socket_chat(
         analysis=payload.get("analysis"),
         current_workflow_id=payload.get("current_workflow_id"),  # ID of workflow on canvas
         open_tabs=payload.get("open_tabs"),  # All open tabs for list_workflows_in_library
-        annotations=payload.get("annotations"),
+        img_annotations=payload.get("annotations"),
     )
     socketio.start_background_task(task.run)
 

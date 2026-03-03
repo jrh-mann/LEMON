@@ -73,7 +73,7 @@ class Subagent:
         image_path: Path,
         session_id: str,
         feedback: Optional[str] = None,
-        annotations: Optional[List[Dict[str, Any]]] = None,
+        img_annotations: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
         on_thinking: Optional[Callable[[str], None]] = None,
@@ -301,9 +301,9 @@ by recomputing them deterministically from name + type. Respond only with the up
                     f"and (1000, 1000) is the bottom-right corner. Do NOT use raw image pixels. "
                     f"For example, the exact center of the image is (500, 500)."
                 )
-                if annotations:
+                if img_annotations:
                     scaled_anns = []
-                    for ann in annotations:
+                    for ann in img_annotations:
                         ann_copy = dict(ann)
                         if "x" in ann_copy and "y" in ann_copy:
                             ann_copy["x"] = int(ann_copy["x"] * 1000 / img_w)
@@ -311,8 +311,8 @@ by recomputing them deterministically from name + type. Respond only with the up
                         scaled_anns.append(ann_copy)
                     full_prompt += _format_annotations(scaled_anns)
             else:
-                if annotations:
-                    full_prompt += _format_annotations(annotations)
+                if img_annotations:
+                    full_prompt += _format_annotations(img_annotations)
 
             # Inject extracted guidance into the analysis prompt
             if guidance:
@@ -1068,15 +1068,15 @@ def _format_guidance(guidance: List[Dict[str, Any]], *, header: str) -> str:
     return "\n".join(parts)
 
 
-def _format_annotations(annotations: List[Dict[str, Any]]) -> str:
+def _format_annotations(img_annotations: List[Dict[str, Any]]) -> str:
     """Format user annotations into a prompt section for the LLM."""
-    if not annotations:
+    if not img_annotations:
         return ""
     lines = [
         "\n\nThe user has provided the following annotations on the image to help clarify it."
         " Coordinates have been normalized to the 0-1000 system (origin top-left):"
     ]
-    for i, ann in enumerate(annotations, 1):
+    for i, ann in enumerate(img_annotations, 1):
         ann_type = ann.get("type", "unknown")
         if ann_type == "label":
             dot_x, dot_y = ann.get("x", 0), ann.get("y", 0)

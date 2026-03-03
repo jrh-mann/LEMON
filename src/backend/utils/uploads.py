@@ -104,7 +104,7 @@ def _annotations_path_for(image_path: Path) -> Path:
 
 def save_annotations(
     image_rel_path: str,
-    annotations: List[dict[str, Any]],
+    img_annotations: List[dict[str, Any]],
     *,
     repo_root: Path,
 ) -> None:
@@ -117,8 +117,8 @@ def save_annotations(
     if not image_path.is_absolute():
         image_path = data_dir / image_path
     ann_path = _annotations_path_for(image_path)
-    ann_path.write_text(json.dumps(annotations, indent=2), encoding="utf-8")
-    logger.info("Saved %d annotations to %s", len(annotations), ann_path)
+    ann_path.write_text(json.dumps(img_annotations, indent=2), encoding="utf-8")
+    logger.info("Saved %d annotations to %s", len(img_annotations), ann_path)
 
 
 def load_annotations(

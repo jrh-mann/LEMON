@@ -67,11 +67,11 @@ class AddImageQuestionTool(Tool):
         if not image_path.is_absolute():
             image_path = self.repo_root / image_name
 
-        annotations = load_annotations(image_path, repo_root=self.repo_root)
+        img_annotations = load_annotations(image_path, repo_root=self.repo_root)
 
         # Check for duplicates before appending
         is_dup = False
-        for a in annotations:
+        for a in img_annotations:
             if a.get("type") == "question" and a.get("question") == str(question):
                 # If coordinates are very close (within 10 pixels), consider it a duplicate
                 if abs(a.get("x", 0) - x_val) < 10 and abs(a.get("y", 0) - y_val) < 10:
@@ -87,8 +87,8 @@ class AddImageQuestionTool(Tool):
                 "question": str(question),
                 "status": "pending",
             }
-            annotations.append(new_annotation)
-            save_annotations(image_path, annotations, repo_root=self.repo_root)
+            img_annotations.append(new_annotation)
+            save_annotations(image_path, img_annotations, repo_root=self.repo_root)
 
         self._logger.info(
             "Added image question to %s at (%s, %s): %s",
@@ -101,5 +101,5 @@ class AddImageQuestionTool(Tool):
         return {
             "success": True,
             "action": "question_added",
-            "annotations": annotations,
+            "annotations": img_annotations,
         }
