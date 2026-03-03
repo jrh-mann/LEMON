@@ -20,6 +20,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     conversationId,
     isStreaming,
     streamingContent,
+    processingStatus,
     thinkingContent,
     currentTaskId,
     pendingQuestion,
@@ -341,6 +342,26 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                         __html: renderMarkdown(streamingContent),
                       }}
                     />
+                    {processingStatus && (
+                      <span className="processing-status">
+                        <span className="status-dot"></span>
+                        {processingStatus}
+                      </span>
+                    )}
+                    {planChecklist}
+                  </>
+                ) : processingStatus ? (
+                  <>
+                    {thinkingContent && (
+                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                        <span className="thinking-label">Reasoning</span>
+                        <div className="thinking-text">{thinkingContent}</div>
+                      </div>
+                    )}
+                    <span className="processing-status">
+                      <span className="status-dot"></span>
+                      {processingStatus}
+                    </span>
                     {planChecklist}
                   </>
                 ) : (
