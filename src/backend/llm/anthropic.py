@@ -58,7 +58,8 @@ def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
                 else:
                     logger.warning("Unsupported image_url for Anthropic: %s", url[:80])
             elif ptype == "image":
-                blocks.append(part)
+                # Explicitly construct the image block to ensure clean structure
+                blocks.append({"type": "image", "source": part.get("source", {})})
             elif ptype == "document":
                 # Passthrough for Anthropic native PDF document content blocks
                 blocks.append({"type": "document", "source": part.get("source", {})})
