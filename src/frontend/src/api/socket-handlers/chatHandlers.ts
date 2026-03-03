@@ -28,11 +28,6 @@ export function registerChatHandlers(socket: Socket): void {
       }
     }
 
-    if (data.tool === 'analyze_workflow' && !data.status) {
-      chatStore.setProcessingStatus('Analysing workflow...')
-      return
-    }
-
     if (data.status) {
       console.log('[Socket] Setting processing status:', data.status)
       chatStore.setProcessingStatus(data.status)

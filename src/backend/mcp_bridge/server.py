@@ -36,8 +36,6 @@ from ..tools import (
     CreateWorkflowTool,
     SaveWorkflowToLibrary,
 )
-from ..utils.uploads import save_uploaded_image
-
 logger = logging.getLogger("backend.mcp")
 
 
@@ -73,13 +71,6 @@ def _auth_settings() -> tuple[AuthSettings | None, TokenVerifier | None]:
 def _repo_root() -> Path:
     return Path(__file__).parent.parent.parent.parent
 
-
-def _save_uploaded_image(data_url: str) -> str:
-    return save_uploaded_image(
-        data_url,
-        repo_root=_repo_root(),
-        filename_prefix=f"mcp_{os.urandom(8).hex()}_",
-    )
 
 
 

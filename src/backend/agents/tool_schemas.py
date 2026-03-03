@@ -117,8 +117,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "add_image_question",
                 "description": (
                     "Place a question dot on the user's workflow image at specific coordinates. "
-                    "NOTE: The analyze_workflow tool ALREADY automatically places question dots for all doubts it finds! "
-                    "You should ONLY use this tool if you need to ask an ADDITIONAL question that wasn't included in the analysis doubts."
+                    "Use this tool whenever you are UNSURE about any part of the workflow image — "
+                    "a threshold value, a label, a branch condition. Do NOT guess; ask the user."
                 ),
                 "parameters": {
                     "type": "object",

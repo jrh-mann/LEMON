@@ -171,21 +171,6 @@ class SocketChatTask:
             return
         if event == "tool_start":
             self.executed_tools.append({"tool": tool, "arguments": args})
-        # Stream LLM thinking chunks to the frontend during analysis
-        if event == "tool_thinking" and tool == "analyze_workflow":
-            chunk = args.get("chunk", "")
-            if chunk:
-                self.socketio.emit(
-                    "chat_thinking", {"chunk": chunk, "task_id": self.task_id}, to=self.sid,
-                )
-            return
-        if tool == "analyze_workflow":
-            if event == "tool_progress":
-                # Phase-specific progress from the subagent (e.g., "Extracting guidance (1/2)...")
-                status = args.get("status", "Analysing workflow...")
-                self.emit_progress(event, status, tool=tool)
-            else:
-                self.emit_progress(event, "Analysing workflow...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -202,24 +187,6 @@ class SocketChatTask:
                     break
         if event == "tool_batch_complete":
             self.flush_tool_summary()
-        # Emit workflow_modified when publish_latest_analysis produces a flowchart.
-        # analyze_workflow stores the analysis but does NOT auto-publish — the
-        # orchestrator must explicitly call publish_latest_analysis to render it.
-        if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
-            flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
-            if flowchart and flowchart.get("nodes"):
-                analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
-                self.socketio.emit(
-                    "workflow_modified",
-                    {
-                        "action": "create_workflow",
-                        "data": {
-                            "flowchart": flowchart,
-                            "analysis": analysis,
-                        },
-                    },
-                    to=self.sid,
-                )
 
         # Emit plan_updated when update_plan completes — carries checklist items to frontend
         if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
@@ -249,7 +216,7 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
-            if (tool in WORKFLOW_INPUT_TOOLS or tool == "analyze_workflow") and self.convo:
+            if tool in WORKFLOW_INPUT_TOOLS and self.convo:
                 # Emit variables (unified variable system) - includes inputs, subprocess, calculated
                 # Frontend receives under 'variables' key for display in Variables tab
                 # Include task_id so frontend can filter out updates for inactive tabs

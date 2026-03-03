@@ -1,4 +1,4 @@
-"""Tests for annotation save/load and prompt formatting."""
+"""Tests for annotation save/load."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 import pytest
 
 from ..utils.uploads import save_annotations, load_annotations, _annotations_path_for
-from ..agents.subagent import _format_annotations
 
 
 # ─── Fixtures ────────────────────────────────────────────
@@ -75,49 +74,3 @@ class TestAnnotationPersistence:
         save_annotations(rel, [], repo_root=tmp_lemon)
         loaded = load_annotations(Path(rel), repo_root=tmp_lemon)
         assert loaded == []
-
-
-# ─── prompt formatting ───────────────────────────────────
-
-class TestAnnotationFormatting:
-    """Test that _format_annotations produces correct LLM prompt text."""
-
-    def test_empty_returns_empty(self):
-        assert _format_annotations([]) == ""
-
-    def test_label_annotation(self):
-        result = _format_annotations([
-            {"type": "label", "x": 300, "y": 150, "text": "Check vitals"}
-        ])
-        assert 'Label at (300, 150): "Check vitals"' in result
-
-    def test_multiple_labels(self):
-        result = _format_annotations([
-            {"type": "label", "x": 100, "y": 200, "text": "Start"},
-            {"type": "label", "x": 400, "y": 500, "text": "End"},
-        ])
-        assert "1." in result
-        assert "2." in result
-        assert 'Label at (100, 200): "Start"' in result
-        assert 'Label at (400, 500): "End"' in result
-
-    def test_numbering(self, sample_annotations: List[Dict[str, Any]]):
-        result = _format_annotations(sample_annotations)
-        assert "1." in result
-        assert "2." in result
-
-    def test_includes_priority_instruction(self, sample_annotations: List[Dict[str, Any]]):
-        result = _format_annotations(sample_annotations)
-        assert "priority" in result.lower()
-
-    def test_includes_pixel_coordinate_info(self):
-        result = _format_annotations([
-            {"type": "label", "x": 10, "y": 20, "text": "Test"}
-        ])
-        assert "normalized to the 0-1000 system" in result.lower()
-
-    def test_unknown_type_fallback(self):
-        result = _format_annotations([
-            {"type": "unknown_future_type", "data": "something"}
-        ])
-        assert "Annotation:" in result

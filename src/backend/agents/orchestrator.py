@@ -34,18 +34,13 @@ class Orchestrator:
 
     def __init__(self, tools: ToolRegistry):
         self.tools = tools
-        self.last_session_id: Optional[str] = None
 
-        # Single canonical workflow dict (nodes + edges + variables + outputs + metadata)
+        # Single canonical workflow dict (nodes + edges + variables + outputs)
         self.workflow: Dict[str, Any] = {
             "nodes": [],
             "edges": [],
             "variables": [],
             "outputs": [],
-            "tree": {},
-            "doubts": [],
-            "reasoning": "",
-            "guidance": [],
         }
 
         self.history: List[Dict[str, str]] = []
@@ -83,14 +78,10 @@ class Orchestrator:
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata (variables/outputs/tree/doubts) for tools."""
+        """View of workflow metadata (variables/outputs) for tools."""
         return {
             "variables": self.workflow.get("variables", []),
             "outputs": self.workflow.get("outputs", []),
-            "tree": self.workflow.get("tree", {}),
-            "doubts": self.workflow.get("doubts", []),
-            "reasoning": self.workflow.get("reasoning", ""),
-            "guidance": self.workflow.get("guidance", []),
         }
 
     @workflow_analysis.setter
@@ -104,14 +95,6 @@ class Orchestrator:
             self.workflow["variables"] = variables
         if isinstance(outputs, list):
             self.workflow["outputs"] = outputs
-        if "tree" in value and isinstance(value.get("tree"), dict):
-            self.workflow["tree"] = value.get("tree", {})
-        if "doubts" in value and isinstance(value.get("doubts"), list):
-            self.workflow["doubts"] = value.get("doubts", [])
-        if "reasoning" in value and isinstance(value.get("reasoning"), str):
-            self.workflow["reasoning"] = value["reasoning"]
-        if "guidance" in value and isinstance(value.get("guidance"), list):
-            self.workflow["guidance"] = value["guidance"]
 
     def sync_workflow(
         self,
@@ -155,17 +138,14 @@ class Orchestrator:
         self,
         analysis_provider: Optional[Callable[[], Dict[str, Any]]] = None
     ) -> None:
-        """Sync workflow metadata (variables/outputs/tree/doubts) from external source.
+        """Sync workflow metadata (variables/outputs) from external source.
 
         Args:
             analysis_provider: Callable that returns workflow analysis with 'variables' key.
                               None = use existing memory state (no-op).
-
-        Design: Uses dependency injection to decouple from storage.
-                Caller controls WHERE state comes from.
         """
         if analysis_provider is None:
-            return  # No sync needed
+            return
 
         try:
             analysis_data = analysis_provider()
@@ -182,14 +162,6 @@ class Orchestrator:
         if isinstance(variables, list) and isinstance(outputs, list):
             self.workflow["variables"] = variables
             self.workflow["outputs"] = outputs
-            if "tree" in analysis_data:
-                self.workflow["tree"] = analysis_data.get("tree", {})
-            if "doubts" in analysis_data:
-                self.workflow["doubts"] = analysis_data.get("doubts", [])
-            if "reasoning" in analysis_data:
-                self.workflow["reasoning"] = analysis_data.get("reasoning", "")
-            if "guidance" in analysis_data:
-                self.workflow["guidance"] = analysis_data.get("guidance", [])
             self._logger.info(
                 "Synced workflow analysis: %d variables, %d outputs",
                 len(variables),
@@ -279,43 +251,6 @@ class Orchestrator:
                 self.current_workflow_id = new_wf_id
                 self._logger.info("Updated current_workflow_id to %s after create_workflow", new_wf_id)
 
-        # Store analysis data from analyze_workflow into orchestrator state
-        # so subsequent tool calls have access to variables, tree, doubts, etc.
-        if tool_name == "analyze_workflow" and result.success and isinstance(result.data, dict):
-            analysis = result.data.get("analysis")
-            if isinstance(analysis, dict):
-                # analyze_workflow returns 'variables' key (normalized by normalize_analysis)
-                for key in ("variables", "outputs", "tree", "doubts", "reasoning", "guidance"):
-                    if key in analysis:
-                        self.workflow[key] = analysis[key]
-                # Also store flowchart nodes/edges if present
-                flowchart = result.data.get("flowchart")
-                if isinstance(flowchart, dict) and flowchart.get("nodes"):
-                    self.workflow["nodes"] = flowchart.get("nodes", [])
-                    self.workflow["edges"] = flowchart.get("edges", [])
-                self._logger.info(
-                    "Stored analyze_workflow result: %d variables, %d outputs, %d nodes",
-                    len(self.workflow.get("variables", [])),
-                    len(self.workflow.get("outputs", [])),
-                    len(self.workflow.get("nodes", [])),
-                )
-
-                # Auto-persist the analyzed workflow to WorkflowStore so that
-                # subsequent tool calls (get_current_workflow, add_node, etc.)
-                # can load it from the database.
-                self._auto_persist_analysis(analysis, flowchart)
-
-        # Also update workflow when publish_latest_analysis returns a flowchart
-        if tool_name == "publish_latest_analysis" and isinstance(result.data, dict):
-            flowchart = (
-                result.data.get("flowchart")
-                if isinstance(result.data.get("flowchart"), dict)
-                else None
-            )
-            if flowchart and flowchart.get("nodes"):
-                self.workflow["nodes"] = flowchart.get("nodes", [])
-                self.workflow["edges"] = flowchart.get("edges", [])
-
         return result
 
     def _normalize_tool_result(self, tool_name: str, data: Any) -> ToolResult:
@@ -392,77 +327,6 @@ class Orchestrator:
                 self.workflow["nodes"] = new_workflow.get("nodes", [])
                 self.workflow["edges"] = new_workflow.get("edges", [])
 
-    def _auto_persist_analysis(
-        self,
-        analysis: Dict[str, Any],
-        flowchart: Optional[Dict[str, Any]],
-    ) -> None:
-        """Auto-persist analyzed workflow to WorkflowStore database.
-
-        Called after analyze_workflow succeeds. Creates or updates the workflow
-        in the database so that subsequent tool calls (get_current_workflow,
-        add_node, batch_edit, etc.) can load it via load_workflow_for_tool().
-
-        Uses current_workflow_id if set (frontend tab ID), otherwise generates
-        a new ID. If a workflow with that ID already exists, updates it.
-        """
-        if not self.workflow_store or not self.user_id:
-            self._logger.warning(
-                "_auto_persist_analysis: missing workflow_store or user_id, skipping"
-            )
-            return
-
-        nodes = flowchart.get("nodes", []) if isinstance(flowchart, dict) else []
-        edges = flowchart.get("edges", []) if isinstance(flowchart, dict) else []
-        variables = analysis.get("variables", [])
-        outputs = analysis.get("outputs", [])
-        tree = analysis.get("tree", {})
-
-        # Use existing current_workflow_id (from frontend tab) or generate new
-        from ..tools.workflow_library.create_workflow import generate_workflow_id
-        workflow_id = self.current_workflow_id or generate_workflow_id()
-
-        try:
-            # Check if workflow already exists in DB (e.g., re-analysis of same tab)
-            existing = self.workflow_store.get_workflow(workflow_id, self.user_id)
-            if existing:
-                # Update existing workflow with new analysis data
-                self.workflow_store.update_workflow(
-                    workflow_id, self.user_id,
-                    nodes=nodes,
-                    edges=edges,
-                    inputs=variables,
-                    outputs=outputs,
-                    tree=tree,
-                )
-                self._logger.info(
-                    "_auto_persist_analysis: updated existing workflow %s (%d nodes)",
-                    workflow_id, len(nodes),
-                )
-            else:
-                # Create new workflow from analysis
-                self.workflow_store.create_workflow(
-                    workflow_id=workflow_id,
-                    user_id=self.user_id,
-                    name="Analyzed Workflow",
-                    description="Auto-created from image analysis",
-                    nodes=nodes,
-                    edges=edges,
-                    inputs=variables,
-                    outputs=outputs,
-                    tree=tree,
-                    output_type="string",
-                    is_draft=False,
-                )
-                self._logger.info(
-                    "_auto_persist_analysis: created workflow %s (%d nodes, %d variables)",
-                    workflow_id, len(nodes), len(variables),
-                )
-
-            self.current_workflow_id = workflow_id
-        except Exception as exc:
-            self._logger.error("_auto_persist_analysis failed: %s", exc)
-
     # Shared validator instance for post-tool checks (non-strict).
     _workflow_validator = WorkflowValidator()
 
@@ -520,10 +384,6 @@ class Orchestrator:
                         self.workflow["variables"] = returned_analysis["variables"]
                     if "outputs" in returned_analysis:
                         self.workflow["outputs"] = returned_analysis["outputs"]
-                    if "reasoning" in returned_analysis:
-                        self.workflow["reasoning"] = returned_analysis["reasoning"]
-                    if "guidance" in returned_analysis:
-                        self.workflow["guidance"] = returned_analysis["guidance"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d variables, %d outputs",
                         len(self.workflow.get("variables", [])),
@@ -731,9 +591,6 @@ class Orchestrator:
                         tool_name, args, stream=None, should_cancel=should_cancel,
                         on_progress=_on_progress, on_thinking=_on_thinking,
                     )
-                    session_id = result.data.get("session_id")
-                    if session_id:
-                        self.last_session_id = session_id
                     tool_results.append(result)
                     # If tool returned image blocks (list content), pass through directly
                     # so the LLM sees the image. Otherwise json.dumps the result dict.
@@ -863,51 +720,15 @@ def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 
 
 
 def _summarize_tool_results(results: List[ToolResult]) -> str:
+    """Build a brief summary of tool results as fallback text."""
     parts: List[str] = []
     for result in results:
         if isinstance(result.data, dict) and result.data.get("skipped"):
             continue
         if not result.success:
             error_text = result.error or result.message or "Tool failed."
-            header = f"Tool failed ({result.tool})."
-            parts.append(f"{header}\n\n{error_text}".strip())
+            parts.append(f"Tool failed ({result.tool}): {error_text}")
             continue
         if result.message:
-            message = result.message
-            header = f"Discussion ({result.tool})." if len(results) > 1 else "Discussion."
-            parts.append(f"{header}\n\n{message}".strip())
-            continue
-        analysis = result.data.get("analysis") if isinstance(result.data, dict) else {}
-        if not isinstance(analysis, dict):
-            analysis = {}
-        inputs = analysis.get("variables") if isinstance(analysis.get("variables"), list) else []
-        outputs = analysis.get("outputs") if isinstance(analysis.get("outputs"), list) else []
-        doubts = analysis.get("doubts") if isinstance(analysis.get("doubts"), list) else []
-
-        def _fmt_items(items: list, key: str) -> str:
-            lines = []
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                name = item.get("name") or item.get(key) or ""
-                typ = item.get("type")
-                if typ:
-                    lines.append(f"- {name} ({typ})")
-                else:
-                    lines.append(f"- {name}")
-            return "\n".join(lines) if lines else "- None"
-
-        inputs_text = _fmt_items(inputs, "input")
-        outputs_text = _fmt_items(outputs, "output")
-        doubts_text = "\n".join(f"- {d}" for d in doubts) if doubts else "- None"
-        header = f"Analysis complete ({result.tool})." if len(results) > 1 else "Analysis complete."
-        parts.append(
-            f"{header}\n\n"
-            "Inputs:\n"
-            f"{inputs_text}\n\n"
-            "Outputs:\n"
-            f"{outputs_text}\n\n"
-            "Doubts:\n"
-            f"{doubts_text}"
-        )
+            parts.append(result.message)
     return "\n\n".join(parts)
