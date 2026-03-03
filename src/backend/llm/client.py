@@ -24,6 +24,20 @@ from ..utils.cancellation import CancellationError
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = [2, 5]  # seconds between retries (exponential-ish)
 
+# Per-model max output token limits (Anthropic-imposed)
+_MODEL_MAX_TOKENS: Dict[str, int] = {
+    "sonnet": 64000,
+}
+
+
+def _cap_max_tokens(requested: int) -> int:
+    """Cap max_tokens to the model's limit. Falls back to 128000 for unknown models."""
+    model = get_anthropic_model().lower()
+    for fragment, limit in _MODEL_MAX_TOKENS.items():
+        if fragment in model:
+            return min(requested, limit)
+    return requested
+
 
 def _retry_api_call(
     fn: Callable[[], Any],
@@ -164,7 +178,7 @@ def call_llm(
     system, converted = _to_anthropic_messages(messages)
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
-        "max_tokens": max_completion_tokens,
+        "max_tokens": _cap_max_tokens(max_completion_tokens),
         "system": system,
         "messages": converted,
     }
@@ -252,7 +266,7 @@ def call_llm_with_tools(
     tool_payload = [] if tool_choice == "none" else _convert_openai_tools_to_anthropic(tools)
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
-        "max_tokens": max_completion_tokens,
+        "max_tokens": _cap_max_tokens(max_completion_tokens),
         "system": system,
         "messages": converted,
         "tools": tool_payload,
@@ -474,7 +488,7 @@ def call_llm_stream(
     system, converted = _to_anthropic_messages(messages)
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
-        "max_tokens": max_completion_tokens,
+        "max_tokens": _cap_max_tokens(max_completion_tokens),
         "system": system,
         "messages": converted,
     }
