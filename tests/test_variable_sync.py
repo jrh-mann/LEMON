@@ -32,7 +32,7 @@ def _ok_result(tool_name: str = "add_node", **data_overrides) -> ToolResult:
 
 
 def _calc_node(node_id: str, label: str, output_name: str,
-               operator: str = "add", operands: list = None) -> dict:
+               operator: str = "add", operands: list | None = None) -> dict:
     """Build a minimal calculation node dict."""
     return {
         "id": node_id,
@@ -252,13 +252,13 @@ class TestValidatorChainedCalculations:
         }
         is_valid, errors = self.validator.validate(workflow, strict=False)
         calc_errors = [e for e in errors if e.code == "CALCULATION_INVALID_OPERAND_REF"]
-        assert len(calc_errors) == 0, f"Unexpected operand ref errors: {calc_errors}"
+        assert len(calc_errors) == 0
 
     def test_calc_referencing_nonexistent_var_still_fails(self):
-        """Operand referencing a variable that doesn't exist anywhere should still fail."""
+        """Calc operand referencing a variable that doesn't exist should still fail."""
         workflow = {
             "nodes": [
-                _calc_node("n1", "Bad Calc", "bad_result",
+                _calc_node("n1", "Bad Ref", "bad_result",
                            operator="add",
                            operands=[
                                {"kind": "variable", "ref": "nonexistent_var"},
@@ -273,23 +273,17 @@ class TestValidatorChainedCalculations:
         assert len(calc_errors) == 1
 
     def test_calc_referencing_subprocess_output_is_valid(self):
-        """Calculation operand referencing a subprocess output_variable should be valid."""
+        """Calc operand referencing a subprocess node's output_variable is valid."""
         workflow = {
             "nodes": [
-                # Subprocess node that produces an output variable
-                {
-                    "id": "n_sub", "type": "subprocess", "label": "Sub",
-                    "x": 0, "y": 0,
-                    "subworkflow_id": "wf_123",
-                    "input_mapping": {},
-                    "output_variable": "sub_result",
-                },
-                # Calculation that references the subprocess output
-                _calc_node("n_calc", "Use Sub Result", "final_result",
-                           operator="add",
+                {"id": "n_sub", "type": "subprocess", "label": "Get eGFR",
+                 "x": 0, "y": 0, "subworkflow_id": "wf_egfr",
+                 "output_variable": "egfr_result"},
+                _calc_node("n_calc", "Adjust", "adjusted_egfr",
+                           operator="multiply",
                            operands=[
-                               {"kind": "variable", "ref": "sub_result"},
-                               {"kind": "literal", "value": 10},
+                               {"kind": "variable", "ref": "egfr_result"},
+                               {"kind": "literal", "value": 0.742},
                            ]),
             ],
             "edges": [],
@@ -297,24 +291,24 @@ class TestValidatorChainedCalculations:
         }
         is_valid, errors = self.validator.validate(workflow, strict=False)
         calc_errors = [e for e in errors if e.code == "CALCULATION_INVALID_OPERAND_REF"]
-        assert len(calc_errors) == 0, f"Unexpected operand ref errors: {calc_errors}"
+        assert len(calc_errors) == 0
 
     def test_three_chained_calcs_all_valid(self):
-        """Three-deep chain: C depends on B, B depends on A."""
+        """Three chained calculations where each references the previous output."""
         workflow = {
             "nodes": [
-                _calc_node("n1", "A", "var_a"),
-                _calc_node("n2", "B", "var_b",
-                           operator="add",
-                           operands=[
-                               {"kind": "variable", "ref": "var_a"},
-                               {"kind": "literal", "value": 1},
-                           ]),
-                _calc_node("n3", "C", "var_c",
+                _calc_node("n1", "Step1", "step1_out"),
+                _calc_node("n2", "Step2", "step2_out",
                            operator="multiply",
                            operands=[
-                               {"kind": "variable", "ref": "var_b"},
+                               {"kind": "variable", "ref": "step1_out"},
                                {"kind": "literal", "value": 2},
+                           ]),
+                _calc_node("n3", "Step3", "step3_out",
+                           operator="add",
+                           operands=[
+                               {"kind": "variable", "ref": "step1_out"},
+                               {"kind": "variable", "ref": "step2_out"},
                            ]),
             ],
             "edges": [],
@@ -338,9 +332,85 @@ class TestValidatorChainedCalculations:
             "edges": [],
             "variables": [
                 _variable("patient_weight", source="user_defined"),
-                {"id": "var_height_number", "name": "height", "type": "number", "source": "user_defined"},
+                {"id": "var_height_number", "name": "height", "type": "number",
+                 "source": "user_defined"},
             ],
         }
         is_valid, errors = self.validator.validate(workflow, strict=False)
         calc_errors = [e for e in errors if e.code == "CALCULATION_INVALID_OPERAND_REF"]
         assert len(calc_errors) == 0
+
+
+# ---------------------------------------------------------------------------
+# Fix B+E: delete_node cleans up derived variables in orchestrator
+# ---------------------------------------------------------------------------
+
+class TestDeleteNodeVariableCleanup:
+    """Verify _update_workflow_from_tool_result removes derived vars on delete_node."""
+
+    def test_calc_variable_removed_on_node_delete(self):
+        """Deleting a calculation node should remove its derived variable."""
+        calc_var = _variable("calc_total", source_node_id="n_calc")
+        input_var = _variable("patient_age", source="input", source_node_id="")
+        orch = _make_orchestrator(
+            nodes=[_calc_node("n_calc", "Total", "calc_total")],
+            edges=[],
+            variables=[input_var, calc_var],
+        )
+
+        orch._update_workflow_from_tool_result("delete_node", {
+            "node_id": "n_calc",
+            "removed_variable_ids": ["var_calc_total_number"],
+        })
+
+        # Calc variable removed, input variable preserved
+        assert len(orch.workflow["variables"]) == 1
+        assert orch.workflow["variables"][0]["name"] == "patient_age"
+
+    def test_subprocess_variable_removed_on_node_delete(self):
+        """Deleting a subprocess node should remove its derived variable."""
+        sub_var = _variable("egfr_result", var_type="number",
+                            source="subprocess", source_node_id="n_sub")
+        orch = _make_orchestrator(
+            nodes=[{"id": "n_sub", "type": "subprocess", "label": "Sub",
+                    "x": 0, "y": 0, "output_variable": "egfr_result"}],
+            edges=[],
+            variables=[sub_var],
+        )
+
+        orch._update_workflow_from_tool_result("delete_node", {
+            "node_id": "n_sub",
+            "removed_variable_ids": ["var_egfr_result_number"],
+        })
+
+        assert len(orch.workflow["variables"]) == 0
+
+    def test_delete_process_node_no_variable_change(self):
+        """Deleting a process node should not affect variables."""
+        input_var = _variable("age", source="input")
+        orch = _make_orchestrator(
+            nodes=[{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
+            edges=[],
+            variables=[input_var],
+        )
+
+        orch._update_workflow_from_tool_result("delete_node", {
+            "node_id": "n1",
+            "removed_variable_ids": [],
+        })
+
+        assert len(orch.workflow["variables"]) == 1
+
+    def test_no_removed_ids_field_is_harmless(self):
+        """Old-style delete_node result without removed_variable_ids should not break."""
+        orch = _make_orchestrator(
+            nodes=[{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
+            edges=[],
+            variables=[_variable("age", source="input")],
+        )
+
+        orch._update_workflow_from_tool_result("delete_node", {
+            "node_id": "n1",
+        })
+
+        assert len(orch.workflow["variables"]) == 1

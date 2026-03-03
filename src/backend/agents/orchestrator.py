@@ -372,6 +372,11 @@ class Orchestrator:
                     e for e in self.workflow["edges"]
                     if e["from"] != node_id and e["to"] != node_id
                 ]
+            # Remove derived variables whose producing node was deleted
+            for var_id in result.get("removed_variable_ids", []):
+                self.workflow["variables"] = [
+                    v for v in self.workflow["variables"] if v.get("id") != var_id
+                ]
 
         elif tool_name == "add_connection":
             edge = result.get("edge")

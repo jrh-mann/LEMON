@@ -193,6 +193,11 @@ class BatchEditWorkflowTool(WorkflowTool):
                         for e in edges
                         if e["from"] != node_id and e["to"] != node_id
                     ]
+                    # Clean up derived variables whose producing node is deleted
+                    removed = [v for v in variables if v.get("source_node_id") == node_id]
+                    if removed:
+                        variables = [v for v in variables if v.get("source_node_id") != node_id]
+                        variables_modified = True
                     applied_operations.append({"op": "delete_node", "node_id": node_id})
 
                 elif op_type == "add_connection":
