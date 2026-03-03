@@ -834,12 +834,12 @@ function ExecuteWorkflowForm() {
       {/* Speed control */}
       <div className="form-group speed-control-group">
         <label htmlFor="exec-speed">
-          Execution Speed: {execution.executionSpeed}ms
+          Execution Speed: {execution.executionSpeed === 0 ? 'Instant' : `${execution.executionSpeed}ms`}
         </label>
         <input
           id="exec-speed"
           type="range"
-          min="100"
+          min="0"
           max="2000"
           step="100"
           value={execution.executionSpeed}
@@ -847,7 +847,7 @@ function ExecuteWorkflowForm() {
           disabled={execution.isExecuting}
         />
         <div className="speed-labels">
-          <span className="muted small">Fast (100ms)</span>
+          <span className="muted small">Instant (0ms)</span>
           <span className="muted small">Slow (2000ms)</span>
         </div>
       </div>

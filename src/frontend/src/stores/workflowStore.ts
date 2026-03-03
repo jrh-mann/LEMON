@@ -617,7 +617,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setExecutionSpeed: (speed: number) => set((state) => ({
     execution: {
       ...state.execution,
-      executionSpeed: Math.max(100, Math.min(2000, speed)),  // Clamp to 100-2000ms
+      executionSpeed: Math.max(0, Math.min(2000, speed)),  // Clamp to 0-2000ms (0 = instant)
     },
   })),
 

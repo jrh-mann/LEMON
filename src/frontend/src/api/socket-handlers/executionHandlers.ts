@@ -12,10 +12,16 @@ import type { FlowNode, FlowEdge, ExecutionLogEntry } from '../../types'
 
 /** Register all execution-related socket event handlers */
 export function registerExecutionHandlers(socket: Socket): void {
-  // Execution started - marks the beginning of a workflow execution session
+  // Execution started - marks the beginning of a workflow execution session.
+  // Skip if already started with same ID (optimistic update in socketActions already called startExecution).
+  // Re-calling would reset executedNodeIds/executionLogs, causing a race condition in instant mode
+  // where step/log events arrive before this event and get wiped.
   socket.on('execution_started', (data: { execution_id: string }) => {
     console.log('[Socket] execution_started:', data)
     const workflowStore = useWorkflowStore.getState()
+    if (workflowStore.execution.executionId === data.execution_id) {
+      return  // Already started optimistically, don't reset state
+    }
     workflowStore.startExecution(data.execution_id)
   })
 
@@ -286,10 +292,11 @@ export function registerExecutionHandlers(socket: Socket): void {
       if (topSubflow.executingNodeId) {
         workflowStore.markSubflowNodeExecuted(topSubflow.executingNodeId)
       }
-      // Small delay so user can see the final state before modal closes
+      // Delay so user can see final state before modal closes (skip in instant mode)
+      const closeDelay = workflowStore.execution.executionSpeed === 0 ? 0 : 500
       setTimeout(() => {
         workflowStore.endSubflowExecution()
-      }, 500)
+      }, closeDelay)
     }
   })
 }

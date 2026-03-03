@@ -458,16 +458,17 @@ class SteppedExecutionTask:
             if was_paused:
                 self.emit_resumed()
 
-        # Apply step delay for visualization
-        delay_seconds = self.speed_ms / 1000.0
-        # Use small intervals to check for stop during delay
-        elapsed = 0.0
-        while elapsed < delay_seconds:
-            if self.is_stopped():
-                raise StoppedExecutionError("Execution stopped by user")
-            sleep_time = min(0.1, delay_seconds - elapsed)
-            self.socketio.sleep(sleep_time)
-            elapsed += sleep_time
+        # Apply step delay for visualization (skip entirely in instant mode)
+        if self.speed_ms > 0:
+            delay_seconds = self.speed_ms / 1000.0
+            # Use small intervals to check for stop during delay
+            elapsed = 0.0
+            while elapsed < delay_seconds:
+                if self.is_stopped():
+                    raise StoppedExecutionError("Execution stopped by user")
+                sleep_time = min(0.1, delay_seconds - elapsed)
+                self.socketio.sleep(sleep_time)
+                elapsed += sleep_time
 
     def run(self) -> None:
         """Execute the workflow step-by-step."""
@@ -580,9 +581,9 @@ def handle_execute_workflow(
         )
         return
 
-    # Validate speed_ms range
-    if not isinstance(speed_ms, int) or speed_ms < 100:
-        speed_ms = 100
+    # Validate speed_ms range (0 = instant mode, skips delays but still emits events)
+    if not isinstance(speed_ms, int) or speed_ms < 0:
+        speed_ms = 0
     elif speed_ms > 2000:
         speed_ms = 2000
 
