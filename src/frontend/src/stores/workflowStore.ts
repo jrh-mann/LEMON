@@ -63,6 +63,9 @@ interface WorkflowState {
   pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
 
+  // Extraction plan items (from update_plan tool)
+  plan: Array<{ text: string; done: boolean }>
+
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
   setLoadingWorkflows: (loading: boolean) => void
@@ -110,6 +113,7 @@ interface WorkflowState {
   clearPendingFiles: () => void
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
+  setPlan: (items: Array<{ text: string; done: boolean }>) => void
 
   // Reset
   reset: () => void
@@ -196,6 +200,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   historyIndex: -1,
   pendingFiles: [],
   pendingAnnotations: [],
+  plan: [],
 
   // Execution state
   execution: { ...initialExecutionState },
@@ -528,6 +533,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [] }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
+  setPlan: (items) => set({ plan: items }),
 
   // Reset
   reset: () =>
@@ -550,6 +556,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingFiles: [],
       pendingAnnotations: [],
+      plan: [],
       execution: { ...initialExecutionState },
     }),
 

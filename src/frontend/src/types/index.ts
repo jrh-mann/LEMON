@@ -348,8 +348,6 @@ export interface WorkflowOutput {
 export interface WorkflowAnalysis {
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
   outputs: WorkflowOutput[]           // Outputs with required type
-  tree: Record<string, unknown>
-  doubts: string[]
 }
 
 // ============ Flowchart Models (for canvas rendering) ============
