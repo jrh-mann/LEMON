@@ -790,11 +790,11 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "modify_workflow_variable",
                 "description": (
-                    "Modify an existing workflow variable's properties (type, name, description, range, enum values). "
+                    "Modify an existing user-input workflow variable's properties (type, name, description, range, enum values). "
                     "Requires workflow_id. "
-                    "CRITICAL USE CASE: Correct auto-inferred types for subprocess outputs. "
-                    "When a subprocess node is added, the output variable type is inferred from the subworkflow. "
-                    "If this is wrong (e.g., 'string' instead of 'number'), use this tool to fix it. "
+                    "ONLY works on user-input variables (source='input'). "
+                    "Derived variables (from calculation or subprocess nodes) CANNOT be modified — "
+                    "modify the producing node instead (e.g. change the calc output name or subprocess output_variable). "
                     "WARNING: Changing the type also changes the variable ID, so decision nodes using the old ID must be updated."
                 ),
                 "parameters": {
