@@ -57,12 +57,8 @@ src/frontend/.orchestrator_state.json
 src/frontend/uploads/
 src/frontend/runs/
 
-# Backend logs and local state
-.lemon/logs/
-.lemon/history.sqlite
-.lemon/uploads/
-.lemon/tokens.json
-.lemon/tokens_usage.json
+# Local runtime state (databases, logs, uploads, tokens)
+.lemon/
 
 # Local deployment artifacts
 frontend.zip
@@ -71,13 +67,6 @@ job-logs.zip
 publishprofile.xml
 *.publishsettings
 
-#akel
-.lemon/auth.sqlite
-.lemon/tokens_usage.json
-.lemon/workflows.sqlite
-.lemon/convo_test_*
-.lemon/e2e_test_*
-.lemon/harness_test_*
 .mcp.json
 .cursor/
 .claude/settings.local.json
