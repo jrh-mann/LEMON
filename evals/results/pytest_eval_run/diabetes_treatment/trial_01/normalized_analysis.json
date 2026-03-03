@@ -1,34 +1,19 @@
 {
   "variables": [
     {
-      "id": "input_age_int",
-      "name": "age",
+      "id": "input_x_int",
+      "name": "x",
       "type": "int",
       "source": "input"
     }
   ],
   "outputs": [
     {
-      "name": "Adult"
-    },
-    {
-      "name": "Minor"
+      "name": "Unknown"
     }
   ],
-  "tree": {
-    "start": {
-      "id": "start",
-      "type": "start",
-      "label": "Start",
-      "children": [
-        {
-          "id": "out_adult",
-          "type": "output",
-          "label": "Adult",
-          "children": []
-        }
-      ]
-    }
-  },
-  "doubts": []
+  "tree": {},
+  "doubts": [
+    "could not resolve boxes"
+  ]
 }

@@ -1,23 +1,47 @@
 {
   "metrics": {
+    "llm_judge": 0.05,
+    "semantic_score": 0.0,
+    "validity_score": 1.0,
     "node_f1": 0.0,
     "edge_f1": 0.0,
     "variable_f1": 0.0,
-    "output_f1": 0.0,
-    "semantic_score": 0.0,
-    "validity_score": 1.0
+    "output_f1": 0.0
   },
   "percentage_metrics": {
+    "llm_judge": 5.0,
+    "semantic_score": 0.0,
+    "validity_score": 100.0,
     "node_f1": 0.0,
     "edge_f1": 0.0,
     "variable_f1": 0.0,
-    "output_f1": 0.0,
-    "semantic_score": 0.0,
-    "validity_score": 100.0
+    "output_f1": 0.0
   },
-  "composite_raw": 0.05,
-  "composite_score": 5.0,
+  "composite_raw": 0.125,
+  "composite_score": 12.5,
   "details": {
+    "llm_judge": {
+      "decision_completeness": 0.0,
+      "variable_coverage": 0.0,
+      "output_correctness": 0.0,
+      "logical_consistency": 0.0,
+      "subworkflow_quality": 5.0,
+      "composite": 0.05,
+      "composite_pct": 5.0,
+      "reasoning": "The predicted workflow is completely unrelated to the ground truth lipid management workflow. It only defines a single input variable 'age' (not even used in the ground truth) and a single generic output 'Adult'. The ground truth requires multiple decision points checking variables like total_cholesterol, under_specialist_clinic, prevention_type, taking_lipid_lowering_therapy, optimised_on_treatment, qrisk2_3_score, ldl_cholesterol, and months_on_inclisiran. None of these variables are present. The workflow should produce 9 distinct clinical outcomes related to lipid management, but instead produces only one generic outcome 'Adult'. There are no decision nodes, no tree structure, and no logic whatsoever. This appears to be either a template or a completely different workflow.",
+      "specific_errors": [
+        "Missing all required input variables: total_cholesterol, under_specialist_clinic, prevention_type, taking_lipid_lowering_therapy, optimised_on_treatment, qrisk2_3_score, ldl_cholesterol, months_on_inclisiran, taking_maximally_tolerated_statin",
+        "Only defines 'age' variable which is not used in the ground truth lipid workflow",
+        "Missing all 9 expected clinical outcomes: 'No Further Action', 'Mark as Satisfactory', 'Mark as \"No Further Action\"', 'Send \"Lipid Lowering Therapy\" AccuRx with self booking link', 'Send \"High Cholesterol - Low QRISK\" AccuRx with self booking link', 'Consider Lipid Clinic Referral', 'Add in Ezetimibe', 'Initiate Inclisiran', 'Repeat Lipids at 3 months'",
+        "Only output is 'Adult' which is completely unrelated to lipid management outcomes",
+        "No decision tree structure at all - the tree structure field is empty {}",
+        "Missing initial decision on months_on_inclisiran >= 6 and ldl_cholesterol > 2.6",
+        "Missing decision cascade for total_cholesterol thresholds (>7.5, >5.0)",
+        "Missing prevention type classification logic (Primary vs Secondary)",
+        "Missing QRISK2-3 score threshold check (>=10)",
+        "Missing logic for secondary prevention escalation pathway"
+      ]
+    },
     "node": {
       "matched": 0,
       "predicted_total": 0,
@@ -49,9 +73,9 @@
     "semantic": {
       "score": 0.0,
       "matched": 0,
-      "total": 13,
+      "total": 6,
       "success_rate": 0.0,
-      "execution_failures": 13,
+      "execution_failures": 6,
       "mapping_coverage": 0.0,
       "errors": [
         "Predicted analysis does not contain an executable tree."

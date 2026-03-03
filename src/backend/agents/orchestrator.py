@@ -572,9 +572,16 @@ class Orchestrator:
                 self.history.append({"role": "assistant", "content": partial})
             return partial
         tool_desc = tool_descriptions()
+        # Only tell the LLM about uploaded files if analysis hasn't been done yet.
+        # The frontend keeps files in pendingFiles across messages (for the Source
+        # Image tab), so they arrive on every message. Without this guard the system
+        # prompt keeps saying "user has uploaded a file" and the LLM re-calls
+        # analyze_workflow on every turn.
+        files_for_prompt = self.uploaded_files if not self.last_session_id else []
+
         system = build_system_prompt(
             last_session_id=self.last_session_id,
-            has_files=self.uploaded_files,
+            has_files=files_for_prompt,
             allow_tools=allow_tools,
             reasoning=self.workflow.get("reasoning", ""),
             guidance=self.workflow.get("guidance", []),
@@ -590,8 +597,9 @@ class Orchestrator:
 
         # Prepend a file notice to the user message so the LLM sees attached files
         # directly in the conversation (not just in the system prompt).
+        # Only on the first message (before analysis), not on follow-ups.
         effective_message = user_message
-        if self.uploaded_files:
+        if files_for_prompt:
             file_names = [f.get("name", "?") for f in self.uploaded_files]
             effective_message = f"[Attached files: {', '.join(file_names)}]\n\n{user_message}"
 
