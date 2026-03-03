@@ -574,19 +574,10 @@ class Orchestrator:
                 self.history.append({"role": "assistant", "content": partial})
             return partial
         tool_desc = tool_descriptions()
-        # Only tell the LLM about uploaded files if analysis hasn't been done yet.
-        # The frontend keeps files in pendingFiles across messages (for the Source
-        # Image tab), so they arrive on every message. Without this guard the system
-        # prompt keeps saying "user has uploaded a file" and the LLM re-calls
-        # analyze_workflow on every turn.
-        files_for_prompt = self.uploaded_files if not self.last_session_id else []
 
         system = build_system_prompt(
-            last_session_id=self.last_session_id,
-            has_files=files_for_prompt,
+            has_files=self.uploaded_files,
             allow_tools=allow_tools,
-            reasoning=self.workflow.get("reasoning", ""),
-            guidance=self.workflow.get("guidance", []),
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow

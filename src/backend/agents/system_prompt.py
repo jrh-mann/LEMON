@@ -3,7 +3,7 @@
 Constructs the system prompt that instructs the LLM how to behave
 as a workflow manipulation assistant — when to call tools, how to
 handle variables, decision nodes, calculation nodes, subprocess
-nodes, and multi-file uploads.
+nodes, and vision-driven image analysis.
 
 Extracted from orchestrator_config.py (~375 lines) to keep files focused.
 """
@@ -15,25 +15,18 @@ from typing import Any, Dict, List, Optional
 
 def build_system_prompt(
     *,
-    last_session_id: Optional[str],
     has_files: Optional[List[Dict[str, Any]]] = None,
-    allow_tools: bool,
-    reasoning: str = "",
-    guidance: Optional[List[Dict[str, Any]]] = None,
+    allow_tools: bool = True,
 ) -> str:
     """Build the system prompt for the orchestrator LLM.
 
     Assembles a detailed system prompt covering tool usage patterns,
     workflow variable management, decision/calculation/subprocess node
-    rules, and dynamic context from uploaded files, analysis reasoning,
-    and guidance notes.
+    rules, and vision-driven image analysis.
 
     Args:
-        last_session_id: Current analyze_workflow session ID, if any.
         has_files: List of uploaded file metadata dicts, if any.
         allow_tools: Whether tool calling is enabled for this response.
-        reasoning: Analysis reasoning context from subagent.
-        guidance: Guidance notes extracted from the workflow image.
 
     Returns:
         Complete system prompt string.
@@ -317,55 +310,23 @@ def build_system_prompt(
         "1. Do NOT chain them sequentially if they are independent failure conditions.\n"
         "2. Consider calculating a 'score' or checking them in a way that keeps the visual tree balanced.\n"
         "3. If sequential checks are necessary, try to alternate left/right branching for visual balance.\n\n"
-        "## Post-Analysis Workflow (CRITICAL)\n"
-        "After analyze_workflow completes, follow this EXACT order:\n"
-        "1. Call create_workflow FIRST (name, output_type) — this gives you a workflow_id\n"
-        "2. Call add_workflow_variable for each input variable (using the workflow_id)\n"
-        "3. Build nodes using add_node or batch_edit_workflow (using the workflow_id)\n\n"
-        "DO NOT call get_current_workflow before create_workflow — no workflow exists in the database yet.\n"
-        "DO NOT call list_workflows_in_library and then try to load a workflow that hasn't been created.\n"
-        "The analysis extracts WHAT the workflow should be; create_workflow makes it real in the database."
+        "## Image Analysis (CRITICAL)\n"
+        "When the user uploads a workflow image, you can SEE it directly in the conversation.\n\n"
+        "Follow this EXACT process:\n"
+        "1. LOOK at the image carefully. Identify every node, decision, pathway, and annotation.\n"
+        "2. Call update_plan to outline everything you see — every step, decision point, and branch.\n"
+        "3. Call create_workflow with a descriptive name and appropriate output_type.\n"
+        "4. Register ALL input variables with add_workflow_variable BEFORE creating nodes that reference them.\n"
+        "5. Build the workflow top-to-bottom: add_node for each step, add_connection to wire them together.\n"
+        "6. For complex sections with cross-references, use batch_edit_workflow.\n"
+        "7. Mark plan items as done as you complete them (call update_plan with done: true).\n\n"
+        "If you are UNSURE about anything (a threshold value, a label, a branch condition):\n"
+        "- Call add_image_question to ask the user — do NOT guess.\n"
+        "- Place the question dot near the relevant part of the image.\n\n"
+        "If you need to re-examine the image mid-conversation:\n"
+        "- Call view_image to get it again.\n\n"
+        "NEVER skip the planning step. ALWAYS use update_plan before building."
     )
-
-    # Append session ID if active
-    if last_session_id:
-        system += f" Current analyze_workflow session_id: {last_session_id}."
-
-    # File-aware instructions based on uploaded files
-    uploaded = has_files or []
-    if len(uploaded) == 1:
-        # Single file: existing behaviour — just tell the model to analyze
-        system += " The user has uploaded a file; analyze_workflow will use the latest upload."
-    elif len(uploaded) > 1:
-        # Multiple files: check if any are still unclassified
-        unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
-        if unclassified:
-            # Files not yet classified — instruct agent to ask in a compact format.
-            # Show file names to user; use file names as id when calling analyze_workflow.
-            numbered_files = "\n".join(
-                f"  {i+1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
-            )
-            system += (
-                f" The user has uploaded {len(uploaded)} files."
-                " BEFORE analyzing, ask the user THREE things in this EXACT compact format:\n\n"
-                "**1. File types:** **flowchart** (the workflow diagram), **guidance** (definitions/legends/context), **mixed** (both)\n\n"
-                "Files:\n"
-                f"{numbered_files}\n\n"
-                "**2. What to extract from each:** e.g. 'full decision tree', 'just the medication names', 'risk scoring thresholds'\n\n"
-                "**3. How are they related?** e.g. 'liver workup discovers abnormal HbA1c which triggers the diabetes pathway'\n\n"
-                "Example reply:\n"
-                "\"1 mixed - full decision tree, 2 mixed - full decision tree. "
-                "The liver workup blood tests can reveal diabetes markers, triggering the treatment pathway.\"\n\n"
-                "Once you have all three pieces of information, call analyze_workflow with the files parameter "
-                "and pass the relationship description and per-file extraction notes in the relationship field."
-                " IMPORTANT: Use the exact file NAME as the 'id' field in each entry of the files array."
-            )
-        else:
-            # All files classified — ready to analyze
-            system += (
-                f" The user has uploaded {len(uploaded)} files and they are classified."
-                " Call analyze_workflow with the files parameter to begin analysis."
-            )
 
     # Disable tools for plain-text-only responses
     if not allow_tools:
@@ -373,50 +334,5 @@ def build_system_prompt(
             " Tools are disabled for this response. Do NOT call tools; respond in "
             "plain text only."
         )
-
-    # Inject subagent reasoning context so the orchestrator understands
-    # domain terminology, variable naming choices, and analysis assumptions.
-    if reasoning:
-        system += (
-            "\n\n## Analysis Context\n"
-            "The following reasoning was produced by the workflow analysis system when "
-            "interpreting the user's workflow image. Use this context to understand domain "
-            "terminology, variable naming choices, node type decisions, and any assumptions "
-            "made during analysis.\n\n"
-            f"{reasoning}"
-        )
-
-    # Inject guidance notes (sticky notes, annotations, legends, linked panels)
-    # extracted from the image. Split into standalone and linked formatting.
-    if guidance:
-        standalone = [g for g in guidance if not g.get("linked_to")]
-        linked = [g for g in guidance if g.get("linked_to")]
-
-        system += "\n\n## Image Guidance Notes\n"
-        system += (
-            "The following notes and guidance panels were found alongside the "
-            "workflow diagram. Use them when interpreting the workflow and answering "
-            "user questions.\n\n"
-        )
-
-        if standalone:
-            for g in standalone:
-                system += (
-                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
-                    f'({g.get("location", "")})\n'
-                )
-
-        if linked:
-            system += (
-                "\nThe following detailed guidance panels describe complex logic "
-                "for specific flowchart nodes:\n"
-            )
-            for g in linked:
-                link_via = f" via {g['link_type']}" if g.get("link_type") else ""
-                system += (
-                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
-                    f'({g.get("location", "")}) -> linked to node: '
-                    f'"{g["linked_to"]}"{link_via}\n'
-                )
 
     return system
