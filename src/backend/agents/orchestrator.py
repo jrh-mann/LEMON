@@ -269,13 +269,12 @@ class Orchestrator:
             if tool_name in WORKFLOW_INPUT_TOOLS:
                 self._update_analysis_from_tool_result(tool_name, result.data)
 
-        # Track current_workflow_id when create_workflow succeeds so that
-        # subsequent tool calls have the correct fallback workflow reference.
-        if tool_name == "create_workflow" and result.success and isinstance(result.data, dict):
-            new_wf_id = result.data.get("workflow_id")
-            if new_wf_id:
-                self.current_workflow_id = new_wf_id
-                self._logger.info("Updated current_workflow_id to %s after create_workflow", new_wf_id)
+        # NOTE: create_workflow no longer updates current_workflow_id here.
+        # The canvas/primary workflow ID is set by the socket handler from the
+        # frontend-generated ID. Subworkflow IDs created by create_workflow are
+        # returned to the LLM in the tool result and referenced via workflow_id
+        # parameter in subsequent tool calls — they should not override the
+        # primary canvas workflow ID.
 
         # Store analysis data from analyze_workflow into orchestrator state
         # so subsequent tool calls have access to variables, tree, doubts, etc.

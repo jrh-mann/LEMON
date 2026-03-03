@@ -121,43 +121,11 @@ class CreateWorkflowTool(Tool):
         if tags and not isinstance(tags, list):
             tags = [str(tags)]
         
-        # Use provided workflow_id from session if available (frontend generates ID on tab creation)
-        # This ensures the canvas workflow and saved workflow share the same ID (no duplicates)
-        candidate_id = session_state.get("current_workflow_id")
-        if candidate_id:
-            # Check if workflow with this ID already exists (e.g., auto-persisted from analysis)
-            existing = workflow_store.get_workflow(candidate_id, user_id)
-            if existing:
-                # Workflow already exists — update its name/output_type instead of creating
-                # a new empty one. This preserves variables/nodes from auto-persist.
-                workflow_id = candidate_id
-                try:
-                    workflow_store.update_workflow(
-                        workflow_id, user_id,
-                        name=name.strip(),
-                        output_type=output_type,
-                    )
-                    return {
-                        "success": True,
-                        "workflow_id": workflow_id,
-                        "name": name.strip(),
-                        "output_type": output_type,
-                        "message": f"Updated workflow '{name.strip()}' ({workflow_id}). "
-                                   f"Use this workflow_id in all subsequent tool calls.",
-                    }
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "error": str(e),
-                        "error_code": "UPDATE_FAILED",
-                        "message": f"Failed to update workflow: {e}",
-                    }
-            else:
-                # ID is available - use it (saving canvas workflow for first time)
-                workflow_id = candidate_id
-        else:
-            # No current_workflow_id - generate fresh ID
-            workflow_id = generate_workflow_id()
+        # Always generate a fresh ID. This tool creates NEW workflows
+        # (primarily subworkflows). The canvas/primary workflow is auto-persisted
+        # by the socket handler using the frontend-generated ID, so
+        # create_workflow never needs to reuse or update an existing workflow.
+        workflow_id = generate_workflow_id()
 
         try:
             # Create workflow in database with empty structure
