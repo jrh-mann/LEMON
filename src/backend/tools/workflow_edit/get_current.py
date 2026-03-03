@@ -160,6 +160,25 @@ class GetCurrentWorkflowTool(WorkflowTool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)
         if error:
+            # If the workflow simply doesn't exist yet, return a helpful non-error
+            # response so the LLM knows to create one instead of retrying.
+            error_code = error.get("error_code", "")
+            if error_code in ("MISSING_WORKFLOW_ID", "WORKFLOW_NOT_FOUND"):
+                return {
+                    "success": True,
+                    "workflow_id": None,
+                    "workflow": {"nodes": [], "edges": []},
+                    "node_count": 0,
+                    "edge_count": 0,
+                    "message": "No workflow exists yet. Call create_workflow first to create one.",
+                    "summary": {
+                        "node_count": 0,
+                        "edge_count": 0,
+                        "node_descriptions": "No workflow loaded",
+                        "edge_descriptions": "No connections",
+                        "variable_descriptions": "No variables",
+                    },
+                }
             return error
         workflow_id = workflow_data["workflow_id"]
         

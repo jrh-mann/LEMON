@@ -22,11 +22,13 @@ class TestGetCurrentWorkflowTool:
     def setup_method(self):
         self.tool = GetCurrentWorkflowTool()
 
-    def test_returns_error_when_no_workflow_id(self, session_state):
-        """Should return error if no workflow_id provided"""
+    def test_returns_empty_workflow_when_no_workflow_id(self, session_state):
+        """Should return empty workflow with guidance when no workflow_id provided"""
         result = self.tool.execute({}, session_state=session_state)
-        assert result["success"] is False
-        assert "workflow_id" in result.get("error", "").lower()
+        assert result["success"] is True
+        assert result["workflow_id"] is None
+        assert result["node_count"] == 0
+        assert "create_workflow" in result.get("message", "").lower()
 
     def test_returns_workflow_from_database(self, workflow_store, test_user_id):
         """Should return workflow loaded from database"""

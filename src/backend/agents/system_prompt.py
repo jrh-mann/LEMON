@@ -316,7 +316,15 @@ def build_system_prompt(
         "When implementing multiple independent checks (e.g., 'Age > 18' AND 'Income > 50k' AND 'Credit > 700'):\n"
         "1. Do NOT chain them sequentially if they are independent failure conditions.\n"
         "2. Consider calculating a 'score' or checking them in a way that keeps the visual tree balanced.\n"
-        "3. If sequential checks are necessary, try to alternate left/right branching for visual balance."
+        "3. If sequential checks are necessary, try to alternate left/right branching for visual balance.\n\n"
+        "## Post-Analysis Workflow (CRITICAL)\n"
+        "After analyze_workflow completes, follow this EXACT order:\n"
+        "1. Call create_workflow FIRST (name, output_type) — this gives you a workflow_id\n"
+        "2. Call add_workflow_variable for each input variable (using the workflow_id)\n"
+        "3. Build nodes using add_node or batch_edit_workflow (using the workflow_id)\n\n"
+        "DO NOT call get_current_workflow before create_workflow — no workflow exists in the database yet.\n"
+        "DO NOT call list_workflows_in_library and then try to load a workflow that hasn't been created.\n"
+        "The analysis extracts WHAT the workflow should be; create_workflow makes it real in the database."
     )
 
     # Append session ID if active

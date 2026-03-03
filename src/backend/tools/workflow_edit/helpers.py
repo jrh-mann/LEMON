@@ -12,6 +12,7 @@ output config) is never duplicated.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -515,15 +516,18 @@ def build_new_node(
 # This pattern ensures all changes persist automatically with no "Save" button.
 # ============================================================================
 
+_load_logger = logging.getLogger(__name__)
+
+
 def load_workflow_for_tool(
     workflow_id: str,
     session_state: Dict[str, Any],
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """Load workflow from database for tool execution.
-    
+
     Provides a standard way for tools to load a workflow by ID from the
     database. Returns the workflow data in a format ready for tool use.
-    
+
     Args:
         workflow_id: ID of the workflow to load (e.g., "wf_abc123"). If None,
             falls back to session_state["current_workflow_id"].
@@ -546,8 +550,15 @@ def load_workflow_for_tool(
     # Validate workflow_id is provided - fall back to current_workflow_id from session
     if not workflow_id:
         workflow_id = session_state.get("current_workflow_id")
-    
+        _load_logger.info(
+            "load_workflow_for_tool: no workflow_id in args, fell back to current_workflow_id=%s",
+            workflow_id,
+        )
+
     if not workflow_id:
+        _load_logger.warning(
+            "load_workflow_for_tool: no workflow_id available (args=None, current_workflow_id=None)"
+        )
         return None, {
             "success": False,
             "error": "workflow_id is required",
@@ -587,6 +598,10 @@ def load_workflow_for_tool(
         }
     
     if record is None:
+        _load_logger.warning(
+            "load_workflow_for_tool: workflow_id=%s not found in DB for user_id=%s",
+            workflow_id, user_id,
+        )
         return None, {
             "success": False,
             "error": f"Workflow '{workflow_id}' not found",
