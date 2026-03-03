@@ -1,9 +1,11 @@
 """Workflow analysis tools."""
 
-from .analyze import AnalyzeWorkflowTool
-from .publish import PublishLatestAnalysisTool
+from .ask_question import AskQuestionTool
+from .view_image import ViewImageTool
+from .update_plan import UpdatePlanTool
 
 __all__ = [
-    "AnalyzeWorkflowTool",
-    "PublishLatestAnalysisTool",
+    "AskQuestionTool",
+    "ViewImageTool",
+    "UpdatePlanTool",
 ]

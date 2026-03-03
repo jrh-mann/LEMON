@@ -95,30 +95,6 @@ export function calculateViewBox(
   }
 }
 
-// Check if point is inside node bounding box
-export function isPointInNode(x: number, y: number, node: FlowNode): boolean {
-  const size = getNodeSize(node.type)
-  const halfW = size.w / 2
-  const halfH = size.h / 2
-
-  return (
-    x >= node.x - halfW &&
-    x <= node.x + halfW &&
-    y >= node.y - halfH &&
-    y <= node.y + halfH
-  )
-}
-
-// Find node at point (checks in reverse order for top-most)
-export function findNodeAtPoint(x: number, y: number, nodes: FlowNode[]): FlowNode | null {
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    if (isPointInNode(x, y, nodes[i])) {
-      return nodes[i]
-    }
-  }
-  return null
-}
-
 // SVG path for decision diamond shape
 export function getDecisionPath(cx: number, cy: number, w: number, h: number): string {
   const halfW = w / 2

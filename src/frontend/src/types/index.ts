@@ -4,13 +4,13 @@
 // ============ Enums ============
 
 export type BlockType = 'input' | 'decision' | 'output' | 'workflow_ref'
-export type InputType = 'int' | 'float' | 'bool' | 'string' | 'enum' | 'date'
+export type InputType = 'number' | 'bool' | 'string' | 'enum' | 'date'
 export type PortType = 'default' | 'true' | 'false'
 
 // ============ Decision Condition Types ============
 // Comparators for structured decision node conditions
 
-// Numeric comparators (for int, float types)
+// Numeric comparators (for number type)
 export type NumericComparator = 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'within_range'
 
 // Boolean comparators
@@ -33,18 +33,33 @@ export type Comparator =
   | DateComparator
   | EnumComparator
 
-// Structured decision condition - references variables by ID
-export interface DecisionCondition {
+// Simple decision condition — references a single variable by ID
+export interface SimpleCondition {
   input_id: string       // Which workflow variable to compare (e.g., "var_age_int")
   comparator: Comparator // The comparison operator to use
-  value: unknown         // The value to compare against
+  value?: unknown        // The value to compare against
   value2?: unknown       // Second value for range comparisons (within_range, date_between)
 }
 
+// Compound condition operator
+export type ConditionOperator = 'and' | 'or'
+
+// Compound condition — combines 2+ simple conditions with AND/OR
+export interface CompoundCondition {
+  operator: ConditionOperator
+  conditions: SimpleCondition[] // Must have >= 2 entries; no nesting
+}
+
+// Union type: a condition is either simple or compound
+export type DecisionCondition = SimpleCondition | CompoundCondition
+
+// Type guard: detect compound vs simple conditions
+export const isCompoundCondition = (c: DecisionCondition): c is CompoundCondition =>
+  'operator' in c
+
 // Helper: Map input types to their valid comparators
 export const COMPARATORS_BY_TYPE: Record<InputType, Comparator[]> = {
-  int: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],
-  float: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],
+  number: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],  // Unified numeric type
   bool: ['is_true', 'is_false'],
   string: ['str_eq', 'str_neq', 'str_contains', 'str_starts_with', 'str_ends_with'],
   date: ['date_eq', 'date_before', 'date_after', 'date_between'],
@@ -81,6 +96,93 @@ export const COMPARATOR_LABELS: Record<Comparator, string> = {
 }
 export type ValidationConfidence = 'none' | 'low' | 'medium' | 'high'
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
+
+// ============ File Upload Types ============
+
+// Classification of an uploaded file's purpose in the workflow
+export type FilePurpose = 'flowchart' | 'guidance' | 'mixed' | 'unclassified'
+
+// A file staged for upload (image or PDF)
+export interface PendingFile {
+  id: string
+  name: string
+  dataUrl: string
+  type: 'image' | 'pdf'
+  purpose: FilePurpose
+}
+
+// ============ Calculation Operators ============
+// Frontend definitions mirroring backend operators.py
+
+export type OperatorArity = 'unary' | 'binary' | 'variadic'
+
+export interface OperatorDef {
+  name: string           // Internal name, e.g., "add", "sqrt"
+  displayName: string    // Human-readable name, e.g., "Add", "Square Root"
+  symbol: string         // Mathematical symbol, e.g., "+", "sqrt"
+  minArity: number       // Minimum operands required
+  maxArity: number | null // Maximum operands (null = unlimited)
+  description: string    // Explanation of what operator does
+  category: OperatorArity // For grouping in UI
+}
+
+// All operators available for calculation nodes
+// Mirrors backend src/backend/execution/operators.py
+export const OPERATORS: OperatorDef[] = [
+  // Unary operators (arity=1)
+  { name: 'negate', displayName: 'Negate', symbol: '-x', minArity: 1, maxArity: 1, description: 'Returns the negation of the operand', category: 'unary' },
+  { name: 'abs', displayName: 'Absolute Value', symbol: '|x|', minArity: 1, maxArity: 1, description: 'Returns the absolute value', category: 'unary' },
+  { name: 'sqrt', displayName: 'Square Root', symbol: '√x', minArity: 1, maxArity: 1, description: 'Returns the square root (fails for negative)', category: 'unary' },
+  { name: 'square', displayName: 'Square', symbol: 'x²', minArity: 1, maxArity: 1, description: 'Returns the operand squared', category: 'unary' },
+  { name: 'cube', displayName: 'Cube', symbol: 'x³', minArity: 1, maxArity: 1, description: 'Returns the operand cubed', category: 'unary' },
+  { name: 'reciprocal', displayName: 'Reciprocal', symbol: '1/x', minArity: 1, maxArity: 1, description: 'Returns 1 divided by operand (fails for zero)', category: 'unary' },
+  { name: 'floor', displayName: 'Floor', symbol: '⌊x⌋', minArity: 1, maxArity: 1, description: 'Rounds down to nearest integer', category: 'unary' },
+  { name: 'ceil', displayName: 'Ceiling', symbol: '⌈x⌉', minArity: 1, maxArity: 1, description: 'Rounds up to nearest integer', category: 'unary' },
+  { name: 'round', displayName: 'Round', symbol: 'round', minArity: 1, maxArity: 1, description: 'Rounds to nearest integer', category: 'unary' },
+  { name: 'sign', displayName: 'Sign', symbol: 'sign', minArity: 1, maxArity: 1, description: 'Returns -1, 0, or 1 based on sign', category: 'unary' },
+  { name: 'ln', displayName: 'Natural Log', symbol: 'ln', minArity: 1, maxArity: 1, description: 'Natural logarithm (fails for non-positive)', category: 'unary' },
+  { name: 'log10', displayName: 'Log Base 10', symbol: 'log₁₀', minArity: 1, maxArity: 1, description: 'Base-10 logarithm (fails for non-positive)', category: 'unary' },
+  { name: 'exp', displayName: 'Exponential', symbol: 'eˣ', minArity: 1, maxArity: 1, description: 'Returns e raised to the power of x', category: 'unary' },
+  { name: 'sin', displayName: 'Sine', symbol: 'sin', minArity: 1, maxArity: 1, description: 'Sine (radians)', category: 'unary' },
+  { name: 'cos', displayName: 'Cosine', symbol: 'cos', minArity: 1, maxArity: 1, description: 'Cosine (radians)', category: 'unary' },
+  { name: 'tan', displayName: 'Tangent', symbol: 'tan', minArity: 1, maxArity: 1, description: 'Tangent (radians)', category: 'unary' },
+  { name: 'asin', displayName: 'Arc Sine', symbol: 'asin', minArity: 1, maxArity: 1, description: 'Arc sine (fails if |x| > 1)', category: 'unary' },
+  { name: 'acos', displayName: 'Arc Cosine', symbol: 'acos', minArity: 1, maxArity: 1, description: 'Arc cosine (fails if |x| > 1)', category: 'unary' },
+  { name: 'atan', displayName: 'Arc Tangent', symbol: 'atan', minArity: 1, maxArity: 1, description: 'Arc tangent', category: 'unary' },
+  { name: 'degrees', displayName: 'Degrees', symbol: 'deg', minArity: 1, maxArity: 1, description: 'Converts radians to degrees', category: 'unary' },
+  { name: 'radians', displayName: 'Radians', symbol: 'rad', minArity: 1, maxArity: 1, description: 'Converts degrees to radians', category: 'unary' },
+
+  // Binary operators (arity=2)
+  { name: 'subtract', displayName: 'Subtract', symbol: 'a - b', minArity: 2, maxArity: 2, description: 'Returns a minus b', category: 'binary' },
+  { name: 'divide', displayName: 'Divide', symbol: 'a / b', minArity: 2, maxArity: 2, description: 'Returns a divided by b (fails for zero)', category: 'binary' },
+  { name: 'floor_divide', displayName: 'Floor Divide', symbol: 'a // b', minArity: 2, maxArity: 2, description: 'Floor division (fails for zero)', category: 'binary' },
+  { name: 'modulo', displayName: 'Modulo', symbol: 'a % b', minArity: 2, maxArity: 2, description: 'Remainder of a / b (fails for zero)', category: 'binary' },
+  { name: 'power', displayName: 'Power', symbol: 'a ^ b', minArity: 2, maxArity: 2, description: 'Returns a raised to power b', category: 'binary' },
+  { name: 'log', displayName: 'Logarithm', symbol: 'log_b(a)', minArity: 2, maxArity: 2, description: 'Logarithm of a with base b', category: 'binary' },
+  { name: 'atan2', displayName: 'Arc Tangent 2', symbol: 'atan2', minArity: 2, maxArity: 2, description: 'Two-argument arc tangent', category: 'binary' },
+
+  // Variadic operators (arity>=2, unlimited)
+  { name: 'add', displayName: 'Add', symbol: '+', minArity: 2, maxArity: null, description: 'Sum of all operands', category: 'variadic' },
+  { name: 'multiply', displayName: 'Multiply', symbol: '×', minArity: 2, maxArity: null, description: 'Product of all operands', category: 'variadic' },
+  { name: 'min', displayName: 'Minimum', symbol: 'min', minArity: 2, maxArity: null, description: 'Minimum of all operands', category: 'variadic' },
+  { name: 'max', displayName: 'Maximum', symbol: 'max', minArity: 2, maxArity: null, description: 'Maximum of all operands', category: 'variadic' },
+  { name: 'sum', displayName: 'Sum', symbol: 'Σ', minArity: 2, maxArity: null, description: 'Sum of all operands (alias for add)', category: 'variadic' },
+  { name: 'average', displayName: 'Average', symbol: 'avg', minArity: 2, maxArity: null, description: 'Arithmetic mean of all operands', category: 'variadic' },
+  { name: 'hypot', displayName: 'Hypotenuse', symbol: 'hypot', minArity: 2, maxArity: null, description: 'Euclidean distance: √(x₁² + x₂² + ...)', category: 'variadic' },
+  { name: 'geometric_mean', displayName: 'Geometric Mean', symbol: 'geomean', minArity: 2, maxArity: null, description: 'Geometric mean (fails for negative)', category: 'variadic' },
+  { name: 'harmonic_mean', displayName: 'Harmonic Mean', symbol: 'harmean', minArity: 2, maxArity: null, description: 'Harmonic mean (fails for zero/negative)', category: 'variadic' },
+  { name: 'variance', displayName: 'Variance', symbol: 'var', minArity: 2, maxArity: null, description: 'Sample variance (requires >= 2 values)', category: 'variadic' },
+  { name: 'std_dev', displayName: 'Std Deviation', symbol: 'stdev', minArity: 2, maxArity: null, description: 'Sample standard deviation (requires >= 2)', category: 'variadic' },
+  { name: 'range', displayName: 'Range', symbol: 'range', minArity: 2, maxArity: null, description: 'Returns max - min of all operands', category: 'variadic' },
+]
+
+// Helper to get operator by name
+export const getOperator = (name: string): OperatorDef | undefined =>
+  OPERATORS.find(op => op.name === name)
+
+// Helper to get operators by category
+export const getOperatorsByCategory = (category: OperatorArity): OperatorDef[] =>
+  OPERATORS.filter(op => op.category === category)
 
 // ============ Core Workflow Models ============
 
@@ -158,9 +260,23 @@ export interface WorkflowMetadata {
 
 export interface Workflow {
   id: string
+  output_type?: string  // Workflow-level output type: 'string' | 'number' | 'bool' | 'json'
   metadata: WorkflowMetadata
   blocks: Block[]
   connections: Connection[]
+}
+
+/** Shape returned by GET /api/workflows/:id — backend-oriented before frontend transform */
+export interface WorkflowDetailResponse {
+  id: string
+  output_type: string
+  metadata: WorkflowMetadata
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  variables: WorkflowVariable[]
+  outputs: WorkflowOutput[]
+  tree: Record<string, unknown>
+  doubts: string[]
 }
 
 export interface WorkflowSummary {
@@ -177,7 +293,17 @@ export interface WorkflowSummary {
   output_values: string[]
   created_at: string
   updated_at: string
+  // Peer review fields (optional for private workflows)
+  is_published?: boolean
+  review_status?: 'unreviewed' | 'reviewed'
+  net_votes?: number
+  published_at?: string
+  publisher_id?: string
+  user_vote?: number | null  // Current user's vote: +1, -1, or null
 }
+
+// Peer review status type
+export type ReviewStatus = 'unreviewed' | 'reviewed'
 
 // ============ Unified Variable System ============
 // All workflow variables (user inputs, subprocess outputs, calculated values) are stored
@@ -186,11 +312,11 @@ export interface WorkflowSummary {
 // Variable source types - indicates where the variable value comes from
 export type VariableSource = 'input' | 'subprocess' | 'calculated' | 'constant'
 
-// Unified variable type - replaces the old WorkflowInput
+// Workflow variable definition — describes an input, calculated, or subprocess-derived variable
 export interface WorkflowVariable {
-  id: string                          // e.g., "var_patient_age_int", "var_creditscore_float"
+  id: string                          // e.g., "var_patient_age_number", "var_creditscore_number"
   name: string                        // Human-readable name, e.g., "Patient Age"
-  type: InputType                     // "int", "float", "bool", "string", "enum", "date"
+  type: InputType                     // "number", "bool", "string", "enum", "date"
   source: VariableSource              // Where this variable comes from
   description?: string                // Optional description
 
@@ -210,8 +336,7 @@ export interface WorkflowVariable {
   value?: unknown                     // The constant value
 }
 
-// Legacy type alias for backwards compatibility during transition
-export type WorkflowInput = WorkflowVariable
+
 
 // Workflow output definition - now with required type for subprocess variable inference
 export interface WorkflowOutput {
@@ -223,14 +348,42 @@ export interface WorkflowOutput {
 export interface WorkflowAnalysis {
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
   outputs: WorkflowOutput[]           // Outputs with required type
-  tree: Record<string, unknown>
-  doubts: string[]
 }
 
 // ============ Flowchart Models (for canvas rendering) ============
 
-export type FlowNodeType = 'start' | 'process' | 'decision' | 'subprocess' | 'end'
-export type FlowNodeColor = 'teal' | 'amber' | 'green' | 'slate' | 'rose' | 'sky'
+export type FlowNodeType = 'start' | 'process' | 'decision' | 'subprocess' | 'calculation' | 'end'
+export type FlowNodeColor = 'teal' | 'amber' | 'green' | 'slate' | 'rose' | 'sky' | 'purple'
+
+// ============ Calculation Node Types ============
+// Operand in a calculation - either a variable reference or a literal value
+
+export type OperandKind = 'variable' | 'literal'
+
+export interface VariableOperand {
+  kind: 'variable'
+  ref: string  // Variable ID, e.g., "var_weight_number"
+}
+
+export interface LiteralOperand {
+  kind: 'literal'
+  value: number  // Numeric literal value
+}
+
+export type Operand = VariableOperand | LiteralOperand
+
+// Calculation output definition
+export interface CalculationOutput {
+  name: string         // Human-readable name, e.g., "BMI"
+  description?: string // Optional description
+}
+
+// Full calculation configuration for a calculation node
+export interface CalculationConfig {
+  output: CalculationOutput  // The output variable to create
+  operator: string           // Operator name, e.g., "divide", "add", "sqrt"
+  operands: Operand[]        // The operands for the calculation
+}
 
 export interface FlowNode {
   id: string
@@ -249,6 +402,8 @@ export interface FlowNode {
   subworkflow_id?: string
   input_mapping?: Record<string, string>
   output_variable?: string
+  // Calculation-specific fields (for type='calculation')
+  calculation?: CalculationConfig
 }
 
 export interface FlowEdge {
@@ -287,6 +442,88 @@ export interface ExecutionTrace {
   steps: ExecutionStep[]
   state_history: Record<string, unknown>[]
 }
+
+// ============ Execution Log Entry (for dev tools) ============
+
+export type ExecutionLogType = 'decision' | 'calculation' | 'step' | 'subflow'
+
+export interface ExecutionLogEntryBase {
+  id: string
+  timestamp: number
+  execution_id: string
+  node_id: string
+  node_label: string
+  // Subflow context
+  subworkflow_id?: string
+  subworkflow_name?: string
+  subworkflow_stack?: string[] // Stack of subworkflow IDs (outer -> inner)
+  error?: string
+}
+
+export interface DecisionLogEntry extends ExecutionLogEntryBase {
+  log_type: 'decision'
+  condition_expression: string
+  input_name: string
+  input_value: unknown
+  comparator: string
+  compare_value: unknown
+  compare_value2?: unknown
+  result: boolean
+  branch_taken: 'true' | 'false'
+}
+
+export interface CalculationLogEntry extends ExecutionLogEntryBase {
+  log_type: 'calculation'
+  output_name: string
+  operator: string
+  operands: Array<{ name: string; kind: string; value: number }>
+  result: number
+  formula: string
+}
+
+export interface StepLogEntry extends ExecutionLogEntryBase {
+  log_type: 'step'
+  node_type: string
+  step_index: number
+}
+
+export interface SubflowLogEntry extends ExecutionLogEntryBase {
+  log_type: 'subflow_start'
+  subworkflow_id: string
+  subworkflow_name: string
+}
+
+export interface SubflowStepLogEntry extends ExecutionLogEntryBase {
+  log_type: 'subflow_step'
+  // Fields like subworkflow_id inherited from Base now
+  node_type: string
+  parent_node_id?: string
+}
+
+export interface SubflowCompleteLogEntry extends ExecutionLogEntryBase {
+  log_type: 'subflow_complete'
+  subworkflow_id: string
+  subworkflow_name: string
+  success: boolean
+  output?: unknown
+  error?: string
+}
+
+export interface StartLogEntry extends ExecutionLogEntryBase {
+  log_type: 'start'
+  inputs?: Record<string, unknown>
+  subworkflow_id?: string
+  subworkflow_name?: string
+}
+
+export interface EndLogEntry extends ExecutionLogEntryBase {
+  log_type: 'end'
+  output_value?: unknown
+  subworkflow_id?: string
+  subworkflow_name?: string
+}
+
+export type ExecutionLogEntry = DecisionLogEntry | CalculationLogEntry | StepLogEntry | SubflowLogEntry | SubflowStepLogEntry | SubflowCompleteLogEntry | StartLogEntry | EndLogEntry
 
 // ============ Validation Models ============
 
@@ -337,6 +574,7 @@ export interface ToolCall {
   tool: string
   arguments?: Record<string, unknown>
   result?: Record<string, unknown>
+  success?: boolean  // false if tool failed, true/undefined if succeeded
 }
 
 export interface Message {
@@ -385,6 +623,7 @@ export interface CreateWorkflowRequest {
   description: string
   domain?: string
   tags?: string[]
+  output_type?: string  // Workflow-level output type: 'string' | 'number' | 'bool' | 'json'
   nodes: FlowNode[]
   edges: FlowEdge[]
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
@@ -470,7 +709,7 @@ export interface SocketChatEvent {
   session_id: string
   message: string
   conversation_id?: string
-  image?: string
+  files?: PendingFile[]
   task_id?: string
 }
 
@@ -508,4 +747,4 @@ export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running'
 
 export type ModalType = 'library' | 'validation' | 'save' | 'execute' | 'none'
 
-export type SidebarTab = 'library' | 'variables' | 'properties'
+export type SidebarTab = 'library' | 'variables' | 'properties' | 'devtools'

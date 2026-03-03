@@ -1,0 +1,191 @@
+/* Node Properties Modal - M3-style dialog */
+
+.node-props-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(22, 24, 23, 0.4);
+    padding: 20px;
+    animation: fadeIn var(--transition-normal);
+}
+
+@keyframes overlay-fade {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.node-props-modal {
+    background: var(--paper);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 16px 48px rgba(0, 0, 0, 0.08);
+    width: 480px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1001;
+    animation: fadeInScale var(--transition-bounce);
+}
+
+@keyframes modal-slide {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.node-props-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--edge);
+    flex-shrink: 0;
+}
+
+.node-props-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.node-props-icon {
+    width: 40px;
+    height: 40px;
+    border: 2px solid;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.node-props-title h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+}
+
+.node-props-type {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.node-props-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    transition: all 0.15s ease;
+}
+
+.node-props-close:hover {
+    background: var(--edge);
+    color: var(--ink);
+}
+
+.node-props-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.node-props-section {
+    margin-bottom: 20px;
+}
+
+.node-props-section h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.node-props-hint {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.node-props-field {
+    margin-bottom: 12px;
+}
+
+.node-props-field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.node-props-field input,
+.node-props-field select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: white;
+    transition: border-color 0.15s ease;
+}
+
+.node-props-field input:focus,
+.node-props-field select:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px var(--teal-light);
+}
+
+.node-props-field input.readonly {
+    background: var(--bg);
+    color: var(--muted);
+}
+
+.node-props-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.node-props-operands {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.node-props-operand {
+    background: var(--edge);
+    color: var(--ink);
+    font-size: 0.8rem;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-family: "SF Mono", "Menlo", monospace;
+}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
@@ -11,7 +11,7 @@ import {
   stopWorkflowExecution,
 } from '../api/socket'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { WorkflowInput, WorkflowVariable } from '../types'
+import type { WorkflowVariable } from '../types'
 
 export default function Modals() {
   const { modalOpen, closeModal } = useUIStore()
@@ -56,7 +56,7 @@ function Modal({
   if (!isOpen) return null
 
   return (
-    <div className="modal open">
+    <div className="modal">
       <div className="modal-backdrop" onClick={onClose}></div>
       <div className="modal-content">
         <div className="modal-header">
@@ -287,19 +287,39 @@ function ValidationFlow() {
 }
 
 // Save workflow form component
+// Handles both creating new workflows and updating existing ones
 function SaveWorkflowForm() {
   const { closeModal } = useUIStore()
-  const { flowchart, currentAnalysis } = useWorkflowStore()
+  const { flowchart, currentAnalysis, currentWorkflow } = useWorkflowStore()
 
+  // Check if this is an existing workflow (has ID from LLM creation or previous load)
+  const existingWorkflowId = currentWorkflow?.id
+  const isUpdate = Boolean(existingWorkflowId)
+
+  // Pre-populate form with existing workflow metadata if updating
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [domain, setDomain] = useState('')
   const [tags, setTags] = useState('')
+  const [outputType, setOutputType] = useState('string')  // Workflow-level output type
+  const [isPublished, setIsPublished] = useState(false)  // Publish to community library
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[] | null>(null)
   const [showValidationWarning, setShowValidationWarning] = useState(false)
+
+  // Initialize form with existing workflow data when modal opens
+  useEffect(() => {
+    if (currentWorkflow?.metadata) {
+      setName(currentWorkflow.metadata.name || '')
+      setDescription(currentWorkflow.metadata.description || '')
+      setDomain(currentWorkflow.metadata.domain || '')
+      setTags((currentWorkflow.metadata.tags || []).join(', '))
+      setOutputType(currentWorkflow.output_type || 'string')
+      // Note: isPublished stays false on edit - republishing is a deliberate choice
+    }
+  }, [currentWorkflow])
 
   const handleSave = useCallback(async (skipValidation = false) => {
     if (!name.trim()) {
@@ -346,19 +366,23 @@ function SaveWorkflowForm() {
         description: description.trim(),
         domain: domain.trim() || undefined,
         tags: tagArray,
+        output_type: outputType,
         nodes: flowchart.nodes,
         edges: flowchart.edges,
-        variables: currentAnalysis?.variables || [],  // Unified variable system
-        inputs: currentAnalysis?.variables || [],     // Backend compatibility
+        variables: currentAnalysis?.variables || [],
         outputs: currentAnalysis?.outputs || [],
-        tree: currentAnalysis?.tree || {},
-        doubts: currentAnalysis?.doubts || [],
         validation_score: 0,
         validation_count: 0,
         is_validated: false,
+        is_published: isPublished,  // Peer review: publish to community library
       }
 
-      await createWorkflow(payload)
+      // Always use createWorkflow - backend handles duplicates by falling back to update
+      // This handles the case where LLM created a workflow (has ID) but it's not in DB yet
+      const payloadWithId = existingWorkflowId
+        ? { ...payload, id: existingWorkflowId }
+        : payload
+      await createWorkflow(payloadWithId)
 
       setSaveSuccess(true)
       setShowValidationWarning(false)
@@ -372,12 +396,14 @@ function SaveWorkflowForm() {
         setDescription('')
         setDomain('')
         setTags('')
+        setOutputType('string')
+        setIsPublished(false)
       }, 1500)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, flowchart, currentAnalysis, closeModal])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
 
   if (flowchart.nodes.length === 0) {
     return (
@@ -395,8 +421,8 @@ function SaveWorkflowForm() {
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
-        <h3>Workflow Saved!</h3>
-        <p className="muted">Your workflow has been saved to your library.</p>
+        <h3>Workflow {isUpdate ? 'Updated' : 'Saved'}!</h3>
+        <p className="muted">Your workflow has been {isUpdate ? 'updated in' : 'saved to'} your library.</p>
       </div>
     )
   }
@@ -455,6 +481,40 @@ function SaveWorkflowForm() {
         <small className="muted">Separate tags with commas</small>
       </div>
 
+      <div className="form-group">
+        <label htmlFor="workflow-output-type">Output Type</label>
+        <select
+          id="workflow-output-type"
+          value={outputType}
+          onChange={(e) => setOutputType(e.target.value)}
+          disabled={isSaving}
+        >
+          <option value="string">String</option>
+          <option value="number">Number</option>
+          <option value="bool">Boolean</option>
+          <option value="json">JSON</option>
+        </select>
+        <small className="muted">Type of value this workflow returns when executed</small>
+      </div>
+
+      {/* Publish to community library checkbox */}
+      <div className="form-group checkbox-group publish-option">
+        <label>
+          <input
+            id="workflow-publish"
+            type="checkbox"
+            checked={isPublished}
+            onChange={(e) => setIsPublished(e.target.checked)}
+            disabled={isSaving}
+          />
+          <span className="checkbox-label">Publish to Community Library</span>
+        </label>
+        <small className="muted">
+          Published workflows appear in the peer review section.
+          They will be reviewed by other users before becoming publicly available.
+        </small>
+      </div>
+
       {saveError && <p className="error-text">{saveError}</p>}
 
       {showValidationWarning && validationErrors && (
@@ -497,7 +557,7 @@ function SaveWorkflowForm() {
             Cancel
           </button>
           <button className="primary" onClick={() => handleSave(false)} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save Workflow'}
+            {isSaving ? 'Saving...' : isUpdate ? 'Update Workflow' : 'Save Workflow'}
           </button>
         </div>
       )}
@@ -515,41 +575,52 @@ function ExecuteWorkflowForm() {
     execution,
     setExecutionSpeed,
     clearExecution,
+    inputValues: persistedValues,
+    setInputValues: setGlobalInputValues,
   } = useWorkflowStore()
 
-  // Initialize input values from workflow variables
+  // Initialize input values from workflow variables, using persisted values when available
   const workflowInputs = currentAnalysis?.variables ?? []
   const [inputValues, setInputValues] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {}
     for (const input of workflowInputs) {
-      switch (input.type) {
-        case 'bool':
-          initial[input.id] = false
-          break
-        case 'int':
-        case 'float':
-          initial[input.id] = input.range?.min ?? 0
-          break
-        case 'enum':
-          const enumVals = input.enum_values ?? []
-          initial[input.id] = enumVals[0] ?? ''
-          break
-        case 'date':
-          initial[input.id] = new Date().toISOString().split('T')[0]
-          break
-        case 'string':
-        default:
-          initial[input.id] = ''
-          break
+      // Use persisted value if available, otherwise use defaults
+      if (input.id in persistedValues) {
+        initial[input.id] = persistedValues[input.id]
+      } else {
+        switch (input.type) {
+          case 'bool':
+            initial[input.id] = false
+            break
+          case 'number':  // Unified numeric type
+            initial[input.id] = input.range?.min ?? 0
+            break
+          case 'enum':
+            const enumVals = input.enum_values ?? []
+            initial[input.id] = enumVals[0] ?? ''
+            break
+          case 'date':
+            initial[input.id] = new Date().toISOString().split('T')[0]
+            break
+          case 'string':
+          default:
+            initial[input.id] = ''
+            break
+        }
       }
     }
     return initial
   })
 
-  // Handle input value change
+  // Handle input value change - update local state and persist to store
   const handleInputChange = useCallback((inputId: string, value: unknown) => {
-    setInputValues((prev) => ({ ...prev, [inputId]: value }))
-  }, [])
+    setInputValues((prev) => {
+      const newValues = { ...prev, [inputId]: value }
+      // Persist to store for next execution
+      setGlobalInputValues(newValues)
+      return newValues
+    })
+  }, [setGlobalInputValues])
 
   // Handle speed slider change
   const handleSpeedChange = useCallback(
@@ -563,12 +634,14 @@ function ExecuteWorkflowForm() {
   // Start execution - closes modal immediately so user can watch canvas
   // Modal will reopen when execution completes or errors (handled by socket.ts)
   const handleRun = useCallback(() => {
+    // Persist input values before running
+    setGlobalInputValues(inputValues)
     startWorkflowExecution(inputValues, execution.executionSpeed)
     closeModal()  // Close modal so user can see the canvas with execution highlighting
-  }, [inputValues, execution.executionSpeed, closeModal])
+  }, [inputValues, execution.executionSpeed, closeModal, setGlobalInputValues])
 
   // Render input field based on type
-  const renderInputField = (input: WorkflowInput) => {
+  const renderInputField = (input: WorkflowVariable) => {
     const inputId = `exec-input-${input.id}`
     const value = inputValues[input.id]
 
@@ -592,7 +665,8 @@ function ExecuteWorkflowForm() {
           </div>
         )
 
-      case 'int':
+      // Unified numeric type - accepts both int and float
+      case 'number':
         return (
           <div className="form-group">
             <label htmlFor={inputId}>{input.name}</label>
@@ -602,27 +676,7 @@ function ExecuteWorkflowForm() {
             <input
               id={inputId}
               type="number"
-              step="1"
-              min={input.range?.min}
-              max={input.range?.max}
-              value={Number(value)}
-              onChange={(e) => handleInputChange(input.id, parseInt(e.target.value, 10))}
-              disabled={execution.isExecuting}
-            />
-          </div>
-        )
-
-      case 'float':
-        return (
-          <div className="form-group">
-            <label htmlFor={inputId}>{input.name}</label>
-            {input.description && (
-              <small className="muted">{input.description}</small>
-            )}
-            <input
-              id={inputId}
-              type="number"
-              step="0.01"
+              step="any"
               min={input.range?.min}
               max={input.range?.max}
               value={Number(value)}
@@ -750,20 +804,28 @@ function ExecuteWorkflowForm() {
     )
   }
 
+  // Filter inputs to only show those that require user input (source='input')
+  const userInputs = workflowInputs.filter(input => input.source === 'input')
+
   return (
     <div className="execute-form">
       {/* Input fields section */}
-      {workflowInputs.length > 0 ? (
+      {userInputs.length > 0 ? (
         <div className="inputs-section">
           <h4>Workflow Inputs</h4>
           <p className="muted small">Provide values for the workflow inputs</p>
-          {workflowInputs.map((input: WorkflowVariable) => (
+          {userInputs.map((input: WorkflowVariable) => (
             <div key={input.id}>{renderInputField(input)}</div>
           ))}
         </div>
       ) : (
         <div className="no-inputs-notice">
-          <p className="muted">This workflow has no defined inputs.</p>
+          <p className="muted">This workflow has no manual inputs.</p>
+          {workflowInputs.length > 0 && (
+            <p className="muted small">
+              ({workflowInputs.length} internal variables will be calculated automatically)
+            </p>
+          )}
         </div>
       )}
 

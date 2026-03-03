@@ -6,17 +6,20 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from src.backend.execution.parser import parse_condition, ParseError
-from src.backend.execution.types import Variable, BinaryOp, UnaryOp
+from ..execution.types import Variable, BinaryOp, UnaryOp
+from ..execution.operators import get_operator, validate_operator_arity
 
 
 # Required fields for subprocess nodes
 SUBPROCESS_REQUIRED_FIELDS = ["subworkflow_id", "input_mapping", "output_variable"]
 
+# Required fields for calculation nodes
+CALCULATION_REQUIRED_FIELDS = ["calculation"]
+
 # Valid comparators by variable type for structured conditions
+# 'number' is the unified numeric type that supports all numeric comparators
 VALID_COMPARATORS_BY_TYPE = {
-    "int": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
-    "float": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
+    "number": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
     "bool": {"is_true", "is_false"},
     "string": {"str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"},
     "date": {"date_eq", "date_before", "date_after", "date_between"},
@@ -40,7 +43,7 @@ class ValidationError:
 class WorkflowValidator:
     """Validates workflow structure for syntactic correctness."""
 
-    VALID_NODE_TYPES = {"start", "process", "decision", "subprocess", "end"}
+    VALID_NODE_TYPES = {"start", "process", "decision", "subprocess", "calculation", "end"}
     REQUIRED_NODE_FIELDS = {"id", "type", "label", "x", "y"}
 
     def validate(
@@ -72,6 +75,7 @@ class WorkflowValidator:
         11. Start nodes should have at least 1 outgoing edge
         12. End nodes should have 0 outgoing edges
         13. Decision nodes must have all referenced variables registered as workflow variables
+        14. All end nodes must have output_type matching workflow's declared output_type
         """
         errors: List[ValidationError] = []
         nodes = workflow.get("nodes", [])
@@ -86,19 +90,27 @@ class WorkflowValidator:
         if workflow_variables:
             valid_var_names = {v.get("name") for v in workflow_variables if v.get("name")}
         
-        # Also collect output_variable names from subprocess nodes as derived variables
-        # These are variables created at runtime by subprocess execution
-        subprocess_output_vars: Set[str] = set()
+        # Collect output variable names from subprocess and calculation nodes as derived variables
+        # These are variables created at runtime by node execution
+        derived_output_vars: Set[str] = set()
         for node in nodes:
+            # Subprocess nodes produce output_variable
             if node.get("type") == "subprocess" and node.get("output_variable"):
-                subprocess_output_vars.add(node["output_variable"])
+                derived_output_vars.add(node["output_variable"])
+            # Calculation nodes produce calculation.output.name
+            if node.get("type") == "calculation":
+                calc = node.get("calculation", {})
+                output = calc.get("output", {}) if isinstance(calc, dict) else {}
+                output_name = output.get("name") if isinstance(output, dict) else None
+                if output_name:
+                    derived_output_vars.add(output_name)
         
-        # Merge subprocess outputs into valid variable names
-        if subprocess_output_vars:
+        # Merge derived outputs into valid variable names
+        if derived_output_vars:
             if valid_var_names is None:
-                valid_var_names = subprocess_output_vars
+                valid_var_names = derived_output_vars
             else:
-                valid_var_names = valid_var_names | subprocess_output_vars
+                valid_var_names = valid_var_names | derived_output_vars
 
         # Rule 1 & 2: Validate node structure
         for node in nodes:
@@ -142,64 +154,28 @@ class WorkflowValidator:
             if node_type == "subprocess":
                 subprocess_errors = self._validate_subprocess_node(node, valid_var_names)
                 errors.extend(subprocess_errors)
+            
+            # Validate calculation nodes have required fields and valid configuration
+            if node_type == "calculation":
+                calculation_errors = self._validate_calculation_node(node, workflow_variables)
+                errors.extend(calculation_errors)
 
             # Rule 9: Validate decision nodes have structured conditions
             if node_type == "decision":
                 condition = node.get("condition")
                 if condition:
-                    # Validate structured condition
-                    input_id = condition.get("input_id")
-                    comparator = condition.get("comparator")
-                    
-                    if not input_id:
-                        errors.append(
-                            ValidationError(
-                                code="MISSING_CONDITION_INPUT_ID",
-                                message=f"Decision node '{node.get('label', node_id)}' has condition without input_id",
-                                node_id=node_id,
-                            )
+                    if "operator" in condition:
+                        # Compound condition — validate operator and each sub-condition
+                        compound_errors = self._validate_compound_condition(
+                            node, condition, workflow_variables
                         )
-                    elif workflow_variables:
-                        # Check if input_id matches any registered variable's id
-                        var_ids = [v.get("id") for v in workflow_variables if v.get("id")]
-                        if input_id not in var_ids:
-                            errors.append(
-                                ValidationError(
-                                    code="INVALID_CONDITION_INPUT_ID",
-                                    message=f"Decision node '{node.get('label', node_id)}' references unknown variable id '{input_id}'",
-                                    node_id=node_id,
-                                )
-                            )
-                        else:
-                            # Validate comparator is valid for the variable's type
-                            matching_var = next(
-                                (v for v in workflow_variables if v.get("id") == input_id),
-                                None
-                            )
-                            if matching_var and comparator:
-                                var_type = matching_var.get("type", "string")
-                                valid_comparators = VALID_COMPARATORS_BY_TYPE.get(var_type, set())
-                                if comparator not in valid_comparators:
-                                    errors.append(
-                                        ValidationError(
-                                            code="INVALID_COMPARATOR_FOR_TYPE",
-                                            message=(
-                                                f"Decision node '{node.get('label', node_id)}': "
-                                                f"comparator '{comparator}' is not valid for variable type '{var_type}'. "
-                                                f"Valid comparators: {sorted(valid_comparators)}"
-                                            ),
-                                            node_id=node_id,
-                                        )
-                                    )
-                    
-                    if not comparator:
-                        errors.append(
-                            ValidationError(
-                                code="MISSING_CONDITION_COMPARATOR",
-                                message=f"Decision node '{node.get('label', node_id)}' has condition without comparator",
-                                node_id=node_id,
-                            )
+                        errors.extend(compound_errors)
+                    else:
+                        # Simple condition
+                        simple_errors = self._validate_simple_condition(
+                            node, condition, workflow_variables
                         )
+                        errors.extend(simple_errors)
                 else:
                     # Decision nodes MUST have a structured condition
                     errors.append(
@@ -423,6 +399,14 @@ class WorkflowValidator:
                         )
                     )
 
+            # Rule 14: Validate end node output_type consistency with workflow's declared type
+            workflow_output_type = workflow.get("output_type")
+            if workflow_output_type:
+                output_type_errors = self._validate_end_node_output_types(
+                    nodes, workflow_output_type
+                )
+                errors.extend(output_type_errors)
+
         return (len(errors) == 0, errors)
 
     def _detect_cycles(
@@ -536,6 +520,129 @@ class WorkflowValidator:
 
         return variables
 
+    def _validate_simple_condition(
+        self,
+        node: Dict[str, Any],
+        condition: Dict[str, Any],
+        workflow_variables: List[Dict[str, Any]],
+    ) -> List[ValidationError]:
+        """Validate a single simple condition on a decision node.
+
+        Checks input_id exists, comparator is present, and comparator
+        is valid for the referenced variable's type.
+        """
+        errors: List[ValidationError] = []
+        node_id = node.get("id")
+        node_label = node.get("label", node_id)
+        input_id = condition.get("input_id")
+        comparator = condition.get("comparator")
+
+        if not input_id:
+            errors.append(
+                ValidationError(
+                    code="MISSING_CONDITION_INPUT_ID",
+                    message=f"Decision node '{node_label}' has condition without input_id",
+                    node_id=node_id,
+                )
+            )
+        elif workflow_variables:
+            var_ids = [v.get("id") for v in workflow_variables if v.get("id")]
+            if input_id not in var_ids:
+                errors.append(
+                    ValidationError(
+                        code="INVALID_CONDITION_INPUT_ID",
+                        message=f"Decision node '{node_label}' references unknown variable id '{input_id}'",
+                        node_id=node_id,
+                    )
+                )
+            else:
+                matching_var = next(
+                    (v for v in workflow_variables if v.get("id") == input_id), None
+                )
+                if matching_var and comparator:
+                    var_type = matching_var.get("type", "string")
+                    # Normalize float/int to number for comparator lookup
+                    if var_type in ("float", "int"):
+                        var_type = "number"
+                    valid_comparators = VALID_COMPARATORS_BY_TYPE.get(var_type, set())
+                    if comparator not in valid_comparators:
+                        errors.append(
+                            ValidationError(
+                                code="INVALID_COMPARATOR_FOR_TYPE",
+                                message=(
+                                    f"Decision node '{node_label}': "
+                                    f"comparator '{comparator}' is not valid for variable type '{var_type}'. "
+                                    f"Valid comparators: {sorted(valid_comparators)}"
+                                ),
+                                node_id=node_id,
+                            )
+                        )
+
+        if not comparator:
+            errors.append(
+                ValidationError(
+                    code="MISSING_CONDITION_COMPARATOR",
+                    message=f"Decision node '{node_label}' has condition without comparator",
+                    node_id=node_id,
+                )
+            )
+
+        return errors
+
+    def _validate_compound_condition(
+        self,
+        node: Dict[str, Any],
+        condition: Dict[str, Any],
+        workflow_variables: List[Dict[str, Any]],
+    ) -> List[ValidationError]:
+        """Validate a compound (AND/OR) condition on a decision node.
+
+        Checks operator is valid, conditions list has >= 2 entries,
+        no nesting, and validates each sub-condition individually.
+        """
+        errors: List[ValidationError] = []
+        node_id = node.get("id")
+        node_label = node.get("label", node_id)
+        operator = condition.get("operator")
+
+        if operator not in ("and", "or"):
+            errors.append(
+                ValidationError(
+                    code="INVALID_COMPOUND_OPERATOR",
+                    message=f"Decision node '{node_label}': compound operator must be 'and' or 'or', got '{operator}'",
+                    node_id=node_id,
+                )
+            )
+
+        sub_conditions = condition.get("conditions", [])
+        if not isinstance(sub_conditions, list) or len(sub_conditions) < 2:
+            errors.append(
+                ValidationError(
+                    code="COMPOUND_TOO_FEW_CONDITIONS",
+                    message=f"Decision node '{node_label}': compound condition must have at least 2 sub-conditions",
+                    node_id=node_id,
+                )
+            )
+            return errors
+
+        for i, sub in enumerate(sub_conditions):
+            if not isinstance(sub, dict):
+                continue
+            if "operator" in sub:
+                errors.append(
+                    ValidationError(
+                        code="NESTED_COMPOUND_NOT_ALLOWED",
+                        message=f"Decision node '{node_label}': sub-condition[{i}] cannot be compound (no nesting)",
+                        node_id=node_id,
+                    )
+                )
+                continue
+            errors.extend(
+                self._validate_simple_condition(node, sub, workflow_variables)
+            )
+
+        return errors
+
     def _validate_subprocess_node(
         self,
         node: Dict[str, Any],
@@ -621,6 +728,220 @@ class WorkflowValidator:
         
         return errors
 
+    def _validate_calculation_node(
+        self,
+        node: Dict[str, Any],
+        workflow_variables: List[Dict[str, Any]],
+    ) -> List[ValidationError]:
+        """Validate calculation node has required fields and valid configuration.
+        
+        Calculation nodes perform mathematical operations and must have:
+        - calculation.output: Object with 'name' for the output variable
+        - calculation.operator: Valid operator name (e.g., 'add', 'divide', 'sqrt')
+        - calculation.operands: Array of operand objects
+        
+        Each operand is either:
+        - {"kind": "variable", "ref": "<variable_id>"}
+        - {"kind": "literal", "value": <number>}
+        
+        Args:
+            node: The calculation node to validate
+            workflow_variables: List of workflow variable definitions
+            
+        Returns:
+            List of ValidationError objects for any issues found
+        """
+        errors = []
+        node_id = node.get("id", "unknown")
+        node_label = node.get("label", node_id)
+        
+        # Check calculation field exists
+        calculation = node.get("calculation")
+        if not calculation:
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_MISSING",
+                    message=f"Calculation node '{node_label}' missing required 'calculation' field",
+                    node_id=node_id,
+                )
+            )
+            return errors
+        
+        if not isinstance(calculation, dict):
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_INVALID",
+                    message=f"Calculation node '{node_label}': calculation must be an object",
+                    node_id=node_id,
+                )
+            )
+            return errors
+        
+        # Validate output field
+        output = calculation.get("output")
+        if not output:
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_MISSING_OUTPUT",
+                    message=f"Calculation node '{node_label}' missing calculation.output",
+                    node_id=node_id,
+                )
+            )
+        elif not isinstance(output, dict) or not output.get("name"):
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_INVALID_OUTPUT",
+                    message=f"Calculation node '{node_label}': calculation.output must have 'name'",
+                    node_id=node_id,
+                )
+            )
+        else:
+            output_name = output.get("name", "")
+            if not output_name or not output_name.replace("_", "").isalnum():
+                errors.append(
+                    ValidationError(
+                        code="CALCULATION_INVALID_OUTPUT_NAME",
+                        message=(
+                            f"Calculation node '{node_label}': output.name must be "
+                            f"alphanumeric with underscores, got '{output_name}'"
+                        ),
+                        node_id=node_id,
+                    )
+                )
+        
+        # Validate operator
+        operator = calculation.get("operator")
+        if not operator:
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_MISSING_OPERATOR",
+                    message=f"Calculation node '{node_label}' missing calculation.operator",
+                    node_id=node_id,
+                )
+            )
+        elif not isinstance(operator, str):
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_INVALID_OPERATOR",
+                    message=f"Calculation node '{node_label}': operator must be a string",
+                    node_id=node_id,
+                )
+            )
+        else:
+            op = get_operator(operator)
+            if op is None:
+                errors.append(
+                    ValidationError(
+                        code="CALCULATION_UNKNOWN_OPERATOR",
+                        message=f"Calculation node '{node_label}': unknown operator '{operator}'",
+                        node_id=node_id,
+                    )
+                )
+        
+        # Validate operands
+        operands = calculation.get("operands")
+        if not operands:
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_MISSING_OPERANDS",
+                    message=f"Calculation node '{node_label}' missing calculation.operands",
+                    node_id=node_id,
+                )
+            )
+        elif not isinstance(operands, list):
+            errors.append(
+                ValidationError(
+                    code="CALCULATION_INVALID_OPERANDS",
+                    message=f"Calculation node '{node_label}': operands must be an array",
+                    node_id=node_id,
+                )
+            )
+        else:
+            # Validate operator arity
+            if operator and get_operator(operator):
+                arity_error = validate_operator_arity(operator, len(operands))
+                if arity_error:
+                    errors.append(
+                        ValidationError(
+                            code="CALCULATION_ARITY_ERROR",
+                            message=f"Calculation node '{node_label}': {arity_error}",
+                            node_id=node_id,
+                        )
+                    )
+            
+            # Build set of valid variable IDs and names
+            var_ids = {v.get("id") for v in workflow_variables if v.get("id")}
+            var_names = {v.get("name") for v in workflow_variables if v.get("name")}
+            
+            # Validate each operand
+            for i, operand in enumerate(operands):
+                if not isinstance(operand, dict):
+                    errors.append(
+                        ValidationError(
+                            code="CALCULATION_INVALID_OPERAND",
+                            message=f"Calculation node '{node_label}': operand[{i}] must be an object",
+                            node_id=node_id,
+                        )
+                    )
+                    continue
+                
+                kind = operand.get("kind")
+                if kind not in ("variable", "literal"):
+                    errors.append(
+                        ValidationError(
+                            code="CALCULATION_INVALID_OPERAND_KIND",
+                            message=(
+                                f"Calculation node '{node_label}': operand[{i}].kind must be "
+                                f"'variable' or 'literal', got '{kind}'"
+                            ),
+                            node_id=node_id,
+                        )
+                    )
+                elif kind == "variable":
+                    ref = operand.get("ref")
+                    if not ref:
+                        errors.append(
+                            ValidationError(
+                                code="CALCULATION_MISSING_OPERAND_REF",
+                                message=f"Calculation node '{node_label}': operand[{i}] missing 'ref'",
+                                node_id=node_id,
+                            )
+                        )
+                    elif ref not in var_ids and ref not in var_names:
+                        errors.append(
+                            ValidationError(
+                                code="CALCULATION_INVALID_OPERAND_REF",
+                                message=(
+                                    f"Calculation node '{node_label}': operand[{i}].ref '{ref}' "
+                                    f"not found in workflow variables"
+                                ),
+                                node_id=node_id,
+                            )
+                        )
+                elif kind == "literal":
+                    value = operand.get("value")
+                    if value is None:
+                        errors.append(
+                            ValidationError(
+                                code="CALCULATION_MISSING_OPERAND_VALUE",
+                                message=f"Calculation node '{node_label}': operand[{i}] missing 'value'",
+                                node_id=node_id,
+                            )
+                        )
+                    elif not isinstance(value, (int, float)):
+                        errors.append(
+                            ValidationError(
+                                code="CALCULATION_INVALID_OPERAND_VALUE",
+                                message=(
+                                    f"Calculation node '{node_label}': operand[{i}].value must be "
+                                    f"a number, got {type(value).__name__}"
+                                ),
+                                node_id=node_id,
+                            )
+                        )
+        
+        return errors
+
     def _validate_output_template(
         self,
         node: Dict[str, Any],
@@ -686,6 +1007,50 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
+        
+        return errors
+
+    def _validate_end_node_output_types(
+        self,
+        nodes: List[Dict[str, Any]],
+        workflow_output_type: str,
+    ) -> List[ValidationError]:
+        """Validate all end nodes have output_type matching workflow's declared output_type.
+        
+        When a workflow declares an output_type (e.g., "number"), every end node
+        must explicitly set its output_type to match. This ensures type consistency
+        across all possible execution paths.
+        
+        Args:
+            nodes: List of workflow nodes
+            workflow_output_type: The workflow's declared output type (string, number, bool, json)
+            
+        Returns:
+            List of ValidationError objects for any mismatches found
+        """
+        errors = []
+        
+        # Find all end nodes
+        end_nodes = [n for n in nodes if n.get("type") == "end"]
+        
+        for node in end_nodes:
+            node_id = node.get("id", "unknown")
+            node_label = node.get("label", node_id)
+            # End nodes default to "string" if no output_type specified
+            node_output_type = node.get("output_type", "string")
+            
+            if node_output_type != workflow_output_type:
+                errors.append(
+                    ValidationError(
+                        code="OUTPUT_TYPE_MISMATCH",
+                        message=(
+                            f"End node '{node_label}' has output_type '{node_output_type}' "
+                            f"but workflow declares output_type '{workflow_output_type}'. "
+                            f"All end nodes must match the workflow's output type."
+                        ),
+                        node_id=node_id,
+                    )
+                )
         
         return errors
 

@@ -19,20 +19,17 @@ class Conversation:
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
 
-    # Single canonical workflow dict (nodes + edges + inputs + outputs + metadata)
+    # Single canonical workflow dict (nodes + edges + variables + outputs)
     workflow: Dict[str, Any] = field(default_factory=lambda: {
         "nodes": [],
         "edges": [],
-        "inputs": [],
+        "variables": [],
         "outputs": [],
-        "tree": {},
-        "doubts": []
     })
 
-    # Backward-compatible properties for existing code
     @property
     def workflow_state(self) -> Dict[str, Any]:
-        """View of workflow structure (nodes/edges only) for backward compatibility."""
+        """View of workflow structure (nodes/edges only) for session_state."""
         return {
             "nodes": self.workflow.get("nodes", []),
             "edges": self.workflow.get("edges", [])
@@ -40,16 +37,10 @@ class Conversation:
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata for tools.
-        
-        Exposes 'variables' key (unified variable system) instead of legacy 'inputs'.
-        Storage layer still uses 'inputs' key for backwards compatibility.
-        """
+        """View of workflow metadata (variables/outputs) for tools."""
         return {
-            "variables": self.workflow.get("inputs", []),  # Expose as 'variables', stored as 'inputs'
+            "variables": self.workflow.get("variables", []),
             "outputs": self.workflow.get("outputs", []),
-            "tree": self.workflow.get("tree", {}),
-            "doubts": self.workflow.get("doubts", [])
         }
 
     def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
@@ -67,23 +58,16 @@ class Conversation:
         self.updated_at = utc_now()
 
     def update_workflow_analysis(self, analysis: Dict[str, Any]) -> None:
-        """Update workflow metadata (variables/outputs/tree/doubts).
+        """Update workflow metadata (variables/outputs).
 
         Args:
-            analysis: Workflow analysis with variables and outputs.
+            analysis: Workflow analysis with 'variables' and 'outputs' keys.
         """
         if not isinstance(analysis, dict):
             return
 
-        # Accept 'variables' key (standard format)
-        # Store as 'inputs' internally for database backwards compatibility
-        variables = analysis.get("variables", [])
-        self.workflow["inputs"] = variables
+        self.workflow["variables"] = analysis.get("variables", [])
         self.workflow["outputs"] = analysis.get("outputs", [])
-        if "tree" in analysis:
-            self.workflow["tree"] = analysis.get("tree", {})
-        if "doubts" in analysis:
-            self.workflow["doubts"] = analysis.get("doubts", [])
         self.updated_at = utc_now()
 
 

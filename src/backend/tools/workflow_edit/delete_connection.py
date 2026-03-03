@@ -1,50 +1,64 @@
-"""Delete connection tool."""
+"""Delete connection tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
+"""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
-from .helpers import resolve_node_id
+from ..core import WorkflowTool, ToolParameter
+from .helpers import resolve_node_id, save_workflow_changes
 
 
-class DeleteConnectionTool(Tool):
+class DeleteConnectionTool(WorkflowTool):
     """Remove an edge from the workflow."""
 
     name = "delete_connection"
-    description = "Remove a connection between two nodes."
+    description = "Remove a connection between two nodes. Requires workflow_id."
     parameters = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow containing the connection (from create_workflow)",
+            required=True,
+        ),
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        
+        # Extract workflow components
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
 
-        # Get variables for validation of output templates
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
-
-        nodes = current_workflow.get("nodes", [])
         try:
             from_id = resolve_node_id(args.get("from_node_id"), nodes)
             to_id = resolve_node_id(args.get("to_node_id"), nodes)
         except ValueError as exc:
             return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
+        
         edge_id = f"{from_id}->{to_id}"
 
+        # Create new edges list with the edge removed
+        new_edges = [
+            e for e in edges
+            if not (e["from"] == from_id and e["to"] == to_id)
+        ]
+        
         new_workflow = {
-            "nodes": current_workflow.get("nodes", []),
-            "edges": [
-                e
-                for e in current_workflow.get("edges", [])
-                if not (e["from"] == from_id and e["to"] == to_id)
-            ],
+            "nodes": nodes,
+            "edges": new_edges,
             "variables": variables,
         }
 
@@ -56,9 +70,17 @@ class DeleteConnectionTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, edges=new_edges)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "delete_connection",
             "edge_id": edge_id,
-            "message": f"Removed connection from {from_id} to {to_id}",
+            "from_node_id": from_id,
+            "to_node_id": to_id,
+            "message": f"Removed connection from {from_id} to {to_id} in workflow {workflow_id}",
         }

@@ -1,6 +1,7 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+﻿import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
+import ImageAnnotator from './ImageAnnotator'
 import {
   getNodeSize,
   getNodeColor,
@@ -18,6 +19,7 @@ const DEFAULT_LABELS: Record<FlowNodeType, string> = {
   process: 'Process',
   decision: 'Condition?',
   subprocess: 'Workflow',
+  calculation: 'Calculate',
 }
 
 // Get fill color based on node type
@@ -27,6 +29,7 @@ const getNodeFillColor = (type: FlowNodeType): string => {
     case 'decision': return 'var(--amber-light)'
     case 'end': return 'var(--green-light)'
     case 'subprocess': return 'var(--rose-light)'
+    case 'calculation': return 'var(--purple-light)'
     case 'process': return 'var(--paper)'
     default: return 'var(--paper)'
   }
@@ -39,6 +42,7 @@ const getNodeStrokeColor = (type: FlowNodeType): string => {
     case 'decision': return 'var(--amber)'
     case 'end': return 'var(--green)'
     case 'subprocess': return 'var(--rose)'
+    case 'calculation': return 'var(--purple)'
     case 'process': return 'var(--edge)'
     default: return 'var(--edge)'
   }
@@ -53,10 +57,12 @@ export default function Canvas() {
     setFlowchart,
     selectedNodeId: _selectedNodeId,
     selectedNodeIds,
+    selectedEdge,
     connectMode,
     connectFromId,
     selectNode,
     selectNodes,
+    selectEdge,
     clearSelection,
     moveNode,
     moveNodes,
@@ -69,26 +75,47 @@ export default function Canvas() {
     undo,
     redo,
     pushHistory,
-    pendingImage,
-    pendingImageName,
-    clearPendingImage,
+    pendingFiles,
+    pendingAnnotations,
+    setPendingAnnotations,
+    clearPendingFiles,
     execution,  // Execution state for visual highlighting
+    highlightedNodeId,  // Node pulsing from highlight_node tool
   } = useWorkflowStore()
 
-  const { zoom, setZoom, zoomIn, zoomOut, resetZoom, canvasTab, setCanvasTab, canvasMode, toggleCanvasMode, setCanvasMode } = useUIStore()
+  const {
+    zoom,
+    setZoom,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    // setPan removed
+    canvasTab,
+    setCanvasTab,
+    canvasMode,
+    toggleCanvasMode,
+    setCanvasMode,
+    trackExecution,     // Import tracking state
+    setTrackExecution,  // Import tracking setter
+    workspaceRevealed,
+  } = useUIStore()
 
   // Zoom limits for wheel zoom - matches uiStore constants
   const MIN_ZOOM = 0.25
   const MAX_ZOOM = 8
 
-  // Auto-switch to image tab when image is uploaded
+  // Auto-switch to image tab when files are uploaded
   useEffect(() => {
-    if (pendingImage) {
+    if (pendingFiles.length > 0) {
       setCanvasTab('image')
     }
-  }, [pendingImage, setCanvasTab])
+  }, [pendingFiles, setCanvasTab])
+
 
   // Drag state
+  // Track which file is shown in the multi-file preview (prev/next navigation)
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0)
+
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null)
   const [dragNodeId, setDragNodeId] = useState<string | null>(null)
@@ -126,6 +153,33 @@ export default function Canvas() {
   // Zoom is applied via viewBox (not CSS transform) to maintain vector crispness at any zoom level
   const viewBox = calculateViewBox(flowchart.nodes)
   const viewBoxStr = `${viewBox.x - panOffset.x} ${viewBox.y - panOffset.y} ${viewBox.width / zoom} ${viewBox.height / zoom}`
+
+  // Auto-track executing node
+  useEffect(() => {
+    // Only track if enabled and we have an executing node
+    if (trackExecution && execution.isExecuting && execution.executingNodeId) {
+      const node = flowchart.nodes.find(n => n.id === execution.executingNodeId)
+      if (node) {
+        // Center on the node
+        // Target pan offset = viewBoxX + (viewBoxWidth / 2) - nodeX
+        // Because nodeX = viewBoxX + (viewBoxWidth / 2) - panOffset
+
+        // Use current viewbox (which is calculated from nodes)
+        // Note: viewBox.width is width relative to SVG user usage units.
+        // effective view width in user units = viewBox.width / zoom
+
+        const effectiveWidth = viewBox.width / zoom
+        const effectiveHeight = viewBox.height / zoom
+
+        const targetX = viewBox.x + (effectiveWidth / 2) - node.x
+        const targetY = viewBox.y + (effectiveHeight / 2) - node.y
+
+        // Smooth transition could be handled by CSS if we applied pan via CSS, 
+        // but here we use state. For now momentary jump is acceptable for "tracking".
+        setPanOffset({ x: targetX, y: targetY })
+      }
+    }
+  }, [trackExecution, execution.isExecuting, execution.executingNodeId, flowchart.nodes, zoom, viewBox.x, viewBox.y, viewBox.width, viewBox.height])
 
   // Convert screen coords to SVG coords
   const screenToSVG = useCallback(
@@ -598,15 +652,7 @@ export default function Canvas() {
     [startConnect]
   )
 
-  // Handle context menu
-  const handleNodeContextMenu = useCallback(
-    (e: React.MouseEvent, node: FlowNode) => {
-      e.preventDefault()
-      selectNode(node.id)
-      // Could show context menu here
-    },
-    [selectNode]
-  )
+
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -656,45 +702,38 @@ export default function Canvas() {
 
   // Mouse wheel zoom handler - zooms centered on cursor position
   // Wheel up = zoom in, wheel down = zoom out
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      // Prevent default scroll behavior on the canvas
-      e.preventDefault()
+  // Registered via useEffect with { passive: false } because React's onWheel
+  // is passive by default, making e.preventDefault() a no-op (page still scrolls).
+  const handleWheelRef = useRef<(e: WheelEvent) => void>(() => {})
+  handleWheelRef.current = (e: WheelEvent) => {
+    e.preventDefault()
 
-      const svg = svgRef.current
-      const container = containerRef.current
-      if (!svg || !container) return
+    const svg = svgRef.current
+    const container = containerRef.current
+    if (!svg || !container) return
 
-      // Calculate zoom factor based on wheel delta
-      // Smaller factor for smoother zooming
-      const zoomFactor = 0.1
-      const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
+    const zoomFactor = 0.1
+    const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
+    if (newZoom === zoom) return
 
-      // Calculate new zoom level with clamping
-      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
+    const cursorSVG = screenToSVG(e.clientX, e.clientY)
+    const zoomRatio = zoom / newZoom
+    const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
+    const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
 
-      // If zoom didn't change (at limits), don't update
-      if (newZoom === zoom) return
+    setZoom(newZoom)
+    setPanOffset({ x: newPanX, y: newPanY })
+  }
 
-      // Get cursor position in SVG coordinates before zoom
-      const cursorSVG = screenToSVG(e.clientX, e.clientY)
-
-      // Calculate the ratio of zoom change
-      const zoomRatio = zoom / newZoom
-
-      // Adjust pan offset to keep cursor position fixed
-      // The formula ensures that the point under the cursor stays in place
-      // newPan = oldPan + cursorSVG * (1 - zoomRatio)
-      // This compensates for the viewBox width/height change when zooming
-      const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
-      const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
-
-      // Apply the new zoom and pan offset
-      setZoom(newZoom)
-      setPanOffset({ x: newPanX, y: newPanY })
-    },
-    [zoom, panOffset, screenToSVG, setZoom]
-  )
+  // Attach non-passive wheel listener to the SVG element
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const handler = (e: WheelEvent) => handleWheelRef.current(e)
+    svg.addEventListener('wheel', handler, { passive: false })
+    return () => svg.removeEventListener('wheel', handler)
+  }, [])
 
   // Render node
   const renderNode = (node: FlowNode) => {
@@ -718,6 +757,7 @@ export default function Canvas() {
       isConnectSource ? 'connect-source' : '',
       isExecuting ? 'executing' : '',
       isExecuted && !isExecuting ? 'executed' : '',  // Don't show executed while currently executing
+      highlightedNodeId === node.id ? 'highlighted' : '',
     ].filter(Boolean).join(' ')
 
     return (
@@ -727,7 +767,6 @@ export default function Canvas() {
         transform={`translate(${node.x}, ${node.y})`}
         onPointerDown={(e) => handleNodePointerDown(e, node)}
         onDoubleClick={(e) => handleNodeDoubleClick(e, node)}
-        onContextMenu={(e) => handleNodeContextMenu(e, node)}
         style={{ cursor: isDragging && dragNodeId === node.id ? 'grabbing' : 'grab' }}
       >
         {/* Invisible hit area for better click/drag detection */}
@@ -778,8 +817,9 @@ export default function Canvas() {
 
         {/* Node label with word wrapping */}
         <text
-          x={node.type === 'start' || node.type === 'end' ? 8 : 0}
+          x={0}
           textAnchor="middle"
+          dominantBaseline="central"
           fontSize="13"
           fill="var(--ink)"
           style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -787,7 +827,7 @@ export default function Canvas() {
           {wrapText(node.label, node.type === 'decision' ? 14 : 18).map((line, i, arr) => (
             <tspan
               key={i}
-              x={node.type === 'start' || node.type === 'end' ? 8 : 0}
+              x={0}
               dy={i === 0 ? `${-((arr.length - 1) * 7)}px` : '14px'}
             >
               {line}
@@ -843,11 +883,7 @@ export default function Canvas() {
 
     if (!fromNode || !toNode) return null
 
-    // Calculate index of this edge among all edges from the same source
-    const edgesFromSameSource = flowchart.edges.filter(e => e.from === edge.from)
-    const indexFromSource = edgesFromSameSource.findIndex(e => e.from === edge.from && e.to === edge.to)
-
-    const path = calculateEdgePath(fromNode, toNode, edge.label, indexFromSource)
+    const path = calculateEdgePath(fromNode, toNode)
 
     // Calculate label position along the path (closer to source for decision outputs)
     let labelX = (fromNode.x + toNode.x) / 2
@@ -869,32 +905,74 @@ export default function Canvas() {
     // Edge is "executed" if both ends have been executed (not just executing)
     const isEdgeExecuted = execution.executedNodeIds.includes(edge.from) && execution.executedNodeIds.includes(edge.to)
 
+    // Check if this edge is selected
+    const isSelected = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to
+
+    // Check if this edge is from a decision node (for UI purposes)
+    const isDecisionEdge = fromNode.type === 'decision'
+
     const edgeClassNames = [
       'flow-edge',
       isEdgeExecuting ? 'executing' : '',
       isEdgeExecuted && !isEdgeExecuting ? 'executed' : '',
+      isSelected ? 'selected' : '',
     ].filter(Boolean).join(' ')
 
+    // Click handler for edge selection
+    const handleEdgeClick = (e: React.MouseEvent) => {
+      e.stopPropagation()
+      selectEdge({ from: edge.from, to: edge.to })
+    }
+
     return (
-      <g key={`${edge.from}-${edge.to}`} className={edgeClassNames}>
+      <g key={`${edge.from}-${edge.to}`} className={edgeClassNames} onClick={handleEdgeClick} style={{ cursor: 'pointer' }}>
+        {/* Invisible wider path for easier clicking - increased from 20 to 40 */}
         <path
           d={path}
           fill="none"
-          stroke="var(--ink)"
-          strokeWidth={1.5}
+          stroke="transparent"
+          strokeWidth={40}
+          style={{ cursor: 'pointer' }}
+        />
+        {/* Visible edge line - increased stroke width for better visibility */}
+        <path
+          className="edge-visible"
+          d={path}
+          fill="none"
+          stroke={isSelected ? 'var(--accent)' : 'var(--ink)'}
+          strokeWidth={isSelected ? 6 : 4}
           markerEnd="url(#arrowhead)"
         />
-        {edge.label && (
-          <text
-            x={labelX}
-            y={labelY}
-            textAnchor="middle"
-            fontSize="11"
-            fill="var(--muted)"
-          >
-            {edge.label}
-          </text>
-        )}
+        {/* Show label for decision edges, or any edge with a label */}
+        {(edge.label || isDecisionEdge) && (() => {
+          const labelText = edge.label || (isDecisionEdge ? '?' : '')
+          // Approximate text width for background rect (8px per char at font-size 14)
+          const textW = labelText.length * 8 + 10
+          const textH = 20
+          return (
+            <>
+              <rect
+                x={labelX - textW / 2}
+                y={labelY - textH / 2}
+                width={textW}
+                height={textH}
+                rx={4}
+                fill="var(--paper)"
+              />
+              <text
+                x={labelX}
+                y={labelY}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize="14"
+                fill={isSelected ? 'var(--accent)' : 'var(--ink)'}
+                fontWeight={600}
+              >
+                {labelText}
+              </text>
+            </>
+          )
+        })()}
       </g>
     )
   }
@@ -922,7 +1000,7 @@ export default function Canvas() {
     // Limit to 3 lines max, truncate last line if needed
     if (lines.length > 3) {
       lines.length = 3
-      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + '…'
+      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + 'â€¦'
     }
 
     return lines
@@ -966,7 +1044,7 @@ export default function Canvas() {
     let startNodes = nodes.filter(n =>
       !orphanNodeIds.has(n.id) &&
       (((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
-      n.type === 'start')
+        n.type === 'start')
     )
 
     // If no start nodes found, use first connected node
@@ -1220,52 +1298,88 @@ export default function Canvas() {
     pushHistory()
   }, [flowchart, setFlowchart, pushHistory])
 
-  const isEmpty = flowchart.nodes.length === 0
-
   return (
     <div className="canvas-area">
-      {/* Workspace tabs */}
-      <div className="workspace-tabs" id="workspaceTabs">
-        <button
-          className={`workspace-tab ${canvasTab === 'workflow' ? 'active' : ''}`}
-          onClick={() => setCanvasTab('workflow')}
-        >
-          Workflow
-        </button>
-        {pendingImage && (
+      {/* Toolbar / Tabs area - Only show Source Files tab if there are files uploaded */}
+      {workspaceRevealed && pendingFiles.length > 0 && (
+        <div className="workspace-tabs">
           <button
             className={`workspace-tab ${canvasTab === 'image' ? 'active' : ''}`}
             onClick={() => setCanvasTab('image')}
           >
-            Source Image
+            Source {pendingFiles.length === 1 ? 'File' : 'Files'}
           </button>
-        )}
-      </div>
-
-      {/* Image preview tab */}
-      {canvasTab === 'image' && pendingImage && (
-        <div className="image-preview-container">
-          <div className="image-preview-header">
-            <span className="image-name">{pendingImageName || 'Uploaded image'}</span>
-            <button
-              className="clear-image-btn"
-              onClick={() => {
-                clearPendingImage()
-                setCanvasTab('workflow')
-              }}
-              title="Remove image"
-            >
-              ×
-            </button>
-          </div>
-          <div className="image-preview-content">
-            <img src={pendingImage} alt="Uploaded workflow" />
-          </div>
-          <div className="image-preview-hint">
-            Ask the orchestrator to analyse this image in the chat below
-          </div>
+          <button
+            className={`workspace-tab ${canvasTab === 'workflow' ? 'active' : ''}`}
+            onClick={() => setCanvasTab('workflow')}
+          >
+            Workflow
+          </button>
         </div>
       )}
+
+      {/* File preview tab — shows selected file with prev/next navigation */}
+      {canvasTab === 'image' && pendingFiles.length > 0 && (() => {
+        const idx = Math.min(selectedFileIndex, pendingFiles.length - 1)
+        const currentFile = pendingFiles[idx]
+        const showNav = pendingFiles.length > 1
+        return (
+          <div className="image-preview-container">
+            <div className="image-preview-header">
+              {showNav && (
+                <button
+                  className="file-nav-btn"
+                  disabled={idx === 0}
+                  onClick={() => setSelectedFileIndex(idx - 1)}
+                  title="Previous file"
+                >
+                  &lsaquo;
+                </button>
+              )}
+              <span className="image-name">
+                {currentFile.name}
+                {showNav && ` (${idx + 1}/${pendingFiles.length})`}
+              </span>
+              {showNav && (
+                <button
+                  className="file-nav-btn"
+                  disabled={idx === pendingFiles.length - 1}
+                  onClick={() => setSelectedFileIndex(idx + 1)}
+                  title="Next file"
+                >
+                  &rsaquo;
+                </button>
+              )}
+              <button
+                className="clear-image-btn"
+                onClick={() => {
+                  clearPendingFiles()
+                  setSelectedFileIndex(0)
+                  setCanvasTab('workflow')
+                }}
+                title="Remove all files"
+              >
+                &times;
+              </button>
+            </div>
+            {currentFile.type === 'image' ? (
+              <ImageAnnotator
+                key={currentFile.id}
+                imageSrc={currentFile.dataUrl}
+                annotations={pendingAnnotations}
+                onChange={setPendingAnnotations}
+              />
+            ) : (
+              <iframe
+                key={currentFile.id}
+                className="pdf-preview"
+                src={currentFile.dataUrl}
+                title={currentFile.name}
+              />
+            )}
+          </div>
+        )
+      })()}
 
       {/* Workflow canvas tab */}
       <div
@@ -1284,7 +1398,6 @@ export default function Canvas() {
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onWheel={handleWheel}
           style={{
             cursor: isPanning ? 'grabbing' : (canvasMode === 'pan' ? 'grab' : 'default')
           }}
@@ -1292,42 +1405,27 @@ export default function Canvas() {
           <defs>
             <marker
               id="arrowhead"
-              markerWidth="10"
-              markerHeight="7"
-              refX="10"
-              refY="3.5"
+              markerUnits="userSpaceOnUse"
+              markerWidth="20"
+              markerHeight="14"
+              refX="18"
+              refY="7"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="var(--ink)" />
+              <polygon points="0 0, 20 7, 0 14" fill="var(--ink)" />
             </marker>
             <marker
               id="arrowhead-preview"
-              markerWidth="10"
-              markerHeight="7"
-              refX="10"
-              refY="3.5"
+              markerUnits="userSpaceOnUse"
+              markerWidth="20"
+              markerHeight="14"
+              refX="18"
+              refY="7"
               orient="auto"
             >
-              <polygon points="0 0, 10 3.5, 0 7" fill="var(--teal)" />
+              <polygon points="0 0, 20 7, 0 14" fill="var(--teal)" />
             </marker>
-            <pattern
-              id="grid"
-              width="40"
-              height="40"
-              patternUnits="userSpaceOnUse"
-            >
-              <path
-                d="M 40 0 L 0 0 0 40"
-                fill="none"
-                stroke="var(--edge)"
-                strokeWidth="0.5"
-                opacity="0.5"
-              />
-            </pattern>
           </defs>
-
-          {/* Grid background */}
-          <rect width="100%" height="100%" fill="url(#grid)" style={{ pointerEvents: 'all' }} />
 
           {/* Edges layer */}
           <g id="edgeLayer">
@@ -1342,11 +1440,12 @@ export default function Canvas() {
           {/* Preview edge during drag connection */}
           {dragConnection && (
             <path
+              className="edge-visible"
               d={`M ${dragConnection.startX} ${dragConnection.startY} L ${dragConnection.currentX} ${dragConnection.currentY}`}
               fill="none"
               stroke="var(--teal)"
-              strokeWidth={2}
-              strokeDasharray="5,5"
+              strokeWidth={4}
+              strokeDasharray="8,8"
               markerEnd="url(#arrowhead-preview)"
               style={{ pointerEvents: 'none' }}
             />
@@ -1368,168 +1467,167 @@ export default function Canvas() {
           )}
         </svg>
 
-        {/* Empty state overlay */}
-        {isEmpty && (
-          <div className="canvas-empty" id="canvasEmpty">
-            <div className="empty-content">
-              <div className="empty-icon">
-                <svg
-                  width="64"
-                  height="64"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </div>
-              <h2>Start building</h2>
-              <p>Drag blocks from the left, or describe your workflow below</p>
-            </div>
-          </div>
-        )}
-
         {/* Connect mode indicator */}
-        {connectMode && (
+        {workspaceRevealed && connectMode && (
           <div className="connect-mode-indicator">
             Click another node to connect, or press Escape to cancel
           </div>
         )}
 
-        {/* Mode toggle control */}
-        <div className="mode-toggle-control">
+        {/* Top Controls */}
+        {workspaceRevealed && execution.isExecuting && (
+          <div className="canvas-top-controls">
+            <label className="track-toggle main-track-toggle" title="Track executing node">
+              <input
+                type="checkbox"
+                checked={trackExecution}
+                onChange={(e) => setTrackExecution(e.target.checked)}
+              />
+              <span className="track-label">Track</span>
+            </label>
+            <div className="canvas-status-indicator">
+              <span className="pulse-dot" />
+              Running
+            </div>
+          </div>
+        )}
+
+        {/* Mode toggle control - single button showing current mode */}
+        {workspaceRevealed && (
           <button
-            className={`mode-btn ${canvasMode === 'select' ? 'active' : ''}`}
-            onClick={() => canvasMode !== 'select' && toggleCanvasMode()}
-            title="Select mode - drag to select elements (V)"
+            className="mode-toggle-btn"
+            onClick={toggleCanvasMode}
+            title={canvasMode === 'select' ? 'Select mode (click to switch to Pan - H)' : 'Pan mode (click to switch to Select - V)'}
           >
-            {/* Cursor/pointer icon for select mode */}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
-              <path d="M13 13l6 6" />
-            </svg>
+            {canvasMode === 'select' ? (
+              /* Cursor/pointer icon for select mode */
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                <path d="M13 13l6 6" />
+              </svg>
+            ) : (
+              /* Hand/pan icon for pan mode */
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0" />
+                <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6" />
+                <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+                <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+              </svg>
+            )}
           </button>
-          <button
-            className={`mode-btn ${canvasMode === 'pan' ? 'active' : ''}`}
-            onClick={() => canvasMode !== 'pan' && toggleCanvasMode()}
-            title="Pan mode - drag to move canvas (H)"
-          >
-            {/* Hand/pan icon for pan mode */}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0" />
-              <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6" />
-              <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
-              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-            </svg>
-          </button>
-        </div>
+        )}
 
         {/* Zoom controls */}
-        <div className="zoom-controls">
-          <button className="zoom-btn" onClick={zoomIn} title="Zoom in (+)">
-            +
-          </button>
-          <button className="zoom-btn" onClick={() => { resetZoom(); setPanOffset({ x: 0, y: 0 }); }} title="Reset view (0)">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-            </svg>
-          </button>
-          <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
-            -
-          </button>
-        </div>
+        {workspaceRevealed && (
+          <div className="zoom-controls">
+            <button className="zoom-btn" onClick={zoomIn} title="Zoom in (+)">
+              +
+            </button>
+            <button className="zoom-btn" onClick={() => { resetZoom(); setPanOffset({ x: 0, y: 0 }); }} title="Reset view (0)">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
+              </svg>
+            </button>
+            <button className="zoom-btn" onClick={zoomOut} title="Zoom out (-)">
+              -
+            </button>
+          </div>
+        )}
 
         {/* Beautify control */}
-        <div className="beautify-control">
-          <button className="beautify-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              className="flower-icon"
-            >
-              {/* Aura glow filter */}
-              <defs>
-                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-                <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9"/>
-                  <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6"/>
-                </radialGradient>
-                <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor="var(--amber)"/>
-                  <stop offset="100%" stopColor="var(--rose)"/>
-                </radialGradient>
-              </defs>
-              {/* Outer petals */}
-              <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)"/>
-              <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)"/>
-              <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)"/>
-              <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)"/>
-              <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)"/>
-              <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)"/>
-              {/* Center */}
-              <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)"/>
-            </svg>
-          </button>
-        </div>
+        {workspaceRevealed && (
+          <div className="beautify-control">
+            <button className="beautify-btn" onClick={beautifyFlowchart} title="Auto-layout (Beautify)">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                className="flower-icon"
+              >
+                {/* Aura glow filter */}
+                <defs>
+                  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
+                    <feMerge>
+                      <feMergeNode in="coloredBlur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                  <radialGradient id="petalGradient" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="var(--rose)" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="var(--rose)" stopOpacity="0.6" />
+                  </radialGradient>
+                  <radialGradient id="centerGradient" cx="30%" cy="30%" r="70%">
+                    <stop offset="0%" stopColor="var(--amber)" />
+                    <stop offset="100%" stopColor="var(--rose)" />
+                  </radialGradient>
+                </defs>
+                {/* Outer petals */}
+                <ellipse className="petal petal-1" cx="12" cy="5" rx="2.5" ry="4" fill="url(#petalGradient)" />
+                <ellipse className="petal petal-2" cx="17.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(60 17.5 8)" />
+                <ellipse className="petal petal-3" cx="17.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(120 17.5 16)" />
+                <ellipse className="petal petal-4" cx="12" cy="19" rx="2.5" ry="4" fill="url(#petalGradient)" />
+                <ellipse className="petal petal-5" cx="6.5" cy="16" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-120 6.5 16)" />
+                <ellipse className="petal petal-6" cx="6.5" cy="8" rx="2.5" ry="4" fill="url(#petalGradient)" transform="rotate(-60 6.5 8)" />
+                {/* Center */}
+                <circle cx="12" cy="12" r="3.5" fill="url(#centerGradient)" filter="url(#glow)" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Meta controls */}
-        <div className="meta-controls">
-          <button className="meta-btn" title="Undo (Cmd+Z)" onClick={undo}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 7v6h6" />
-              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-            </svg>
-          </button>
-          <button className="meta-btn" title="Redo (Cmd+Shift+Z)" onClick={redo}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 7v6h-6" />
-              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
-            </svg>
-          </button>
-        </div>
+        {workspaceRevealed && (
+          <div className="meta-controls">
+            <button className="meta-btn" title="Undo (Cmd+Z)" onClick={undo}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 7v6h6" />
+                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+              </svg>
+            </button>
+            <button className="meta-btn" title="Redo (Cmd+Shift+Z)" onClick={redo}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 7v6h-6" />
+                <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

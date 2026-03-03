@@ -22,7 +22,7 @@ class TestWorkflowValidatorInputs:
         """Decision node with condition referencing registered variable should be valid."""
         workflow = {
             "variables": [
-                {"name": "Age", "type": "int", "id": "input_age"}
+                {"name": "Age", "type": "number", "id": "input_age"}
             ],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
@@ -55,7 +55,7 @@ class TestWorkflowValidatorInputs:
         """Decision node with condition referencing unregistered variable should fail."""
         workflow = {
             "variables": [
-                {"name": "Height", "type": "int", "id": "input_height"}
+                {"name": "Height", "type": "number", "id": "input_height"}
             ],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
@@ -88,7 +88,7 @@ class TestWorkflowValidatorInputs:
         """Multiple decision nodes with valid conditions referencing registered variables."""
         workflow = {
             "variables": [
-                {"name": "Age", "type": "int", "id": "input_age"},
+                {"name": "Age", "type": "number", "id": "input_age"},
                 {"name": "Smoker", "type": "bool", "id": "input_smoker"}
             ],
             "nodes": [
@@ -135,7 +135,7 @@ class TestWorkflowValidatorInputs:
         """Decision node without structured condition should fail validation."""
         workflow = {
             "variables": [
-                {"name": "Age", "type": "int", "id": "input_age"}
+                {"name": "Age", "type": "number", "id": "input_age"}
             ],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
@@ -157,7 +157,7 @@ class TestWorkflowValidatorInputs:
     def test_decision_with_invalid_condition_input_fails(self):
         """Decision node with structured condition referencing unknown input_id should fail."""
         workflow = {
-            "variables": [{"name": "Age", "type": "int", "id": "input_age_int"}],
+            "variables": [{"name": "Age", "type": "number", "id": "input_age_int"}],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 {
@@ -185,10 +185,189 @@ class TestWorkflowValidatorInputs:
         assert not is_valid
         assert any(err.code == "INVALID_CONDITION_INPUT_ID" for err in errors)
 
+    # --- Compound condition tests ---
+
+    def test_decision_with_valid_compound_and_condition(self):
+        """Decision node with valid compound AND condition should be valid."""
+        workflow = {
+            "variables": [
+                {"name": "Age", "type": "number", "id": "input_age"},
+                {"name": "Smoker", "type": "bool", "id": "input_smoker"},
+            ],
+            "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
+                {
+                    "id": "d1",
+                    "type": "decision",
+                    "label": "Risk Check",
+                    "x": 0,
+                    "y": 0,
+                    "condition": {
+                        "operator": "and",
+                        "conditions": [
+                            {"input_id": "input_age", "comparator": "gt", "value": 40},
+                            {"input_id": "input_smoker", "comparator": "is_true"},
+                        ],
+                    },
+                },
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert is_valid
+
+    def test_decision_compound_invalid_operator(self):
+        """Compound condition with invalid operator should fail."""
+        workflow = {
+            "variables": [
+                {"name": "A", "type": "bool", "id": "var_a"},
+                {"name": "B", "type": "bool", "id": "var_b"},
+            ],
+            "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
+                {
+                    "id": "d1",
+                    "type": "decision",
+                    "label": "Check",
+                    "x": 0,
+                    "y": 0,
+                    "condition": {
+                        "operator": "nand",
+                        "conditions": [
+                            {"input_id": "var_a", "comparator": "is_true"},
+                            {"input_id": "var_b", "comparator": "is_true"},
+                        ],
+                    },
+                },
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "INVALID_COMPOUND_OPERATOR" for err in errors)
+
+    def test_decision_compound_too_few_conditions(self):
+        """Compound condition with < 2 sub-conditions should fail."""
+        workflow = {
+            "variables": [{"name": "A", "type": "bool", "id": "var_a"}],
+            "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
+                {
+                    "id": "d1",
+                    "type": "decision",
+                    "label": "Check",
+                    "x": 0,
+                    "y": 0,
+                    "condition": {
+                        "operator": "and",
+                        "conditions": [{"input_id": "var_a", "comparator": "is_true"}],
+                    },
+                },
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "COMPOUND_TOO_FEW_CONDITIONS" for err in errors)
+
+    def test_decision_compound_nested_rejected(self):
+        """Nested compound conditions should fail."""
+        workflow = {
+            "variables": [
+                {"name": "A", "type": "bool", "id": "var_a"},
+                {"name": "B", "type": "bool", "id": "var_b"},
+                {"name": "C", "type": "bool", "id": "var_c"},
+            ],
+            "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
+                {
+                    "id": "d1",
+                    "type": "decision",
+                    "label": "Check",
+                    "x": 0,
+                    "y": 0,
+                    "condition": {
+                        "operator": "and",
+                        "conditions": [
+                            {"input_id": "var_a", "comparator": "is_true"},
+                            {
+                                "operator": "or",
+                                "conditions": [
+                                    {"input_id": "var_b", "comparator": "is_true"},
+                                    {"input_id": "var_c", "comparator": "is_true"},
+                                ],
+                            },
+                        ],
+                    },
+                },
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "NESTED_COMPOUND_NOT_ALLOWED" for err in errors)
+
+    def test_decision_compound_sub_condition_unknown_variable(self):
+        """Compound sub-condition referencing unknown variable should fail."""
+        workflow = {
+            "variables": [{"name": "Age", "type": "number", "id": "input_age"}],
+            "nodes": [
+                {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
+                {
+                    "id": "d1",
+                    "type": "decision",
+                    "label": "Check",
+                    "x": 0,
+                    "y": 0,
+                    "condition": {
+                        "operator": "or",
+                        "conditions": [
+                            {"input_id": "input_age", "comparator": "gt", "value": 40},
+                            {"input_id": "input_nonexist", "comparator": "is_true"},
+                        ],
+                    },
+                },
+                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0},
+                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100},
+            ],
+            "edges": [
+                {"from": "s1", "to": "d1", "label": ""},
+                {"from": "d1", "to": "y", "label": "true"},
+                {"from": "d1", "to": "n", "label": "false"},
+            ],
+        }
+        is_valid, errors = self.validator.validate(workflow)
+        assert not is_valid
+        assert any(err.code == "INVALID_CONDITION_INPUT_ID" for err in errors)
+
     def test_decision_with_descriptive_label_but_no_condition_fails(self):
         """Decision node with descriptive label but no condition field should fail."""
         workflow = {
-            "variables": [{"name": "Age", "type": "int", "id": "input_age_int"}],
+            "variables": [{"name": "Age", "type": "number", "id": "input_age_int"}],
             "nodes": [
                 {"id": "s1", "type": "start", "label": "Start", "x": 0, "y": -100},
                 # No condition field - descriptive labels are no longer allowed without condition

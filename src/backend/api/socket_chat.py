@@ -18,7 +18,8 @@ from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
-from ..utils.uploads import save_uploaded_image
+from ..utils.uploads import save_uploaded_file, save_annotations
+from ..utils.paths import lemon_data_dir
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -104,14 +105,18 @@ class SocketChatTask:
     task_id: str
     message: str
     conversation_id: Optional[str]
-    image_data: Optional[str]
+    files_data: list[dict[str, Any]]  # List of uploaded file dicts from frontend
     workflow: Optional[Dict[str, Any]]
     analysis: Optional[Dict[str, Any]]  # Frontend analysis (variables, outputs, etc)
+    current_workflow_id: Optional[str] = None  # ID of current workflow on canvas (None if unsaved)
+    open_tabs: Optional[list[Dict[str, Any]]] = None  # All open tabs with unsaved workflows
     done: Event = field(default_factory=Event)
     executed_tools: list[dict[str, Any]] = field(default_factory=list)
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
     did_stream: bool = False
     convo: Optional[Conversation] = None
+    img_annotations: Optional[list[dict[str, Any]]] = None
+    saved_file_paths: list[dict[str, Any]] = field(default_factory=list)  # Saved file metadata
 
     def is_cancelled(self) -> bool:
         return _is_task_cancelled(self.sid, self.task_id)
@@ -132,18 +137,34 @@ class SocketChatTask:
             self.socketio.emit("chat_cancelled", {"task_id": self.task_id}, to=self.sid)
 
     def stream_chunk(self, chunk: str) -> None:
+        """Stream text to frontend character-by-character for typewriter effect."""
         if self.is_cancelled():
             return
         self.did_stream = True
-        self.socketio.emit("chat_stream", {"chunk": chunk, "task_id": self.task_id}, to=self.sid)
-        self.socketio.sleep(0)
+        # Emit each character individually for smooth typewriter effect
+        # Small delay (5ms) between characters makes the effect visible
+        for char in chunk:
+            if self.is_cancelled():
+                return
+            self.socketio.emit("chat_stream", {"chunk": char, "task_id": self.task_id}, to=self.sid)
+            self.socketio.sleep(0.005)  # 5ms delay for visible typewriter effect
+
+    def stream_thinking(self, chunk: str) -> None:
+        """Stream LLM reasoning/thinking chunks to the frontend."""
+        if not chunk or self.is_cancelled():
+            return
+        self.socketio.emit(
+            "chat_thinking",
+            {"chunk": chunk, "task_id": self.task_id},
+            to=self.sid,
+        )
 
     def heartbeat(self) -> None:
         while not self.done.is_set():
             self.socketio.sleep(5)
             if self.done.is_set() or self.is_cancelled():
                 break
-            self.emit_progress("heartbeat", "Analyzing...")
+            self.emit_progress("heartbeat", "Analysing...")
 
     def flush_tool_summary(self) -> None:
         summary = self.tool_summary.flush()
@@ -161,8 +182,6 @@ class SocketChatTask:
             return
         if event == "tool_start":
             self.executed_tools.append({"tool": tool, "arguments": args})
-        if tool == "analyze_workflow":
-            self.emit_progress(event, "Analyzing workflow...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -170,30 +189,46 @@ class SocketChatTask:
             if isinstance(result, dict) and "success" in result:
                 success = bool(result.get("success"))
             self.tool_summary.note(tool, success=success)
+            # Store result in executed_tools so it's available in chat response
+            # Find the matching tool entry and add the result
+            for executed in reversed(self.executed_tools):
+                if executed.get("tool") == tool and "result" not in executed:
+                    executed["result"] = result
+                    executed["success"] = success
+                    break
         if event == "tool_batch_complete":
             self.flush_tool_summary()
-        if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
-            flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
-            if flowchart and flowchart.get("nodes"):
-                analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
-                self.socketio.emit(
-                    "workflow_modified",
-                    {
-                        "action": "create_workflow",
-                        "data": {
-                            "flowchart": flowchart,
-                            "analysis": analysis,
-                        },
-                    },
-                    to=self.sid,
-                )
+
+        # Emit plan_updated when update_plan completes — carries checklist items to frontend
+        if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
+            self.socketio.emit(
+                "plan_updated",
+                {"items": result.get("items", [])},
+                to=self.sid,
+            )
+
+        # Show inline question card in chat when ask_question tool completes
+        if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            self.socketio.emit(
+                "pending_question",
+                {
+                    "question": result.get("question", ""),
+                    "options": result.get("options", []),
+                },
+                to=self.sid,
+            )
 
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             if tool in WORKFLOW_EDIT_TOOLS:
+                action = result.get("action")
+                logger.info(
+                    "Emitting workflow_update action=%s tool=%s workflow_id=%s",
+                    action, tool, result.get("workflow_id"),
+                )
                 self.socketio.emit(
                     "workflow_update",
                     {
-                        "action": result.get("action"),
+                        "action": action,
                         "data": result,
                     },
                     to=self.sid,
@@ -202,24 +237,83 @@ class SocketChatTask:
             if tool in WORKFLOW_INPUT_TOOLS and self.convo:
                 # Emit variables (unified variable system) - includes inputs, subprocess, calculated
                 # Frontend receives under 'variables' key for display in Variables tab
+                # Include task_id so frontend can filter out updates for inactive tabs
                 self.socketio.emit(
                     "analysis_updated",
                     {
                         "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
                         "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                        "task_id": self.task_id,
                     },
                     to=self.sid,
                 )
 
-    def _save_uploaded_image(self) -> bool:
-        if not isinstance(self.image_data, str) or not self.image_data.strip():
+            # Emit workflow_created event when create_workflow succeeds
+            # This allows frontend to track the new workflow_id for the current tab
+            if tool == "create_workflow":
+                self.socketio.emit(
+                    "workflow_created",
+                    {
+                        "workflow_id": result.get("workflow_id"),
+                        "name": result.get("name"),
+                        "output_type": result.get("output_type"),
+                        "is_draft": True,  # Newly created workflows are always drafts
+                    },
+                    to=self.sid,
+                )
+
+            # Emit workflow_saved event when save_workflow_to_library succeeds
+            # This allows frontend to update the workflow's draft status
+            if tool == "save_workflow_to_library":
+                self.socketio.emit(
+                    "workflow_saved",
+                    {
+                        "workflow_id": result.get("workflow_id"),
+                        "name": result.get("name"),
+                        "is_draft": False,  # Saved workflows are no longer drafts
+                        "already_saved": result.get("already_saved", False),
+                    },
+                    to=self.sid,
+                )
+
+    def _save_uploaded_files(self) -> bool:
+        """Save all uploaded files to disk and populate self.saved_file_paths."""
+        logger.info("_save_uploaded_files: files_data count=%d", len(self.files_data))
+        if not self.files_data:
+            logger.info("_save_uploaded_files: no files_data, returning early")
             return True
-        try:
-            save_uploaded_image(self.image_data, repo_root=self.repo_root)
-        except Exception as exc:
-            logger.exception("Failed to save uploaded image")
-            self.emit_error(f"Invalid image: {exc}")
-            return False
+        for file_info in self.files_data:
+            data_url = file_info.get("data_url", "")
+            logger.info(
+                "_save_uploaded_files: processing file id=%s name=%s data_url_len=%d",
+                file_info.get("id", "?"), file_info.get("name", "?"),
+                len(data_url) if isinstance(data_url, str) else 0,
+            )
+            if not isinstance(data_url, str) or not data_url.strip():
+                logger.warning("_save_uploaded_files: skipping file with empty data_url: %s", file_info.get("name"))
+                continue
+            try:
+                rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
+                # Resolve to absolute path so orchestrator can read the file directly
+                abs_path = str(lemon_data_dir(self.repo_root) / rel_path)
+                self.saved_file_paths.append({
+                    "id": file_info.get("id", ""),
+                    "name": file_info.get("name", ""),
+                    "path": abs_path,
+                    "file_type": file_type,
+                    "purpose": file_info.get("purpose", "unclassified"),
+                })
+            except Exception as exc:
+                logger.exception("Failed to save uploaded file: %s", file_info.get("name"))
+                self.emit_error(f"Invalid file '{file_info.get('name', '?')}': {exc}")
+                return False
+        # Save annotations alongside the first image if provided
+        if self.img_annotations and isinstance(self.img_annotations, list) and self.saved_file_paths:
+            first_image = next(
+                (f for f in self.saved_file_paths if f["file_type"] == "image"), None
+            )
+            if first_image:
+                save_annotations(first_image["path"], self.img_annotations, repo_root=self.repo_root)
         return True
 
     def _sync_payload_workflow(self) -> None:
@@ -241,6 +335,21 @@ class SocketChatTask:
         # Set workflow_store and user_id for tool access
         self.convo.orchestrator.workflow_store = self.workflow_store
         self.convo.orchestrator.user_id = self.user_id
+        # Only set current_workflow_id if it actually exists in the database.
+        # The frontend generates a random UUID for new tabs that don't have a
+        # saved workflow yet — passing that to the orchestrator causes every tool
+        # to try loading a non-existent workflow and fail.
+        if self.current_workflow_id and self.workflow_store:
+            existing = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
+            if existing:
+                self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+            else:
+                logger.info(
+                    "Ignoring frontend current_workflow_id=%s (not in DB)",
+                    self.current_workflow_id,
+                )
+        # Set open_tabs so list_workflows_in_library can show all drafts
+        self.convo.orchestrator.open_tabs = self.open_tabs or []
 
     def _sync_convo_from_orchestrator(self) -> None:
         if not self.convo:
@@ -271,17 +380,19 @@ class SocketChatTask:
         self.socketio.start_background_task(self.heartbeat)
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
-            if not self._save_uploaded_image():
+            if not self._save_uploaded_files():
                 return
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
             response_text = self.convo.orchestrator.respond(
                 self.message,
-                has_image=bool(self.image_data),
+                has_files=self.saved_file_paths if self.saved_file_paths else [],
                 stream=self.stream_chunk,
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
+                thinking_budget=30_000,  # Enable extended thinking (reasoning)
+                on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()
             if self.is_cancelled():
@@ -307,6 +418,14 @@ def handle_socket_chat(
     message = payload.get("message", "")
     task_id = payload.get("task_id")
     sid = request.sid
+    # Debug: log whether files are present in the payload
+    raw_files = payload.get("files")
+    logger.info(
+        "handle_socket_chat: message_len=%d files_present=%s files_count=%d",
+        len(message) if isinstance(message, str) else 0,
+        raw_files is not None,
+        len(raw_files) if isinstance(raw_files, list) else 0,
+    )
 
     if not isinstance(message, str) or not message.strip():
         socketio.emit("agent_error", {"task_id": task_id, "error": "message is required"}, to=sid)
@@ -325,9 +444,12 @@ def handle_socket_chat(
         task_id=task_id,
         message=message,
         conversation_id=payload.get("conversation_id"),
-        image_data=payload.get("image"),
+        files_data=payload.get("files") or [],
         workflow=payload.get("workflow"),
         analysis=payload.get("analysis"),
+        current_workflow_id=payload.get("current_workflow_id"),  # ID of workflow on canvas
+        open_tabs=payload.get("open_tabs"),  # All open tabs for list_workflows_in_library
+        img_annotations=payload.get("annotations"),
     )
     socketio.start_background_task(task.run)
 

@@ -17,7 +17,8 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
     """Configure backend logging to rotating file handlers."""
     global _CONFIGURED
     if _CONFIGURED:
-        return _resolve_log_path(log_path)
+        prefix = os.environ.get("LEMON_LOG_PREFIX", "backend").strip()
+        return _resolve_log_path(log_path, prefix)
 
     prefix = os.environ.get("LEMON_LOG_PREFIX", "backend").strip()
     resolved = _resolve_log_path(log_path, prefix)
@@ -28,7 +29,6 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
         resolved,
         resolved.parent / f"{prefix}_tool_calls.log",
         resolved.parent / f"{prefix}_llm.log",
-        resolved.parent / f"{prefix}_subagent.log",
         resolved.parent / f"{prefix}_history.log",
     ]:
         try:
@@ -66,12 +66,6 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
         backup_count=backup_count,
     )
     llm_handler.setFormatter(formatter)
-    subagent_handler = _build_handler(
-        resolved.parent / f"{prefix}_subagent.log",
-        rotate_bytes=rotate_bytes,
-        backup_count=backup_count,
-    )
-    subagent_handler.setFormatter(formatter)
     history_handler = _build_handler(
         resolved.parent / f"{prefix}_history.log",
         rotate_bytes=rotate_bytes,
@@ -89,7 +83,6 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
 
     _attach_logger("backend.tool_calls", level, tool_handler)
     _attach_logger("backend.llm", level, llm_handler)
-    _attach_logger("backend.subagent", level, subagent_handler)
     _attach_logger("backend.history", level, history_handler)
     _attach_logger("backend.mcp", level, tool_handler)
     _attach_logger("backend.mcp_client", level, tool_handler)

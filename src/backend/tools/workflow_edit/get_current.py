@@ -1,11 +1,17 @@
-"""Get current workflow tool."""
+"""Get current workflow tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database
+- Read-only - does not save changes
+"""
 
 from __future__ import annotations
 
 import copy
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
+from ..core import WorkflowTool, ToolParameter
 
 
 # Human-readable labels for comparators
@@ -38,46 +44,59 @@ COMPARATOR_LABELS = {
 }
 
 
-def format_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
-    """Format a decision condition as a human-readable string.
-    
-    Args:
-        condition: The condition dict with input_id, comparator, value, value2
-        variables: List of workflow variable definitions (to get variable name)
-        
-    Returns:
-        Human-readable string like "Age >= 18" or "Name contains 'John'"
-    """
-    if not condition:
-        return "(no condition)"
-    
+def _format_simple_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
+    """Format a single simple condition as a human-readable string."""
     input_id = condition.get("input_id", "?")
     comparator = condition.get("comparator", "?")
     value = condition.get("value")
     value2 = condition.get("value2")
-    
+
     # Try to get human-readable variable name
     var_name = input_id
     for var in variables:
         if var.get("id") == input_id:
             var_name = var.get("name", input_id)
             break
-    
+
     # Get comparator symbol/label
     comp_label = COMPARATOR_LABELS.get(comparator, comparator)
-    
+
     # Format based on comparator type
     if comparator in ("is_true", "is_false"):
         return f"{var_name} {comp_label}"
     elif comparator in ("within_range", "date_between"):
         return f"{var_name} {comp_label} [{value}, {value2}]"
     else:
-        # Format value for display
         if isinstance(value, str):
             value_str = f"'{value}'"
         else:
             value_str = str(value)
         return f"{var_name} {comp_label} {value_str}"
+
+
+def format_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
+    """Format a decision condition (simple or compound) as a human-readable string.
+
+    Args:
+        condition: Simple or compound condition dict.
+        variables: List of workflow variable definitions (to resolve variable names).
+
+    Returns:
+        Human-readable string like "Age >= 18" or "smoker is true AND Age > 40".
+    """
+    if not condition:
+        return "(no condition)"
+
+    # Compound condition: join sub-conditions with AND / OR
+    if "operator" in condition:
+        operator = condition.get("operator", "and")
+        joiner = f" {operator.upper()} "
+        sub_conditions = condition.get("conditions", [])
+        parts = [_format_simple_condition(sub, variables) for sub in sub_conditions]
+        return joiner.join(parts) if parts else "(empty compound)"
+
+    # Simple condition
+    return _format_simple_condition(condition, variables)
 
 
 def format_variable_description(var: Dict[str, Any]) -> str:
@@ -116,8 +135,8 @@ def format_variable_description(var: Dict[str, Any]) -> str:
     return f"- {var['id']}: {var.get('name', '?')} ({type_info}){source_info}"
 
 
-class GetCurrentWorkflowTool(Tool):
-    """Get the current workflow displayed on the canvas.
+class GetCurrentWorkflowTool(WorkflowTool):
+    """Get the current workflow from the database.
     
     Returns workflow structure including nodes, edges, and variables.
     For decision nodes, includes structured condition information.
@@ -125,23 +144,52 @@ class GetCurrentWorkflowTool(Tool):
     Variables are organized by source (inputs, subprocess outputs, etc).
     """
 
+    uses_validator = False
+
     name = "get_current_workflow"
-    description = "Get the current workflow displayed on the canvas as JSON (nodes and edges)."
-    parameters: List[ToolParameter] = []
+    description = "Get a workflow from the library as JSON (nodes, edges, variables). Requires workflow_id."
+    parameters: List[ToolParameter] = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to retrieve (from create_workflow)",
+            required=True,
+        ),
+    ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        session_state = kwargs.get("session_state", {})
-        raw_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            # If the workflow simply doesn't exist yet, return a helpful non-error
+            # response so the LLM knows to create one instead of retrying.
+            error_code = error.get("error_code", "")
+            if error_code in ("MISSING_WORKFLOW_ID", "WORKFLOW_NOT_FOUND"):
+                return {
+                    "success": True,
+                    "workflow_id": None,
+                    "workflow": {"nodes": [], "edges": []},
+                    "node_count": 0,
+                    "edge_count": 0,
+                    "message": "No workflow exists yet. Call create_workflow first to create one.",
+                    "summary": {
+                        "node_count": 0,
+                        "edge_count": 0,
+                        "node_descriptions": "No workflow loaded",
+                        "edge_descriptions": "No connections",
+                        "variable_descriptions": "No variables",
+                    },
+                }
+            return error
+        workflow_id = workflow_data["workflow_id"]
         
-        # Deep copy to avoid modifying orchestrator state when adding defaults for tool output
+        # Deep copy to avoid any issues
         workflow = {
-            "nodes": [copy.deepcopy(n) for n in raw_workflow.get("nodes", [])],
-            "edges": [copy.deepcopy(e) for e in raw_workflow.get("edges", [])]
+            "nodes": [copy.deepcopy(n) for n in workflow_data.get("nodes", [])],
+            "edges": [copy.deepcopy(e) for e in workflow_data.get("edges", [])],
         }
         
-        # Get unified variables list
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
+        # Get variables from loaded data
+        variables = workflow_data.get("variables", [])
         if variables:
             workflow["variables"] = variables
 
@@ -149,6 +197,7 @@ class GetCurrentWorkflowTool(Tool):
         for node in workflow["nodes"]:
             if node.get("type") == "end":
                 node.setdefault("output_type", "string")
+                node.setdefault("output_variable", None)
                 node.setdefault("output_template", "")
                 node.setdefault("output_value", None)
             # Ensure decision nodes have condition field visible
@@ -177,7 +226,9 @@ class GetCurrentWorkflowTool(Tool):
                 parts = []
                 if node.get("output_type"):
                     parts.append(f"type={node['output_type']}")
-                if node.get("output_template"):
+                if node.get("output_variable"):
+                    parts.append(f"variable={node['output_variable']}")
+                elif node.get("output_template"):
                     parts.append(f"template='{node['output_template']}'")
                 if node.get("output_value"):
                     parts.append(f"value={node['output_value']}")
@@ -238,6 +289,9 @@ class GetCurrentWorkflowTool(Tool):
 
         return {
             "success": True,
+            "workflow_id": workflow_id,
+            "name": workflow_data.get("name", ""),
+            "output_type": workflow_data.get("output_type", "string"),
             "workflow": workflow,
             "node_count": len(workflow.get("nodes", [])),
             "edge_count": len(workflow.get("edges", [])),
@@ -251,10 +305,6 @@ class GetCurrentWorkflowTool(Tool):
                     "\n".join(edge_descriptions) if edge_descriptions else "No connections"
                 ),
                 "variable_descriptions": (
-                    "\n".join(input_descriptions) if input_descriptions else "No variables"
-                ),
-                # Backwards compatibility alias
-                "input_descriptions": (
                     "\n".join(input_descriptions) if input_descriptions else "No variables"
                 ),
             },

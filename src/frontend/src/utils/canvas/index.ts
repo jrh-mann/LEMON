@@ -10,8 +10,6 @@ export {
   getConnectionPoint,
   getDecisionConnectionPoint,
   calculateViewBox,
-  isPointInNode,
-  findNodeAtPoint,
   getDecisionPath,
   generateNodeId,
 } from './geometry'

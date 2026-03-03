@@ -20,6 +20,47 @@ from .env import get_anthropic_client, get_anthropic_model, load_env
 from ..utils.tokens import record_token_usage
 from ..utils.cancellation import CancellationError
 
+# Max retries for transient API errors (rate limits, timeouts, server errors)
+_MAX_RETRIES = 3
+_RETRY_BACKOFF = [2, 5]  # seconds between retries (exponential-ish)
+
+
+def _retry_api_call(
+    fn: Callable[[], Any],
+    *,
+    on_retry: Optional[Callable[[int, str], None]] = None,
+) -> Any:
+    """Retry an API call on transient errors.
+
+    Args:
+        fn: Zero-arg callable that makes the API request.
+        on_retry: Optional callback (attempt, error_msg) called before each retry
+            so the caller can notify the user.
+
+    Raises the last exception if all retries are exhausted.
+    """
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return fn()
+        except CancellationError:
+            raise  # Never retry cancellation
+        except Exception as exc:
+            exc_name = type(exc).__name__
+            is_retryable = any(
+                keyword in exc_name.lower()
+                for keyword in ("timeout", "rate", "overloaded", "server", "connection", "api")
+            )
+            if not is_retryable or attempt == _MAX_RETRIES - 1:
+                raise
+            delay = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+            msg = f"{exc_name}: {exc}"
+            logger.warning("API call failed (attempt %d/%d), retrying in %ds: %s", attempt + 1, _MAX_RETRIES, delay, msg)
+            if on_retry:
+                on_retry(attempt + 1, msg)
+            time.sleep(delay)
+    # Unreachable, but satisfies type checker
+    raise RuntimeError("Retry loop exited unexpectedly")
+
 
 def _extract_usage(message: Any) -> Dict[str, Any]:
     usage = getattr(message, "usage", None)
@@ -108,48 +149,69 @@ def _close_stream(stream: Any) -> None:
 def call_llm(
     messages: List[Dict[str, Any]],
     *,
-    max_completion_tokens: int = 60000,
+    max_completion_tokens: int = 128000,
     response_format: Optional[Dict[str, Any]] = None,
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    thinking_budget: Optional[int] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
 ) -> str:
     load_env()
     if response_format:
         logger.debug("response_format ignored for Anthropic")
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
-    payload = {
+    payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
         "max_tokens": max_completion_tokens,
         "system": system,
         "messages": converted,
     }
+    # Enable extended thinking when a budget is provided
+    if thinking_budget is not None:
+        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
     chunks: List[str] = []
 
-    def on_delta(text: str) -> None:
+    def _on_delta(text: str) -> None:
         if text:
             chunks.append(text)
 
-    start = time.perf_counter()
-    request_id = uuid.uuid4().hex
-    with client.messages.stream(**payload) as stream:
-        for event in stream:
+    def _call_stream_llm() -> Any:
+        with client.messages.stream(**payload) as stream:
+            for event in stream:
+                if should_cancel and should_cancel():
+                    _close_stream(stream)
+                    raise CancellationError("LLM streaming cancelled.")
+                event_type = getattr(event, "type", "")
+                if event_type == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    delta_type = getattr(delta, "type", None)
+                    if delta_type == "thinking_delta" and on_thinking:
+                        thinking_text = getattr(delta, "thinking", None)
+                        if thinking_text:
+                            on_thinking(thinking_text)
+                    else:
+                        text = getattr(delta, "text", None)
+                        if text:
+                            _on_delta(text)
             if should_cancel and should_cancel():
                 _close_stream(stream)
                 raise CancellationError("LLM streaming cancelled.")
-            if getattr(event, "type", "") == "content_block_delta":
-                delta = getattr(event, "delta", None)
-                text = getattr(delta, "text", None)
-                if text:
-                    on_delta(text)
-        if should_cancel and should_cancel():
-            _close_stream(stream)
-            raise CancellationError("LLM streaming cancelled.")
-        message = stream.get_final_message()
+            return stream.get_final_message()
+
+    def _notify_retry_llm(attempt: int, msg: str) -> None:
+        chunks.clear()
+
+    start = time.perf_counter()
+    request_id = uuid.uuid4().hex
+    message = _retry_api_call(_call_stream_llm, on_retry=_notify_retry_llm)
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    parsed_text, _ = _parse_anthropic_response(message)
+    parsed_text, _, parsed_thinking = _parse_anthropic_response(message)
+    # Deliver any thinking from the final message that wasn't streamed
+    if parsed_thinking and on_thinking:
+        on_thinking(parsed_thinking)
     _record_tokens(
         request_id=request_id,
         message=message,
@@ -174,11 +236,13 @@ def call_llm_with_tools(
     *,
     tools: Optional[List[Dict[str, Any]]] = None,
     tool_choice: Optional[str] = None,
-    max_completion_tokens: int = 60000,
+    max_completion_tokens: int = 128000,
     on_delta: Optional[Callable[[str], None]] = None,
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    thinking_budget: Optional[int] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     load_env()
     if tool_choice is None and tools:
@@ -202,6 +266,9 @@ def call_llm_with_tools(
             payload["tool_choice"] = {"type": "auto"}
         else:
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
+    # Enable extended thinking when a budget is provided
+    if thinking_budget is not None:
+        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
     chunks: List[str] = []
     tool_blocks: Dict[int, Dict[str, Any]] = {}
     tool_block_order: List[int] = []
@@ -253,14 +320,20 @@ def call_llm_with_tools(
                 elif event_type == "content_block_delta":
                     delta = getattr(event, "delta", None)
                     if delta:
-                        text = getattr(delta, "text", None)
-                        if text is None and isinstance(delta, dict):
-                            text = delta.get("text")
-                        if text:
-                            handle_delta(text)
                         delta_type = getattr(delta, "type", None)
                         if delta_type is None and isinstance(delta, dict):
                             delta_type = delta.get("type")
+                        # Route thinking deltas to the on_thinking callback
+                        if delta_type == "thinking_delta" and on_thinking:
+                            thinking_text = getattr(delta, "thinking", None)
+                            if thinking_text:
+                                on_thinking(thinking_text)
+                        else:
+                            text = getattr(delta, "text", None)
+                            if text is None and isinstance(delta, dict):
+                                text = delta.get("text")
+                            if text:
+                                handle_delta(text)
                         if delta_type == "input_json_delta":
                             idx = getattr(event, "index", None)
                             if idx is None and isinstance(event, dict):
@@ -299,12 +372,23 @@ def call_llm_with_tools(
                 raise CancellationError("LLM streaming cancelled.")
             return stream.get_final_message()
 
+    def _notify_retry(attempt: int, msg: str) -> None:
+        # Reset accumulation state so the retry starts fresh.
+        # Do NOT call on_delta here — it feeds into JSON tool-argument parsing
+        # and would corrupt the stream with non-JSON text.
+        chunks.clear()
+        tool_blocks.clear()
+        tool_block_order.clear()
+
     start = time.perf_counter()
     request_id = uuid.uuid4().hex
-    message = _call_stream()
+    message = _retry_api_call(_call_stream, on_retry=_notify_retry)
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    parsed_text, tool_calls = _parse_anthropic_response(message)
+    parsed_text, tool_calls, parsed_thinking = _parse_anthropic_response(message)
+    # Deliver any thinking from the final message that wasn't streamed
+    if parsed_thinking and on_thinking:
+        on_thinking(parsed_thinking)
     recovered: List[Dict[str, Any]] = []
     if tool_blocks:
         indices = tool_block_order or sorted(tool_blocks.keys())
@@ -374,43 +458,64 @@ def call_llm_with_tools(
 def call_llm_stream(
     messages: List[Dict[str, Any]],
     *,
-    max_completion_tokens: int = 60000,
+    max_completion_tokens: int = 128000,
     response_format: Optional[Dict[str, Any]] = None,
     on_delta: Callable[[str], None],
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    thinking_budget: Optional[int] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
 ) -> str:
     load_env()
     if response_format:
         logger.debug("response_format ignored for Anthropic")
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
-    payload = {
+    payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
         "max_tokens": max_completion_tokens,
         "system": system,
         "messages": converted,
     }
-    start = time.perf_counter()
-    request_id = uuid.uuid4().hex
-    with client.messages.stream(**payload) as stream:
-        for event in stream:
+    # Enable extended thinking when a budget is provided
+    if thinking_budget is not None:
+        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+    def _call_stream_direct() -> Any:
+        with client.messages.stream(**payload) as stream:
+            for event in stream:
+                if should_cancel and should_cancel():
+                    _close_stream(stream)
+                    raise CancellationError("LLM streaming cancelled.")
+                event_type = getattr(event, "type", "")
+                if event_type == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    delta_type = getattr(delta, "type", None)
+                    if delta_type == "thinking_delta" and on_thinking:
+                        thinking_text = getattr(delta, "thinking", None)
+                        if thinking_text:
+                            on_thinking(thinking_text)
+                    else:
+                        text = getattr(delta, "text", None)
+                        if text:
+                            on_delta(text)
             if should_cancel and should_cancel():
                 _close_stream(stream)
                 raise CancellationError("LLM streaming cancelled.")
-            if getattr(event, "type", "") == "content_block_delta":
-                delta = getattr(event, "delta", None)
-                text = getattr(delta, "text", None)
-                if text:
-                    on_delta(text)
-        if should_cancel and should_cancel():
-            _close_stream(stream)
-            raise CancellationError("LLM streaming cancelled.")
-        message = stream.get_final_message()
+            return stream.get_final_message()
+
+    def _notify_retry_stream(attempt: int, msg: str) -> None:
+        on_delta(f"\n\n*Retrying ({attempt + 1}/{_MAX_RETRIES})...*\n\n")
+
+    start = time.perf_counter()
+    request_id = uuid.uuid4().hex
+    message = _retry_api_call(_call_stream_direct, on_retry=_notify_retry_stream)
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    text, _ = _parse_anthropic_response(message)
+    text, _, parsed_thinking = _parse_anthropic_response(message)
+    # Deliver any thinking from the final message that wasn't streamed
+    if parsed_thinking and on_thinking:
+        on_thinking(parsed_thinking)
     _record_tokens(
         request_id=request_id,
         message=message,

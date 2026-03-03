@@ -6,6 +6,7 @@ from .batch_edit import BatchEditWorkflowTool
 from .delete_connection import DeleteConnectionTool
 from .delete_node import DeleteNodeTool
 from .get_current import GetCurrentWorkflowTool
+from .highlight import HighlightNodeTool
 from .modify_node import ModifyNodeTool
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "DeleteConnectionTool",
     "DeleteNodeTool",
     "GetCurrentWorkflowTool",
+    "HighlightNodeTool",
     "ModifyNodeTool",
 ]

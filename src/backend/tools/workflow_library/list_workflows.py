@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Set
 
-from ..core import Tool
+from ..core import Tool, extract_session_deps
 
 
 class ListWorkflowsInLibrary(Tool):
@@ -12,10 +12,16 @@ class ListWorkflowsInLibrary(Tool):
 
     This tool allows the orchestrator to view workflows that the user has
     previously saved, including their metadata (name, description, domain, tags).
+    
+    Also includes all open tabs with unsaved workflows (drafts), so the LLM can
+    see what the user is currently working on across all tabs.
+    
     Useful for:
     - Discovering existing workflows before creating duplicates
     - Recommending relevant workflows to users
     - Understanding what domains/topics the user works with
+    - Seeing all open unsaved workflows (drafts) across tabs
+    - Getting the ID of the current workflow (even if unsaved)
     """
 
     @property
@@ -25,10 +31,11 @@ class ListWorkflowsInLibrary(Tool):
     @property
     def description(self) -> str:
         return (
-            "List all workflows saved in the user's library. "
-            "Returns workflow metadata including name, description, domain, tags, "
-            "validation status, and input/output information. "
-            "Use this to check if similar workflows already exist before creating new ones."
+            "List all workflows saved in the user's library, plus any open unsaved workflows "
+            "(drafts) from all tabs. Returns workflow metadata including name, description, "
+            "domain, tags, validation status, and input/output information. "
+            "Open drafts appear with status 'draft' or 'current (unsaved)' for the active tab. "
+            "Use this to see all workflows the user has, including work in progress."
         )
 
     @property
@@ -67,8 +74,9 @@ class ListWorkflowsInLibrary(Tool):
         Returns:
             Dict with:
                 - success: bool
-                - workflows: list of workflow summaries
+                - workflows: list of workflow summaries with status indicator
                 - count: total number of workflows
+                - current_workflow_id: ID of the current canvas workflow (if any)
                 - message: human-readable result
         """
         # Extract parameters from args
@@ -76,38 +84,24 @@ class ListWorkflowsInLibrary(Tool):
         domain = args.get("domain")
         limit = args.get("limit", 50)
 
-        # Get session_state from kwargs
-        session_state = kwargs.get("session_state", {})
-        # Validate session state
-        if not session_state:
-            return {
-                "success": False,
-                "error": "No session state provided",
-                "message": "Unable to access workflow library - no session context. This tool requires direct mode (MCP mode not supported).",
-            }
-
-        workflow_store = session_state.get("workflow_store")
-        user_id = session_state.get("user_id")
-
-        if not workflow_store:
-            return {
-                "success": False,
-                "error": "No workflow_store in session",
-                "message": "Unable to access workflow library - storage not available. This tool requires direct mode (not MCP mode).",
-            }
-
-        if not user_id:
-            return {
-                "success": False,
-                "error": "No user_id in session",
-                "message": "Unable to access workflow library - user not authenticated. Please ensure user is logged in.",
-            }
+        # Get session state and validate dependencies
+        session_state, workflow_store, user_id, err = extract_session_deps(
+            kwargs, action="list workflows",
+        )
+        if err:
+            return err
 
         # Clamp limit to valid range
         limit = max(1, min(limit, 100))
 
+        # Get current workflow info (the active tab)
+        current_workflow_id = session_state.get("current_workflow_id")
+        
+        # Get all open tabs with workflows (for showing drafts from other tabs)
+        open_tabs: List[Dict[str, Any]] = session_state.get("open_tabs", [])
+
         try:
-            # Search or list workflows
+            # Search or list workflows from DB (all are "saved", no draft filtering)
             if search_query or domain:
                 workflows, total_count = workflow_store.search_workflows(
                     user_id,
@@ -123,8 +117,50 @@ class ListWorkflowsInLibrary(Tool):
                     offset=0,
                 )
 
-            # Format workflows for output
+            # Format workflows for output with status indicator
             workflow_summaries = []
+            
+            # Track which workflow IDs are in the DB (to identify unsaved drafts)
+            db_workflow_ids: Set[str] = {wf.id for wf in workflows}
+            
+            # Add open tabs that are NOT saved in DB (drafts/unsaved workflows)
+            # These appear first so the LLM sees them prominently
+            draft_count = 0
+            for tab in open_tabs:
+                tab_workflow_id = tab.get("workflow_id")
+                if not tab_workflow_id:
+                    continue
+                    
+                # Skip if this workflow is already saved in DB
+                if tab_workflow_id in db_workflow_ids:
+                    continue
+                
+                # This is an unsaved draft - add it to the list
+                is_active = tab.get("is_active", False)
+                status = "current (unsaved)" if is_active else "draft"
+                
+                workflow_summaries.append({
+                    "id": tab_workflow_id,
+                    "name": tab.get("title", "(Untitled Draft)"),
+                    "description": "Unsaved workflow in an open tab" if not is_active else "The workflow currently on the canvas (not yet saved)",
+                    "domain": None,
+                    "tags": [],
+                    "input_names": [],
+                    "output_values": [],
+                    "is_validated": False,
+                    "validation_score": 0,
+                    "validation_count": 0,
+                    "status": status,
+                    "is_current": is_active,
+                    "is_draft": True,
+                    "node_count": tab.get("node_count", 0),
+                    "edge_count": tab.get("edge_count", 0),
+                    "created_at": None,
+                    "updated_at": None,
+                })
+                draft_count += 1
+
+            # Add DB workflows
             for wf in workflows:
                 # Extract input names
                 input_names = [
@@ -140,6 +176,10 @@ class ListWorkflowsInLibrary(Tool):
                     if isinstance(out, dict)
                 ]
 
+                # Determine status: "current" if this is the active workflow, else "saved"
+                is_current = current_workflow_id and wf.id == current_workflow_id
+                status = "current" if is_current else "saved"
+
                 workflow_summaries.append({
                     "id": wf.id,
                     "name": wf.name,
@@ -151,22 +191,35 @@ class ListWorkflowsInLibrary(Tool):
                     "is_validated": wf.is_validated,
                     "validation_score": wf.validation_score,
                     "validation_count": wf.validation_count,
+                    "status": status,
+                    "is_current": is_current,
+                    "is_draft": False,
                     "created_at": wf.created_at,
                     "updated_at": wf.updated_at,
                 })
 
             # Build message
-            if total_count == 0:
+            db_count = total_count
+            display_count = db_count + draft_count
+            
+            if display_count == 0:
                 message = "No workflows found in library."
                 if search_query:
                     message += f" Search query: '{search_query}'"
                 if domain:
                     message += f" Domain filter: '{domain}'"
-            elif total_count == 1:
-                message = f"Found 1 workflow: {workflows[0].name}"
+            elif display_count == 1:
+                if draft_count == 1:
+                    message = "Found 1 workflow: unsaved draft"
+                else:
+                    message = f"Found 1 workflow: {workflows[0].name}"
             else:
-                shown = min(limit, total_count)
-                message = f"Found {total_count} workflows (showing {shown})"
+                parts = []
+                if draft_count > 0:
+                    parts.append(f"{draft_count} unsaved draft{'s' if draft_count > 1 else ''}")
+                if db_count > 0:
+                    parts.append(f"{db_count} saved")
+                message = f"Found {display_count} workflows ({', '.join(parts)})"
                 if search_query:
                     message += f" matching '{search_query}'"
                 if domain:
@@ -175,8 +228,10 @@ class ListWorkflowsInLibrary(Tool):
             return {
                 "success": True,
                 "workflows": workflow_summaries,
-                "count": total_count,
-                "shown": len(workflow_summaries),
+                "count": display_count,
+                "db_count": db_count,
+                "draft_count": draft_count,
+                "current_workflow_id": current_workflow_id,
                 "message": message,
             }
 

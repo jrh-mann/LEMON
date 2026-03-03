@@ -3,24 +3,32 @@
 This tool adds nodes to the workflow flowchart. For subprocess nodes,
 it automatically registers the output as a derived variable with the
 correct type inferred from the subworkflow's output definition.
+
+For calculation nodes, validates the operator and operands, and auto-registers
+the output variable with source='calculated'.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
 """
 
 from __future__ import annotations
 
-import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
-from ..workflow_input.add import generate_variable_id
-from ..workflow_input.helpers import ensure_workflow_analysis, normalize_variable_name
-from .helpers import get_node_color, validate_subprocess_node, get_subworkflow_output_type
+from ...execution.operators import get_operator, get_operator_names, validate_operator_arity
+from ..core import WorkflowTool, ToolParameter
+from .helpers import (
+    build_new_node,
+    save_workflow_changes,
+)
 
 
 # Valid comparators by input type - mirrors frontend COMPARATORS_BY_TYPE
+# 'number' is the unified numeric type that supports all numeric comparators
 COMPARATORS_BY_TYPE = {
-    "int": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
-    "float": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
+    "number": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
     "bool": ["is_true", "is_false"],
     "string": ["str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"],
     "date": ["date_eq", "date_before", "date_after", "date_between"],
@@ -36,44 +44,41 @@ ALL_COMPARATORS = [
 ]
 
 
-def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
-    """Validate a decision condition object.
-    
+def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> str | None:
+    """Validate a single simple condition (input_id + comparator + value).
+
     Args:
-        condition: The condition dict with input_id, comparator, value, value2
-        variables: List of workflow variable definitions
-        
+        condition: Simple condition dict with input_id, comparator, value, value2.
+        variables: List of workflow variable definitions.
+
     Returns:
         Error message if invalid, None if valid.
     """
-    if not isinstance(condition, dict):
-        return "condition must be an object with input_id, comparator, and value"
-    
     input_id = condition.get("input_id")
     comparator = condition.get("comparator")
     value = condition.get("value")
-    
+
     if not input_id:
         return "condition.input_id is required"
     if not comparator:
         return "condition.comparator is required"
     if value is None and comparator not in ("is_true", "is_false"):
         return f"condition.value is required for comparator '{comparator}'"
-    
+
     # Validate comparator is known
     if comparator not in ALL_COMPARATORS:
         return f"Unknown comparator '{comparator}'. Valid: {ALL_COMPARATORS}"
-    
+
     # Find the variable to check type compatibility
     var_def = None
     for var in variables:
         if var.get("id") == input_id:
             var_def = var
             break
-    
+
     if not var_def:
         return f"condition.input_id '{input_id}' not found in workflow variables"
-    
+
     # Check comparator is valid for this variable type
     var_type = var_def.get("type", "string")
     valid_comparators = COMPARATORS_BY_TYPE.get(var_type, [])
@@ -82,20 +87,164 @@ def validate_decision_condition(condition: Dict[str, Any], variables: list) -> s
             f"Comparator '{comparator}' is not valid for variable type '{var_type}'. "
             f"Valid comparators: {valid_comparators}"
         )
-    
+
     # Check value2 is provided for range comparators
     if comparator in ("within_range", "date_between"):
         if condition.get("value2") is None:
             return f"condition.value2 is required for comparator '{comparator}'"
+
+    return None
+
+
+def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
+    """Validate a decision condition — simple or compound (AND/OR).
+
+    Simple conditions have input_id/comparator/value.
+    Compound conditions have operator ("and"/"or") and a conditions array
+    of 2+ simple conditions.  Nesting is not allowed.
+
+    Args:
+        condition: The condition dict (simple or compound).
+        variables: List of workflow variable definitions.
+
+    Returns:
+        Error message if invalid, None if valid.
+    """
+    if not isinstance(condition, dict):
+        return "condition must be an object with input_id, comparator, and value"
+
+    # Compound condition path
+    if "operator" in condition:
+        operator = condition.get("operator")
+        if operator not in ("and", "or"):
+            return f"condition.operator must be 'and' or 'or', got '{operator}'"
+
+        sub_conditions = condition.get("conditions")
+        if not isinstance(sub_conditions, list):
+            return "condition.conditions must be a list"
+        if len(sub_conditions) < 2:
+            return f"condition.conditions must have at least 2 items, got {len(sub_conditions)}"
+
+        # Validate each sub-condition is simple (no nesting)
+        for i, sub in enumerate(sub_conditions):
+            if not isinstance(sub, dict):
+                return f"condition.conditions[{i}] must be a dict"
+            if "operator" in sub:
+                return f"condition.conditions[{i}] cannot be compound (no nesting allowed)"
+            error = _validate_simple_condition(sub, variables)
+            if error:
+                return f"condition.conditions[{i}]: {error}"
+
+        return None
+
+    # Simple condition path
+    return _validate_simple_condition(condition, variables)
+
+
+def validate_calculation(
+    calculation: Dict[str, Any],
+    variables: List[Dict[str, Any]],
+) -> Optional[str]:
+    """Validate a calculation object for a calculation node.
+    
+    Calculation schema:
+    {
+        "output": {"name": str, "description": str (optional)},
+        "operator": str (must be a valid operator name),
+        "operands": [
+            {"kind": "variable", "ref": str (variable ID)},
+            {"kind": "literal", "value": number}
+        ]
+    }
+    
+    Args:
+        calculation: The calculation dict to validate
+        variables: List of workflow variable definitions
+        
+    Returns:
+        Error message if invalid, None if valid.
+    """
+    if not isinstance(calculation, dict):
+        return "calculation must be an object with output, operator, and operands"
+    
+    # Validate output
+    output = calculation.get("output")
+    if not output:
+        return "calculation.output is required"
+    if not isinstance(output, dict):
+        return "calculation.output must be an object with 'name'"
+    output_name = output.get("name")
+    if not output_name:
+        return "calculation.output.name is required"
+    if not isinstance(output_name, str):
+        return "calculation.output.name must be a string"
+    # Validate output name is a valid identifier
+    if not output_name.replace("_", "").isalnum():
+        return f"calculation.output.name must be alphanumeric with underscores, got '{output_name}'"
+    
+    # Validate operator
+    operator = calculation.get("operator")
+    if not operator:
+        return "calculation.operator is required"
+    if not isinstance(operator, str):
+        return "calculation.operator must be a string"
+    
+    op = get_operator(operator)
+    if op is None:
+        return f"Unknown operator '{operator}'. Valid operators: {', '.join(get_operator_names())}"
+    
+    # Validate operands
+    operands = calculation.get("operands")
+    if not operands:
+        return "calculation.operands is required"
+    if not isinstance(operands, list):
+        return "calculation.operands must be an array"
+    if len(operands) == 0:
+        return "calculation.operands must not be empty"
+    
+    # Validate arity
+    arity_error = validate_operator_arity(operator, len(operands))
+    if arity_error:
+        return arity_error
+    
+    # Build map of variable IDs for reference validation
+    var_ids = {v.get("id") for v in variables if v.get("id")}
+    var_names = {v.get("name") for v in variables if v.get("name")}
+    
+    # Validate each operand
+    for i, operand in enumerate(operands):
+        if not isinstance(operand, dict):
+            return f"calculation.operands[{i}] must be an object with 'kind'"
+        
+        kind = operand.get("kind")
+        if kind not in ("variable", "literal"):
+            return f"calculation.operands[{i}].kind must be 'variable' or 'literal', got '{kind}'"
+        
+        if kind == "variable":
+            ref = operand.get("ref")
+            if not ref:
+                return f"calculation.operands[{i}].ref is required for variable operands"
+            # Allow referencing by ID or name
+            if ref not in var_ids and ref not in var_names:
+                return (
+                    f"calculation.operands[{i}].ref '{ref}' not found in workflow variables. "
+                    f"Available variable IDs: {sorted(var_ids)}"
+                )
+        elif kind == "literal":
+            value = operand.get("value")
+            if value is None:
+                return f"calculation.operands[{i}].value is required for literal operands"
+            if not isinstance(value, (int, float)):
+                return f"calculation.operands[{i}].value must be a number, got {type(value).__name__}"
     
     return None
 
 
-class AddNodeTool(Tool):
+class AddNodeTool(WorkflowTool):
     """Add a new node to the workflow.
     
     Supports all node types including subprocess nodes that reference
-    other workflows (subflows).
+    other workflows (subflows) and calculation nodes for mathematical operations.
     
     For decision nodes, a 'condition' object is REQUIRED with:
     - input_id: The workflow variable to compare (e.g., "var_age_int")
@@ -103,17 +252,29 @@ class AddNodeTool(Tool):
     - value: The value to compare against
     - value2: (optional) Second value for range comparisons
     
+    For calculation nodes, a 'calculation' object is REQUIRED with:
+    - output: {"name": "ResultVar", "description": "Optional description"}
+    - operator: The operator name (e.g., "add", "divide", "sqrt")
+    - operands: Array of {"kind": "variable", "ref": "var_id"} or {"kind": "literal", "value": 123}
+    
     For subprocess nodes, the output_variable is automatically registered
     as a derived variable with type inferred from the subworkflow's output.
     """
 
     name = "add_node"
-    description = "Add a new node (block) to the workflow."
+    description = "Add a new node (block) to the workflow. Requires workflow_id."
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to add the node to (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "type",
             "string",
-            "Node type: start, process, decision, subprocess, or end",
+            "Node type: start, process, decision, subprocess, calculation, or end",
             required=True,
         ),
         ToolParameter("label", "string", "Display text for the node", required=True),
@@ -145,22 +306,40 @@ class AddNodeTool(Tool):
             ),
             required=False,
         ),
+        # Calculation node config (REQUIRED for calculation nodes)
         ToolParameter(
-            "output_type",
+            "calculation",
+            "object",
+            (
+                "REQUIRED for calculation nodes: Mathematical operation to perform. "
+                "Object with: output {name, description?}, operator (string), operands (array). "
+                "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}. "
+                "Operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average, etc."
+            ),
+            required=False,
+        ),
+        ToolParameter(
+"output_type",
             "string",
-            "Optional: data type for output nodes (string, int, bool, json, file)",
+            (
+                "Optional: data type for output nodes (string, number, bool, json). "
+                "Use 'number' or 'bool' with output_variable for typed returns."
+            ),
             required=False,
         ),
         ToolParameter(
             "output_template",
             "string",
-            "Optional: python f-string template for output (e.g., 'Result: {value}')",
+            (
+                "Optional: python f-string template for STRING outputs only (e.g., 'Patient BMI is {BMI}'). "
+                "Do NOT use for number/bool outputs - use output_variable instead."
+            ),
             required=False,
         ),
         ToolParameter(
             "output_value",
             "any",
-            "Optional: static value to return",
+            "Optional: static literal value to return (e.g., 42, true, 'fixed string')",
             required=False,
         ),
         # Subprocess-specific parameters
@@ -179,144 +358,52 @@ class AddNodeTool(Tool):
         ToolParameter(
             "output_variable",
             "string",
-            "For subprocess: name for the variable that stores subworkflow output",
+            (
+                "For output/end nodes: variable name to return (e.g., 'BMI' returns the BMI variable's value). "
+                "For subprocess nodes: name for the variable that stores subworkflow output."
+            ),
             required=False,
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
-
-        # Ensure workflow_analysis exists with unified variable structure
-        workflow_analysis = ensure_workflow_analysis(session_state)
-
-        # Get workflow variables for condition validation
-        variables = workflow_analysis.get("variables", [])
-
-        # Validate condition for decision nodes
-        node_type = args["type"]
-        condition = args.get("condition")
         
-        if node_type == "decision":
-            if not condition:
-                return {
-                    "success": False,
-                    "error": (
-                        "Decision nodes require a 'condition' parameter. "
-                        "Provide: {input_id: '<var_id>', comparator: '<comparator>', value: <value>}"
-                    ),
-                    "error_code": "MISSING_CONDITION",
-                }
-            
-            condition_error = validate_decision_condition(condition, variables)
-            if condition_error:
-                return {
-                    "success": False,
-                    "error": condition_error,
-                    "error_code": "INVALID_CONDITION",
-                }
+        # Extract workflow components
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
 
-        node_id = f"node_{uuid.uuid4().hex[:8]}"
-        new_node = {
-            "id": node_id,
-            "type": node_type,
-            "label": args["label"],
-            "x": args.get("x", 0),
-            "y": args.get("y", 0),
-            "color": get_node_color(node_type),
-        }
+        # Delegate all node construction + validation to the shared builder
+        new_node, new_variables, build_error = build_new_node(
+            params=args,
+            variables=variables,
+            session_state=session_state,
+        )
+        if build_error:
+            return {
+                "success": False,
+                "error": build_error,
+                "error_code": "NODE_BUILD_FAILED",
+            }
 
-        # Add condition for decision nodes
-        if condition:
-            new_node["condition"] = condition
-        
-        # Add output configuration for 'end' nodes
-        if node_type == "end":
-            new_node["output_type"] = args.get("output_type", "string")
-            new_node["output_template"] = args.get("output_template", "")
-            new_node["output_value"] = args.get("output_value", None)
-        else:
-            # Still allow manual setting for other types if passed (future proofing)
-            if "output_type" in args:
-                new_node["output_type"] = args["output_type"]
-            if "output_template" in args:
-                new_node["output_template"] = args["output_template"]
-            if "output_value" in args:
-                new_node["output_value"] = args["output_value"]
+        # Append auto-registered variables
+        variables_modified = bool(new_variables)
+        for var in new_variables:
+            variables.append(var)
 
-        # Add subprocess-specific fields
-        if node_type == "subprocess":
-            subworkflow_id = args.get("subworkflow_id")
-            input_mapping = args.get("input_mapping")
-            output_variable = args.get("output_variable")
-            
-            if subworkflow_id:
-                new_node["subworkflow_id"] = subworkflow_id
-            if input_mapping is not None:
-                new_node["input_mapping"] = input_mapping
-            if output_variable:
-                new_node["output_variable"] = output_variable
-                
-                # Auto-register output_variable as a DERIVED variable (source='subprocess')
-                # with type inferred from the subworkflow's output definition
-                existing_var_names = [
-                    normalize_variable_name(v.get("name", ""))
-                    for v in variables
-                ]
-                
-                if normalize_variable_name(output_variable) not in existing_var_names:
-                    # Get output type from subworkflow
-                    output_info = get_subworkflow_output_type(subworkflow_id or "", session_state)
-                    output_type = output_info.get("type", "string") if output_info else "string"
-                    output_desc = output_info.get("description") if output_info else None
-                    
-                    # Generate variable ID with subprocess source
-                    var_id = generate_variable_id(output_variable, output_type, "subprocess")
-                    
-                    # Create derived variable with source='subprocess'
-                    new_variable: Dict[str, Any] = {
-                        "id": var_id,
-                        "name": output_variable,
-                        "type": output_type,
-                        "source": "subprocess",  # Derived from subprocess execution
-                        "source_node_id": node_id,  # Which node produces this
-                        "subworkflow_id": subworkflow_id,  # Which subworkflow it comes from
-                        "description": output_desc or f"Output from subprocess '{args['label']}'",
-                    }
-                    
-                    # Add to unified variables list
-                    workflow_analysis["variables"].append(new_variable)
-                    variables = workflow_analysis["variables"]
-            
-            # Validate subprocess node configuration
-            subprocess_errors = validate_subprocess_node(
-                new_node,
-                session_state,
-                check_workflow_exists=True,
-            )
-            if subprocess_errors:
-                return {
-                    "success": False,
-                    "error": "\n".join(subprocess_errors),
-                    "error_code": "SUBPROCESS_VALIDATION_FAILED",
-                }
-        else:
-            # Still allow subprocess fields on other types (for type changes)
-            if "subworkflow_id" in args:
-                new_node["subworkflow_id"] = args["subworkflow_id"]
-            if "input_mapping" in args:
-                new_node["input_mapping"] = args["input_mapping"]
-            if "output_variable" in args:
-                new_node["output_variable"] = args["output_variable"]
+        # Add node to list
+        nodes.append(new_node)
 
+        # Validate the workflow
         new_workflow = {
-            "nodes": [*current_workflow.get("nodes", []), new_node],
-            "edges": current_workflow.get("edges", []),
-            "variables": variables,  # Use unified variables instead of inputs
+            "nodes": nodes,
+            "edges": edges,
+            "variables": variables,
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
@@ -327,10 +414,19 @@ class AddNodeTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Auto-save changes to database
+        save_kwargs = {"nodes": nodes}
+        if variables_modified:
+            save_kwargs["variables"] = variables
+        
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "add_node",
             "node": new_node,
-            "message": f"Added {node_type} node '{args['label']}'",
-            "workflow_analysis": workflow_analysis,  # Return updated analysis for state sync
+            "message": f"Added {args['type']} node '{args['label']}' to workflow {workflow_id}",
         }

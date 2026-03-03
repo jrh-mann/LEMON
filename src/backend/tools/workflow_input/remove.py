@@ -1,28 +1,46 @@
-"""Remove workflow variable tool."""
+"""Remove workflow variable tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
+"""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
-from .helpers import ensure_workflow_analysis, normalize_variable_name
+from ..core import WorkflowTool, ToolParameter
+from ..workflow_edit.helpers import save_workflow_changes
+from .helpers import normalize_variable_name
 
 
-class RemoveWorkflowVariableTool(Tool):
+class RemoveWorkflowVariableTool(WorkflowTool):
     """Remove a registered workflow input variable.
     
     Only removes variables with source='input'. Subprocess/calculated variables
     should be removed by modifying or deleting the nodes that create them.
+    
+    Requires workflow_id - the workflow must exist in the library first.
     """
 
+    uses_validator = False
+
     name = "remove_workflow_variable"
-    aliases = ["remove_workflow_input"]  # Backwards compatibility
     description = (
         "Remove a registered workflow input variable by name (case-insensitive). "
+        "Requires workflow_id. "
         "If the variable is used in decision node conditions, deletion will fail by default. "
         "Use force=true to cascade delete (automatically clears condition from affected nodes)."
     )
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow containing the variable (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "name",
             "string",
@@ -38,12 +56,17 @@ class RemoveWorkflowVariableTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        workflow_analysis = ensure_workflow_analysis(session_state)
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+
+        # Extract data from loaded workflow
+        nodes = list(workflow_data["nodes"])
+        variables = list(workflow_data["variables"])
         
-        # Get all variables and filter for input variables
-        variables = workflow_analysis.get("variables", [])
+        # Filter for input variables only
         input_variables = [v for v in variables if v.get("source") == "input"]
 
         name = args.get("name")
@@ -74,10 +97,20 @@ class RemoveWorkflowVariableTool(Tool):
             }
 
         # Check for nodes that reference this input in their condition
+        # Handles both simple conditions and compound (AND/OR) conditions
         referencing_nodes = []
-        for node in current_workflow.get("nodes", []):
+        var_id = found_var.get("id")
+        for node in nodes:
             condition = node.get("condition")
-            if condition and condition.get("input_id") == found_var.get("id"):
+            if not condition:
+                continue
+            if "operator" in condition:
+                # Compound condition — check each sub-condition
+                for sub in condition.get("conditions", []):
+                    if isinstance(sub, dict) and sub.get("input_id") == var_id:
+                        referencing_nodes.append(node)
+                        break  # Only add node once
+            elif condition.get("input_id") == var_id:
                 referencing_nodes.append(node)
 
         # If references exist and force is not enabled, reject deletion
@@ -102,31 +135,62 @@ class RemoveWorkflowVariableTool(Tool):
                 "referencing_nodes": [node.get("id") for node in referencing_nodes],
             }
 
-        # If force=true, clear condition from all referencing nodes
+        # If force=true, clear condition from all referencing nodes.
+        # For compound conditions referencing the variable in any sub-condition,
+        # we clear the entire condition (partial removal would break the compound).
+        nodes_modified = False
         affected_node_labels = []
         if referencing_nodes:
-            for node in referencing_nodes:
-                if "condition" in node:
+            for node in nodes:
+                condition = node.get("condition")
+                if not condition:
+                    continue
+                should_clear = False
+                if "operator" in condition:
+                    for sub in condition.get("conditions", []):
+                        if isinstance(sub, dict) and sub.get("input_id") == var_id:
+                            should_clear = True
+                            break
+                elif condition.get("input_id") == var_id:
+                    should_clear = True
+                if should_clear:
                     del node["condition"]
                     affected_node_labels.append(node.get("label", node.get("id", "unknown")))
+                    nodes_modified = True
 
         # Remove the variable from the variables list (match by ID for precision)
-        workflow_analysis["variables"] = [
+        variables = [
             var for var in variables
             if var.get("id") != found_var.get("id")
         ]
 
+        # Auto-save changes to database
+        save_kwargs: Dict[str, Any] = {"variables": variables}
+        if nodes_modified:
+            save_kwargs["nodes"] = nodes
+        
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
+        if save_error:
+            return save_error
+
         # Build success message
-        message = f"Removed variable '{name}'"
+        message = f"Removed variable '{name}' from workflow {workflow_id}"
         if affected_node_labels:
             message += f" and cleared references from {len(affected_node_labels)} node(s): {', '.join(affected_node_labels[:3])}"
             if len(affected_node_labels) > 3:
                 message += f", and {len(affected_node_labels) - 3} more"
 
-        return {
+        result: Dict[str, Any] = {
             "success": True,
+            "workflow_id": workflow_id,
             "message": message,
-            "workflow_analysis": workflow_analysis,
-            "current_workflow": current_workflow,  # Return updated workflow
             "affected_nodes": len(affected_node_labels),
+            # Return workflow_analysis for orchestrator to sync local state
+            "workflow_analysis": {"variables": variables},
         }
+        
+        # If nodes were modified (force delete), also return current_workflow
+        if nodes_modified:
+            result["current_workflow"] = {"nodes": nodes}
+        
+        return result

@@ -25,7 +25,8 @@ import logging
 import re
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
-from .evaluator import evaluate_condition, EvaluationError
+from .evaluator import evaluate_condition, is_compound_condition, EvaluationError
+from .operators import execute_operator, OperatorError
 
 logger = logging.getLogger(__name__)
 
@@ -79,48 +80,55 @@ class TreeInterpreter:
     def __init__(
         self,
         tree: Dict[str, Any],
-        inputs: Optional[List[Dict[str, Any]]] = None,
         outputs: Optional[List[Dict[str, Any]]] = None,
         workflow_id: Optional[str] = None,
         call_stack: Optional[List[str]] = None,
         workflow_store: Optional["WorkflowStore"] = None,
         user_id: Optional[str] = None,
         variables: Optional[List[Dict[str, Any]]] = None,
+        output_type: str = "string",
     ):
         """Initialize interpreter
         
         Args:
             tree: Workflow tree (must have 'start' key)
-            inputs: DEPRECATED - List of input definitions. Use 'variables' instead.
             outputs: List of output definitions with name
             workflow_id: ID of this workflow (for cycle detection in subflows)
             call_stack: Stack of workflow IDs currently being executed (for cycle detection)
             workflow_store: Store for loading subworkflows (required for subprocess nodes)
             user_id: User ID for loading subworkflows (required for subprocess nodes)
-            variables: List of variable definitions (unified system - replaces inputs)
+            variables: List of variable definitions (unified variable system)
+            output_type: Workflow-level output type ('string', 'number', 'bool', 'json')
         """
         self.tree = tree
         
-        # Unified variable system: prefer 'variables', fallback to 'inputs' for backwards compat
-        # Variables include both user inputs (source='input') and derived values (source='subprocess')
-        var_list = variables if variables is not None else (inputs or [])
+        # Unified variable system: all variables (inputs, subprocess outputs, etc.)
+        var_list = variables or []
         
         self.variables_schema = {var['id']: var for var in var_list}
-        # Backwards compat alias
-        self.inputs_schema = self.variables_schema
         
         self.outputs_schema = {out['name']: out for out in (outputs or [])}
 
         # Create mapping from variable names to IDs for condition evaluation
         # e.g., "Age" -> "var_age_int", "BMI" -> "var_bmi_float"
         # Also supports legacy "input_age_int" format
-        self.name_to_id = {var['name']: var['id'] for var in var_list}
+        # Handle variables without 'name' field by using ID as fallback
+        self.name_to_id = {}
+        for var in var_list:
+            var_id = var.get('id', '')
+            var_name = var.get('name')
+            if var_name:
+                self.name_to_id[var_name] = var_id
+            # Also allow referencing by ID directly in templates
+            if var_id:
+                self.name_to_id[var_id] = var_id
         
         # Subflow support
         self.workflow_id = workflow_id
         self.call_stack = call_stack or []
         self.workflow_store = workflow_store
         self.user_id = user_id
+        self.output_type = output_type
         
         # Track subflow execution results
         self.subflow_results: List[Dict[str, Any]] = []
@@ -153,6 +161,9 @@ class TreeInterpreter:
             >>> def on_step(info): print(f"Executing: {info['node_label']}")
             >>> result = interpreter.execute({"input_age_int": 25}, on_step=on_step)
         """
+        # Store on_step callback for forwarding to subflows
+        self._on_step = on_step
+        
         # Validate inputs
         try:
             self._validate_inputs(input_values)
@@ -204,6 +215,18 @@ class TreeInterpreter:
                 if node_type in ('output', 'end'):
                     # Reached terminal node - success!
                     output_val = self._resolve_output_value(current, context)
+                    # Emit end_reached event for logging
+                    if on_step is not None:
+                        try:
+                            on_step({
+                                "event_type": "end_reached",
+                                "node_id": node_id,
+                                "node_type": node_type,
+                                "node_label": node_label,
+                                "output": output_val,
+                            })
+                        except Exception as e:
+                            logger.warning(f"on_step callback error for end node '{node_id}': {e}")
                     return ExecutionResult(
                         success=True,
                         output=output_val,
@@ -214,13 +237,29 @@ class TreeInterpreter:
 
                 elif node_type == 'decision':
                     # Evaluate condition and branch
-                    current = self._handle_decision_node(current, context)
+                    current = self._handle_decision_node(current, context, on_step)
 
                 elif node_type == 'subprocess':
                     # Execute subworkflow and inject output as new input
-                    current = self._handle_subprocess_node(current, context)
+                    current = self._handle_subprocess_node(current, context, on_step)
+
+                elif node_type == 'calculation':
+                    # Execute calculation and inject result as new variable
+                    current = self._handle_calculation_node(current, context, on_step)
 
                 elif node_type in ('start', 'action', 'process'):
+                    # Emit start_executed event for start nodes
+                    if node_type == 'start' and on_step is not None:
+                        try:
+                            on_step({
+                                "event_type": "start_executed",
+                                "node_id": node_id,
+                                "node_type": node_type,
+                                "node_label": node_label,
+                                "inputs": context.copy(),
+                            })
+                        except Exception as e:
+                            logger.warning(f"on_step callback error for start node '{node_id}': {e}")
                     # Pass through to first child
                     children = current.get('children', [])
                     if not children:
@@ -272,7 +311,8 @@ class TreeInterpreter:
     def _handle_subprocess_node(
         self,
         node: Dict[str, Any],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> Optional[Dict[str, Any]]:
         """Execute a subworkflow and inject its output as a new input variable.
         
@@ -372,16 +412,77 @@ class TreeInterpreter:
         # Create interpreter for subworkflow
         sub_interpreter = TreeInterpreter(
             tree=sub_tree,  # Use rebuilt tree (handles empty stored tree)
-            inputs=subworkflow.inputs,
+            variables=subworkflow.inputs,  # Storage field is 'inputs', maps to variables
             outputs=subworkflow.outputs,
             workflow_id=subworkflow_id,
             call_stack=new_call_stack,
             workflow_store=self.workflow_store,
             user_id=self.user_id,
+            output_type=getattr(subworkflow, 'output_type', 'string'),
         )
         
-        # Execute subworkflow
-        sub_result = sub_interpreter.execute(sub_input_values)
+        # Create wrapper callback that adds subflow context for visualization
+        subflow_on_step = None
+        if on_step is not None:
+            # Emit subflow_start event with subworkflow details
+            try:
+                on_step({
+                    "event_type": "subflow_start",
+                    "parent_node_id": node_id,
+                    "subworkflow_id": subworkflow_id,
+                    "subworkflow_name": subworkflow.name,
+                    "nodes": subworkflow.nodes if hasattr(subworkflow, 'nodes') else [],
+                    "edges": subworkflow.edges if hasattr(subworkflow, 'edges') else [],
+                })
+            except Exception as e:
+                logger.warning(f"on_step subflow_start callback error: {e}")
+            
+            # Create wrapper that adds subflow context to each step
+            def subflow_on_step(step_info: Dict[str, Any]) -> None:
+                try:
+                    # Preserve existing event type (e.g. start_executed, decision_evaluated)
+                    # defaulting to subflow_step only if generic
+                    event_type = step_info.get("event_type", "subflow_step")
+                    
+                    # Build subflow stack for nested indentation (Outer -> Inner)
+                    # We receive stack from inner wrapper (if any) and prepend current (outer)
+                    # Wait, no. We are the wrapper.
+                    # If we are Outer, and receiving from Inner:
+                    # Inner adds InnerID. passed to us. [InnerID]
+                    # We add OuterID. [OuterID, InnerID]
+                    # Correct for [Outer, Inner] order.
+                    
+                    current_stack = step_info.get("subworkflow_stack", [])
+                    new_stack = [subworkflow_id] + current_stack
+                    
+                    on_step({
+                        **step_info,
+                        "event_type": event_type,
+                        "parent_node_id": node_id,
+                        "subworkflow_id": subworkflow_id,
+                        "subworkflow_name": subworkflow.name,
+                        "subworkflow_stack": new_stack
+                    })
+                except Exception as e:
+                    logger.warning(f"on_step subflow_step callback error: {e}")
+        
+        # Execute subworkflow with visualization callback
+        sub_result = sub_interpreter.execute(sub_input_values, on_step=subflow_on_step)
+        
+        # Emit subflow_complete event
+        if on_step is not None:
+            try:
+                on_step({
+                    "event_type": "subflow_complete",
+                    "parent_node_id": node_id,
+                    "subworkflow_id": subworkflow_id,
+                    "subworkflow_name": subworkflow.name,
+                    "success": sub_result.success,
+                    "output": sub_result.output,
+                    "error": sub_result.error,
+                })
+            except Exception as e:
+                logger.warning(f"on_step subflow_complete callback error: {e}")
         
         # Record subflow execution for debugging
         self.subflow_results.append({
@@ -417,6 +518,212 @@ class TreeInterpreter:
             )
         
         return children[0]
+
+    def _handle_calculation_node(
+        self,
+        node: Dict[str, Any],
+        context: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Execute a calculation and inject its output as a new variable.
+        
+        Steps:
+        1. Resolve operand values (from variables or literals)
+        2. Execute the operator with resolved operands
+        3. Inject result as new calculated variable in context
+        4. Continue to next node
+        
+        Args:
+            node: Calculation node with calculation.output, operator, operands
+            context: Workflow execution context
+            on_step: Optional callback for detailed execution logging
+            
+        Returns:
+            Next node to execute
+            
+        Raises:
+            InterpreterError: If calculation fails
+        """
+        node_id = node.get('id', 'unknown')
+        node_label = node.get('label', node_id)
+        calculation = node.get('calculation')
+        
+        # Validate calculation exists
+        if not calculation:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing 'calculation' field"
+            )
+        
+        output = calculation.get('output', {})
+        operator_name = calculation.get('operator')
+        operands = calculation.get('operands', [])
+        
+        # Validate required fields
+        output_name = output.get('name') if isinstance(output, dict) else None
+        if not output_name:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing output.name"
+            )
+        if not operator_name:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing operator"
+            )
+        if not operands:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' missing operands"
+            )
+        
+        # Resolve operand values and track for logging
+        resolved_operands = []
+        operand_details = []  # For logging: [{name, kind, value}, ...]
+        
+        for i, operand in enumerate(operands):
+            kind = operand.get('kind')
+            
+            if kind == 'literal':
+                value = operand.get('value')
+                if value is None:
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] has no value"
+                    )
+                resolved_operands.append(float(value))
+                operand_details.append({
+                    "name": str(value),
+                    "kind": "literal",
+                    "value": float(value)
+                })
+                
+            elif kind == 'variable':
+                ref = operand.get('ref')
+                if not ref:
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] has no ref"
+                    )
+                
+                # Look up variable value in context
+                # ref can be either variable ID (var_weight_number) or variable name (Weight)
+                value = None
+                var_name = ref
+                if ref in context:
+                    value = context[ref]
+                else:
+                    # Try to resolve by name
+                    var_id = self.name_to_id.get(ref)
+                    if var_id and var_id in context:
+                        value = context[var_id]
+                
+                # Try to get human-readable name
+                for name, var_id in self.name_to_id.items():
+                    if var_id == ref:
+                        var_name = name
+                        break
+                
+                if value is None:
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] references "
+                        f"variable '{ref}' which has no value in context"
+                    )
+                
+                # Ensure numeric value
+                if not isinstance(value, (int, float)):
+                    raise InterpreterError(
+                        f"Calculation node '{node_label}': operand[{i}] references "
+                        f"variable '{ref}' with non-numeric value: {value}"
+                    )
+                
+                resolved_operands.append(float(value))
+                operand_details.append({
+                    "name": var_name,
+                    "kind": "variable",
+                    "value": float(value)
+                })
+            else:
+                raise InterpreterError(
+                    f"Calculation node '{node_label}': operand[{i}] has invalid kind '{kind}'"
+                )
+        
+        # Execute the operator
+        try:
+            result = execute_operator(operator_name, resolved_operands)
+        except OperatorError as e:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' failed: {e}"
+            )
+        except ValueError as e:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' failed: {e}"
+            )
+        
+        # Emit detailed calculation info
+        if on_step is not None:
+            try:
+                # Build formula string for display
+                operator_symbols = {
+                    'add': '+', 'subtract': '-', 'multiply': '*', 'divide': '/',
+                    'power': '^', 'modulo': '%', 'min': 'min', 'max': 'max',
+                    'abs': 'abs', 'round': 'round', 'floor': 'floor', 'ceil': 'ceil'
+                }
+                op_sym = operator_symbols.get(operator_name, operator_name)
+                formula = f"{output_name} = {' '.join([d['name'] for d in operand_details])} ({op_sym})"
+                
+                on_step({
+                    "event_type": "calculation_completed",
+                    "node_id": node_id,
+                    "node_label": node_label,
+                    "output_name": output_name,
+                    "operator": operator_name,
+                    "operands": operand_details,
+                    "result": result,
+                    "formula": formula,
+                })
+            except Exception as e:
+                logger.warning(f"on_step calculation callback error at node '{node_id}': {e}")
+        
+        # Inject result as new calculated variable in context
+        self._inject_calculation_output(output_name, result, context)
+        
+        # Continue to next node
+        children = node.get('children', [])
+        if not children:
+            raise InterpreterError(
+                f"Calculation node '{node_label}' has no children. "
+                f"Flow must continue after calculation or end explicitly."
+            )
+        
+        return children[0]
+
+    def _inject_calculation_output(
+        self,
+        output_name: str,
+        output_value: float,
+        context: Dict[str, Any]
+    ) -> None:
+        """Inject calculation output as a new derived variable in context.
+        
+        Args:
+            output_name: Name of the output variable (e.g., "BMI")
+            output_value: The calculated numeric value
+            context: Workflow context (modified in place)
+        """
+        # Calculation output is always 'number' type
+        output_type = "number"
+        
+        # Generate variable ID with calculated prefix
+        variable_id = self._generate_variable_id(output_name, output_type, "calculated")
+        
+        # Add to name->id mapping for future condition evaluation
+        self.name_to_id[output_name] = variable_id
+        
+        # Add to context
+        context[variable_id] = output_value
+        
+        # Track in variables_schema for potential validation
+        self.variables_schema[variable_id] = {
+            "id": variable_id,
+            "name": output_name,
+            "type": output_type,
+            "source": "calculated",  # Derived from calculation node
+        }
 
     def _map_inputs_to_subworkflow(
         self,
@@ -517,14 +824,14 @@ class TreeInterpreter:
             value: The value to analyze
             
         Returns:
-            Type string: 'int', 'float', 'bool', 'string', or 'json'
+            Type string: 'number', 'bool', 'string', or 'json'
+            Note: Uses unified 'number' type for all numeric values
         """
         if isinstance(value, bool):
             return "bool"
-        elif isinstance(value, int):
-            return "int"
-        elif isinstance(value, float):
-            return "float"
+        elif isinstance(value, (int, float)):
+            # Unified numeric type - don't distinguish between int and float
+            return "number"
         elif isinstance(value, str):
             return "string"
         elif isinstance(value, (dict, list)):
@@ -541,13 +848,13 @@ class TreeInterpreter:
         - Calculated: var_calc_{slug}_{type}
         - Constants: var_const_{slug}_{type}
         
-        Args:
+Args:
             name: Variable name (e.g., "Credit Score")
-            var_type: Variable type (e.g., "int", "float", "string")
+            var_type: Variable type (e.g., "number", "string", "bool")
             source: Variable source ("input", "subprocess", "calculated", "constant")
             
         Returns:
-            Variable ID (e.g., "var_credit_score_int", "var_sub_risk_float")
+            Variable ID (e.g., "var_credit_score_number", "var_sub_risk_number")
         """
         # Slugify: lowercase, replace non-alphanumeric with underscore
         slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
@@ -563,51 +870,80 @@ class TreeInterpreter:
             }.get(source, source[:4])
             return f"var_{source_prefix}_{slug}_{var_type}"
 
-    def _generate_input_id(self, name: str, input_type: str) -> str:
-        """DEPRECATED: Use _generate_variable_id() instead.
-        
-        Kept for backwards compatibility. Generates legacy input_* format IDs.
-        
-        Args:
-            name: Input name (e.g., "Credit Score")
-            input_type: Input type (e.g., "int")
-            
-        Returns:
-            Legacy input ID (e.g., "input_credit_score_int")
-        """
-        # Slugify: lowercase, replace non-alphanumeric with underscore
-        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
-        return f"input_{slug}_{input_type}"
-
     def _resolve_output_value(self, node: Dict[str, Any], context: Dict[str, Any]) -> Any:
         """Resolve output value from node configuration.
         
-        Supports:
-        - output_template: Python f-string style template (e.g., "Result: {Age}")
-        - output_value: Static value
-        - output_type: Type casting (int, float, bool, json)
-        - label: Fallback
-        """
-        output_type = node.get('output_type', 'string')
+        Priority order:
+        1. output_variable: Direct variable reference (preferred for number/bool)
+           - Returns the raw value from the variable, preserving type
+           - Example: output_variable="BMI" returns the numeric BMI value
+        2. output_value: Static literal value
+           - Cast to output_type (number, bool, json, string)
+        3. output_template: String template with variable substitution
+           - Only use for string outputs that need formatting
+           - Example: "Patient BMI is {BMI}"
+        4. label: Fallback (legacy support)
         
-        # 1. Template (Dynamic)
+        Args:
+            node: Output node with output_type, output_variable/value/template
+            context: Execution context with variable values
+            
+        Returns:
+            The resolved output value with appropriate type
+        """
+        output_type = self.output_type
+        
+        # Build lookup context: both variable IDs and friendly names
+        friendly_context: Dict[str, Any] = {}
+        for name, input_id in self.name_to_id.items():
+            if input_id in context:
+                friendly_context[name] = context[input_id]
+        full_context = {**context, **friendly_context}
+        
+        # 1. Direct Variable Reference (preferred for number/bool)
+        # Use output_variable to return a variable's raw value without string formatting
+        if node.get('output_variable'):
+            var_ref = node['output_variable']
+            
+            # Look up value by name or ID
+            raw_value = None
+            if var_ref in full_context:
+                raw_value = full_context[var_ref]
+            
+            if raw_value is not None:
+                # Return raw value, cast to declared output_type
+                return self._cast_output_value(raw_value, output_type)
+            else:
+                # Variable not found - return error
+                available_vars = list(friendly_context.keys())
+                return (
+                    f"Error: Variable '{var_ref}' not found in workflow context. "
+                    f"Available variables: {available_vars}"
+                )
+        
+        # 2. Static Literal Value
+        if 'output_value' in node:
+            val = node['output_value']
+            return self._cast_output_value(val, output_type)
+
+        # 3. String Template (use only for string outputs that need formatting)
         if node.get('output_template'):
             template = node['output_template']
-            # Build user-friendly context (Name -> Value)
-            # Maps input names to their runtime values for template substitution
-            friendly_context: Dict[str, Any] = {}
-            for name, input_id in self.name_to_id.items():
-                if input_id in context:
-                    friendly_context[name] = context[input_id]
             
-            # Combine with raw ID context (allows both {BMI} and {input_bmi_float})
-            full_context = {**context, **friendly_context}
+            # For backwards compatibility: if template is a single variable like "{BMI}",
+            # extract the raw value (same as output_variable behavior)
+            stripped = template.strip()
+            if (stripped.startswith('{') and stripped.endswith('}') and 
+                stripped.count('{') == 1 and stripped.count('}') == 1):
+                var_name = stripped[1:-1].strip()
+                if var_name in full_context:
+                    return self._cast_output_value(full_context[var_name], output_type)
             
+            # Format template as string
             try:
-                # Safe format with helpful error on missing variable
-                return template.format(**full_context)
+                formatted = template.format(**full_context)
+                return self._cast_output_value(formatted, output_type)
             except KeyError as e:
-                # Extract missing variable name from KeyError
                 missing_var = str(e).strip("'")
                 available_vars = list(friendly_context.keys())
                 return (
@@ -617,33 +953,9 @@ class TreeInterpreter:
             except Exception as e:
                 return f"Error formatting output: {str(e)}"
 
-        # 2. Static Value
-        if 'output_value' in node:
-            val = node['output_value']
-            try:
-                if output_type == 'int':
-                    return int(val)
-                elif output_type == 'float':
-                    return float(val)
-                elif output_type == 'bool':
-                    return str(val).lower() in ('true', '1', 'yes', 'on')
-                elif output_type == 'json':
-                    if isinstance(val, str):
-                        return json.loads(val)
-                    return val
-                return val
-            except Exception as e:
-                return f"Error casting output: {str(e)}"
-
-        # 3. Fallback to label (also supports template substitution)
+        # 4. Fallback to label (legacy support)
         label = node.get('label', '')
         if '{' in label and '}' in label:
-            # Label contains template syntax, try to substitute
-            friendly_context: Dict[str, Any] = {}
-            for name, input_id in self.name_to_id.items():
-                if input_id in context:
-                    friendly_context[name] = context[input_id]
-            full_context = {**context, **friendly_context}
             try:
                 return label.format(**full_context)
             except KeyError as e:
@@ -654,9 +966,53 @@ class TreeInterpreter:
                     f"Available variables: {available_vars}"
                 )
             except Exception:
-                # If template substitution fails, return label as-is
                 return label
         return label
+
+    def _cast_output_value(self, value: Any, output_type: str) -> Any:
+        """Cast a value to the declared output type.
+        
+        Args:
+            value: The value to cast (can be any type)
+            output_type: Target type ('number', 'bool', 'json', 'string')
+            
+        Returns:
+            The value cast to the appropriate type
+            
+        Note:
+            - If value is already the correct type, returns as-is
+            - For 'number': converts to float
+            - For 'bool': converts to boolean
+            - For 'json': parses string as JSON or returns dict/list as-is
+            - For 'string': converts to string
+        """
+        try:
+            if output_type == 'number':
+                # If already numeric, return as-is
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return float(value)
+                # Try to parse string as number
+                return float(value)
+            elif output_type == 'bool':
+                # If already bool, return as-is
+                if isinstance(value, bool):
+                    return value
+                # Parse string as bool
+                return str(value).lower() in ('true', '1', 'yes', 'on')
+            elif output_type == 'json':
+                # If already dict/list, return as-is
+                if isinstance(value, (dict, list)):
+                    return value
+                # Try to parse string as JSON
+                if isinstance(value, str):
+                    return json.loads(value)
+                return value
+            else:
+                # Default: string
+                return str(value) if value is not None else ''
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
+            # If casting fails, return original value with error context
+            return f"Error casting to {output_type}: {str(e)}"
 
     def _validate_inputs(self, input_values: Dict[str, Any]) -> None:
         """Validate input values against variable schema.
@@ -670,8 +1026,8 @@ class TreeInterpreter:
         # Check all required variables are present
         for var_id, schema in self.variables_schema.items():
             # Only validate input-source variables (user-provided)
-            # Subprocess-derived variables are injected at runtime
-            if schema.get('source') == 'subprocess':
+            # Subprocess-derived and calculated variables are injected at runtime
+            if schema.get('source') in ('subprocess', 'calculated'):
                 continue
                 
             if var_id not in input_values:
@@ -681,13 +1037,10 @@ class TreeInterpreter:
             var_type = schema['type']
 
             # Type validation
-            if var_type == 'int':
-                if not isinstance(value, int) or isinstance(value, bool):
-                    raise InterpreterError(f"{var_id} must be int, got {type(value).__name__}")
-
-            elif var_type == 'float':
+            if var_type == 'number':
+                # Unified numeric type - accepts both int and float
                 if not isinstance(value, (int, float)) or isinstance(value, bool):
-                    raise InterpreterError(f"{var_id} must be float, got {type(value).__name__}")
+                    raise InterpreterError(f"{var_id} must be number, got {type(value).__name__}")
 
             elif var_type == 'bool':
                 if not isinstance(value, bool):
@@ -698,7 +1051,7 @@ class TreeInterpreter:
                     raise InterpreterError(f"{var_id} must be string, got {type(value).__name__}")
 
             # Range validation for numeric types
-            if var_type in ('int', 'float') and 'range' in schema:
+            if var_type == 'number' and 'range' in schema:
                 range_spec = schema['range']
                 if 'min' in range_spec and value < range_spec['min']:
                     raise InterpreterError(
@@ -717,7 +1070,12 @@ class TreeInterpreter:
                         f"Value error: {var_id} must be one of {allowed}, got '{value}'"
                     )
 
-    def _handle_decision_node(self, node: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _handle_decision_node(
+        self,
+        node: Dict[str, Any],
+        context: Dict[str, Any],
+        on_step: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> Optional[Dict[str, Any]]:
         """Handle decision node: evaluate structured condition and select branch.
 
         Decision nodes MUST have a 'condition' field with structured condition data:
@@ -731,6 +1089,7 @@ class TreeInterpreter:
         Args:
             node: Decision node with 'condition' field
             context: Current variable context (input_id -> value)
+            on_step: Optional callback for detailed execution logging
 
         Returns:
             Next node to visit based on condition result (True/False branch)
@@ -749,6 +1108,51 @@ class TreeInterpreter:
                 f"Decision nodes must have a structured 'condition' field."
             )
 
+        # Comparator symbols for human-readable expression building
+        comparator_symbols = {
+            'eq': '==', 'neq': '!=', 'lt': '<', 'lte': '<=',
+            'gt': '>', 'gte': '>=', 'between': 'between',
+            'within_range': 'in range', 'is_true': 'is true', 'is_false': 'is false',
+            'str_eq': '==', 'str_neq': '!=', 'str_contains': 'contains',
+            'str_starts_with': 'starts with', 'str_ends_with': 'ends with',
+            'date_eq': '==', 'date_before': 'before', 'date_after': 'after',
+            'date_between': 'between', 'enum_eq': '==', 'enum_neq': '!=',
+        }
+
+        compound = is_compound_condition(condition)
+
+        if compound:
+            # Build compound expression string: "a is true AND b > 58"
+            operator = condition.get('operator', 'and')
+            joiner = f" {operator.upper()} "
+            sub_exprs = []
+            for sub in condition.get('conditions', []):
+                sub_exprs.append(
+                    self._format_simple_condition_expr(sub, comparator_symbols)
+                )
+            condition_expr = joiner.join(sub_exprs)
+            # For compound conditions, input_name/value are not single-valued
+            input_name = condition_expr
+            input_value = None
+            comparator = operator
+            compare_value = None
+            compare_value2 = None
+        else:
+            # Simple condition — existing behaviour
+            input_id = condition.get('input_id', '')
+            input_value = context.get(input_id)
+            comparator = condition.get('comparator', '')
+            compare_value = condition.get('value')
+            compare_value2 = condition.get('value2')
+            condition_expr = self._format_simple_condition_expr(
+                condition, comparator_symbols
+            )
+            input_name = input_id
+            for name, var_id in self.name_to_id.items():
+                if var_id == input_id:
+                    input_name = name
+                    break
+
         # Evaluate the structured condition against execution context
         try:
             result = evaluate_condition(condition, context)
@@ -766,6 +1170,28 @@ class TreeInterpreter:
         # Convert result to boolean (should already be bool, but ensure)
         condition_result = bool(result)
 
+        # Emit detailed decision evaluation info
+        if on_step is not None:
+            try:
+                event_payload: Dict[str, Any] = {
+                    "event_type": "decision_evaluated",
+                    "node_id": node_id,
+                    "node_label": node_label,
+                    "condition_expression": condition_expr,
+                    "input_name": input_name,
+                    "input_value": input_value,
+                    "comparator": comparator,
+                    "compare_value": compare_value,
+                    "compare_value2": compare_value2,
+                    "result": condition_result,
+                    "branch_taken": "true" if condition_result else "false",
+                }
+                if compound:
+                    event_payload["is_compound"] = True
+                on_step(event_payload)
+            except Exception as e:
+                logger.warning(f"on_step decision callback error at node '{node_id}': {e}")
+
         # Find matching child based on edge label (True/False)
         children = node.get('children', [])
         if not children:
@@ -782,6 +1208,32 @@ class TreeInterpreter:
 
         return next_node
 
+    def _format_simple_condition_expr(
+        self,
+        condition: Dict[str, Any],
+        symbols: Dict[str, str],
+    ) -> str:
+        """Build a human-readable expression string for a single simple condition."""
+        input_id = condition.get('input_id', '?')
+        comparator = condition.get('comparator', '?')
+        value = condition.get('value')
+        value2 = condition.get('value2')
+
+        # Resolve variable name
+        display_name = input_id
+        for name, var_id in self.name_to_id.items():
+            if var_id == input_id:
+                display_name = name
+                break
+
+        comp_sym = symbols.get(comparator, comparator)
+
+        if comparator in ('is_true', 'is_false'):
+            return f"{display_name} {comp_sym}"
+        if comparator in ('within_range', 'date_between', 'between'):
+            return f"{display_name} {comp_sym} [{value}, {value2}]"
+        return f"{display_name} {comp_sym} {value}"
+
     def _find_branch(self, children: List[Dict[str, Any]], condition_result: bool) -> Optional[Dict[str, Any]]:
         """Find child node matching condition result
 
@@ -793,12 +1245,17 @@ class TreeInterpreter:
             Matching child node, or None if no match
 
         Edge label matching rules:
-        - "Yes", "True", "Y", "T", "1" → True
-        - "No", "False", "N", "F", "0" → False
-        - Empty or missing label → first child (fallback)
+        - "Yes", "True", "Y", "T", "1" → True branch
+        - "No", "False", "N", "F", "0" → False branch
+        - Empty or missing labels → Position-based fallback:
+            - Position 0 (first child) = True branch
+            - Position 1 (second child) = False branch
         """
+        if len(children) == 0:
+            return None
+            
         if len(children) == 1:
-            # Only one child - take it
+            # Only one child - take it regardless of condition
             return children[0]
 
         # Define label mappings
@@ -814,5 +1271,12 @@ class TreeInterpreter:
             elif not condition_result and edge_label in false_labels:
                 return child
 
-        # Fallback: return first child
-        return children[0] if children else None
+        # Position-based fallback when edge labels are empty or missing:
+        # Convention: first child (index 0) = True branch, second child (index 1) = False branch
+        # This matches how edges are typically created: true edge first, false edge second
+        if condition_result:
+            # True condition → take first child (position 0)
+            return children[0]
+        else:
+            # False condition → take second child (position 1)
+            return children[1] if len(children) > 1 else children[0]

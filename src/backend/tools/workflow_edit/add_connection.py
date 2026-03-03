@@ -1,20 +1,31 @@
-"""Add connection tool."""
+"""Add connection tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
+"""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
-from .helpers import resolve_node_id
+from ..core import WorkflowTool, ToolParameter
+from .helpers import resolve_node_id, save_workflow_changes
 
 
-class AddConnectionTool(Tool):
+class AddConnectionTool(WorkflowTool):
     """Connect two nodes with an edge."""
 
     name = "add_connection"
-    description = "Create an edge connecting two nodes."
+    description = "Create an edge connecting two nodes. Requires workflow_id."
     parameters = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to add the connection to (from create_workflow)",
+            required=True,
+        ),
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),
         ToolParameter(
@@ -25,24 +36,110 @@ class AddConnectionTool(Tool):
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        
+        # Extract workflow components
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
 
-        # Get variables for validation of output templates
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
-
-        nodes = current_workflow.get("nodes", [])
         try:
             from_id = resolve_node_id(args.get("from_node_id"), nodes)
             to_id = resolve_node_id(args.get("to_node_id"), nodes)
         except ValueError as exc:
             return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
+        
         label = args.get("label", "")
+        
+        # Enforce and auto-assign edge labels for decision nodes
+        # Decision node branches MUST have "true" or "false" labels for execution to work correctly
+        source_node = next((n for n in nodes if n.get("id") == from_id), None)
+        if source_node and source_node.get("type") == "decision":
+            # Count existing edges from this decision node
+            existing_edges_from_decision = [
+                e for e in edges 
+                if (e.get("from") or e.get("source")) == from_id
+            ]
+            existing_labels = {
+                e.get("label", "").lower() 
+                for e in existing_edges_from_decision
+            }
+            
+            # Validate or auto-assign label
+            if label:
+                # Enforce that label must be "true" or "false"
+                if label.lower() not in ("true", "false"):
+                    return {
+                        "success": False,
+                        "error": f"Decision node edges must have label 'true' or 'false', got: '{label}'",
+                        "error_code": "INVALID_EDGE_LABEL",
+                    }
+                label = label.lower()  # Normalize to lowercase
+                
+                # Prevent duplicate labels
+                if label in existing_labels:
+                    return {
+                        "success": False,
+                        "error": f"Decision node '{source_node.get('label', from_id)}' already has a '{label}' branch",
+                        "error_code": "DUPLICATE_EDGE_LABEL",
+                    }
+            else:
+                # Auto-assign label based on target node position relative to existing sibling
+                # Convention: left target = false, right target = true
+                
+                # If both labels are already taken, reject (max 2 branches)
+                if "true" in existing_labels and "false" in existing_labels:
+                    return {
+                        "success": False,
+                        "error": f"Decision node '{source_node.get('label', from_id)}' already has both true and false branches",
+                        "error_code": "MAX_BRANCHES_REACHED",
+                    }
+                
+                # If this is the first edge, we can't compare positions yet - use "true" as default
+                if not existing_edges_from_decision:
+                    label = "true"
+                else:
+                    # Second edge - compare target node x positions
+                    target_node = next((n for n in nodes if n.get("id") == to_id), None)
+                    
+                    # Get the existing edge's target node
+                    existing_edge = existing_edges_from_decision[0]
+                    existing_target_id = existing_edge.get("to") or existing_edge.get("target")
+                    existing_target_node = next((n for n in nodes if n.get("id") == existing_target_id), None)
+                    
+                    if target_node and existing_target_node:
+                        target_x = target_node.get("x", 0)
+                        existing_x = existing_target_node.get("x", 0)
+                        
+                        # Left (smaller x) = false, Right (larger x) = true
+                        if target_x < existing_x:
+                            # New target is to the left of existing
+                            label = "false"
+                        else:
+                            # New target is to the right of existing
+                            label = "true"
+                        
+                        # Check if this conflicts with existing label, swap if needed
+                        existing_label = existing_edge.get("label", "").lower()
+                        if label == existing_label:
+                            # Swap the existing edge's label to maintain consistency
+                            swapped_label = "false" if existing_label == "true" else "true"
+                            for e in edges:
+                                if (e.get("from") or e.get("source")) == from_id and (e.get("to") or e.get("target")) == existing_target_id:
+                                    e["label"] = swapped_label
+                                    break
+                    else:
+                        # Fallback: assign remaining label
+                        if "true" not in existing_labels:
+                            label = "true"
+                        else:
+                            label = "false"
+        
         edge_id = f"{from_id}->{to_id}"
 
         new_edge = {
@@ -52,9 +149,12 @@ class AddConnectionTool(Tool):
             "label": label,
         }
 
+        # Create new edges list with the new edge
+        new_edges = [*edges, new_edge]
+        
         new_workflow = {
-            "nodes": current_workflow.get("nodes", []),
-            "edges": [*current_workflow.get("edges", []), new_edge],
+            "nodes": nodes,
+            "edges": new_edges,
             "variables": variables,
         }
 
@@ -66,9 +166,15 @@ class AddConnectionTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, edges=new_edges)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "add_connection",
             "edge": new_edge,
-            "message": f"Connected {from_id} to {to_id}",
+            "message": f"Connected {from_id} to {to_id} in workflow {workflow_id}",
         }

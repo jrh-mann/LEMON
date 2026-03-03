@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import type { Message, ToolCall } from '../types'
+import { useWorkflowStore } from './workflowStore'
 
 interface ChatState {
-  // Conversation
+  // Conversation — conversationId is per-tab in workflowStore, mirrored here for socket operations
   messages: Message[]
   conversationId: string | null
 
@@ -15,13 +16,11 @@ interface ChatState {
   // Processing status (what the orchestrator is currently doing)
   processingStatus: string | null
 
-  // Agent interaction
-  pendingQuestion: string | null
-  taskId: string | null
+  // Live reasoning stream from LLM extended thinking
+  thinkingContent: string
 
-  // Pending image for analysis (user uploads, then asks orchestrator to analyse)
-  pendingImage: string | null
-  pendingImageName: string | null
+  // Inline question from ask_question tool (rendered as a card with option chips)
+  pendingQuestion: { question: string; options: { label: string; value: string }[] } | null
 
   // Actions
   addMessage: (message: Message) => void
@@ -43,13 +42,13 @@ interface ChatState {
   // Processing status
   setProcessingStatus: (status: string | null) => void
 
-  // Agent
-  setPendingQuestion: (question: string | null, taskId?: string | null) => void
-  clearPendingQuestion: () => void
+  // Thinking stream
+  appendThinkingContent: (content: string) => void
+  clearThinkingContent: () => void
 
-  // Image
-  setPendingImage: (image: string | null, name?: string | null) => void
-  clearPendingImage: () => void
+  // Inline question
+  setPendingQuestion: (question: { question: string; options: { label: string; value: string }[] } | null) => void
+  clearPendingQuestion: () => void
 
   // User message helper
   sendUserMessage: (content: string) => Message
@@ -84,11 +83,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentTaskId: null,
   cancelledTaskIds: {},
   processingStatus: null,
+  thinkingContent: '',
   pendingQuestion: null,
-  taskId: null,
-  pendingImage: null,
-  pendingImageName: null,
-
   // Actions
   addMessage: (message) =>
     set((state) => ({
@@ -107,14 +103,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { messages }
     }),
 
-  setConversationId: (id) => set({ conversationId: id }),
+  setConversationId: (id) => {
+    set({ conversationId: id })
+    // Also update the workflowStore's conversationId
+    if (id) {
+      useWorkflowStore.getState().setConversationId(id)
+    }
+  },
 
   // Ensure conversationId exists before sync operations
   ensureConversationId: () => {
-    const state = get()
-    if (!state.conversationId) {
-      set({ conversationId: crypto.randomUUID() })
+    const workflowStore = useWorkflowStore.getState()
+    let conversationId = workflowStore.conversationId
+    if (!conversationId) {
+      conversationId = crypto.randomUUID()
+      workflowStore.setConversationId(conversationId)
     }
+    // Sync to chatStore's local state
+    set({ conversationId })
   },
 
   setMessages: (messages) => set({ messages }),
@@ -160,21 +166,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (content) {
       addAssistantMessage(content)
     }
-    set({ streamingContent: '', isStreaming: false, processingStatus: null })
+    set({ streamingContent: '', isStreaming: false, processingStatus: null, thinkingContent: '' })
   },
 
-  // Processing status
-  setProcessingStatus: (status) => set({ processingStatus: status }),
+  // Processing status — clear thinking content when processing ends
+  setProcessingStatus: (status) => set(status === null
+    ? { processingStatus: null, thinkingContent: '' }
+    : { processingStatus: status }),
 
-  // Agent
-  setPendingQuestion: (question, taskId = null) =>
-    set({ pendingQuestion: question, taskId }),
+  // Thinking stream
+  appendThinkingContent: (content) =>
+    set((state) => ({ thinkingContent: state.thinkingContent + content })),
+  clearThinkingContent: () => set({ thinkingContent: '' }),
 
-  clearPendingQuestion: () => set({ pendingQuestion: null, taskId: null }),
+  // Inline question
+  setPendingQuestion: (question) => set({ pendingQuestion: question }),
 
-  // Image
-  setPendingImage: (image, name = null) => set({ pendingImage: image, pendingImageName: name }),
-  clearPendingImage: () => set({ pendingImage: null, pendingImageName: null }),
+  clearPendingQuestion: () => set({ pendingQuestion: null }),
 
   // User message helper
   sendUserMessage: (content) => {
@@ -204,8 +212,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       currentTaskId: null,
       processingStatus: null,
+      thinkingContent: '',
       pendingQuestion: null,
-      taskId: null,
     }),
 
   // Reset
@@ -218,10 +226,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentTaskId: null,
       cancelledTaskIds: {},
       processingStatus: null,
+      thinkingContent: '',
       pendingQuestion: null,
-      taskId: null,
-      pendingImage: null,
-      pendingImageName: null,
     }),
 }))
 

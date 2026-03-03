@@ -12,7 +12,7 @@ SIMPLE_AGE_WORKFLOW = {
         {
             "id": "input_age_int",
             "name": "Age",
-            "type": "int",
+            "type": "number",
             "description": "Person's age in years",
             "range": {"min": 0, "max": 120}
         }
@@ -78,19 +78,19 @@ CHOLESTEROL_RISK_WORKFLOW = {
         {
             "id": "input_age_int",
             "name": "Age",
-            "type": "int",
+            "type": "number",
             "range": {"min": 0, "max": 120}
         },
         {
             "id": "input_cholesterol_float",
             "name": "Cholesterol",
-            "type": "float",
+            "type": "number",
             "range": {"min": 0, "max": 500}
         },
         {
             "id": "input_hdl_float",
             "name": "HDL",
-            "type": "float",
+            "type": "number",
             "range": {"min": 0, "max": 100}
         },
         {
@@ -304,7 +304,7 @@ MEDICATION_WORKFLOW = {
         {
             "id": "input_age_int",
             "name": "Age",
-            "type": "int",
+            "type": "number",
             "range": {"min": 0, "max": 120}
         },
         {
@@ -524,7 +524,7 @@ BMI_CLASSIFICATION_WORKFLOW = {
         {
             "id": "input_bmi_float",
             "name": "BMI",
-            "type": "float",
+            "type": "number",
             "range": {"min": 10, "max": 60}
         },
         {
@@ -718,7 +718,7 @@ ELIGIBILITY_WORKFLOW = {
         {
             "id": "input_age_int",
             "name": "Age",
-            "type": "int",
+            "type": "number",
             "range": {"min": 0, "max": 120}
         },
         {

@@ -13,6 +13,7 @@ from src.backend.validation.workflow_validator import (
     WorkflowValidator,
     ValidationError,
 )
+from src.backend.tools.workflow_edit.add_node import validate_decision_condition
 
 
 class TestDecisionInputValidation:
@@ -95,7 +96,7 @@ class TestDecisionInputValidation:
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
             "variables": [
-                {"id": "var_age", "name": "age", "type": "int", "description": "Age in years"}
+                {"id": "var_age", "name": "age", "type": "number", "description": "Age in years"}
             ]
         }
 
@@ -129,7 +130,7 @@ class TestDecisionInputValidation:
                 {"id": "decision->no", "from": "decision", "to": "no", "label": "false"},
             ],
             # Has a variable but NOT the one the condition references
-            "variables": [{"id": "var_bmi", "name": "BMI", "type": "float"}]
+            "variables": [{"id": "var_bmi", "name": "BMI", "type": "number"}]
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)
@@ -168,8 +169,8 @@ class TestDecisionInputValidation:
                 {"id": "d2->end2", "from": "d2", "to": "end2", "label": "false"},
             ],
             "variables": [
-                {"id": "var_age", "name": "age", "type": "int", "description": "Age in years"},
-                {"id": "var_height", "name": "height", "type": "int", "description": "Height in cm"}
+                {"id": "var_age", "name": "age", "type": "number", "description": "Age in years"},
+                {"id": "var_height", "name": "height", "type": "number", "description": "Height in cm"}
             ]
         }
 
@@ -230,7 +231,7 @@ class TestDecisionInputValidation:
                 {"id": "start->decision", "from": "start", "to": "decision", "label": ""},
                 {"id": "decision->end", "from": "decision", "to": "end", "label": "true"},
             ],
-            "variables": [{"id": "var_age", "name": "age", "type": "int"}]
+            "variables": [{"id": "var_age", "name": "age", "type": "number"}]
         }
 
         is_valid, errors = self.validator.validate(workflow, strict=True)
@@ -258,3 +259,110 @@ class TestDecisionInputValidation:
         condition_error = next(err for err in errors if err.code == "MISSING_CONDITION")
         # Error should identify the node
         assert condition_error.node_id == "my_decision_node"
+
+
+class TestValidateDecisionConditionCompound:
+    """Test validate_decision_condition() for compound (AND/OR) conditions."""
+
+    VARIABLES = [
+        {"id": "var_age", "name": "age", "type": "number"},
+        {"id": "var_smoker", "name": "smoker", "type": "bool"},
+        {"id": "var_cvd_known", "name": "cvd_known", "type": "bool"},
+    ]
+
+    def test_valid_compound_and(self):
+        """Valid AND compound condition passes validation."""
+        cond = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_smoker", "comparator": "is_true"},
+                {"input_id": "var_age", "comparator": "gt", "value": 40},
+            ],
+        }
+        assert validate_decision_condition(cond, self.VARIABLES) is None
+
+    def test_valid_compound_or(self):
+        """Valid OR compound condition passes validation."""
+        cond = {
+            "operator": "or",
+            "conditions": [
+                {"input_id": "var_cvd_known", "comparator": "is_true"},
+                {"input_id": "var_smoker", "comparator": "is_true"},
+            ],
+        }
+        assert validate_decision_condition(cond, self.VARIABLES) is None
+
+    def test_invalid_operator(self):
+        """Compound condition with invalid operator rejected."""
+        cond = {
+            "operator": "xor",
+            "conditions": [
+                {"input_id": "var_smoker", "comparator": "is_true"},
+                {"input_id": "var_age", "comparator": "gt", "value": 40},
+            ],
+        }
+        err = validate_decision_condition(cond, self.VARIABLES)
+        assert err is not None
+        assert "and" in err and "or" in err
+
+    def test_fewer_than_two_sub_conditions(self):
+        """Compound condition with < 2 sub-conditions rejected."""
+        cond = {
+            "operator": "and",
+            "conditions": [{"input_id": "var_smoker", "comparator": "is_true"}],
+        }
+        err = validate_decision_condition(cond, self.VARIABLES)
+        assert err is not None
+        assert "at least 2" in err
+
+    def test_conditions_not_a_list(self):
+        """Compound condition where conditions is not a list rejected."""
+        cond = {"operator": "and", "conditions": "bad"}
+        err = validate_decision_condition(cond, self.VARIABLES)
+        assert err is not None
+        assert "list" in err
+
+    def test_nested_compound_rejected(self):
+        """Nested compound (operator inside sub-condition) rejected."""
+        cond = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_smoker", "comparator": "is_true"},
+                {
+                    "operator": "or",
+                    "conditions": [
+                        {"input_id": "var_cvd_known", "comparator": "is_true"},
+                        {"input_id": "var_age", "comparator": "gt", "value": 40},
+                    ],
+                },
+            ],
+        }
+        err = validate_decision_condition(cond, self.VARIABLES)
+        assert err is not None
+        assert "nesting" in err.lower()
+
+    def test_sub_condition_references_unknown_variable(self):
+        """Sub-condition referencing unknown variable rejected."""
+        cond = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_smoker", "comparator": "is_true"},
+                {"input_id": "var_nonexistent", "comparator": "gt", "value": 10},
+            ],
+        }
+        err = validate_decision_condition(cond, self.VARIABLES)
+        assert err is not None
+        assert "not found" in err
+
+    def test_sub_condition_invalid_comparator_for_type(self):
+        """Sub-condition with wrong comparator for variable type rejected."""
+        cond = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_smoker", "comparator": "is_true"},
+                {"input_id": "var_age", "comparator": "is_true"},  # numeric, not bool
+            ],
+        }
+        err = validate_decision_condition(cond, self.VARIABLES)
+        assert err is not None
+        assert "not valid" in err

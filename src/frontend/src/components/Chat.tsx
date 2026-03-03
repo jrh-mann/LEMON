@@ -7,10 +7,13 @@ import { cancelChatTask, sendChatMessage } from '../api/socket'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
-export default function Chat() {
+export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const [inputValue, setInputValue] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isUserScrolledUp = useRef(false)
+  const isProgrammaticScroll = useRef(false)
 
   const {
     messages,
@@ -18,8 +21,10 @@ export default function Chat() {
     isStreaming,
     streamingContent,
     processingStatus,
+    thinkingContent,
     currentTaskId,
     pendingQuestion,
+    clearPendingQuestion,
     sendUserMessage,
     finalizeStreamingMessage,
     markTaskCancelled,
@@ -27,12 +32,20 @@ export default function Chat() {
   } = useChatStore()
 
   const {
-    pendingImage,
-    pendingImageName,
-    clearPendingImage,
+    pendingFiles,
+    clearPendingFiles,
+    addPendingFile,
+    plan,
   } = useWorkflowStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { chatHeight, setChatHeight } = useUIStore()
+
+  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
+  // Tracks whether the user has scrolled up inside the thinking container so we
+  // stop snapping to the bottom while they're reading earlier reasoning.
+  const thinkingRef = useRef<HTMLDivElement>(null)
+  const isThinkingScrolledUp = useRef(false)
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -64,10 +77,87 @@ export default function Chat() {
     rawToggleListening()
   }, [isListening, inputValue, rawToggleListening])
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
+  // Handle file upload from chat input area
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const isImage = file.type.startsWith('image/')
+      addPendingFile({
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl,
+        type: isImage ? 'image' : 'pdf',
+        purpose: 'unclassified',
+      })
+    }
+    reader.readAsDataURL(file)
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
+  }, [addPendingFile])
+
+  // Track if user has scrolled up manually (ignore programmatic scrolls)
+  const handleScroll = useCallback(() => {
+    // Ignore scroll events caused by our own scrollIntoView calls
+    if (isProgrammaticScroll.current) return
+
+    const container = messagesContainerRef.current
+    if (!container) return
+    // Consider "at bottom" if within 100px of the bottom
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    isUserScrolledUp.current = !atBottom
+  }, [])
+
+  // Helper to scroll without triggering the "user scrolled" detection
+  const scrollToBottom = useCallback(() => {
+    isProgrammaticScroll.current = true
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    // Reset flag after scroll animation completes
+    setTimeout(() => {
+      isProgrammaticScroll.current = false
+    }, 100)
+  }, [])
+
+  // Auto-scroll to bottom when new messages are added
+  // But only if user hasn't scrolled up manually
+  useEffect(() => {
+    if (!isUserScrolledUp.current) {
+      scrollToBottom()
+    }
+  }, [messages, scrollToBottom])
+
+  // Reset scroll tracking and scroll to bottom when streaming starts
+  useEffect(() => {
+    if (isStreaming) {
+      isUserScrolledUp.current = false
+      scrollToBottom()
+    }
+  }, [isStreaming, scrollToBottom])
+
+  // Auto-scroll the thinking stream container to bottom when new chunks arrive,
+  // but only if the user hasn't scrolled up to read earlier reasoning.
+  useEffect(() => {
+    if (thinkingRef.current && !isThinkingScrolledUp.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
+    }
+  }, [thinkingContent])
+
+  // Reset the scroll-up flag when thinking content is cleared (analysis finished)
+  useEffect(() => {
+    if (!thinkingContent) {
+      isThinkingScrolledUp.current = false
+    }
+  }, [thinkingContent])
+
+  // Detect manual scroll inside the thinking stream container
+  const handleThinkingScroll = useCallback(() => {
+    const el = thinkingRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
+    isThinkingScrolledUp.current = !atBottom
+  }, [])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -86,13 +176,27 @@ export default function Chat() {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending image if available
-    sendChatMessage(trimmed, conversationId, pendingImage || undefined)
+    // Send via socket - include pending files and annotations if available
+    sendChatMessage(
+      trimmed,
+      conversationId,
+      pendingFiles.length > 0 ? pendingFiles : undefined,
+    )
 
-    // Keep pending image around so user can reference it in Source Image tab
-    // Image is only cleared when user explicitly clicks x or uploads a new one
+    // Keep pending files around so user can reference them in Source Image tab
+    // Files are only cleared when user explicitly clicks x or uploads new ones
 
-    // Clear input and reset voice base text
+    // Clear input, pending question, and reset voice base text
+    clearPendingQuestion()
+    setInputValue('')
+    baseTextRef.current = ''
+  }
+
+  // Handle clicking an option chip on a question card
+  const handleAnswerQuestion = (answer: string) => {
+    sendUserMessage(answer)
+    sendChatMessage(answer, conversationId)
+    clearPendingQuestion()
     setInputValue('')
     baseTextRef.current = ''
   }
@@ -130,9 +234,13 @@ export default function Chat() {
 
   // Handle resize drag
   const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()  // Prevent text selection
     isDragging.current = true
     startY.current = e.clientY
     startHeight.current = chatHeight
+    // Disable text selection and set cursor during drag
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
   }
@@ -140,18 +248,23 @@ export default function Chat() {
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging.current) return
     const delta = startY.current - e.clientY
-    const newHeight = Math.min(Math.max(startHeight.current + delta, 150), window.innerHeight * 0.7)
+    // Min 0, max 60% of viewport to leave room for workspace
+    const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
     setChatHeight(newHeight)
   }
 
   const handleMouseUp = () => {
     isDragging.current = false
+    // Restore text selection and cursor
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
     document.removeEventListener('mousemove', handleMouseMove)
     document.removeEventListener('mouseup', handleMouseUp)
   }
 
+  const isCollapsed = chatHeight === 0
   return (
-    <div className="chat-dock" style={{ height: chatHeight }}>
+    <div className={`chat-dock ${revealedClass || ''} ${isCollapsed ? 'chat-dock-collapsed' : ''}`} style={{ height: isCollapsed ? undefined : chatHeight }}>
       <div className="chat-resize-handle" onMouseDown={handleMouseDown}>
         <div className="resize-grip"></div>
       </div>
@@ -161,7 +274,7 @@ export default function Chat() {
         <p className="muted">Describe your workflow or ask questions</p>
       </div>
 
-      <div className="chat-messages" id="chatThread">
+      <div className="chat-messages" id="chatThread" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
             <p className="muted">
@@ -188,58 +301,117 @@ export default function Chat() {
           ))
         )}
 
-        {isStreaming && (
-          <div className="message assistant streaming">
-            <div className="message-content">
-              {streamingContent ? (
-                <>
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: renderMarkdown(streamingContent),
-                    }}
-                  />
-                  {processingStatus && (
+
+        {isStreaming && (() => {
+          // Rolling plan window: show ~8 items centered around current progress
+          const maxVisible = 8
+          const firstPending = plan.findIndex(item => !item.done)
+          const anchor = firstPending === -1 ? plan.length : firstPending
+          const windowStart = Math.max(0, anchor - 3)
+          const visiblePlan = plan.slice(windowStart, windowStart + maxVisible)
+
+          // Reusable plan checklist rendered below the processing status
+          const planChecklist = visiblePlan.length > 0 && (
+            <div className="plan-checklist">
+              {visiblePlan.map((item, i) => {
+                // First non-done item is the "current" one (orange)
+                const isActive = !item.done && (i === 0 || visiblePlan[i - 1]?.done)
+                return (
+                  <div key={windowStart + i} className={`plan-item ${item.done ? 'done' : ''} ${isActive ? 'active' : ''}`}>
+                    <span className="plan-icon">{item.done ? '\u2713' : '\u25CB'}</span>
+                    <span className="plan-text">{item.text}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+
+          return (
+            <div className="message assistant streaming">
+              <div className="message-content">
+                {streamingContent ? (
+                  <>
+                    {thinkingContent && (
+                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                        <span className="thinking-label">Reasoning</span>
+                        <div className="thinking-text">{thinkingContent}</div>
+                      </div>
+                    )}
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: renderMarkdown(streamingContent),
+                      }}
+                    />
+                    {processingStatus && (
+                      <span className="processing-status">
+                        <span className="status-dot"></span>
+                        {processingStatus}
+                      </span>
+                    )}
+                    {planChecklist}
+                  </>
+                ) : processingStatus ? (
+                  <>
+                    {thinkingContent && (
+                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                        <span className="thinking-label">Reasoning</span>
+                        <div className="thinking-text">{thinkingContent}</div>
+                      </div>
+                    )}
                     <span className="processing-status">
                       <span className="status-dot"></span>
                       {processingStatus}
                     </span>
-                  )}
-                </>
-              ) : processingStatus ? (
-                <span className="processing-status">
-                  <span className="status-dot"></span>
-                  {processingStatus}
-                </span>
-              ) : (
-                <span className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-              )}
+                    {planChecklist}
+                  </>
+                ) : (
+                  <span className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         <div ref={messagesEndRef} />
       </div>
 
       <div className="chat-input-container">
-        {pendingImage && (
+        {pendingFiles.length > 0 && (
           <div className="pending-image-indicator">
-            <span>Image ready: {pendingImageName || 'uploaded image'}</span>
+            <span>
+              {pendingFiles.length === 1
+                ? `File ready: ${pendingFiles[0].name}`
+                : `${pendingFiles.length} files ready`}
+            </span>
             <button
               className="clear-image-btn"
-              onClick={clearPendingImage}
-              title="Remove image"
+              onClick={clearPendingFiles}
+              title="Remove all files"
             >
               x
             </button>
           </div>
         )}
         {pendingQuestion && (
-          <div className="pending-question-hint">
-            <span>Awaiting your response...</span>
+          <div className="question-card">
+            <p className="question-text">{pendingQuestion.question}</p>
+            {pendingQuestion.options.length > 0 && (
+              <div className="question-options">
+                {pendingQuestion.options.map((opt, i) => (
+                  <button
+                    key={i}
+                    className="option-chip"
+                    onClick={() => handleAnswerQuestion(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <div className="chat-input-wrapper">
@@ -253,6 +425,26 @@ export default function Chat() {
             onKeyDown={handleKeyDown}
             disabled={isStreaming}
           />
+          {/* Hidden file input for image/PDF upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            style={{ display: 'none' }}
+            onChange={handleFileUpload}
+          />
+          <button
+            className="voice-btn"
+            title="Upload image or PDF"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isStreaming}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </button>
           <button
             className={`voice-btn ${isListening ? 'listening' : ''}`}
             id="voiceBtn"
@@ -291,6 +483,7 @@ export default function Chat() {
           )}
         </div>
       </div>
+
     </div>
   )
 }
@@ -305,6 +498,13 @@ function MessageBubble({
 }) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
+  const { devMode, setSelectedToolCall } = useUIStore()
+
+  const handleToolClick = (tc: import('../types').ToolCall) => {
+    if (devMode) {
+      setSelectedToolCall(tc)
+    }
+  }
 
   return (
     <div className={`message ${message.role}`}>
@@ -322,8 +522,14 @@ function MessageBubble({
             </summary>
             <div className="tool-calls">
               {message.tool_calls.map((tc, idx) => (
-                <div key={idx} className="tool-call">
+                <div
+                  key={idx}
+                  className={`tool-call ${devMode ? 'clickable' : ''} ${tc.success === false ? 'failed' : ''}`}
+                  onClick={() => handleToolClick(tc)}
+                  title={devMode ? 'Click to inspect tool call' : undefined}
+                >
                   <span className="tool-name">{tc.tool}</span>
+                  {tc.success === false && <span className="tool-failed-badge">✗</span>}
                 </div>
               ))}
             </div>
@@ -331,8 +537,14 @@ function MessageBubble({
         ) : (
           <div className="tool-calls">
             {message.tool_calls.map((tc, idx) => (
-              <div key={idx} className="tool-call">
+              <div
+                key={idx}
+                className={`tool-call ${devMode ? 'clickable' : ''} ${tc.success === false ? 'failed' : ''}`}
+                onClick={() => handleToolClick(tc)}
+                title={devMode ? 'Click to inspect tool call' : undefined}
+              >
                 <span className="tool-name">{tc.tool}</span>
+                {tc.success === false && <span className="tool-failed-badge">✗</span>}
               </div>
             ))}
           </div>

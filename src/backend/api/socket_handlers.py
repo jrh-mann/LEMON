@@ -77,6 +77,12 @@ def register_socket_handlers(
 
     @socketio.on("sync_workflow")
     def socket_sync_workflow(payload: Dict[str, Any]) -> None:
+        # Require authentication for workflow sync
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("agent_error", {"error": "Authentication required"}, to=request.sid)
+            return
+
         handle_sync_workflow(
             socketio,
             conversation_store=conversation_store,
@@ -85,6 +91,12 @@ def register_socket_handlers(
 
     @socketio.on("cancel_task")
     def socket_cancel_task(payload: Dict[str, Any]) -> None:
+        # Require authentication for task cancellation
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("agent_error", {"error": "Authentication required"}, to=request.sid)
+            return
+
         handle_cancel_task(socketio, payload=payload)
 
     # Visual workflow execution handlers
@@ -110,15 +122,27 @@ def register_socket_handlers(
 
     @socketio.on("pause_execution")
     def socket_pause_execution(payload: Dict[str, Any]) -> None:
-        """Pause a running workflow execution."""
+        """Pause a running workflow execution. Requires authentication."""
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("execution_error", {"error": "Authentication required"}, to=request.sid)
+            return
         handle_pause_execution(socketio, payload=payload)
 
     @socketio.on("resume_execution")
     def socket_resume_execution(payload: Dict[str, Any]) -> None:
-        """Resume a paused workflow execution."""
+        """Resume a paused workflow execution. Requires authentication."""
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("execution_error", {"error": "Authentication required"}, to=request.sid)
+            return
         handle_resume_execution(socketio, payload=payload)
 
     @socketio.on("stop_execution")
     def socket_stop_execution(payload: Dict[str, Any]) -> None:
-        """Stop a running workflow execution."""
+        """Stop a running workflow execution. Requires authentication."""
+        session = get_session_from_request(auth_store)
+        if not session:
+            socketio.emit("execution_error", {"error": "Authentication required"}, to=request.sid)
+            return
         handle_stop_execution(socketio, payload=payload)

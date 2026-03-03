@@ -2,4 +2,7 @@
 
 from .workflow_validator import WorkflowValidator, ValidationError
 
-__all__ = ["WorkflowValidator", "ValidationError"]
+__all__ = [
+    "WorkflowValidator",
+    "ValidationError",
+]

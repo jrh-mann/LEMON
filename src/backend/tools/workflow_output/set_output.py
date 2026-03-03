@@ -4,35 +4,49 @@ This tool allows declaring the workflow's output with a required type.
 The output type is critical for subprocess variable inference - when another
 workflow calls this one as a subprocess, the output type determines the type
 of the derived variable.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
-from ..workflow_input.helpers import ensure_workflow_analysis
+from ..core import WorkflowTool, ToolParameter
+from ..constants import VALID_VARIABLE_TYPES
+from ..workflow_edit.helpers import save_workflow_changes
 
 
-# Valid output types that can be declared
-VALID_OUTPUT_TYPES = {"string", "int", "float", "bool", "enum", "date"}
-
-
-class SetWorkflowOutputTool(Tool):
+class SetWorkflowOutputTool(WorkflowTool):
     """Set the workflow's output definition including its type.
     
     The output type is required for subprocess variable inference. When this
     workflow is used as a subprocess, the calling workflow needs to know what
     type of value to expect.
+    
+    Requires workflow_id - the workflow must exist in the library first.
     """
+
+    uses_validator = False
 
     name = "set_workflow_output"
     description = (
         "Declare the workflow's output with a name, type, and optional description. "
+        "Requires workflow_id. "
         "The output type is REQUIRED and determines the type of the derived variable "
         "when this workflow is called as a subprocess. Common types: string, int, float, bool."
     )
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to set output for (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "name",
             "string",
@@ -42,7 +56,7 @@ class SetWorkflowOutputTool(Tool):
         ToolParameter(
             "type",
             "string",
-            "Output type: 'string', 'int', 'float', 'bool', 'enum', or 'date'. This is REQUIRED.",
+            "Output type: 'string', 'number', 'bool', 'enum', or 'date'. This is REQUIRED.",
             required=True,
         ),
         ToolParameter(
@@ -54,8 +68,14 @@ class SetWorkflowOutputTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        workflow_analysis = ensure_workflow_analysis(session_state)
+
+        # Extract outputs from loaded workflow
+        outputs = list(workflow_data["outputs"])
 
         name = args.get("name")
         output_type = args.get("type")
@@ -75,10 +95,10 @@ class SetWorkflowOutputTool(Tool):
                 "error": "Output 'type' is required. Valid types: string, int, float, bool, enum, date"
             }
         
-        if output_type not in VALID_OUTPUT_TYPES:
+        if output_type not in VALID_VARIABLE_TYPES:
             return {
                 "success": False,
-                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_OUTPUT_TYPES))}"
+                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_VARIABLE_TYPES))}"
             }
 
         # Create output definition with required type
@@ -91,7 +111,6 @@ class SetWorkflowOutputTool(Tool):
             output_def["description"] = description
 
         # Check if an output with this name already exists and update it
-        outputs = workflow_analysis.get("outputs", [])
         normalized_name = name.strip().lower()
         found = False
         
@@ -105,13 +124,16 @@ class SetWorkflowOutputTool(Tool):
         if not found:
             # Add new output
             outputs.append(output_def)
-        
-        workflow_analysis["outputs"] = outputs
+
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, outputs=outputs)
+        if save_error:
+            return save_error
 
         action = "Updated" if found else "Set"
         return {
             "success": True,
-            "message": f"{action} workflow output '{name}' (type: {output_type})",
+            "workflow_id": workflow_id,
+            "message": f"{action} workflow output '{name}' (type: {output_type}) for workflow {workflow_id}",
             "output": output_def,
-            "workflow_analysis": workflow_analysis,
         }

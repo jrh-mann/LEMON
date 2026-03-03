@@ -1,25 +1,43 @@
-"""Modify node tool."""
+"""Modify node tool.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
+"""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...validation.workflow_validator import WorkflowValidator
-from ..core import Tool, ToolParameter
-from .helpers import resolve_node_id, validate_subprocess_node
-from .add_node import validate_decision_condition
+from ..core import WorkflowTool, ToolParameter
+from .helpers import (
+    resolve_node_id,
+    validate_subprocess_node,
+    save_workflow_changes,
+)
+from .add_node import validate_decision_condition, validate_calculation
 
 
-class ModifyNodeTool(Tool):
+class ModifyNodeTool(WorkflowTool):
     """Modify an existing node's properties.
     
     For decision nodes, you can update the 'condition' field with a structured
     condition object containing input_id, comparator, value, and optionally value2.
+    
+    For calculation nodes, you can update the 'calculation' field with output,
+    operator, and operands.
     """
 
     name = "modify_node"
-    description = "Update an existing node's label, type, position, or condition."
+    description = "Update an existing node's label, type, position, condition, or calculation. Requires workflow_id."
     parameters = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow containing the node (from create_workflow)",
+            required=True,
+        ),
         ToolParameter("node_id", "string", "ID of the node to modify", required=True),
         ToolParameter("label", "string", "New label text", required=False),
         ToolParameter("type", "string", "New node type", required=False),
@@ -38,6 +56,17 @@ class ModifyNodeTool(Tool):
                 "string: str_eq,str_neq,str_contains,str_starts_with,str_ends_with | "
                 "date: date_eq,date_before,date_after,date_between | "
                 "enum: enum_eq,enum_neq"
+            ),
+            required=False,
+        ),
+        # Calculation node config
+        ToolParameter(
+            "calculation",
+            "object",
+            (
+                "For calculation nodes: Mathematical operation to perform. "
+                "Object with: output {name, description?}, operator (string), operands (array). "
+                "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}."
             ),
             required=False,
         ),
@@ -75,26 +104,37 @@ class ModifyNodeTool(Tool):
         ToolParameter(
             "output_variable",
             "string",
-            "For subprocess: name for the variable that stores subworkflow output",
+            (
+                "For 'end' nodes returning number/bool: Name of the variable to return (preserves type). "
+                "For subprocess: name for the variable that stores subworkflow output."
+            ),
             required=False,
         ),
     ]
 
-    def __init__(self):
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {"nodes": [], "edges": []})
+        
+        # Extract workflow components
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
 
         raw_id = args.get("node_id")
-        nodes = current_workflow.get("nodes", [])
         try:
             node_id = resolve_node_id(raw_id, nodes)
         except ValueError as exc:
             return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
 
-        updates = {k: v for k, v in args.items() if k != "node_id" and v is not None}
+        # Build updates dict (exclude workflow_id and node_id)
+        updates = {
+            k: v for k, v in args.items() 
+            if k not in ("workflow_id", "node_id") and v is not None
+        }
 
         node_idx = next(
             (i for i, n in enumerate(nodes) if n["id"] == node_id),
@@ -108,19 +148,18 @@ class ModifyNodeTool(Tool):
                 "error_code": "NODE_NOT_FOUND",
             }
 
-        # Get variables for validation
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
+        # Create new workflow state with updates
+        new_nodes = [dict(n) for n in nodes]
+        new_nodes[node_idx].update(updates)
         
         new_workflow = {
-            "nodes": [dict(n) for n in current_workflow.get("nodes", [])],
-            "edges": current_workflow.get("edges", []),
+            "nodes": new_nodes,
+            "edges": edges,
             "variables": variables,
         }
-        new_workflow["nodes"][node_idx].update(updates)
 
         # Validate subprocess configuration if node is/becomes a subprocess
-        updated_node = new_workflow["nodes"][node_idx]
+        updated_node = new_nodes[node_idx]
         
         # Validate condition for decision nodes
         if updated_node.get("type") == "decision":
@@ -134,10 +173,27 @@ class ModifyNodeTool(Tool):
                         "error_code": "INVALID_CONDITION",
                     }
         
+        # Validate calculation for calculation nodes
+        if updated_node.get("type") == "calculation":
+            calculation = updated_node.get("calculation")
+            if calculation:
+                calculation_error = validate_calculation(calculation, variables)
+                if calculation_error:
+                    return {
+                        "success": False,
+                        "error": calculation_error,
+                        "error_code": "INVALID_CALCULATION",
+                    }
+        
         if updated_node.get("type") == "subprocess":
+            # Build mock session for validation
+            mock_session = {
+                **session_state,
+                "workflow_analysis": {"variables": variables},
+            }
             subprocess_errors = validate_subprocess_node(
                 updated_node,
-                session_state,
+                mock_session,
                 check_workflow_exists=True,
             )
             if subprocess_errors:
@@ -155,10 +211,15 @@ class ModifyNodeTool(Tool):
                 "error_code": "VALIDATION_FAILED",
             }
 
-        updated_node = new_workflow["nodes"][node_idx]
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, nodes=new_nodes)
+        if save_error:
+            return save_error
+
         return {
             "success": True,
+            "workflow_id": workflow_id,
             "action": "modify_node",
             "node": updated_node,
-            "message": f"Updated node {node_id}",
+            "message": f"Updated node {node_id} in workflow {workflow_id}",
         }

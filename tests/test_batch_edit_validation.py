@@ -1,7 +1,13 @@
-"""Tests for BatchEditWorkflowTool validation logic"""
+"""Tests for BatchEditWorkflowTool validation logic.
+
+All workflow tools now require workflow_id parameter - workflows must be created first
+using create_workflow, then tools operate on them by ID with auto-save to database.
+"""
 
 import pytest
 from src.backend.tools.workflow_edit.batch_edit import BatchEditWorkflowTool
+from tests.conftest import make_session_with_workflow
+
 
 class TestBatchEditValidation:
     """Test validation in BatchEditWorkflowTool"""
@@ -9,14 +15,16 @@ class TestBatchEditValidation:
     def setup_method(self):
         self.tool = BatchEditWorkflowTool()
 
-    def test_batch_add_decision_with_invalid_input(self):
+    def test_batch_add_decision_with_invalid_input(self, workflow_store, test_user_id):
         """Should reject batch operation referencing unregistered input"""
-        existing_workflow = {"nodes": [], "edges": []}
-        workflow_analysis = {
-            "inputs": [{"name": "Age", "type": "int", "id": "input_age"}]
-        }
+        variables = [{"name": "Age", "type": "int", "id": "input_age", "source": "input"}]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, variables=variables
+        )
+        session["workflow_analysis"] = {"variables": variables}
         
         args = {
+            "workflow_id": workflow_id,
             "operations": [
                 {
                     "op": "add_node",
@@ -33,35 +41,32 @@ class TestBatchEditValidation:
                 }
             ]
         }
-        session_state = {
-            "current_workflow": existing_workflow,
-            "workflow_analysis": workflow_analysis
-        }
 
-        result = self.tool.execute(args, session_state=session_state)
+        result = self.tool.execute(args, session_state=session)
         
         assert result["success"] is False
         # Should mention the invalid input_id
         assert "input_height_int" in result.get("error", "") or "not found" in result.get("error", "")
 
-    def test_batch_modify_decision_with_invalid_input(self):
+    def test_batch_modify_decision_with_invalid_input(self, workflow_store, test_user_id):
         """Should reject batch modification referencing unregistered input"""
-        existing_workflow = {
-            "nodes": [
-                {"id": "d1", "type": "decision", "label": "Age > 10", "x": 0, "y": 0, "color": "amber"},
-                {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0, "color": "green"},
-                {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100, "color": "green"},
-            ],
-            "edges": [
-                {"from": "d1", "to": "y", "label": "true"},
-                {"from": "d1", "to": "n", "label": "false"},
-            ]
-        }
-        workflow_analysis = {
-            "inputs": [{"name": "Age", "type": "int", "id": "input_age"}]
-        }
+        nodes = [
+            {"id": "d1", "type": "decision", "label": "Age > 10", "x": 0, "y": 0, "color": "amber"},
+            {"id": "y", "type": "end", "label": "Yes", "x": 100, "y": 0, "color": "green"},
+            {"id": "n", "type": "end", "label": "No", "x": 100, "y": 100, "color": "green"},
+        ]
+        edges = [
+            {"from": "d1", "to": "y", "label": "true"},
+            {"from": "d1", "to": "n", "label": "false"},
+        ]
+        variables = [{"name": "Age", "type": "int", "id": "input_age", "source": "input"}]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
+        )
+        session["workflow_analysis"] = {"variables": variables}
         
         args = {
+            "workflow_id": workflow_id,
             "operations": [
                 {
                     "op": "modify_node",
@@ -70,12 +75,8 @@ class TestBatchEditValidation:
                 }
             ]
         }
-        session_state = {
-            "current_workflow": existing_workflow,
-            "workflow_analysis": workflow_analysis
-        }
 
-        result = self.tool.execute(args, session_state=session_state)
+        result = self.tool.execute(args, session_state=session)
         
         assert result["success"] is False
         assert "VALIDATION_FAILED" in result.get("error_code", "")

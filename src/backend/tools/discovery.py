@@ -6,7 +6,7 @@ import importlib
 import inspect
 import pkgutil
 from pathlib import Path
-from typing import Iterable, List, Set, Type
+from typing import List, Set, Type
 
 from .core import Tool, ToolRegistry
 

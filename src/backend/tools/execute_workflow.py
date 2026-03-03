@@ -1,4 +1,4 @@
-"""Execute workflow tool — lets the LLM run the current canvas workflow."""
+"""Execute workflow tool — lets the LLM run a workflow by ID."""
 
 from __future__ import annotations
 
@@ -6,26 +6,32 @@ from typing import Any, Dict
 
 from ..execution.interpreter import TreeInterpreter
 from ..utils.flowchart import tree_from_flowchart
-from ..validation.workflow_validator import WorkflowValidator
-from .core import Tool, ToolParameter
+from .core import WorkflowTool, ToolParameter
 
 
-class ExecuteWorkflowTool(Tool):
-    """Execute the current workflow with provided input values.
+class ExecuteWorkflowTool(WorkflowTool):
+    """Execute a workflow with provided input values.
 
-    Builds a tree from the canvas nodes/edges, validates it, then runs
-    the TreeInterpreter and returns the execution result (output, path
-    taken, final variable context, and any errors).
+    Loads the workflow from the database by ID, builds a tree from its
+    nodes/edges, validates it, then runs the TreeInterpreter and returns
+    the execution result (output, path taken, final variable context, and
+    any errors).
     """
 
     name = "execute_workflow"
     description = (
-        "Run the current workflow with the given input values and return "
-        "the result. Provide input values as a JSON object mapping variable "
-        "names (or IDs) to their values. Returns the output, the path of "
-        "nodes visited, and the final variable context."
+        "Run a workflow with the given input values and return the result. "
+        "Provide the workflow_id and input values as a JSON object mapping "
+        "variable names (or IDs) to their values. Returns the output, the "
+        "path of nodes visited, and the final variable context."
     )
     parameters = [
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow to execute",
+            required=True,
+        ),
         ToolParameter(
             "input_values",
             "object",
@@ -37,26 +43,23 @@ class ExecuteWorkflowTool(Tool):
         ),
     ]
 
-    def __init__(self) -> None:
-        self.validator = WorkflowValidator()
-
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        current_workflow = session_state.get("current_workflow", {})
 
-        nodes = current_workflow.get("nodes", [])
-        edges = current_workflow.get("edges", [])
+        nodes = workflow_data["nodes"]
+        edges = workflow_data["edges"]
+        variables = workflow_data["variables"]
+        outputs = workflow_data.get("outputs", [])
 
         if not nodes:
             return {
                 "success": False,
-                "error": "No workflow on canvas. Build a workflow first.",
+                "error": "Workflow has no nodes. Build the workflow first.",
             }
-
-        # Get variables and outputs from workflow analysis
-        workflow_analysis = session_state.get("workflow_analysis", {})
-        variables = workflow_analysis.get("variables", [])
-        outputs = workflow_analysis.get("outputs", [])
 
         # Validate before executing
         workflow_for_validation = {
@@ -105,6 +108,7 @@ class ExecuteWorkflowTool(Tool):
             outputs=outputs,
             workflow_store=workflow_store,
             user_id=user_id,
+            output_type=workflow_data.get("output_type", "string"),
         )
 
         try:
@@ -117,6 +121,7 @@ class ExecuteWorkflowTool(Tool):
 
         response: Dict[str, Any] = {
             "success": result.success,
+            "workflow_id": workflow_id,
             "output": result.output,
             "path": result.path,
             "context": result.context,

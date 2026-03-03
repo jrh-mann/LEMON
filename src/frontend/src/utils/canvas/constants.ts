@@ -11,6 +11,7 @@ export const BLOCK_TYPE_MAP: Record<string, FlowNodeType> = {
   process: 'process',
   decision: 'decision',
   subprocess: 'subprocess',
+  calculation: 'calculation',
 }
 
 // Default color for each block type from backend
@@ -23,6 +24,7 @@ export const BLOCK_TYPE_COLORS: Record<string, FlowNodeColor> = {
   process: 'teal',
   decision: 'amber',
   subprocess: 'sky',
+  calculation: 'purple',
 }
 
 // Node size configuration (width and height for each type)
@@ -32,6 +34,7 @@ export const NODE_SIZES: Record<FlowNodeType, { w: number; h: number }> = {
   process: { w: 180, h: 80 },
   decision: { w: 160, h: 100 },
   subprocess: { w: 200, h: 90 },
+  calculation: { w: 180, h: 80 },
 }
 
 // Color hex values
@@ -42,6 +45,7 @@ export const COLOR_MAP: Record<FlowNodeColor, string> = {
   slate: '#4b5563',
   rose: '#b4533d',
   sky: '#2b6cb0',
+  purple: '#7c3aed',
 }
 
 // Edge routing thresholds

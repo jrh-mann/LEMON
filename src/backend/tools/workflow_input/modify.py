@@ -3,37 +3,25 @@
 This tool allows modifying existing variables, including derived variables
 from subprocess nodes. This is essential when the automatically inferred
 type is incorrect or needs adjustment.
+
+Multi-workflow architecture:
+- Requires workflow_id parameter (workflow must exist in library)
+- Loads workflow from database at start
+- Auto-saves changes back to database when done
 """
 
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
-from .helpers import ensure_workflow_analysis, normalize_variable_name
+from ..core import WorkflowTool, ToolParameter
+from ..constants import USER_TYPE_TO_INTERNAL
+from ..workflow_edit.helpers import save_workflow_changes
+from .helpers import normalize_variable_name
 from .add import generate_variable_id
 
 
-# Valid internal types for variables
-VALID_TYPES = {"string", "int", "float", "bool", "enum", "date"}
-
-# Map user-friendly types to internal types
-USER_TYPE_TO_INTERNAL = {
-    "string": "string",
-    "number": "float",
-    "integer": "int",
-    "boolean": "bool",
-    "enum": "enum",
-    "date": "date",
-    # Also accept internal types directly
-    "int": "int",
-    "float": "float",
-    "bool": "bool",
-}
-
-
-class ModifyWorkflowVariableTool(Tool):
+class ModifyWorkflowVariableTool(WorkflowTool):
     """Modify an existing workflow variable's properties.
     
     This tool can change the type, description, range, or enum values of any
@@ -42,17 +30,28 @@ class ModifyWorkflowVariableTool(Tool):
     
     IMPORTANT: Changing a variable's type will update its ID (since IDs include
     the type). Any decision nodes referencing the old ID will need to be updated.
+    
+    Requires workflow_id - the workflow must exist in the library first.
     """
 
+    uses_validator = False
+
     name = "modify_workflow_variable"
-    aliases = ["modify_workflow_input"]  # Backwards compatibility
     description = (
         "Modify an existing workflow variable's properties (type, description, range, enum values). "
+        "Requires workflow_id. "
         "Use this to correct auto-inferred types for subprocess outputs. For example, if a subprocess "
-        "output was inferred as 'string' but should be 'int', use this tool to fix it. "
+        "output was inferred as 'string' but should be 'number', use this tool to fix it. "
         "NOTE: Changing the type will also update the variable ID."
     )
     parameters = [
+        # workflow_id is REQUIRED and must be first
+        ToolParameter(
+            "workflow_id",
+            "string",
+            "ID of the workflow containing the variable (from create_workflow)",
+            required=True,
+        ),
         ToolParameter(
             "name",
             "string",
@@ -98,8 +97,14 @@ class ModifyWorkflowVariableTool(Tool):
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        workflow_data, error = self._load_workflow(args, **kwargs)
+        if error:
+            return error
+        workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        workflow_analysis = ensure_workflow_analysis(session_state)
+
+        # Extract variables from loaded workflow
+        variables = list(workflow_data["variables"])
 
         name = args.get("name")
         new_type = args.get("new_type")
@@ -133,7 +138,6 @@ class ModifyWorkflowVariableTool(Tool):
                 }
 
         # Find the variable by name (case-insensitive)
-        variables = workflow_analysis.get("variables", [])
         normalized_name = normalize_variable_name(name)
         
         target_var = None
@@ -184,7 +188,7 @@ class ModifyWorkflowVariableTool(Tool):
 
         # Regenerate ID if name or type changed
         if final_name != target_var.get("name") or final_type != old_type or new_name:
-            new_id = generate_variable_id(final_name, final_type, source)
+            new_id = generate_variable_id(final_name, str(final_type), str(source))
             if new_id != old_id:
                 changes.append(f"id: '{old_id}' -> '{new_id}'")
                 target_var["id"] = new_id
@@ -206,7 +210,7 @@ class ModifyWorkflowVariableTool(Tool):
 
         # Update range if provided
         if range_min is not None or range_max is not None:
-            if final_type not in ("int", "float"):
+            if final_type != "number":
                 return {
                     "success": False,
                     "error": f"range_min/range_max only valid for number types, not '{final_type}'"
@@ -225,10 +229,15 @@ class ModifyWorkflowVariableTool(Tool):
         if not changes:
             return {
                 "success": True,
+                "workflow_id": workflow_id,
                 "message": f"No changes made to variable '{name}'",
                 "variable": target_var,
-                "workflow_analysis": workflow_analysis,
             }
+
+        # Auto-save changes to database
+        save_error = save_workflow_changes(workflow_id, session_state, variables=variables)
+        if save_error:
+            return save_error
 
         # Build warning about ID change if applicable
         warning = None
@@ -240,11 +249,11 @@ class ModifyWorkflowVariableTool(Tool):
 
         result = {
             "success": True,
+            "workflow_id": workflow_id,
             "message": f"Modified variable '{final_name}': {', '.join(changes)}",
             "variable": target_var,
             "old_id": old_id,
             "new_id": target_var["id"],
-            "workflow_analysis": workflow_analysis,
         }
         
         if warning:
