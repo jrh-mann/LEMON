@@ -15,6 +15,7 @@ from .helpers import (
     resolve_node_id,
     validate_subprocess_node,
     save_workflow_changes,
+    derive_variables_for_node,
 )
 from .add_node import validate_decision_condition, validate_calculation
 
@@ -148,6 +149,9 @@ class ModifyNodeTool(WorkflowTool):
                 "error_code": "NODE_NOT_FOUND",
             }
 
+        # Snapshot old node before mutation for derived-variable comparison
+        old_node = dict(nodes[node_idx])
+
         # Create new workflow state with updates
         new_nodes = [dict(n) for n in nodes]
         new_nodes[node_idx].update(updates)
@@ -211,8 +215,30 @@ class ModifyNodeTool(WorkflowTool):
                 "error_code": "VALIDATION_FAILED",
             }
 
-        # Auto-save changes to database
-        save_error = save_workflow_changes(workflow_id, session_state, nodes=new_nodes)
+        # ---------------------------------------------------------------
+        # Derived variable lifecycle: compare old vs new derived vars
+        # ---------------------------------------------------------------
+        old_derived = derive_variables_for_node(old_node, variables, session_state)
+        new_derived = derive_variables_for_node(updated_node, variables, session_state)
+
+        old_derived_ids = {v["id"] for v in old_derived}
+        new_derived_ids = {v["id"] for v in new_derived}
+
+        # IDs to remove (were derived from old config, no longer apply)
+        removed_variable_ids = list(old_derived_ids - new_derived_ids)
+        # Variables to add (derived from new config, didn't exist before)
+        added_variables = [v for v in new_derived if v["id"] not in old_derived_ids]
+
+        # Apply to variables list: remove old, add new
+        new_variables = [
+            v for v in variables if v.get("id") not in old_derived_ids
+        ] + new_derived
+
+        # Auto-save changes to database (include variables if they changed)
+        save_kwargs = {"nodes": new_nodes}
+        if old_derived_ids != new_derived_ids:
+            save_kwargs["variables"] = new_variables
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:
             return save_error
 
@@ -221,5 +247,7 @@ class ModifyNodeTool(WorkflowTool):
             "workflow_id": workflow_id,
             "action": "modify_node",
             "node": updated_node,
+            "removed_variable_ids": removed_variable_ids,
+            "new_variables": added_variables,
             "message": f"Updated node {node_id} in workflow {workflow_id}",
         }

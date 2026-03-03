@@ -414,3 +414,101 @@ class TestDeleteNodeVariableCleanup:
         })
 
         assert len(orch.workflow["variables"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Fix A: modify_node syncs derived variable changes to orchestrator
+# ---------------------------------------------------------------------------
+
+class TestModifyNodeVariableSync:
+    """Verify _update_workflow_from_tool_result handles variable changes on modify_node."""
+
+    def test_calc_output_rename_replaces_variable(self):
+        """Renaming a calc node's output should remove old var and add new one."""
+        old_var = _variable("calc_total", source_node_id="n_calc")
+        orch = _make_orchestrator(
+            nodes=[_calc_node("n_calc", "Total", "calc_total")],
+            edges=[],
+            variables=[old_var],
+        )
+
+        # Simulate modify_node result where output name changed
+        orch._update_workflow_from_tool_result("modify_node", {
+            "node": _calc_node("n_calc", "Grand Total", "calc_grand_total"),
+            "removed_variable_ids": ["var_calc_total_number"],
+            "new_variables": [_variable("calc_grand_total", source_node_id="n_calc")],
+        })
+
+        assert len(orch.workflow["variables"]) == 1
+        assert orch.workflow["variables"][0]["name"] == "calc_grand_total"
+
+    def test_type_change_from_calc_removes_variable(self):
+        """Changing a node from calculation to process should remove its derived var."""
+        calc_var = _variable("calc_total", source_node_id="n1")
+        orch = _make_orchestrator(
+            nodes=[_calc_node("n1", "Total", "calc_total")],
+            edges=[],
+            variables=[calc_var],
+        )
+
+        orch._update_workflow_from_tool_result("modify_node", {
+            "node": {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0},
+            "removed_variable_ids": ["var_calc_total_number"],
+            "new_variables": [],
+        })
+
+        assert len(orch.workflow["variables"]) == 0
+
+    def test_type_change_to_calc_adds_variable(self):
+        """Changing a node to calculation type should add a derived variable."""
+        orch = _make_orchestrator(
+            nodes=[{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
+            edges=[],
+            variables=[],
+        )
+
+        new_var = _variable("calc_result", source_node_id="n1")
+        orch._update_workflow_from_tool_result("modify_node", {
+            "node": _calc_node("n1", "Calculate", "calc_result"),
+            "removed_variable_ids": [],
+            "new_variables": [new_var],
+        })
+
+        assert len(orch.workflow["variables"]) == 1
+        assert orch.workflow["variables"][0]["name"] == "calc_result"
+
+    def test_modify_non_producing_node_no_variable_change(self):
+        """Modifying a process node's label should not affect variables."""
+        input_var = _variable("age", source="input")
+        orch = _make_orchestrator(
+            nodes=[{"id": "n1", "type": "process", "label": "Old", "x": 0, "y": 0}],
+            edges=[],
+            variables=[input_var],
+        )
+
+        orch._update_workflow_from_tool_result("modify_node", {
+            "node": {"id": "n1", "type": "process", "label": "New", "x": 0, "y": 0},
+        })
+
+        assert len(orch.workflow["variables"]) == 1
+        assert orch.workflow["variables"][0]["name"] == "age"
+
+    def test_input_variables_preserved_during_calc_rename(self):
+        """Renaming a calc output should not disturb user-defined input variables."""
+        input_var = _variable("patient_age", source="input")
+        calc_var = _variable("calc_bmi", source_node_id="n_calc")
+        orch = _make_orchestrator(
+            nodes=[_calc_node("n_calc", "BMI", "calc_bmi")],
+            edges=[],
+            variables=[input_var, calc_var],
+        )
+
+        orch._update_workflow_from_tool_result("modify_node", {
+            "node": _calc_node("n_calc", "BMI", "calc_bmi_adjusted"),
+            "removed_variable_ids": ["var_calc_bmi_number"],
+            "new_variables": [_variable("calc_bmi_adjusted", source_node_id="n_calc")],
+        })
+
+        assert len(orch.workflow["variables"]) == 2
+        names = {v["name"] for v in orch.workflow["variables"]}
+        assert names == {"patient_age", "calc_bmi_adjusted"}

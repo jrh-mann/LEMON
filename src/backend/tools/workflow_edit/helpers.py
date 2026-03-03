@@ -273,6 +273,93 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
 
 
 # ============================================================================
+# Derived Variable Lifecycle Helpers
+# ============================================================================
+#
+# These helpers determine what derived variables a node *should* produce,
+# enabling ``modify_node`` to detect when variables need to be added,
+# removed, or replaced after a node's configuration changes.
+# ============================================================================
+
+
+def derive_variables_for_node(
+    node: Dict[str, Any],
+    existing_variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Determine the derived variables a node should produce.
+
+    Returns a list of variable dicts (may be empty) that the given node
+    would auto-register.  This is a *pure query* — it does not mutate
+    ``existing_variables``.
+
+    Used by ``modify_node`` to compare before/after state and sync
+    variable changes.
+
+    Supports:
+    * **calculation** nodes → one variable with ``source='calculated'``
+    * **subprocess** nodes → one variable with ``source='subprocess'``
+    """
+    # Lazy imports to avoid circular deps at module level
+    from ..workflow_input.add import generate_variable_id
+    from ..workflow_input.helpers import normalize_variable_name
+
+    node_type = node.get("type")
+    node_id = node.get("id", "")
+    label = node.get("label", "")
+    result: List[Dict[str, Any]] = []
+
+    # --- Calculation node: always produces a number variable ---
+    if node_type == "calculation":
+        calc = node.get("calculation")
+        if calc:
+            output_def = calc.get("output", {})
+            output_name = output_def.get("name")
+            if output_name:
+                var_id = generate_variable_id(output_name, "number", "calculated")
+                result.append({
+                    "id": var_id,
+                    "name": output_name,
+                    "type": "number",
+                    "source": "calculated",
+                    "source_node_id": node_id,
+                    "description": (
+                        output_def.get("description")
+                        or f"Calculated by '{label}'"
+                    ),
+                })
+
+    # --- Subprocess node: infer type from subworkflow outputs ---
+    elif node_type == "subprocess":
+        output_variable = node.get("output_variable")
+        subworkflow_id = node.get("subworkflow_id")
+        if output_variable:
+            output_info = get_subworkflow_output_type(
+                subworkflow_id or "", session_state,
+            )
+            output_type_val = (
+                output_info.get("type", "string") if output_info else "string"
+            )
+            output_desc = output_info.get("description") if output_info else None
+            var_id = generate_variable_id(
+                output_variable, output_type_val, "subprocess",
+            )
+            result.append({
+                "id": var_id,
+                "name": output_variable,
+                "type": output_type_val,
+                "source": "subprocess",
+                "source_node_id": node_id,
+                "subworkflow_id": subworkflow_id,
+                "description": (
+                    output_desc or f"Output from subprocess '{label}'"
+                ),
+            })
+
+    return result
+
+
+# ============================================================================
 # Unified Node Builder
 # ============================================================================
 #

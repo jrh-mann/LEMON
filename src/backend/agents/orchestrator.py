@@ -361,6 +361,14 @@ class Orchestrator:
                     if n["id"] == node["id"]:
                         nodes[i] = node
                         break
+            # Sync derived variable removals (e.g. calc output renamed, type changed)
+            for var_id in result.get("removed_variable_ids", []):
+                self.workflow["variables"] = [
+                    v for v in self.workflow["variables"] if v.get("id") != var_id
+                ]
+            # Sync newly-created derived variables
+            for var in result.get("new_variables", []):
+                self.workflow["variables"].append(var)
 
         elif tool_name == "delete_node":
             node_id = result.get("node_id")
