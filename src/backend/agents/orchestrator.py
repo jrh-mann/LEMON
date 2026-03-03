@@ -417,12 +417,15 @@ class Orchestrator:
             Callable[[str, str, Dict[str, Any], Optional[Dict[str, Any]]], None]
         ] = None,
         thinking_budget: Optional[int] = None,
+        on_thinking: Optional[Callable[[str], None]] = None,
     ) -> str:
         """Respond to a user message, optionally calling tools.
 
         Args:
             thinking_budget: Token budget for extended thinking (reasoning).
                 When set, the LLM uses chain-of-thought before responding.
+            on_thinking: Callback receiving thinking/reasoning text chunks
+                as they stream from the LLM.
         """
         self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
         # Store uploaded files metadata for tool access
@@ -500,6 +503,7 @@ class Orchestrator:
                     request_tag="initial",
                     should_cancel=should_cancel,
                     thinking_budget=thinking_budget,
+                    on_thinking=on_thinking,
                 )
             else:
                 if stream:
@@ -510,6 +514,7 @@ class Orchestrator:
                         request_tag="initial_stream",
                         should_cancel=should_cancel,
                         thinking_budget=thinking_budget,
+                        on_thinking=on_thinking,
                     )
                     raw = raw.strip()
                     tool_calls = []
@@ -522,6 +527,7 @@ class Orchestrator:
                         request_tag="initial_no_tools",
                         should_cancel=should_cancel,
                         thinking_budget=thinking_budget,
+                        on_thinking=on_thinking,
                     )
             if is_cancelled():
                 return finalize_cancel()
@@ -701,6 +707,7 @@ class Orchestrator:
                 request_tag="post_tool",
                 should_cancel=should_cancel,
                 thinking_budget=thinking_budget,
+                on_thinking=on_thinking,
             )
             if is_cancelled():
                 return finalize_cancel()

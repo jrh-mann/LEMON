@@ -136,6 +136,75 @@ class TestReasoningWiring:
             "SocketChatTask.run does not pass thinking_budget to orchestrator.respond()"
         )
 
+    def test_on_thinking_forwarded_to_llm(self):
+        """Orchestrator.respond must forward on_thinking to call_llm_with_tools."""
+        from src.backend.agents.orchestrator_factory import build_orchestrator
+
+        orch = build_orchestrator(Path("."))
+        captured_kwargs = {}
+
+        def fake_llm(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return ("response", [])
+
+        thinking_chunks = []
+        def my_thinking(chunk: str) -> None:
+            thinking_chunks.append(chunk)
+
+        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=fake_llm):
+            orch.respond("test", thinking_budget=5000, on_thinking=my_thinking)
+
+        assert captured_kwargs.get("on_thinking") is my_thinking
+
+    def test_stream_thinking_emits_chat_thinking(self):
+        """SocketChatTask.stream_thinking must emit chat_thinking socket event."""
+        from src.backend.api.socket_chat import SocketChatTask
+
+        task = SocketChatTask(
+            socketio=MagicMock(),
+            conversation_store=MagicMock(),
+            repo_root=Path("/tmp"),
+            workflow_store=MagicMock(),
+            user_id="u1",
+            sid="s1",
+            task_id="t1",
+            message="hi",
+            conversation_id=None,
+            files_data=[],
+            workflow=None,
+            analysis=None,
+        )
+
+        task.stream_thinking("Analyzing the workflow...")
+
+        task.socketio.emit.assert_called_once_with(
+            "chat_thinking",
+            {"chunk": "Analyzing the workflow...", "task_id": "t1"},
+            to="s1",
+        )
+
+    def test_stream_thinking_skips_empty(self):
+        """stream_thinking should not emit for empty chunks."""
+        from src.backend.api.socket_chat import SocketChatTask
+
+        task = SocketChatTask(
+            socketio=MagicMock(),
+            conversation_store=MagicMock(),
+            repo_root=Path("/tmp"),
+            workflow_store=MagicMock(),
+            user_id="u1",
+            sid="s1",
+            task_id="t1",
+            message="hi",
+            conversation_id=None,
+            files_data=[],
+            workflow=None,
+            analysis=None,
+        )
+
+        task.stream_thinking("")
+        task.socketio.emit.assert_not_called()
+
     def test_thinking_payload_added_when_budget_set(self):
         """call_llm_with_tools must add thinking payload when budget is provided."""
         from src.backend.llm.client import call_llm_with_tools

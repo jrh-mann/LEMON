@@ -149,6 +149,16 @@ class SocketChatTask:
             self.socketio.emit("chat_stream", {"chunk": char, "task_id": self.task_id}, to=self.sid)
             self.socketio.sleep(0.005)  # 5ms delay for visible typewriter effect
 
+    def stream_thinking(self, chunk: str) -> None:
+        """Stream LLM reasoning/thinking chunks to the frontend."""
+        if not chunk or self.is_cancelled():
+            return
+        self.socketio.emit(
+            "chat_thinking",
+            {"chunk": chunk, "task_id": self.task_id},
+            to=self.sid,
+        )
+
     def heartbeat(self) -> None:
         while not self.done.is_set():
             self.socketio.sleep(5)
@@ -375,6 +385,7 @@ class SocketChatTask:
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
                 thinking_budget=10_000,  # Enable extended thinking (reasoning)
+                on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()
             if self.is_cancelled():
