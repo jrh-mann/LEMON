@@ -207,21 +207,28 @@ class SocketChatTask:
                 to=self.sid,
             )
 
-        if tool in ("add_image_question",) and event == "tool_complete" and isinstance(result, dict) and "annotations" in result:
+        # Show inline question card in chat when ask_question tool completes
+        if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             self.socketio.emit(
-                "annotations_update",
+                "pending_question",
                 {
-                    "annotations": result.get("annotations", [])
+                    "question": result.get("question", ""),
+                    "options": result.get("options", []),
                 },
                 to=self.sid,
             )
 
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             if tool in WORKFLOW_EDIT_TOOLS:
+                action = result.get("action")
+                logger.info(
+                    "Emitting workflow_update action=%s tool=%s workflow_id=%s",
+                    action, tool, result.get("workflow_id"),
+                )
                 self.socketio.emit(
                     "workflow_update",
                     {
-                        "action": result.get("action"),
+                        "action": action,
                         "data": result,
                     },
                     to=self.sid,
@@ -384,7 +391,7 @@ class SocketChatTask:
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
-                thinking_budget=10_000,  # Enable extended thinking (reasoning)
+                thinking_budget=30_000,  # Enable extended thinking (reasoning)
                 on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()

@@ -2711,6 +2711,72 @@ body {
   }
 }
 
+/* Plan checklist — rolling progress inside the streaming message bubble */
+.plan-checklist {
+  margin-top: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+  line-height: 1.7;
+  max-height: 180px;
+  overflow: hidden;
+}
+.plan-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--ink-light, #6b7280);
+}
+.plan-item.done {
+  color: var(--teal);
+}
+.plan-item.active {
+  color: #f59e0b;
+  font-weight: 600;
+}
+.plan-icon {
+  font-size: 11px;
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.plan-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Question card — inline clarification from ask_question tool */
+.question-card {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: var(--surface-color, #f9fafb);
+}
+.question-text {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.option-chip {
+  padding: 5px 12px;
+  font-size: 12px;
+  border: 1px solid var(--teal);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--teal);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.option-chip:hover {
+  background: var(--teal);
+  color: white;
+}
+
 /* Thinking stream — live LLM reasoning displayed below the processing status */
 .thinking-stream {
   margin-top: 8px;
@@ -5310,6 +5376,15 @@ button.primary.warning:hover {
 /* ============================================ */
 /* Visual Workflow Execution Styles */
 /* ============================================ */
+
+/* Highlighted node - pulse to draw user's attention (from highlight_node tool) */
+.flow-node.highlighted {
+  animation: highlightPulse 0.6s ease-in-out 5;
+}
+@keyframes highlightPulse {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50% { filter: drop-shadow(0 0 16px rgba(31, 110, 104, 0.8)); }
+}
 
 /* Node currently being executed - pulsing glow effect */
 .flow-node.executing rect,

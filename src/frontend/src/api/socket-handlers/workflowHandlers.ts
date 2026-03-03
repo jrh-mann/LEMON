@@ -1,7 +1,7 @@
 /**
  * Workflow-related socket event handlers.
  * Handles: workflow_update, analysis_updated, workflow_created,
- *          workflow_saved, annotations_update, plan_updated
+ *          workflow_saved, pending_question, plan_updated
  */
 import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../../stores/chatStore'
@@ -14,18 +14,12 @@ import type { WorkflowAnalysis } from '../../types'
 export function registerWorkflowHandlers(socket: Socket): void {
   // Workflow update events (from orchestrator manipulation tools)
   socket.on('workflow_update', (data: { action: string; data: Record<string, unknown> }) => {
-    console.log('[Socket] workflow_update:', data)
+    console.log('[Socket] workflow_update:', data.action, 'workflow_id:', data.data.workflow_id)
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
 
-    // Filter updates for different workflows to prevent cross-tab contamination
-    const currentId = workflowStore.currentWorkflow?.id
-    const updatedId = data.data.workflow_id as string | undefined
-
-    if (updatedId && currentId && updatedId !== currentId) {
-      console.log('[Socket] Ignoring update for different workflow:', updatedId, 'current:', currentId)
-      return
-    }
+    // No cross-tab filter needed: backend emits with to=self.sid,
+    // so events are already scoped to the originating socket session.
 
     switch (data.action) {
       case 'add_node':
@@ -107,6 +101,15 @@ export function registerWorkflowHandlers(socket: Socket): void {
           // Switch to workflow tab to show the changes
           uiStore.setCanvasTab('workflow')
           console.log('[Socket] Applied batch edit:', data.data.operations_applied, 'operations')
+        }
+        break
+
+      case 'highlight_node':
+        // Pulse a node to draw user's attention
+        if (data.data.node_id) {
+          workflowStore.highlightNode(data.data.node_id as string)
+          uiStore.setCanvasTab('workflow')
+          console.log('[Socket] Highlighting node:', data.data.node_id)
         }
         break
 
@@ -223,11 +226,11 @@ export function registerWorkflowHandlers(socket: Socket): void {
     }
   })
 
-  // Annotations update (from orchestrator image questions)
-  socket.on('annotations_update', (data: { annotations: unknown[] }) => {
-    console.log('[Socket] annotations_update:', data)
-    const workflowStore = useWorkflowStore.getState()
-    workflowStore.setPendingAnnotations(data.annotations as any)
+  // Inline question from ask_question tool — show card with option chips in chat
+  socket.on('pending_question', (data: { question: string; options: { label: string; value: string }[] }) => {
+    console.log('[Socket] pending_question:', data)
+    const chatStore = useChatStore.getState()
+    chatStore.setPendingQuestion(data)
   })
 
   // Plan updates (from update_plan tool — extraction progress checklist)

@@ -1,11 +1,11 @@
 """Workflow analysis tools."""
 
-from .add_image_question import AddImageQuestionTool
+from .ask_question import AskQuestionTool
 from .view_image import ViewImageTool
 from .update_plan import UpdatePlanTool
 
 __all__ = [
-    "AddImageQuestionTool",
+    "AskQuestionTool",
     "ViewImageTool",
     "UpdatePlanTool",
 ]

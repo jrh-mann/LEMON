@@ -46,6 +46,7 @@ interface WorkflowState {
   selectedNodeId: string | null
   selectedNodeIds: string[]
   selectedEdge: { from: string; to: string } | null  // Selected edge for editing
+  highlightedNodeId: string | null  // Node pulsing to draw attention
   connectMode: boolean
   connectFromId: string | null
 
@@ -114,6 +115,7 @@ interface WorkflowState {
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
   setPlan: (items: Array<{ text: string; done: boolean }>) => void
+  highlightNode: (nodeId: string) => void  // Pulse a node briefly (auto-clears after 3s)
 
   // Reset
   reset: () => void
@@ -194,6 +196,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   selectedNodeId: null,
   selectedNodeIds: [],
   selectedEdge: null,
+  highlightedNodeId: null,
   connectMode: false,
   connectFromId: null,
   history: [],
@@ -534,6 +537,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
   setPlan: (items) => set({ plan: items }),
+  highlightNode: (nodeId) => {
+    set({ highlightedNodeId: nodeId })
+    // Auto-clear after 3 seconds
+    setTimeout(() => {
+      if (get().highlightedNodeId === nodeId) {
+        set({ highlightedNodeId: null })
+      }
+    }, 3000)
+  },
 
   // Reset
   reset: () =>

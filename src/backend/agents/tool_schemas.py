@@ -114,33 +114,40 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "add_image_question",
+                "name": "ask_question",
                 "description": (
-                    "Place a question dot on the user's workflow image at specific coordinates. "
-                    "Use this tool whenever you are UNSURE about any part of the workflow image — "
-                    "a threshold value, a label, a branch condition. Do NOT guess; ask the user."
+                    "Ask the user a clarification question. Use this whenever you are "
+                    "UNSURE about any detail — a threshold, label, branch condition, or "
+                    "ambiguous text. Provide options when possible so the user can click "
+                    "instead of typing. Do NOT guess; ask."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "image_name": {
-                            "type": "string",
-                            "description": "The name of the uploaded image file (e.g. diagram.png).",
-                        },
-                        "x": {
-                            "type": "integer",
-                            "description": "The X coordinate on the image where the question applies.",
-                        },
-                        "y": {
-                            "type": "integer",
-                            "description": "The Y coordinate on the image where the question applies.",
-                        },
                         "question": {
                             "type": "string",
-                            "description": "The specific question you want to ask the user.",
+                            "description": "The question to ask the user.",
+                        },
+                        "options": {
+                            "type": "array",
+                            "description": "Optional clickable choices (2-4 recommended).",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Display text for the option.",
+                                    },
+                                    "value": {
+                                        "type": "string",
+                                        "description": "Value sent back when user clicks this option.",
+                                    },
+                                },
+                                "required": ["label", "value"],
+                            },
                         },
                     },
-                    "required": ["image_name", "x", "y", "question"],
+                    "required": ["question"],
                 },
             },
         },
@@ -927,6 +934,31 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                     },
                     "required": ["workflow_id", "name", "type"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "highlight_node",
+                "description": (
+                    "Highlight a node on the canvas to draw the user's attention to it. "
+                    "The node pulses briefly. Use this when referencing a specific node "
+                    "in conversation so the user can see which one you mean."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "ID of the workflow containing the node",
+                        },
+                        "node_id": {
+                            "type": "string",
+                            "description": "ID of the node to highlight",
+                        },
+                    },
+                    "required": ["node_id"],
                 },
             },
         },

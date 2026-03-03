@@ -321,11 +321,13 @@ def build_system_prompt(
         "6. For complex sections with cross-references, use batch_edit_workflow.\n"
         "7. Mark plan items as done as you complete them (call update_plan with done: true).\n\n"
         "If you are UNSURE about anything (a threshold value, a label, a branch condition):\n"
-        "- Call add_image_question to ask the user — do NOT guess.\n"
-        "- Place the question dot near the relevant part of the image.\n\n"
+        "- Call ask_question to ask the user — do NOT guess.\n"
+        "- Provide 2-4 clickable options when possible so the user can click instead of typing.\n\n"
         "If you need to re-examine the image mid-conversation:\n"
         "- Call view_image to get it again.\n\n"
-        "NEVER skip the planning step. ALWAYS use update_plan before building."
+        "NEVER skip the planning step. ALWAYS use update_plan before building.\n\n"
+        "When referencing a specific node in conversation, call highlight_node to pulse it "
+        "on the canvas so the user can see which node you mean."
     )
 
     # Disable tools for plain-text-only responses

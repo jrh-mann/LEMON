@@ -2,7 +2,7 @@
 
 from .core import Tool, ToolParameter, ToolRegistry
 from .discovery import build_tool_registry, discover_tool_classes
-from .workflow_analysis import AddImageQuestionTool, ViewImageTool, UpdatePlanTool
+from .workflow_analysis import AskQuestionTool, ViewImageTool, UpdatePlanTool
 from .workflow_edit import (
     GetCurrentWorkflowTool,
     AddNodeTool,
@@ -11,6 +11,7 @@ from .workflow_edit import (
     AddConnectionTool,
     DeleteConnectionTool,
     BatchEditWorkflowTool,
+    HighlightNodeTool,
 )
 from .workflow_input import (
     AddWorkflowVariableTool,
@@ -29,7 +30,7 @@ __all__ = [
     "ToolRegistry",
     "build_tool_registry",
     "discover_tool_classes",
-    "AddImageQuestionTool",
+    "AskQuestionTool",
     "ViewImageTool",
     "UpdatePlanTool",
     "GetCurrentWorkflowTool",
@@ -39,6 +40,7 @@ __all__ = [
     "AddConnectionTool",
     "DeleteConnectionTool",
     "BatchEditWorkflowTool",
+    "HighlightNodeTool",
     "AddWorkflowVariableTool",
     "ListWorkflowVariablesTool",
     "ModifyWorkflowVariableTool",

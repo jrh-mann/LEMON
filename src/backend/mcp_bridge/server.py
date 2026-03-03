@@ -25,6 +25,7 @@ from ..tools import (
     AddConnectionTool,
     DeleteConnectionTool,
     BatchEditWorkflowTool,
+    HighlightNodeTool,
     AddWorkflowVariableTool,
     ListWorkflowVariablesTool,
     ModifyWorkflowVariableTool,
@@ -101,6 +102,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     add_conn_tool = AddConnectionTool()
     delete_conn_tool = DeleteConnectionTool()
     batch_edit_tool = BatchEditWorkflowTool()
+    highlight_tool = HighlightNodeTool()
 
     # Workflow variable management tools
     add_variable_tool = AddWorkflowVariableTool()
@@ -328,6 +330,16 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         return batch_edit_tool.execute(
             {"workflow_id": workflow_id, "operations": operations},
             session_state=state,
+        )
+
+    @server.tool(name="highlight_node")
+    def highlight_node(
+        node_id: str,
+        workflow_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Highlight a node on the canvas to draw the user's attention to it."""
+        return highlight_tool.execute(
+            {"node_id": node_id, "workflow_id": workflow_id or ""},
         )
 
     @server.tool(name="add_workflow_variable")
