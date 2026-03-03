@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { exportAsJSON, exportAsPNG, exportAsPython } from '../utils/exportUtils'
+import FlowchartPreview from './FlowchartPreview'
 import '../styles/ExportPage.css'
 
 export default function ExportPage() {
@@ -72,6 +73,9 @@ export default function ExportPage() {
                         </button>
                     </div>
                 ) : (
+                    <>
+                    {/* Hidden off-screen SVG so exportAsPNG can find id="flowchartCanvas" */}
+                    <FlowchartPreview nodes={flowchart.nodes} edges={flowchart.edges} />
                     <div className="export-cards">
                         {/* JSON Export */}
                         <div className="export-card">
@@ -169,6 +173,7 @@ export default function ExportPage() {
                             </button>
                         </div>
                     </div>
+                    </>
                 )}
             </main>
         </div>
