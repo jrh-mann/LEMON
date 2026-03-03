@@ -97,18 +97,27 @@ def _to_anthropic_messages(
         content = msg.get("content", "")
         if role == "tool":
             tool_call_id = msg.get("tool_call_id") or msg.get("id") or ""
-            converted.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": tool_call_id,
-                            "content": content if isinstance(content, str) else json.dumps(content, ensure_ascii=True),
-                        }
-                    ],
-                }
-            )
+            tool_result_block = {
+                "type": "tool_result",
+                "tool_use_id": tool_call_id,
+                "content": content if isinstance(content, str) else json.dumps(content, ensure_ascii=True),
+            }
+            # Merge into the previous user message if it already contains
+            # tool_result blocks (Anthropic requires all tool results from
+            # one batch in a single "user" message — consecutive user
+            # messages violate the alternating-role contract).
+            if (
+                converted
+                and converted[-1].get("role") == "user"
+                and isinstance(converted[-1].get("content"), list)
+                and converted[-1]["content"]
+                and converted[-1]["content"][0].get("type") == "tool_result"
+            ):
+                converted[-1]["content"].append(tool_result_block)
+            else:
+                converted.append(
+                    {"role": "user", "content": [tool_result_block]}
+                )
             continue
         if role == "assistant" and msg.get("tool_calls"):
             blocks = _to_anthropic_blocks(content)
