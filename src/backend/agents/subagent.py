@@ -515,7 +515,7 @@ by recomputing them deterministically from name + type. Respond only with the up
         if is_cancelled():
             raise CancellationError("Subagent cancelled before analysis phase.")
 
-        _progress(f"Analyzing {len(analysis_files)} file(s)...")
+        _progress(f"Analysing {len(analysis_files)} file(s)...")
 
         # Build content blocks: one text block + one per file (image or PDF)
         content_blocks: List[Dict[str, Any]] = []

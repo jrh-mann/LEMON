@@ -153,7 +153,7 @@ class SocketChatTask:
             self.socketio.sleep(5)
             if self.done.is_set() or self.is_cancelled():
                 break
-            self.emit_progress("heartbeat", "Analyzing...")
+            self.emit_progress("heartbeat", "Analysing...")
 
     def flush_tool_summary(self) -> None:
         summary = self.tool_summary.flush()
@@ -182,10 +182,10 @@ class SocketChatTask:
         if tool == "analyze_workflow":
             if event == "tool_progress":
                 # Phase-specific progress from the subagent (e.g., "Extracting guidance (1/2)...")
-                status = args.get("status", "Analyzing workflow...")
+                status = args.get("status", "Analysing workflow...")
                 self.emit_progress(event, status, tool=tool)
             else:
-                self.emit_progress(event, "Analyzing workflow...", tool=tool)
+                self.emit_progress(event, "Analysing workflow...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
