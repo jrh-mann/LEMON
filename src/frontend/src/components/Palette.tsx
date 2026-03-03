@@ -193,8 +193,6 @@ export default function Palette() {
       setAnalysis({
         variables: (variables as never[]) || [],
         outputs: (outputs as never[]) || [],
-        tree: {},
-        doubts: [],
       })
 
       setShowJsonInput(false)
@@ -223,8 +221,6 @@ export default function Palette() {
         setAnalysis({
           variables: (variables as never[]) || [],
           outputs: (outputs as never[]) || [],
-          tree: {},
-          doubts: [],
         })
 
         setShowJsonInput(false)
