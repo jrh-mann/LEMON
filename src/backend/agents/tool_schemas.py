@@ -40,6 +40,23 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "extract_guidance",
+                "description": (
+                    "Extract side information (sticky notes, legends, annotations, linked "
+                    "guidance panels) from the uploaded workflow image. Makes a separate "
+                    "API call and returns structured guidance items. Call this BEFORE "
+                    "building the workflow to discover extra context in the image."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "update_plan",
                 "description": (
                     "Update the step-by-step plan shown to the user. Call this to outline "
