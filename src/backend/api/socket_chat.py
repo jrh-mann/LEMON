@@ -19,6 +19,7 @@ from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..utils.uploads import save_uploaded_file, save_annotations
+from ..utils.paths import lemon_data_dir
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -276,10 +277,12 @@ class SocketChatTask:
                 continue
             try:
                 rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
+                # Resolve to absolute path so orchestrator can read the file directly
+                abs_path = str(lemon_data_dir(self.repo_root) / rel_path)
                 self.saved_file_paths.append({
                     "id": file_info.get("id", ""),
                     "name": file_info.get("name", ""),
-                    "path": rel_path,
+                    "path": abs_path,
                     "file_type": file_type,
                     "purpose": file_info.get("purpose", "unclassified"),
                 })
@@ -371,6 +374,7 @@ class SocketChatTask:
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
+                thinking_budget=10_000,  # Enable extended thinking (reasoning)
             )
             self._sync_convo_from_orchestrator()
             if self.is_cancelled():

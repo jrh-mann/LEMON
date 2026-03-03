@@ -1,10 +1,10 @@
 """Tests for real-time thinking stream pipeline — LLM extended thinking chunks
-forwarded from subagent through orchestrator to socket events.
+forwarded through orchestrator to socket events.
 
 Covers:
-1. Subagent on_thinking callback receives chunks and still accumulates locally
+1. on_thinking callback receives chunks from tool execution
 2. Orchestrator run_tool() forwards thinking via on_tool_event("tool_thinking")
-3. SocketChatTask.on_tool_event emits "chat_thinking" socket events
+3. SocketChatTask.on_tool_event skips thinking for non-relevant events
 """
 
 import json
@@ -24,10 +24,10 @@ from src.backend.tools.core import Tool, ToolParameter
 # Helpers
 # ---------------------------------------------------------------------------
 
-class FakeAnalyzeTool(Tool):
-    """Minimal tool that simulates analyze_workflow by invoking on_thinking."""
-    name = "analyze_workflow"
-    description = "Fake analyze tool for testing thinking stream."
+class FakeThinkingTool(Tool):
+    """Minimal tool that invokes on_thinking to simulate extended thinking."""
+    name = "fake_thinking_tool"
+    description = "Fake tool for testing thinking stream."
     parameters: list = []
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
@@ -36,25 +36,13 @@ class FakeAnalyzeTool(Tool):
         for chunk in ["Examining ", "the diagram ", "structure..."]:
             if on_thinking:
                 on_thinking(chunk)
-        return {
-            "success": True,
-            "session_id": "test_session",
-            "analysis": {
-                "variables": [],
-                "outputs": [],
-                "tree": {},
-                "doubts": [],
-                "reasoning": "Examining the diagram structure...",
-                "guidance": [],
-            },
-            "flowchart": {"nodes": [], "edges": []},
-        }
+        return {"success": True}
 
 
 def _make_orchestrator_with_fake_tool() -> Orchestrator:
-    """Build an orchestrator with a fake analyze_workflow tool."""
+    """Build an orchestrator with a fake thinking tool."""
     registry = ToolRegistry()
-    registry.register(FakeAnalyzeTool())
+    registry.register(FakeThinkingTool())
     return Orchestrator(registry)
 
 
@@ -68,7 +56,7 @@ class TestToolReceivesOnThinking:
     def test_on_thinking_kwarg_passed_to_tool(self):
         """ToolRegistry.execute should forward on_thinking to Tool.execute."""
         registry = ToolRegistry()
-        registry.register(FakeAnalyzeTool())
+        registry.register(FakeThinkingTool())
 
         received_chunks: List[str] = []
 
@@ -76,7 +64,7 @@ class TestToolReceivesOnThinking:
             received_chunks.append(chunk)
 
         registry.execute(
-            "analyze_workflow", {}, on_thinking=capture, session_state={},
+            "fake_thinking_tool", {}, on_thinking=capture, session_state={},
         )
 
         assert received_chunks == ["Examining ", "the diagram ", "structure..."]
@@ -99,7 +87,7 @@ class TestOrchestratorThinkingForwarding:
             received_chunks.append(chunk)
 
         result = orch.run_tool(
-            "analyze_workflow", {}, on_thinking=capture,
+            "fake_thinking_tool", {}, on_thinking=capture,
         )
 
         assert result.success
@@ -118,7 +106,7 @@ class TestOrchestratorThinkingForwarding:
         fake_tool_call = {
             "id": "call_1",
             "function": {
-                "name": "analyze_workflow",
+                "name": "fake_thinking_tool",
                 "arguments": "{}",
             },
         }
@@ -143,9 +131,9 @@ class TestOrchestratorThinkingForwarding:
         ]
 
         assert len(thinking_events) == 3
-        assert thinking_events[0] == ("tool_thinking", "analyze_workflow", {"chunk": "Examining "})
-        assert thinking_events[1] == ("tool_thinking", "analyze_workflow", {"chunk": "the diagram "})
-        assert thinking_events[2] == ("tool_thinking", "analyze_workflow", {"chunk": "structure..."})
+        assert thinking_events[0] == ("tool_thinking", "fake_thinking_tool", {"chunk": "Examining "})
+        assert thinking_events[1] == ("tool_thinking", "fake_thinking_tool", {"chunk": "the diagram "})
+        assert thinking_events[2] == ("tool_thinking", "fake_thinking_tool", {"chunk": "structure..."})
 
 
 # ---------------------------------------------------------------------------
@@ -177,57 +165,13 @@ class TestSocketChatThinkingEmission:
         )
         return task
 
-    def test_emits_chat_thinking_on_tool_thinking_event(self):
-        """tool_thinking event for analyze_workflow should emit chat_thinking."""
-        task = self._make_task()
-
-        task.on_tool_event("tool_thinking", "analyze_workflow", {"chunk": "Reasoning..."}, None)
-
-        task.socketio.emit.assert_called_once_with(
-            "chat_thinking",
-            {"chunk": "Reasoning...", "task_id": "task_123"},
-            to="test_sid",
-        )
-
-    def test_skips_empty_thinking_chunks(self):
-        """Empty thinking chunks should not be emitted."""
-        task = self._make_task()
-
-        task.on_tool_event("tool_thinking", "analyze_workflow", {"chunk": ""}, None)
-
-        task.socketio.emit.assert_not_called()
-
-    def test_ignores_tool_thinking_for_other_tools(self):
-        """tool_thinking for non-analyze tools should not emit chat_thinking."""
-        task = self._make_task()
-
-        task.on_tool_event("tool_thinking", "add_node", {"chunk": "thinking..."}, None)
-
-        task.socketio.emit.assert_not_called()
-
     def test_skips_when_cancelled(self):
-        """tool_thinking should not emit if the task is cancelled."""
+        """tool events should not emit if the task is cancelled."""
         task = self._make_task()
 
         # Mock is_cancelled to return True
         with patch.object(task, "is_cancelled", return_value=True):
-            task.on_tool_event("tool_thinking", "analyze_workflow", {"chunk": "data"}, None)
+            task.on_tool_event("tool_complete", "add_node", {}, {"success": True})
 
         task.socketio.emit.assert_not_called()
 
-
-# ---------------------------------------------------------------------------
-# Regression: reasoning field still populated after forwarding
-# ---------------------------------------------------------------------------
-
-class TestReasoningStillAccumulated:
-    """Verify that forwarding chunks doesn't break local accumulation of reasoning."""
-
-    def test_run_tool_still_stores_reasoning(self):
-        """After run_tool with on_thinking, reasoning should still end up in orchestrator state."""
-        orch = _make_orchestrator_with_fake_tool()
-
-        orch.run_tool("analyze_workflow", {}, on_thinking=lambda _: None)
-
-        # The fake tool returns reasoning in its analysis; orchestrator stores it
-        assert orch.workflow.get("reasoning") == "Examining the diagram structure..."

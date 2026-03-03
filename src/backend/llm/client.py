@@ -195,6 +195,8 @@ def call_llm_with_tools(
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    thinking_budget: Optional[int] = None,
+    on_thinking: Optional[Callable[[str], None]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     load_env()
     if tool_choice is None and tools:
@@ -218,6 +220,9 @@ def call_llm_with_tools(
             payload["tool_choice"] = {"type": "auto"}
         else:
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
+    # Enable extended thinking when a budget is provided
+    if thinking_budget is not None:
+        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
     chunks: List[str] = []
     tool_blocks: Dict[int, Dict[str, Any]] = {}
     tool_block_order: List[int] = []
@@ -269,14 +274,20 @@ def call_llm_with_tools(
                 elif event_type == "content_block_delta":
                     delta = getattr(event, "delta", None)
                     if delta:
-                        text = getattr(delta, "text", None)
-                        if text is None and isinstance(delta, dict):
-                            text = delta.get("text")
-                        if text:
-                            handle_delta(text)
                         delta_type = getattr(delta, "type", None)
                         if delta_type is None and isinstance(delta, dict):
                             delta_type = delta.get("type")
+                        # Route thinking deltas to the on_thinking callback
+                        if delta_type == "thinking_delta" and on_thinking:
+                            thinking_text = getattr(delta, "thinking", None)
+                            if thinking_text:
+                                on_thinking(thinking_text)
+                        else:
+                            text = getattr(delta, "text", None)
+                            if text is None and isinstance(delta, dict):
+                                text = delta.get("text")
+                            if text:
+                                handle_delta(text)
                         if delta_type == "input_json_delta":
                             idx = getattr(event, "index", None)
                             if idx is None and isinstance(event, dict):
@@ -320,7 +331,10 @@ def call_llm_with_tools(
     message = _call_stream()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
-    parsed_text, tool_calls, _ = _parse_anthropic_response(message)
+    parsed_text, tool_calls, parsed_thinking = _parse_anthropic_response(message)
+    # Deliver any thinking from the final message that wasn't streamed
+    if parsed_thinking and on_thinking:
+        on_thinking(parsed_thinking)
     recovered: List[Dict[str, Any]] = []
     if tool_blocks:
         indices = tool_block_order or sorted(tool_blocks.keys())

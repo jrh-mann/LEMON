@@ -416,8 +416,14 @@ class Orchestrator:
         on_tool_event: Optional[
             Callable[[str, str, Dict[str, Any], Optional[Dict[str, Any]]], None]
         ] = None,
+        thinking_budget: Optional[int] = None,
     ) -> str:
-        """Respond to a user message, optionally calling tools."""
+        """Respond to a user message, optionally calling tools.
+
+        Args:
+            thinking_budget: Token budget for extended thinking (reasoning).
+                When set, the LLM uses chain-of-thought before responding.
+        """
         self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
         # Store uploaded files metadata for tool access
         self.uploaded_files = has_files or []
@@ -493,6 +499,7 @@ class Orchestrator:
                     caller="orchestrator",
                     request_tag="initial",
                     should_cancel=should_cancel,
+                    thinking_budget=thinking_budget,
                 )
             else:
                 if stream:
@@ -502,6 +509,7 @@ class Orchestrator:
                         caller="orchestrator",
                         request_tag="initial_stream",
                         should_cancel=should_cancel,
+                        thinking_budget=thinking_budget,
                     )
                     raw = raw.strip()
                     tool_calls = []
@@ -513,6 +521,7 @@ class Orchestrator:
                         caller="orchestrator",
                         request_tag="initial_no_tools",
                         should_cancel=should_cancel,
+                        thinking_budget=thinking_budget,
                     )
             if is_cancelled():
                 return finalize_cancel()
@@ -691,6 +700,7 @@ class Orchestrator:
                 caller="orchestrator",
                 request_tag="post_tool",
                 should_cancel=should_cancel,
+                thinking_budget=thinking_budget,
             )
             if is_cancelled():
                 return finalize_cancel()
