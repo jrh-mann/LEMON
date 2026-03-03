@@ -29,8 +29,8 @@ def tmp_lemon(tmp_path: Path) -> Path:
 @pytest.fixture
 def sample_annotations() -> List[Dict[str, Any]]:
     return [
-        {"type": "label", "dotX": 120, "dotY": 45, "text": "Check BMI > 30"},
-        {"type": "label", "dotX": 300, "dotY": 200, "text": "Start node"},
+        {"type": "label", "x": 120, "y": 45, "text": "Check BMI > 30"},
+        {"type": "label", "x": 300, "y": 200, "text": "Start node"},
     ]
 
 
@@ -87,14 +87,14 @@ class TestAnnotationFormatting:
 
     def test_label_annotation(self):
         result = _format_annotations([
-            {"type": "label", "dotX": 300, "dotY": 150, "text": "Check vitals"}
+            {"type": "label", "x": 300, "y": 150, "text": "Check vitals"}
         ])
         assert 'Label at (300, 150): "Check vitals"' in result
 
     def test_multiple_labels(self):
         result = _format_annotations([
-            {"type": "label", "dotX": 100, "dotY": 200, "text": "Start"},
-            {"type": "label", "dotX": 400, "dotY": 500, "text": "End"},
+            {"type": "label", "x": 100, "y": 200, "text": "Start"},
+            {"type": "label", "x": 400, "y": 500, "text": "End"},
         ])
         assert "1." in result
         assert "2." in result
@@ -112,9 +112,9 @@ class TestAnnotationFormatting:
 
     def test_includes_pixel_coordinate_info(self):
         result = _format_annotations([
-            {"type": "label", "dotX": 10, "dotY": 20, "text": "Test"}
+            {"type": "label", "x": 10, "y": 20, "text": "Test"}
         ])
-        assert "native image pixels" in result.lower()
+        assert "normalized to the 0-1000 system" in result.lower()
 
     def test_unknown_type_fallback(self):
         result = _format_annotations([
