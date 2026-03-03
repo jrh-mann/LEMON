@@ -17,6 +17,7 @@ from ..utils.logging import setup_logging
 from ..utils.paths import lemon_data_dir
 from ..tools import (
     ViewImageTool,
+    ExtractGuidanceTool,
     UpdatePlanTool,
     GetCurrentWorkflowTool,
     AddNodeTool,
@@ -92,6 +93,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         token_verifier=token_verifier,
     )
     view_image_tool = ViewImageTool()
+    extract_guidance_tool = ExtractGuidanceTool()
     update_plan_tool = UpdatePlanTool()
 
     # Workflow manipulation tools
@@ -132,6 +134,17 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         """Return the uploaded image as a base64 content block."""
         state = dict(session_state or {})
         return view_image_tool.execute({}, session_state=state)
+
+    @server.tool(
+        name="extract_guidance",
+        description="Extract side information from the uploaded workflow image.",
+    )
+    def extract_guidance(
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Extract guidance (notes, legends, linked panels) from the image."""
+        state = dict(session_state or {})
+        return extract_guidance_tool.execute({}, session_state=state)
 
     @server.tool(
         name="update_plan",
