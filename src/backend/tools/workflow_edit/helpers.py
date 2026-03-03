@@ -606,6 +606,88 @@ def build_new_node(
 _load_logger = logging.getLogger(__name__)
 
 
+def _rederive_subprocess_variable_types(
+    nodes: List[Dict[str, Any]],
+    variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+    workflow_id: str,
+) -> List[Dict[str, Any]]:
+    """Re-derive subprocess variable types from their subworkflows.
+
+    For each subprocess node, queries the subworkflow's current output type
+    and updates the corresponding derived variable if it's stale. Persists
+    changes to DB if any variable was updated.
+
+    Args:
+        nodes: Workflow node list (read-only)
+        variables: Workflow variable list (may be replaced)
+        session_state: Session state with workflow_store and user_id
+        workflow_id: Parent workflow ID (for saving back)
+
+    Returns:
+        The (possibly updated) variables list.
+    """
+    from ..workflow_input.add import generate_variable_id
+
+    # Build index: source_node_id → variable index for subprocess vars
+    subprocess_var_idx: Dict[str, int] = {}
+    for i, var in enumerate(variables):
+        if var.get("source") == "subprocess" and var.get("source_node_id"):
+            subprocess_var_idx[var["source_node_id"]] = i
+
+    if not subprocess_var_idx:
+        return variables  # No subprocess variables — nothing to re-derive
+
+    dirty = False  # Track whether any variable was updated
+
+    for node in nodes:
+        if node.get("type") != "subprocess":
+            continue
+        node_id = node.get("id", "")
+        if node_id not in subprocess_var_idx:
+            continue
+        subworkflow_id = node.get("subworkflow_id")
+        if not subworkflow_id:
+            continue  # Can't look up type without a subworkflow reference
+
+        output_info = get_subworkflow_output_type(subworkflow_id, session_state)
+        if output_info is None:
+            continue  # Subworkflow not found or inaccessible — leave as-is
+
+        current_type = output_info.get("type", "string")
+        idx = subprocess_var_idx[node_id]
+        existing_var = variables[idx]
+
+        if existing_var.get("type") == current_type:
+            continue  # Already up to date
+
+        # Type changed — rebuild the variable with the new type and ID
+        output_variable_name = existing_var.get("name", "")
+        new_var_id = generate_variable_id(
+            output_variable_name, current_type, "subprocess",
+        )
+        variables[idx] = {
+            **existing_var,
+            "id": new_var_id,
+            "type": current_type,
+        }
+        dirty = True
+        _load_logger.info(
+            "Re-derived subprocess variable '%s' on node '%s': "
+            "type %s -> %s (subworkflow %s)",
+            output_variable_name, node_id,
+            existing_var.get("type"), current_type, subworkflow_id,
+        )
+
+    # Persist updated variables to DB so the fix sticks across loads
+    if dirty:
+        save_workflow_changes(
+            workflow_id, session_state, variables=variables,
+        )
+
+    return variables
+
+
 def load_workflow_for_tool(
     workflow_id: str,
     session_state: Dict[str, Any],
@@ -698,12 +780,23 @@ def load_workflow_for_tool(
     
     # Convert WorkflowRecord to tool-friendly dict format
     # Note: Storage uses 'inputs' but tools use 'variables' (unified format)
+    variables = record.inputs
+    nodes = record.nodes
+
+    # --- Lazy re-derive subprocess variable types ---
+    # When a subworkflow's output type changes (via set_workflow_output),
+    # the parent workflow's derived subprocess variable becomes stale.
+    # Re-derive on every load so tools always see the current type.
+    variables = _rederive_subprocess_variable_types(
+        nodes, variables, session_state, workflow_id,
+    )
+
     workflow_data = {
         "workflow_id": workflow_id,
         "name": record.name,
-        "nodes": record.nodes,
+        "nodes": nodes,
         "edges": record.edges,
-        "variables": record.inputs,  # Expose as 'variables', stored as 'inputs'
+        "variables": variables,
         "outputs": record.outputs,
         "output_type": record.output_type,
         "tree": record.tree,

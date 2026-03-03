@@ -512,3 +512,278 @@ class TestModifyNodeVariableSync:
         assert len(orch.workflow["variables"]) == 2
         names = {v["name"] for v in orch.workflow["variables"]}
         assert names == {"patient_age", "calc_bmi_adjusted"}
+
+
+# ---------------------------------------------------------------------------
+# Fix F: lazy re-derive subprocess variable types on workflow load
+# ---------------------------------------------------------------------------
+
+class TestLazyReDeriveSubprocessVariables:
+    """Verify load_workflow_for_tool() re-derives subprocess variable types.
+
+    When a subworkflow's output type changes (e.g., via set_workflow_output),
+    calling workflows should pick up the new type automatically on next load.
+    """
+
+    def test_subprocess_var_type_updated_when_subworkflow_output_changes(
+        self, workflow_store, test_user_id,
+    ):
+        """Loading a workflow should update stale subprocess variable types
+        to match the subworkflow's current output type."""
+        from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
+        from src.backend.tools.workflow_input.add import generate_variable_id
+        from tests.conftest import make_session_with_workflow
+
+        # Create subworkflow with output type "string"
+        sub_id, _ = make_session_with_workflow(
+            workflow_store, test_user_id, name="Sub WF",
+            output_type="string",
+        )
+        # Set output definition on subworkflow
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "result", "type": "string"}],
+        )
+
+        # Create parent workflow with a subprocess node pointing to sub_id
+        # The derived variable was originally registered as type "string"
+        old_var_id = generate_variable_id("sub_result", "string", "subprocess")
+        sub_node = {
+            "id": "n_sub", "type": "subprocess", "label": "Run Sub",
+            "x": 0, "y": 0,
+            "subworkflow_id": sub_id,
+            "output_variable": "sub_result",
+        }
+        sub_var = {
+            "id": old_var_id,
+            "name": "sub_result",
+            "type": "string",
+            "source": "subprocess",
+            "source_node_id": "n_sub",
+            "subworkflow_id": sub_id,
+        }
+        parent_id, session_state = make_session_with_workflow(
+            workflow_store, test_user_id, name="Parent WF",
+            nodes=[sub_node], variables=[sub_var],
+        )
+
+        # Now change the subworkflow's output type to "number"
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "result", "type": "number"}],
+        )
+
+        # Load parent workflow — lazy re-derive should update the variable
+        data, err = load_workflow_for_tool(parent_id, session_state)
+        assert err is None
+        assert len(data["variables"]) == 1
+
+        updated_var = data["variables"][0]
+        assert updated_var["type"] == "number", (
+            f"Expected type 'number' after subworkflow change, got '{updated_var['type']}'"
+        )
+        expected_id = generate_variable_id("sub_result", "number", "subprocess")
+        assert updated_var["id"] == expected_id
+
+    def test_subprocess_var_id_regenerated_on_type_change(
+        self, workflow_store, test_user_id,
+    ):
+        """Variable ID should change because it encodes the type."""
+        from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
+        from src.backend.tools.workflow_input.add import generate_variable_id
+        from tests.conftest import make_session_with_workflow
+
+        sub_id, _ = make_session_with_workflow(
+            workflow_store, test_user_id, name="Sub WF",
+            output_type="number",
+        )
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "score", "type": "number"}],
+        )
+
+        old_var_id = generate_variable_id("score_output", "number", "subprocess")
+        sub_node = {
+            "id": "n_sub", "type": "subprocess", "label": "Calc Score",
+            "x": 0, "y": 0,
+            "subworkflow_id": sub_id,
+            "output_variable": "score_output",
+        }
+        sub_var = {
+            "id": old_var_id,
+            "name": "score_output",
+            "type": "number",
+            "source": "subprocess",
+            "source_node_id": "n_sub",
+        }
+        parent_id, session_state = make_session_with_workflow(
+            workflow_store, test_user_id, name="Parent",
+            nodes=[sub_node], variables=[sub_var],
+        )
+
+        # Change subworkflow output to bool
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "score", "type": "bool"}],
+        )
+
+        data, _ = load_workflow_for_tool(parent_id, session_state)
+        updated_var = data["variables"][0]
+        new_expected_id = generate_variable_id("score_output", "bool", "subprocess")
+        assert updated_var["id"] == new_expected_id
+        assert updated_var["id"] != old_var_id
+
+    def test_non_subprocess_variables_untouched(
+        self, workflow_store, test_user_id,
+    ):
+        """Input and calculated variables should not be modified by re-derive."""
+        from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
+        from tests.conftest import make_session_with_workflow
+
+        input_var = {
+            "id": "var_age_number", "name": "age", "type": "number",
+            "source": "input", "source_node_id": "",
+        }
+        calc_var = {
+            "id": "var_calc_bmi_number", "name": "calc_bmi", "type": "number",
+            "source": "calculated", "source_node_id": "n_calc",
+        }
+        calc_node = {
+            "id": "n_calc", "type": "calculation", "label": "BMI",
+            "x": 0, "y": 0,
+            "calculation": {
+                "output": {"name": "calc_bmi"},
+                "operator": "divide",
+                "operands": [
+                    {"kind": "literal", "value": 70},
+                    {"kind": "literal", "value": 1.75},
+                ],
+            },
+        }
+        wf_id, session_state = make_session_with_workflow(
+            workflow_store, test_user_id, name="No Sub WF",
+            nodes=[calc_node], variables=[input_var, calc_var],
+        )
+
+        data, err = load_workflow_for_tool(wf_id, session_state)
+        assert err is None
+        assert len(data["variables"]) == 2
+        # Both should be unchanged
+        types = {v["name"]: v["type"] for v in data["variables"]}
+        assert types == {"age": "number", "calc_bmi": "number"}
+
+    def test_subprocess_node_without_subworkflow_id_no_crash(
+        self, workflow_store, test_user_id,
+    ):
+        """A subprocess node with missing subworkflow_id should not crash re-derive."""
+        from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
+        from tests.conftest import make_session_with_workflow
+
+        sub_node = {
+            "id": "n_sub", "type": "subprocess", "label": "Placeholder",
+            "x": 0, "y": 0,
+            # No subworkflow_id
+            "output_variable": "placeholder_out",
+        }
+        sub_var = {
+            "id": "var_sub_placeholder_out_string", "name": "placeholder_out",
+            "type": "string", "source": "subprocess", "source_node_id": "n_sub",
+        }
+        wf_id, session_state = make_session_with_workflow(
+            workflow_store, test_user_id, name="Partial Sub",
+            nodes=[sub_node], variables=[sub_var],
+        )
+
+        data, err = load_workflow_for_tool(wf_id, session_state)
+        assert err is None
+        # Variable should remain unchanged (can't look up type without subworkflow_id)
+        assert data["variables"][0]["type"] == "string"
+
+    def test_updated_variables_persisted_to_db(
+        self, workflow_store, test_user_id,
+    ):
+        """Re-derived variable types should be saved back to the database."""
+        from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
+        from src.backend.tools.workflow_input.add import generate_variable_id
+        from tests.conftest import make_session_with_workflow
+
+        # Create subworkflow with output type "string"
+        sub_id, _ = make_session_with_workflow(
+            workflow_store, test_user_id, name="Sub WF",
+        )
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "val", "type": "string"}],
+        )
+
+        sub_node = {
+            "id": "n_sub", "type": "subprocess", "label": "Get Val",
+            "x": 0, "y": 0,
+            "subworkflow_id": sub_id,
+            "output_variable": "val_out",
+        }
+        old_var_id = generate_variable_id("val_out", "string", "subprocess")
+        sub_var = {
+            "id": old_var_id, "name": "val_out", "type": "string",
+            "source": "subprocess", "source_node_id": "n_sub",
+        }
+        parent_id, session_state = make_session_with_workflow(
+            workflow_store, test_user_id, name="Parent",
+            nodes=[sub_node], variables=[sub_var],
+        )
+
+        # Change subworkflow output type
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "val", "type": "number"}],
+        )
+
+        # First load triggers re-derive
+        load_workflow_for_tool(parent_id, session_state)
+
+        # Second load should see the persisted update (no re-derive needed)
+        record = workflow_store.get_workflow(parent_id, test_user_id)
+        assert len(record.inputs) == 1
+        assert record.inputs[0]["type"] == "number"
+        expected_id = generate_variable_id("val_out", "number", "subprocess")
+        assert record.inputs[0]["id"] == expected_id
+
+    def test_no_db_write_when_types_already_match(
+        self, workflow_store, test_user_id,
+    ):
+        """If subprocess variable types already match, no DB write should occur."""
+        from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
+        from src.backend.tools.workflow_input.add import generate_variable_id
+        from tests.conftest import make_session_with_workflow
+        from unittest.mock import patch
+
+        sub_id, _ = make_session_with_workflow(
+            workflow_store, test_user_id, name="Sub WF",
+        )
+        workflow_store.update_workflow(
+            sub_id, test_user_id,
+            outputs=[{"name": "val", "type": "number"}],
+        )
+
+        sub_node = {
+            "id": "n_sub", "type": "subprocess", "label": "Get Val",
+            "x": 0, "y": 0,
+            "subworkflow_id": sub_id,
+            "output_variable": "val_out",
+        }
+        var_id = generate_variable_id("val_out", "number", "subprocess")
+        sub_var = {
+            "id": var_id, "name": "val_out", "type": "number",
+            "source": "subprocess", "source_node_id": "n_sub",
+        }
+        parent_id, session_state = make_session_with_workflow(
+            workflow_store, test_user_id, name="Parent",
+            nodes=[sub_node], variables=[sub_var],
+        )
+
+        # Patch save_workflow_changes to detect if it's called
+        with patch(
+            "src.backend.tools.workflow_edit.helpers.save_workflow_changes"
+        ) as mock_save:
+            load_workflow_for_tool(parent_id, session_state)
+            mock_save.assert_not_called()
