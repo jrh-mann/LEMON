@@ -729,11 +729,18 @@ class Orchestrator:
                     if session_id:
                         self.last_session_id = session_id
                     tool_results.append(result)
+                    # If tool returned image blocks (list content), pass through directly
+                    # so the LLM sees the image. Otherwise json.dumps the result dict.
+                    tool_content = (
+                        result.data.get("content")
+                        if isinstance(result.data.get("content"), list)
+                        else json.dumps(result.data)
+                    )
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": call.get("id"),
-                            "content": json.dumps(result.data),
+                            "content": tool_content,
                         }
                     )
                     if on_tool_event:

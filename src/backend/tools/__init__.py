@@ -2,7 +2,7 @@
 
 from .core import Tool, ToolParameter, ToolRegistry
 from .discovery import build_tool_registry, discover_tool_classes
-from .workflow_analysis import AnalyzeWorkflowTool, PublishLatestAnalysisTool, AddImageQuestionTool
+from .workflow_analysis import AddImageQuestionTool, ViewImageTool, UpdatePlanTool
 from .workflow_edit import (
     GetCurrentWorkflowTool,
     AddNodeTool,
@@ -29,9 +29,9 @@ __all__ = [
     "ToolRegistry",
     "build_tool_registry",
     "discover_tool_classes",
-    "AnalyzeWorkflowTool",
-    "PublishLatestAnalysisTool",
     "AddImageQuestionTool",
+    "ViewImageTool",
+    "UpdatePlanTool",
     "GetCurrentWorkflowTool",
     "AddNodeTool",
     "ModifyNodeTool",

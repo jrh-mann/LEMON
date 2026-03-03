@@ -25,52 +25,14 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "analyze_workflow",
+                "name": "view_image",
                 "description": (
-                    "Analyze the most recently uploaded workflow image. "
-                    "Returns JSON with inputs, outputs, tree, doubts, plus session_id. "
-                    "Use session_id + feedback to refine a prior analysis. "
-                    "If no image has been uploaded, the tool will report that."
+                    "Re-examine the uploaded workflow image. Returns the image so you "
+                    "can look at it again during the conversation. No parameters needed."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "session_id": {
-                            "type": "string",
-                            "description": "Optional session id to continue a prior analysis.",
-                        },
-                        "feedback": {
-                            "type": "string",
-                            "description": "Optional feedback to refine the analysis.",
-                        },
-                        "files": {
-                            "type": "array",
-                            "description": (
-                                "Classifications for uploaded files. Required when multiple files "
-                                "are uploaded. Each entry maps a file id to its purpose."
-                            ),
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {"type": "string", "description": "File id from the upload"},
-                                    "purpose": {
-                                        "type": "string",
-                                        "enum": ["flowchart", "guidance", "mixed"],
-                                        "description": "What this file contains",
-                                    },
-                                },
-                                "required": ["id", "purpose"],
-                            },
-                        },
-                        "relationship": {
-                            "type": "string",
-                            "description": (
-                                "How the files relate to each other and what to extract from each. "
-                                "Includes the user's description of the connection between workflows "
-                                "and any per-file extraction notes."
-                            ),
-                        },
-                    },
+                    "properties": {},
                     "required": [],
                 },
             },
@@ -78,15 +40,34 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "publish_latest_analysis",
+                "name": "update_plan",
                 "description": (
-                    "Load the most recent workflow analysis and return it for rendering "
-                    "on the canvas."
+                    "Update the step-by-step plan shown to the user. Call this to outline "
+                    "what you see in the image and mark items as done as you build the workflow."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {},
-                    "required": [],
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "description": "List of plan items to display.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "type": "string",
+                                        "description": "Description of this plan step.",
+                                    },
+                                    "done": {
+                                        "type": "boolean",
+                                        "description": "Whether this step is completed.",
+                                    },
+                                },
+                                "required": ["text", "done"],
+                            },
+                        },
+                    },
+                    "required": ["items"],
                 },
             },
         },

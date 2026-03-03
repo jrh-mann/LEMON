@@ -221,7 +221,15 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
-        if tool in ("add_image_question", "analyze_workflow") and event == "tool_complete" and isinstance(result, dict) and "annotations" in result:
+        # Emit plan_updated when update_plan completes — carries checklist items to frontend
+        if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
+            self.socketio.emit(
+                "plan_updated",
+                {"items": result.get("items", [])},
+                to=self.sid,
+            )
+
+        if tool in ("add_image_question",) and event == "tool_complete" and isinstance(result, dict) and "annotations" in result:
             self.socketio.emit(
                 "annotations_update",
                 {

@@ -104,7 +104,7 @@ def _to_anthropic_messages(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_call_id,
-                            "content": content if isinstance(content, str) else json.dumps(content, ensure_ascii=True),
+                            "content": content if isinstance(content, (str, list)) else json.dumps(content, ensure_ascii=True),
                         }
                     ],
                 }

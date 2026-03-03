@@ -11,14 +11,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
-from pydantic import BaseModel, ConfigDict, Field
 
 from ..storage.workflows import WorkflowStore
 from ..utils.logging import setup_logging
 from ..utils.paths import lemon_data_dir
 from ..tools import (
-    AnalyzeWorkflowTool,
-    PublishLatestAnalysisTool,
+    ViewImageTool,
+    UpdatePlanTool,
     GetCurrentWorkflowTool,
     AddNodeTool,
     ModifyNodeTool,
@@ -83,47 +82,6 @@ def _save_uploaded_image(data_url: str) -> str:
     )
 
 
-class Analysis(BaseModel):
-    inputs: list[dict[str, Any]] = []
-    outputs: list[dict[str, Any]] = []
-    tree: dict[str, Any] = {}
-    doubts: list[str] = []
-
-    model_config = ConfigDict(extra="allow")
-
-
-class FlowNode(BaseModel):
-    id: str
-    type: str
-    label: str
-    x: float
-    y: float
-
-    model_config = ConfigDict(extra="allow")
-
-
-class FlowEdge(BaseModel):
-    from_node: str = Field(alias="from")
-    to: str
-    label: str = ""
-    id: str | None = None
-
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-
-class Flowchart(BaseModel):
-    nodes: list[FlowNode] = []
-    edges: list[FlowEdge] = []
-
-    model_config = ConfigDict(extra="allow")
-
-
-class AnalyzeWorkflowResult(BaseModel):
-    session_id: str
-    analysis: Analysis
-    flowchart: Flowchart
-
-    model_config = ConfigDict(extra="allow")
 
 
 def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMCP:
@@ -141,8 +99,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         auth=auth_settings,
         token_verifier=token_verifier,
     )
-    tool = AnalyzeWorkflowTool(_repo_root())
-    publish_tool = PublishLatestAnalysisTool(_repo_root())
+    view_image_tool = ViewImageTool()
+    update_plan_tool = UpdatePlanTool()
 
     # Workflow manipulation tools
     get_workflow_tool = GetCurrentWorkflowTool()
@@ -172,51 +130,25 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     save_workflow_tool = SaveWorkflowToLibrary()
 
     @server.tool(
-        name="analyze_workflow",
-        description=(
-            "Analyze the most recently uploaded workflow image and return inputs, outputs, "
-            "doubts, and a flowchart representation."
-        ),
+        name="view_image",
+        description="Re-examine the uploaded workflow image.",
     )
-    def analyze_workflow(
-        image_data_url: str | None = None,
-        session_id: str | None = None,
-        feedback: str | None = None,
-        files: list[dict[str, Any]] | None = None,
-        relationship: str | None = None,
-    ) -> AnalyzeWorkflowResult:
-        logger.info("MCP analyze_workflow start session_id=%s has_image=%s files=%s", session_id, bool(image_data_url), len(files or []))
-        if session_id:
-            if not feedback:
-                raise ValueError("feedback is required when session_id is provided.")
-        if image_data_url:
-            _save_uploaded_image(image_data_url)
-
-        args: dict[str, Any] = {}
-        if session_id:
-            args["session_id"] = session_id
-        if feedback:
-            args["feedback"] = feedback
-        if files:
-            args["files"] = files
-        if relationship:
-            args["relationship"] = relationship
-
-        result = tool.execute(args)
-        logger.info("MCP analyze_workflow complete session_id=%s", result.get("session_id"))
-        return AnalyzeWorkflowResult.model_validate(result)
+    def view_image(
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return the uploaded image as a base64 content block."""
+        state = dict(session_state or {})
+        return view_image_tool.execute({}, session_state=state)
 
     @server.tool(
-        name="publish_latest_analysis",
-        description=(
-            "Load the most recent workflow analysis and return it for rendering on the canvas."
-        ),
+        name="update_plan",
+        description="Update the step-by-step plan shown to the user.",
     )
-    def publish_latest_analysis() -> AnalyzeWorkflowResult:
-        logger.info("MCP publish_latest_analysis start")
-        result = publish_tool.execute({})
-        logger.info("MCP publish_latest_analysis complete session_id=%s", result.get("session_id"))
-        return AnalyzeWorkflowResult.model_validate(result)
+    def update_plan(
+        items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Update plan checklist items."""
+        return update_plan_tool.execute({"items": items})
 
     @server.tool(name="get_current_workflow")
     def get_current_workflow(
