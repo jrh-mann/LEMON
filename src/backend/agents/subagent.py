@@ -103,12 +103,12 @@ Return ONLY a JSON object with this structure:
     "start": {
       "id": "start",
       "type": "start",
-      "label": "exact text from diagram",
+      "label": "Workflow Title (you invent this — NOT copied from a diagram node)",
       "children": [
         {
           "id": "n1",
           "type": "decision|action|output",
-          "label": "exact text from diagram",
+          "label": "exact text from the first real node in the diagram",
           "input_ids": ["input_name_type"],
           "edge_label": "Yes|No|optional",
           "children": [ ... ]
@@ -144,6 +144,19 @@ Return ONLY a JSON object with this structure:
 }
 
 Rules:
+- BUILDING tree.start (CRITICAL — READ CAREFULLY):
+  tree.start is a SYNTHETIC entry point that YOU invent. It does NOT correspond to
+  any node in the diagram. Its label should be a descriptive title for the overall
+  workflow (e.g., "Cholesterol Management Pathway", "Loan Approval Process").
+  The first REAL node from the diagram (the one with no incoming arrows, often
+  visually distinct in colour or shape) becomes the FIRST CHILD of tree.start —
+  NOT tree.start itself. Classify that first real node correctly: if its text says
+  something like "Assess X" or "Check Y", it is a DECISION node, not a start node.
+- CLASSIFY NODES BY THEIR MEANING, NOT THEIR SHAPE: Read the text inside each node
+  and think about what it actually does. If a node's text implies evaluating or
+  assessing something (e.g., checking a result, comparing a value, determining a
+  status), it is a DECISION node, not an action. Only nodes that describe a concrete
+  step to perform (e.g., "Prescribe medication", "Send referral") are action nodes.
 - Use exact text from the diagram.
 - Every input must include an "id" computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
