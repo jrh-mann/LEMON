@@ -93,23 +93,6 @@ def _clear_task(sid: str, task_id: str) -> None:
             _TASK_STATE.pop(sid, None)
 
 
-# Patterns that indicate a JSON/SSE stream parse error from the Anthropic SDK.
-# These come from either Python's json module ("Expecting ...") or Rust's
-# serde_json via pydantic-core ("expected ..."). Users should not see raw
-# parser internals — we surface a friendly retry message instead.
-_STREAM_PARSE_PATTERNS = (
-    "Expecting ",          # Python json.JSONDecodeError
-    "expected ",           # Rust serde_json via pydantic-core
-    "Unterminated string", # Python json
-    "Invalid \\escape",    # Python json
-)
-
-
-def _is_stream_parse_error(error_text: str) -> bool:
-    """Return True if the error looks like a JSON/SSE stream parse failure."""
-    return any(error_text.startswith(p) for p in _STREAM_PARSE_PATTERNS)
-
-
 @dataclass
 class SocketChatTask:
     socketio: SocketIO
@@ -410,18 +393,7 @@ class SocketChatTask:
             self._emit_response(response_text)
         except Exception as exc:
             logger.exception("Socket chat failed")
-            # Classify the error for a user-friendly message.
-            # Raw serde_json / json.JSONDecodeError strings like
-            # "expected : at line 1 column 91" are meaningless to users.
-            raw = str(exc)
-            if _is_stream_parse_error(raw):
-                friendly = (
-                    "The AI response was interrupted by a network error. "
-                    "Please try sending your message again."
-                )
-            else:
-                friendly = raw
-            self.emit_error(friendly)
+            self.emit_error(str(exc))
         finally:
             self.done.set()
             _clear_task(self.sid, self.task_id)
