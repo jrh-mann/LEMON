@@ -114,7 +114,7 @@ class SocketChatTask:
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
     did_stream: bool = False
     convo: Optional[Conversation] = None
-    annotations: Optional[list[dict[str, Any]]] = None
+    img_annotations: Optional[list[dict[str, Any]]] = None
     saved_file_paths: list[dict[str, Any]] = field(default_factory=list)  # Saved file metadata
 
     def is_cancelled(self) -> bool:
@@ -153,7 +153,7 @@ class SocketChatTask:
             self.socketio.sleep(5)
             if self.done.is_set() or self.is_cancelled():
                 break
-            self.emit_progress("heartbeat", "Analyzing...")
+            self.emit_progress("heartbeat", "Analysing...")
 
     def flush_tool_summary(self) -> None:
         summary = self.tool_summary.flush()
@@ -182,10 +182,10 @@ class SocketChatTask:
         if tool == "analyze_workflow":
             if event == "tool_progress":
                 # Phase-specific progress from the subagent (e.g., "Extracting guidance (1/2)...")
-                status = args.get("status", "Analyzing workflow...")
+                status = args.get("status", "Analysing workflow...")
                 self.emit_progress(event, status, tool=tool)
             else:
-                self.emit_progress(event, "Analyzing workflow...", tool=tool)
+                self.emit_progress(event, "Analysing workflow...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -313,12 +313,12 @@ class SocketChatTask:
                 self.emit_error(f"Invalid file '{file_info.get('name', '?')}': {exc}")
                 return False
         # Save annotations alongside the first image if provided
-        if self.annotations and isinstance(self.annotations, list) and self.saved_file_paths:
+        if self.img_annotations and isinstance(self.img_annotations, list) and self.saved_file_paths:
             first_image = next(
                 (f for f in self.saved_file_paths if f["file_type"] == "image"), None
             )
             if first_image:
-                save_annotations(first_image["path"], self.annotations, repo_root=self.repo_root)
+                save_annotations(first_image["path"], self.img_annotations, repo_root=self.repo_root)
         return True
 
     def _sync_payload_workflow(self) -> None:
@@ -340,8 +340,19 @@ class SocketChatTask:
         # Set workflow_store and user_id for tool access
         self.convo.orchestrator.workflow_store = self.workflow_store
         self.convo.orchestrator.user_id = self.user_id
-        # Set current_workflow_id so tools know what's on the canvas
-        self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+        # Only set current_workflow_id if it actually exists in the database.
+        # The frontend generates a random UUID for new tabs that don't have a
+        # saved workflow yet — passing that to the orchestrator causes every tool
+        # to try loading a non-existent workflow and fail.
+        if self.current_workflow_id and self.workflow_store:
+            existing = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
+            if existing:
+                self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+            else:
+                logger.info(
+                    "Ignoring frontend current_workflow_id=%s (not in DB)",
+                    self.current_workflow_id,
+                )
         # Set open_tabs so list_workflows_in_library can show all drafts
         self.convo.orchestrator.open_tabs = self.open_tabs or []
 
@@ -441,7 +452,7 @@ def handle_socket_chat(
         analysis=payload.get("analysis"),
         current_workflow_id=payload.get("current_workflow_id"),  # ID of workflow on canvas
         open_tabs=payload.get("open_tabs"),  # All open tabs for list_workflows_in_library
-        annotations=payload.get("annotations"),
+        img_annotations=payload.get("annotations"),
     )
     socketio.start_background_task(task.run)
 

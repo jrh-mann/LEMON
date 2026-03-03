@@ -25,21 +25,21 @@ export default function WorkflowPage() {
     const { id: workflowId } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const [authReady, setAuthReady] = useState(false)
-    
+
     // UI Store state
     const workspaceRevealed = useUIStore(s => s.workspaceRevealed)
     const homeExited = useUIStore(s => s.homeExited)
     const isTransitioning = useUIStore(s => s.isTransitioning)
     const chatHeight = useUIStore(s => s.chatHeight)
     const error = useUIStore(s => s.error)
-    
+
     // UI Store actions
     const revealWorkspace = useUIStore(s => s.revealWorkspace)
     const setHomeExited = useUIStore(s => s.setHomeExited)
     const setIsTransitioning = useUIStore(s => s.setIsTransitioning)
     const setError = useUIStore(s => s.setError)
     const clearError = useUIStore(s => s.clearError)
-    
+
     // Workflow Store
     const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
@@ -68,16 +68,22 @@ export default function WorkflowPage() {
      */
     const startWorkflowSession = useCallback(async (existingId?: string) => {
         const id = existingId || generateWorkflowId()
-        
+
+        // Mark new (unsaved) IDs as "already loaded" so the useEffect
+        // that fetches workflow data from the API doesn't fire a 404.
+        // Existing IDs (from library) are left unmarked so they get fetched.
+        if (!existingId) {
+            loadedWorkflowIdRef.current = id
+        }
         // 1. Play Home Exit animation
         setHomeExited(true)
-        
+
         // 2. Wait for exit animation (opacity/slide up) to finish
         await new Promise(resolve => setTimeout(resolve, 400))
-        
+
         // 3. Navigate to route with ID
         navigate(`/workflow/${id}`)
-        
+
         // 4. Trigger Workspace Reveal (sidebars slide in)
         triggerReveal()
     }, [navigate, setHomeExited, triggerReveal])
@@ -115,7 +121,7 @@ export default function WorkflowPage() {
         if (!authReady || !workflowId) {
             return
         }
-        
+
         if (loadedWorkflowIdRef.current === workflowId) return
 
         let isActive = true
@@ -264,7 +270,7 @@ export default function WorkflowPage() {
                 ? `File "${names[0]}" uploaded. You can now ask me to analyse it.`
                 : `Uploaded ${names.length} files: ${names.join(', ')}.`
             addAssistantMessage(msg)
-            
+
             // Orchestrate exit sequence
             startWorkflowSession()
         }

@@ -1,38 +1,47 @@
 {
   "run_id": "pytest_mcp_transport",
-  "generated_at": "2026-02-25T17:29:19.482641+00:00",
+  "generated_at": "2026-03-03T10:17:42.772684+00:00",
   "cases_selected": [
     "workflow_test"
   ],
   "trials_per_case": 1,
   "total_trials": 1,
   "transport": "mcp",
-  "eval_data_dir": "C:\\tmp\\lemon_eval_pytest_mcp_transport",
-  "history_db_path": "C:\\tmp\\lemon_eval_pytest_mcp_transport\\history.sqlite",
+  "clarify": false,
+  "wall_time_s": 11.3,
+  "token_usage": {
+    "total_tokens": 1996,
+    "output_tokens": 620,
+    "input_tokens": 1376
+  },
+  "eval_data_dir": "/tmp/lemon_eval_pytest_mcp_transport",
   "weights": {
-    "node_f1": 0.25,
-    "edge_f1": 0.25,
-    "variable_f1": 0.15,
-    "output_f1": 0.1,
-    "semantic_score": 0.2,
-    "validity_score": 0.05
+    "llm_judge": 0.5,
+    "semantic_score": 0.25,
+    "validity_score": 0.1,
+    "node_f1": 0.05,
+    "edge_f1": 0.05,
+    "variable_f1": 0.025,
+    "output_f1": 0.025
   },
   "aggregate": {
+    "llm_judge": 0.05,
+    "semantic_score": 0.0,
+    "validity_score": 1.0,
     "node_f1": 0.0,
     "edge_f1": 0.0,
     "variable_f1": 0.0,
     "output_f1": 0.0,
-    "semantic_score": 0.0,
-    "validity_score": 1.0,
-    "composite_raw": 0.05,
-    "composite_score": 5.0,
+    "composite_raw": 0.125,
+    "composite_score": 12.5,
     "percentage_metrics": {
+      "llm_judge": 5.0,
+      "semantic_score": 0.0,
+      "validity_score": 100.0,
       "node_f1": 0.0,
       "edge_f1": 0.0,
       "variable_f1": 0.0,
-      "output_f1": 0.0,
-      "semantic_score": 0.0,
-      "validity_score": 100.0
+      "output_f1": 0.0
     }
   },
   "cases": [
@@ -42,41 +51,45 @@
       "ground_truth_module": "evals.ground_truth.workflow_test_ground_truth",
       "trial_count": 1,
       "aggregate": {
+        "llm_judge": 0.05,
+        "semantic_score": 0.0,
+        "validity_score": 1.0,
         "node_f1": 0.0,
         "edge_f1": 0.0,
         "variable_f1": 0.0,
         "output_f1": 0.0,
-        "semantic_score": 0.0,
-        "validity_score": 1.0,
-        "composite_raw": 0.05,
-        "composite_score": 5.0,
+        "composite_raw": 0.125,
+        "composite_score": 12.5,
         "percentage_metrics": {
+          "llm_judge": 5.0,
+          "semantic_score": 0.0,
+          "validity_score": 100.0,
           "node_f1": 0.0,
           "edge_f1": 0.0,
           "variable_f1": 0.0,
-          "output_f1": 0.0,
-          "semantic_score": 0.0,
-          "validity_score": 100.0
+          "output_f1": 0.0
         }
       },
       "trials": [
         {
           "trial_index": 1,
           "session_id": "mcp_mock_1",
-          "composite_score": 5.0,
+          "composite_score": 12.5,
           "percentage_metrics": {
+            "llm_judge": 5.0,
+            "semantic_score": 0.0,
+            "validity_score": 100.0,
             "node_f1": 0.0,
             "edge_f1": 0.0,
             "variable_f1": 0.0,
-            "output_f1": 0.0,
-            "semantic_score": 0.0,
-            "validity_score": 100.0
+            "output_f1": 0.0
           },
+          "elapsed_s": 11.3,
           "artifacts": {
-            "raw_model_output": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_mcp_transport\\workflow_test\\trial_01\\raw_model_output.txt",
-            "normalized_analysis": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_mcp_transport\\workflow_test\\trial_01\\normalized_analysis.json",
-            "flowchart": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_mcp_transport\\workflow_test\\trial_01\\flowchart.json",
-            "score": "C:\\Users\\dark2\\Year2\\systems_engineering\\LEMON\\evals\\results\\pytest_mcp_transport\\workflow_test\\trial_01\\score.json"
+            "raw_model_output": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_mcp_transport/workflow_test/trial_01/raw_model_output.txt",
+            "normalized_analysis": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_mcp_transport/workflow_test/trial_01/normalized_analysis.json",
+            "flowchart": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_mcp_transport/workflow_test/trial_01/flowchart.json",
+            "score": "/Users/jeetthakwani/dev/LEMON/evals/results/pytest_mcp_transport/workflow_test/trial_01/score.json"
           }
         }
       ]

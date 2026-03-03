@@ -29,7 +29,7 @@ export function registerChatHandlers(socket: Socket): void {
     }
 
     if (data.tool === 'analyze_workflow' && !data.status) {
-      chatStore.setProcessingStatus('Analyzing workflow...')
+      chatStore.setProcessingStatus('Analysing workflow...')
       return
     }
 

@@ -73,7 +73,7 @@ class Subagent:
         image_path: Path,
         session_id: str,
         feedback: Optional[str] = None,
-        annotations: Optional[List[Dict[str, Any]]] = None,
+        img_annotations: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
         on_thinking: Optional[Callable[[str], None]] = None,
@@ -103,12 +103,12 @@ Return ONLY a JSON object with this structure:
     "start": {
       "id": "start",
       "type": "start",
-      "label": "exact text from diagram",
+      "label": "Workflow Title (you invent this — NOT copied from a diagram node)",
       "children": [
         {
           "id": "n1",
           "type": "decision|action|output",
-          "label": "exact text from diagram",
+          "label": "exact text from the first real node in the diagram",
           "input_ids": ["input_name_type"],
           "edge_label": "Yes|No|optional",
           "children": [ ... ]
@@ -144,6 +144,21 @@ Return ONLY a JSON object with this structure:
 }
 
 Rules:
+- BUILDING tree.start (CRITICAL — READ CAREFULLY):
+  tree.start is a SYNTHETIC entry point that YOU invent. It does NOT correspond to
+  any node in the diagram. Its label should be a descriptive title for the overall
+  workflow (e.g., "Cholesterol Management Pathway", "Loan Approval Process").
+  To find the first real node in the diagram (which becomes tree.start's child):
+  - Do NOT assume position — the start node can be anywhere in the layout.
+  - Look for the node with a UNIQUE colour that no other node shares.
+  - It has ONLY outgoing edges and NO incoming edges.
+  Classify that first real node correctly by its text: if it says something like
+  "Assess X" or "Check Y", it is a DECISION node, not a start node.
+- CLASSIFY NODES BY THEIR MEANING, NOT THEIR SHAPE: Read the text inside each node
+  and think about what it actually does. If a node's text implies evaluating or
+  assessing something (e.g., checking a result, comparing a value, determining a
+  status), it is a DECISION node, not an action. Only nodes that describe a concrete
+  step to perform (e.g., "Prescribe medication", "Send referral") are action nodes.
 - Use exact text from the diagram.
 - Every input must include an "id" computed as: input_{slug(name)}_{type}
   - slug: lowercase, replace non-alphanumeric with underscores, collapse repeats.
@@ -301,9 +316,9 @@ by recomputing them deterministically from name + type. Respond only with the up
                     f"and (1000, 1000) is the bottom-right corner. Do NOT use raw image pixels. "
                     f"For example, the exact center of the image is (500, 500)."
                 )
-                if annotations:
+                if img_annotations:
                     scaled_anns = []
-                    for ann in annotations:
+                    for ann in img_annotations:
                         ann_copy = dict(ann)
                         if "x" in ann_copy and "y" in ann_copy:
                             ann_copy["x"] = int(ann_copy["x"] * 1000 / img_w)
@@ -311,8 +326,8 @@ by recomputing them deterministically from name + type. Respond only with the up
                         scaled_anns.append(ann_copy)
                     full_prompt += _format_annotations(scaled_anns)
             else:
-                if annotations:
-                    full_prompt += _format_annotations(annotations)
+                if img_annotations:
+                    full_prompt += _format_annotations(img_annotations)
 
             # Inject extracted guidance into the analysis prompt
             if guidance:
@@ -515,7 +530,7 @@ by recomputing them deterministically from name + type. Respond only with the up
         if is_cancelled():
             raise CancellationError("Subagent cancelled before analysis phase.")
 
-        _progress(f"Analyzing {len(analysis_files)} file(s)...")
+        _progress(f"Analysing {len(analysis_files)} file(s)...")
 
         # Build content blocks: one text block + one per file (image or PDF)
         content_blocks: List[Dict[str, Any]] = []
@@ -1068,15 +1083,15 @@ def _format_guidance(guidance: List[Dict[str, Any]], *, header: str) -> str:
     return "\n".join(parts)
 
 
-def _format_annotations(annotations: List[Dict[str, Any]]) -> str:
+def _format_annotations(img_annotations: List[Dict[str, Any]]) -> str:
     """Format user annotations into a prompt section for the LLM."""
-    if not annotations:
+    if not img_annotations:
         return ""
     lines = [
         "\n\nThe user has provided the following annotations on the image to help clarify it."
         " Coordinates have been normalized to the 0-1000 system (origin top-left):"
     ]
-    for i, ann in enumerate(annotations, 1):
+    for i, ann in enumerate(img_annotations, 1):
         ann_type = ann.get("type", "unknown")
         if ann_type == "label":
             dot_x, dot_y = ann.get("x", 0), ann.get("y", 0)

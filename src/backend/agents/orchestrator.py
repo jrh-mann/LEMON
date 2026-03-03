@@ -269,6 +269,14 @@ class Orchestrator:
             if tool_name in WORKFLOW_INPUT_TOOLS:
                 self._update_analysis_from_tool_result(tool_name, result.data)
 
+        # Track current_workflow_id when create_workflow succeeds so that
+        # subsequent tool calls have the correct fallback workflow reference.
+        if tool_name == "create_workflow" and result.success and isinstance(result.data, dict):
+            new_wf_id = result.data.get("workflow_id")
+            if new_wf_id:
+                self.current_workflow_id = new_wf_id
+                self._logger.info("Updated current_workflow_id to %s after create_workflow", new_wf_id)
+
         # Store analysis data from analyze_workflow into orchestrator state
         # so subsequent tool calls have access to variables, tree, doubts, etc.
         if tool_name == "analyze_workflow" and result.success and isinstance(result.data, dict):
@@ -289,6 +297,11 @@ class Orchestrator:
                     len(self.workflow.get("outputs", [])),
                     len(self.workflow.get("nodes", [])),
                 )
+
+                # Auto-persist the analyzed workflow to WorkflowStore so that
+                # subsequent tool calls (get_current_workflow, add_node, etc.)
+                # can load it from the database.
+                self._auto_persist_analysis(analysis, flowchart)
 
         # Also update workflow when publish_latest_analysis returns a flowchart
         if tool_name == "publish_latest_analysis" and isinstance(result.data, dict):
@@ -376,6 +389,77 @@ class Orchestrator:
             if new_workflow:
                 self.workflow["nodes"] = new_workflow.get("nodes", [])
                 self.workflow["edges"] = new_workflow.get("edges", [])
+
+    def _auto_persist_analysis(
+        self,
+        analysis: Dict[str, Any],
+        flowchart: Optional[Dict[str, Any]],
+    ) -> None:
+        """Auto-persist analyzed workflow to WorkflowStore database.
+
+        Called after analyze_workflow succeeds. Creates or updates the workflow
+        in the database so that subsequent tool calls (get_current_workflow,
+        add_node, batch_edit, etc.) can load it via load_workflow_for_tool().
+
+        Uses current_workflow_id if set (frontend tab ID), otherwise generates
+        a new ID. If a workflow with that ID already exists, updates it.
+        """
+        if not self.workflow_store or not self.user_id:
+            self._logger.warning(
+                "_auto_persist_analysis: missing workflow_store or user_id, skipping"
+            )
+            return
+
+        nodes = flowchart.get("nodes", []) if isinstance(flowchart, dict) else []
+        edges = flowchart.get("edges", []) if isinstance(flowchart, dict) else []
+        variables = analysis.get("variables", [])
+        outputs = analysis.get("outputs", [])
+        tree = analysis.get("tree", {})
+
+        # Use existing current_workflow_id (from frontend tab) or generate new
+        from ..tools.workflow_library.create_workflow import generate_workflow_id
+        workflow_id = self.current_workflow_id or generate_workflow_id()
+
+        try:
+            # Check if workflow already exists in DB (e.g., re-analysis of same tab)
+            existing = self.workflow_store.get_workflow(workflow_id, self.user_id)
+            if existing:
+                # Update existing workflow with new analysis data
+                self.workflow_store.update_workflow(
+                    workflow_id, self.user_id,
+                    nodes=nodes,
+                    edges=edges,
+                    inputs=variables,
+                    outputs=outputs,
+                    tree=tree,
+                )
+                self._logger.info(
+                    "_auto_persist_analysis: updated existing workflow %s (%d nodes)",
+                    workflow_id, len(nodes),
+                )
+            else:
+                # Create new workflow from analysis
+                self.workflow_store.create_workflow(
+                    workflow_id=workflow_id,
+                    user_id=self.user_id,
+                    name="Analyzed Workflow",
+                    description="Auto-created from image analysis",
+                    nodes=nodes,
+                    edges=edges,
+                    inputs=variables,
+                    outputs=outputs,
+                    tree=tree,
+                    output_type="string",
+                    is_draft=False,
+                )
+                self._logger.info(
+                    "_auto_persist_analysis: created workflow %s (%d nodes, %d variables)",
+                    workflow_id, len(nodes), len(variables),
+                )
+
+            self.current_workflow_id = workflow_id
+        except Exception as exc:
+            self._logger.error("_auto_persist_analysis failed: %s", exc)
 
     # Shared validator instance for post-tool checks (non-strict).
     _workflow_validator = WorkflowValidator()
@@ -488,9 +572,16 @@ class Orchestrator:
                 self.history.append({"role": "assistant", "content": partial})
             return partial
         tool_desc = tool_descriptions()
+        # Only tell the LLM about uploaded files if analysis hasn't been done yet.
+        # The frontend keeps files in pendingFiles across messages (for the Source
+        # Image tab), so they arrive on every message. Without this guard the system
+        # prompt keeps saying "user has uploaded a file" and the LLM re-calls
+        # analyze_workflow on every turn.
+        files_for_prompt = self.uploaded_files if not self.last_session_id else []
+
         system = build_system_prompt(
             last_session_id=self.last_session_id,
-            has_files=self.uploaded_files,
+            has_files=files_for_prompt,
             allow_tools=allow_tools,
             reasoning=self.workflow.get("reasoning", ""),
             guidance=self.workflow.get("guidance", []),
@@ -507,8 +598,9 @@ class Orchestrator:
 
         # Prepend a file notice to the user message so the LLM sees attached files
         # directly in the conversation (not just in the system prompt).
+        # Only on the first message (before analysis), not on follow-ups.
         effective_message = user_message
-        if self.uploaded_files:
+        if files_for_prompt:
             file_names = [f.get("name", "?") for f in self.uploaded_files]
             effective_message = f"[Attached files: {', '.join(file_names)}]\n\n{user_message}"
 
@@ -660,6 +752,7 @@ class Orchestrator:
                         "tool_error name=%s error=%s",
                         tool_name,
                         str(exc),
+                        exc_info=True,
                     )
                     error_msg = f"Tool error ({tool_name}): {exc}"
                     # Save to history before returning error

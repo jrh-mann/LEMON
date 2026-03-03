@@ -99,6 +99,8 @@ export async function exportAsPNG(ctx: ExportContext): Promise<string | null> {
         '--rose-light': computedStyle.getPropertyValue('--rose-light').trim() || 'rgba(194, 93, 106, 0.15)',
         '--sky': computedStyle.getPropertyValue('--sky').trim() || '#4a90a4',
         '--sky-light': computedStyle.getPropertyValue('--sky-light').trim() || 'rgba(74, 144, 164, 0.15)',
+        '--purple': computedStyle.getPropertyValue('--purple').trim() || '#7c3aed',
+        '--purple-light': computedStyle.getPropertyValue('--purple-light').trim() || 'rgba(124, 58, 237, 0.15)',
     }
 
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement
