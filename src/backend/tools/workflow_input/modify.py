@@ -1,8 +1,8 @@
 """Modify workflow variable tool.
 
-This tool allows modifying existing variables, including derived variables
-from subprocess nodes. This is essential when the automatically inferred
-type is incorrect or needs adjustment.
+Only modifies user-input variables (source='input'). Derived variables
+(source='calculated' or 'subprocess') are managed by their producing nodes
+and cannot be modified directly — modify the node instead.
 
 Multi-workflow architecture:
 - Requires workflow_id parameter (workflow must exist in library)
@@ -22,11 +22,11 @@ from .add import generate_variable_id
 
 
 class ModifyWorkflowVariableTool(WorkflowTool):
-    """Modify an existing workflow variable's properties.
+    """Modify an existing workflow input variable's properties.
     
-    This tool can change the type, description, range, or enum values of any
-    variable, including derived variables created by subprocess nodes. Use this
-    when the auto-inferred type from a subprocess is incorrect.
+    Only operates on user-input variables (source='input'). Derived variables
+    from calculation or subprocess nodes are read-only — modify the producing
+    node instead to update them.
     
     IMPORTANT: Changing a variable's type will update its ID (since IDs include
     the type). Any decision nodes referencing the old ID will need to be updated.
@@ -38,10 +38,10 @@ class ModifyWorkflowVariableTool(WorkflowTool):
 
     name = "modify_workflow_variable"
     description = (
-        "Modify an existing workflow variable's properties (type, description, range, enum values). "
+        "Modify an existing workflow input variable's properties (type, description, range, enum values). "
         "Requires workflow_id. "
-        "Use this to correct auto-inferred types for subprocess outputs. For example, if a subprocess "
-        "output was inferred as 'string' but should be 'number', use this tool to fix it. "
+        "Only works on user-input variables (source='input'). Derived variables from calculation or "
+        "subprocess nodes are read-only — modify the producing node instead. "
         "NOTE: Changing the type will also update the variable ID."
     )
     parameters = [
@@ -154,6 +154,18 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             return {
                 "success": False,
                 "error": f"Variable '{name}' not found. Available variables: {available}"
+            }
+
+        # Derived variables are read-only — managed by their producing nodes
+        var_source = target_var.get("source", "input")
+        if var_source != "input":
+            return {
+                "success": False,
+                "error": (
+                    f"Cannot modify derived variable '{name}' (source='{var_source}'). "
+                    f"Modify the producing node instead — the variable will update automatically."
+                ),
+                "error_code": "DERIVED_VARIABLE_READONLY",
             }
 
         # Track what changed for the message

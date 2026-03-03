@@ -43,10 +43,10 @@ class TestModifyWorkflowVariableTool:
             },
         ]
 
-    def test_change_subprocess_variable_type_from_string_to_float(
+    def test_change_subprocess_variable_type_rejected(
         self, tool, workflow_store, test_user_id, test_variables
     ):
-        """Should change a subprocess output variable from string to float."""
+        """Derived variables (subprocess) are read-only — must modify producing node."""
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, variables=test_variables
         )
@@ -56,37 +56,35 @@ class TestModifyWorkflowVariableTool:
             session_state=session,
         )
 
-        assert result["success"] is True
-        assert "type" in result["message"]
-        
-        # Check the variable was updated
-        var = result["variable"]
-        assert var["type"] == "number"
-        assert var["id"] == "var_sub_bmi_number"  # ID should change with type
-        assert var["source"] == "subprocess"  # Source should remain unchanged
-        
-        # Check warning about ID change
-        assert result["old_id"] == "var_sub_bmi_string"
-        assert result["new_id"] == "var_sub_bmi_number"
-        assert "warning" in result
+        assert result["success"] is False
+        assert result["error_code"] == "DERIVED_VARIABLE_READONLY"
+        assert "subprocess" in result["error"]
 
-    def test_change_subprocess_variable_type_to_integer(
-        self, tool, workflow_store, test_user_id, test_variables
+    def test_change_calculated_variable_rejected(
+        self, tool, workflow_store, test_user_id
     ):
-        """Should change a subprocess output variable to integer type."""
+        """Derived variables (calculated) are read-only — must modify producing node."""
+        variables = [
+            {
+                "id": "var_calc_total_number",
+                "name": "total",
+                "type": "number",
+                "source": "calculated",
+                "source_node_id": "n1",
+            },
+        ]
         workflow_id, session = make_session_with_workflow(
-            workflow_store, test_user_id, variables=test_variables
+            workflow_store, test_user_id, variables=variables
         )
 
         result = tool.execute(
-            {"workflow_id": workflow_id, "name": "BMI", "new_type": "integer"},
+            {"workflow_id": workflow_id, "name": "total", "new_name": "grand_total"},
             session_state=session,
         )
 
-        assert result["success"] is True
-        var = result["variable"]
-        assert var["type"] == "number"
-        assert var["id"] == "var_sub_bmi_number"
+        assert result["success"] is False
+        assert result["error_code"] == "DERIVED_VARIABLE_READONLY"
+        assert "calculated" in result["error"]
 
     def test_change_input_variable_type(
         self, tool, workflow_store, test_user_id, test_variables
@@ -129,22 +127,17 @@ class TestModifyWorkflowVariableTool:
             workflow_store, test_user_id, variables=test_variables
         )
 
-        # First change BMI to float
-        tool.execute(
-            {"workflow_id": workflow_id, "name": "BMI", "new_type": "number"},
-            session_state=session,
-        )
-        
-        # Then add range
+        # Change Patient Age to number type first, then add range
         result = tool.execute(
-            {"workflow_id": workflow_id, "name": "BMI", "range_min": 10.0, "range_max": 50.0},
+            {"workflow_id": workflow_id, "name": "Patient Age",
+             "new_type": "number", "range_min": 0, "range_max": 150},
             session_state=session,
         )
 
         assert result["success"] is True
         var = result["variable"]
-        assert var["range"]["min"] == 10.0
-        assert var["range"]["max"] == 50.0
+        assert var["range"]["min"] == 0
+        assert var["range"]["max"] == 150
 
     def test_update_enum_values(self, tool, workflow_store, test_user_id, test_variables):
         """Should update enum values."""
@@ -268,7 +261,7 @@ class TestModifyWorkflowVariableTool:
         )
 
         result = tool.execute(
-            {"workflow_id": workflow_id, "name": "BMI", "new_type": "integer"},
+            {"workflow_id": workflow_id, "name": "Patient Age", "new_type": "number"},
             session_state=session,
         )
 
@@ -277,7 +270,6 @@ class TestModifyWorkflowVariableTool:
         
         # Verify update persisted by reloading from database
         record = workflow_store.get_workflow(workflow_id, test_user_id)
-        bmi_var = next((v for v in record.inputs if v.get("name") == "BMI"), None)
-        assert bmi_var is not None
-        assert bmi_var["type"] == "number"
-        assert bmi_var["id"] == "var_sub_bmi_number"
+        age_var = next((v for v in record.inputs if v.get("name") == "Patient Age"), None)
+        assert age_var is not None
+        assert age_var["type"] == "number"
