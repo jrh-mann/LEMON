@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 import os
 import json
 import logging
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..tools import ToolRegistry
@@ -595,13 +597,26 @@ class Orchestrator:
                 len(self.history)
             )
 
-        # Prepend a file notice to the user message so the LLM sees attached files
-        # directly in the conversation (not just in the system prompt).
-        # Only on the first message (before analysis), not on follow-ups.
-        effective_message = user_message
-        if files_for_prompt:
-            file_names = [f.get("name", "?") for f in self.uploaded_files]
-            effective_message = f"[Attached files: {', '.join(file_names)}]\n\n{user_message}"
+        # Build user message content — inject base64 image if uploaded files contain images.
+        # The LLM sees the image directly in the conversation (vision-driven extraction).
+        effective_message: Any = user_message
+        if self.uploaded_files:
+            content_blocks: List[Dict[str, Any]] = []
+            for f in self.uploaded_files:
+                if f.get("file_type") == "image":
+                    image_path = Path(f["path"])
+                    if image_path.exists():
+                        b64 = base64.b64encode(image_path.read_bytes()).decode()
+                        suffix = image_path.suffix.lower()
+                        media = "image/jpeg" if suffix in (".jpg", ".jpeg") else f"image/{suffix.lstrip('.')}"
+                        content_blocks.append({
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": media, "data": b64},
+                        })
+            if content_blocks:
+                # Append the text after the image(s) so the LLM sees both
+                content_blocks.append({"type": "text", "text": user_message})
+                effective_message = content_blocks
 
         messages = [
             {"role": "system", "content": system},
