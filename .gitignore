@@ -75,9 +75,13 @@ publishprofile.xml
 .lemon/auth.sqlite
 .lemon/tokens_usage.json
 .lemon/workflows.sqlite
+.lemon/convo_test_*
+.lemon/e2e_test_*
+.lemon/harness_test_*
 .mcp.json
 .cursor/
 .claude/settings.local.json
+status.md
 
 # Local tool outputs
 pytest_output.txt
