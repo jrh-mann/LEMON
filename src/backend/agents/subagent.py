@@ -148,10 +148,12 @@ Rules:
   tree.start is a SYNTHETIC entry point that YOU invent. It does NOT correspond to
   any node in the diagram. Its label should be a descriptive title for the overall
   workflow (e.g., "Cholesterol Management Pathway", "Loan Approval Process").
-  The first REAL node from the diagram (the one with no incoming arrows, often
-  visually distinct in colour or shape) becomes the FIRST CHILD of tree.start —
-  NOT tree.start itself. Classify that first real node correctly: if its text says
-  something like "Assess X" or "Check Y", it is a DECISION node, not a start node.
+  To find the first real node in the diagram (which becomes tree.start's child):
+  - Do NOT assume position — the start node can be anywhere in the layout.
+  - Look for the node with a UNIQUE colour that no other node shares.
+  - It has ONLY outgoing edges and NO incoming edges.
+  Classify that first real node correctly by its text: if it says something like
+  "Assess X" or "Check Y", it is a DECISION node, not a start node.
 - CLASSIFY NODES BY THEIR MEANING, NOT THEIR SHAPE: Read the text inside each node
   and think about what it actually does. If a node's text implies evaluating or
   assessing something (e.g., checking a result, comparing a value, determining a
