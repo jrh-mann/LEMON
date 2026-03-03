@@ -459,20 +459,34 @@ class Orchestrator:
 
         # Build user message content — inject base64 image if uploaded files contain images.
         # The LLM sees the image directly in the conversation (vision-driven extraction).
+        # Anthropic limit: ~5MB per image (before base64). We cap at 4.5MB to be safe.
+        _MAX_IMAGE_BYTES = 4_500_000
         effective_message: Any = user_message
         if self.uploaded_files:
             content_blocks: List[Dict[str, Any]] = []
             for f in self.uploaded_files:
                 if f.get("file_type") == "image":
                     image_path = Path(f["path"])
-                    if image_path.exists():
-                        b64 = base64.b64encode(image_path.read_bytes()).decode()
-                        suffix = image_path.suffix.lower()
-                        media = "image/jpeg" if suffix in (".jpg", ".jpeg") else f"image/{suffix.lstrip('.')}"
-                        content_blocks.append({
-                            "type": "image",
-                            "source": {"type": "base64", "media_type": media, "data": b64},
-                        })
+                    if not image_path.exists():
+                        self._logger.warning("Image file not found: %s", image_path)
+                        continue
+                    raw_bytes = image_path.read_bytes()
+                    if len(raw_bytes) > _MAX_IMAGE_BYTES:
+                        self._logger.warning(
+                            "Image %s too large (%d bytes > %d), skipping",
+                            image_path.name, len(raw_bytes), _MAX_IMAGE_BYTES,
+                        )
+                        continue
+                    b64 = base64.b64encode(raw_bytes).decode()
+                    suffix = image_path.suffix.lower()
+                    media = "image/jpeg" if suffix in (".jpg", ".jpeg") else f"image/{suffix.lstrip('.')}"
+                    self._logger.info(
+                        "Injecting image %s (%d bytes, media=%s)", image_path.name, len(raw_bytes), media,
+                    )
+                    content_blocks.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media, "data": b64},
+                    })
             if content_blocks:
                 # Append the text after the image(s) so the LLM sees both
                 content_blocks.append({"type": "text", "text": user_message})
