@@ -611,13 +611,6 @@ class Orchestrator:
                     try:
                         args = json.loads(args_text)
                     except json.JSONDecodeError:
-                        # Log the malformed arguments so we can diagnose
-                        # silent tool failures caused by dropped args.
-                        self._tool_logger.warning(
-                            "Malformed tool arguments for %s, falling back to {}: %s",
-                            tool_name,
-                            args_text[:200],
-                        )
                         args = {}
                 elif isinstance(args_text, dict):
                     args = args_text
@@ -728,27 +721,15 @@ class Orchestrator:
                     ),
                 }
             )
-            # Wrap post-tool LLM call in try/except — the Anthropic SDK's
-            # SSE JSONL decoder can raise json.JSONDecodeError on corrupted
-            # stream data, which otherwise escapes respond() entirely.
-            try:
-                raw, tool_calls = call_llm_with_tools(
-                    messages,
-                    tools=tool_desc,
-                    tool_choice=None,
-                    on_delta=on_delta if stream else None,
-                    caller="orchestrator",
-                    request_tag="post_tool",
-                    should_cancel=should_cancel,
-                )
-            except CancellationError:
-                return finalize_cancel()
-            except Exception as exc:
-                self._logger.exception("LLM error in post-tool follow-up")
-                error_msg = f"LLM error: {exc}"
-                self.history.append({"role": "user", "content": user_message})
-                self.history.append({"role": "assistant", "content": error_msg})
-                return error_msg
+            raw, tool_calls = call_llm_with_tools(
+                messages,
+                tools=tool_desc,
+                tool_choice=None,
+                on_delta=on_delta if stream else None,
+                caller="orchestrator",
+                request_tag="post_tool",
+                should_cancel=should_cancel,
+            )
             if is_cancelled():
                 return finalize_cancel()
 
