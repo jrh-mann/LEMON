@@ -62,16 +62,23 @@ export default function WorkflowPage() {
      */
     const startWorkflowSession = useCallback(async (existingId?: string) => {
         const id = existingId || crypto.randomUUID()
-        
+
+        // Mark new (unsaved) IDs as "already loaded" so the useEffect
+        // that fetches workflow data from the API doesn't fire a 404.
+        // Existing IDs (from library) are left unmarked so they get fetched.
+        if (!existingId) {
+            loadedWorkflowIdRef.current = id
+        }
+
         // 1. Play Home Exit animation
         setHomeExited(true)
-        
+
         // 2. Wait for exit animation (opacity/slide up) to finish
         await new Promise(resolve => setTimeout(resolve, 400))
-        
+
         // 3. Navigate to route with ID
         navigate(`/workflow/${id}`)
-        
+
         // 4. Trigger Workspace Reveal (sidebars slide in)
         triggerReveal()
     }, [navigate, setHomeExited, triggerReveal])
