@@ -269,11 +269,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
         <div className="resize-grip"></div>
       </div>
 
-      <div className="chat-header">
-        <h3>Orchestrator</h3>
-        <p className="muted">Describe your workflow or ask questions</p>
-      </div>
-
       <div className="chat-messages" id="chatThread" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
