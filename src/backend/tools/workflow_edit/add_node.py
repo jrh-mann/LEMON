@@ -428,5 +428,6 @@ class AddNodeTool(WorkflowTool):
             "workflow_id": workflow_id,
             "action": "add_node",
             "node": new_node,
+            "new_variables": new_variables,  # Auto-registered calc/subprocess output vars
             "message": f"Added {args['type']} node '{args['label']}' to workflow {workflow_id}",
         }

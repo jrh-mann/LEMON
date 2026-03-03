@@ -157,7 +157,7 @@ class WorkflowValidator:
             
             # Validate calculation nodes have required fields and valid configuration
             if node_type == "calculation":
-                calculation_errors = self._validate_calculation_node(node, workflow_variables)
+                calculation_errors = self._validate_calculation_node(node, workflow_variables, derived_output_vars)
                 errors.extend(calculation_errors)
 
             # Rule 9: Validate decision nodes have structured conditions
@@ -732,6 +732,7 @@ class WorkflowValidator:
         self,
         node: Dict[str, Any],
         workflow_variables: List[Dict[str, Any]],
+        derived_output_vars: Optional[Set[str]] = None,
     ) -> List[ValidationError]:
         """Validate calculation node has required fields and valid configuration.
         
@@ -747,6 +748,7 @@ class WorkflowValidator:
         Args:
             node: The calculation node to validate
             workflow_variables: List of workflow variable definitions
+            derived_output_vars: Variable names from other calc/subprocess nodes
             
         Returns:
             List of ValidationError objects for any issues found
@@ -872,6 +874,9 @@ class WorkflowValidator:
             # Build set of valid variable IDs and names
             var_ids = {v.get("id") for v in workflow_variables if v.get("id")}
             var_names = {v.get("name") for v in workflow_variables if v.get("name")}
+            # Include derived outputs (calc/subprocess) so chained refs resolve
+            if derived_output_vars:
+                var_names = var_names | derived_output_vars
             
             # Validate each operand
             for i, operand in enumerate(operands):

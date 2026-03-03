@@ -349,6 +349,9 @@ class Orchestrator:
             node = result.get("node")
             if node:
                 self.workflow["nodes"].append(node)
+            # Sync auto-registered variables (calc/subprocess output vars)
+            for var in result.get("new_variables", []):
+                self.workflow["variables"].append(var)
 
         elif tool_name == "modify_node":
             node = result.get("node")
@@ -389,6 +392,10 @@ class Orchestrator:
             if new_workflow:
                 self.workflow["nodes"] = new_workflow.get("nodes", [])
                 self.workflow["edges"] = new_workflow.get("edges", [])
+            # Sync variables if batch edit auto-registered calc/subprocess outputs
+            wa = result.get("workflow_analysis", {})
+            if "variables" in wa:
+                self.workflow["variables"] = wa["variables"]
 
     def _auto_persist_analysis(
         self,
