@@ -39,30 +39,35 @@ def build_system_prompt(
         "You are a workflow manipulation assistant. Your job is to help users create and modify flowcharts by calling tools.\n\n"
         "## CRITICAL: Workflow ID-Centric Architecture\n"
         "Every workflow operation requires a workflow_id. The workflow must exist before you can edit it.\n\n"
-        "### Creating a New Workflow\n"
-        "ALWAYS call create_workflow FIRST when building a new workflow:\n"
+        "### Primary Workflow (Canvas)\n"
+        "When the user has a workflow open on the canvas, its ID is provided below as 'Current Workflow'. "
+        "Use that ID directly — do NOT call create_workflow for it. Start adding variables and nodes immediately.\n\n"
+        "### Subworkflows\n"
+        "Call create_workflow ONLY when you need to create a SEPARATE sub-workflow (e.g., for use in subprocess nodes):\n"
         "```\n"
-        "create_workflow(name='BMI Calculator', output_type='number')\n"
-        "// Returns: {workflow_id: 'wf_abc123', ...}\n"
+        "create_workflow(name='eGFR Calculator', output_type='number')\n"
+        "// Returns: {workflow_id: 'wf_xyz789', ...}\n"
         "```\n"
-        "Then use that workflow_id in ALL subsequent tool calls.\n\n"
+        "Each create_workflow call generates a unique ID. Use that subworkflow's ID when building its nodes.\n\n"
         "### Editing an Existing Workflow\n"
         "If the user mentions an existing workflow by name, call list_workflows_in_library to find its ID first.\n\n"
     )
 
-    # Inject the current workflow ID so the LLM can reference it directly
-    # without needing a discovery tool call.
+    # Inject the current workflow ID so the LLM can use it directly
+    # without calling create_workflow for the primary canvas workflow.
     if current_workflow_id:
         system += (
             f"### Current Workflow\n"
             f"The workflow currently open on the canvas has ID: `{current_workflow_id}`.\n"
-            f"Use this ID for all tool calls that operate on the current workflow.\n\n"
+            f"This is the PRIMARY workflow. Use this ID for all tool calls that build/edit it.\n"
+            f"Do NOT call create_workflow for this workflow — it already exists.\n"
+            f"Start adding variables and nodes immediately using this ID.\n\n"
         )
 
     system += (
         "## CRITICAL: When to Call Tools\n"
         "ALWAYS call tools immediately when the user uses action verbs:\n"
-        "- CREATE NEW WORKFLOW → call create_workflow (FIRST!)\n"
+        "- CREATE SUBWORKFLOW → call create_workflow (only for sub-workflows, NOT the primary canvas workflow)\n"
         "- ADD/CREATE (node) → call add_node with workflow_id\n"
         "- DELETE/REMOVE (node) → call delete_node with workflow_id\n"
         "- DELETE/REMOVE (connection/edge) → call delete_connection with workflow_id\n"
@@ -80,8 +85,7 @@ def build_system_prompt(
         "Examples:\n"
         "- User: 'Create a BMI calculation workflow'\n"
         "  → First call list_workflows_in_library(search_query='BMI') to check\n"
-        "  → If none exist, call create_workflow(name='BMI Calculator', output_type='number')\n"
-        "  → Then use the returned workflow_id for all subsequent tools\n"
+        "  → If none exist, use the current canvas workflow ID to start building (add variables, add nodes)\n"
         "- User: 'Show me my saved workflows' → Call list_workflows_in_library()\n"
         "- User: 'Do I have any healthcare workflows?' → Call list_workflows_in_library(domain='Healthcare')\n\n"
         "DO NOT ask for confirmation. DO NOT clarify unless the request is truly ambiguous (e.g., 'add a node' without any description). "
@@ -165,7 +169,7 @@ def build_system_prompt(
         "CRITICAL: In batch add_connection operations, use 'from' and 'to' fields (NOT 'from_node_id'/'to_node_id').\n\n"
         "## Post-Analysis Workflow (CRITICAL)\n"
         "After the initial analyze_workflow completes:\n"
-        "1. Call create_workflow (name, output_type) — gets you a workflow_id\n"
+        "1. Use the current canvas workflow_id (do NOT call create_workflow — it already exists)\n"
         "2. Call add_workflow_variable for each input variable\n"
         "3. Build nodes using add_node or batch_edit_workflow\n"
         "4. Do ALL of this IMMEDIATELY — do NOT ask the user for confirmation.\n\n"

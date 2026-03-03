@@ -340,19 +340,38 @@ class SocketChatTask:
         # Set workflow_store and user_id for tool access
         self.convo.orchestrator.workflow_store = self.workflow_store
         self.convo.orchestrator.user_id = self.user_id
-        # Only set current_workflow_id if it actually exists in the database.
-        # The frontend generates a random UUID for new tabs that don't have a
-        # saved workflow yet — passing that to the orchestrator causes every tool
-        # to try loading a non-existent workflow and fail.
+        # Ensure the canvas workflow exists in the database so tools can
+        # load and edit it. The frontend generates a wf_ UUID when a new tab
+        # is opened — if that ID isn't in the DB yet, auto-create an empty
+        # skeleton record so the orchestrator can reference it immediately.
         if self.current_workflow_id and self.workflow_store:
             existing = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
-            if existing:
-                self.convo.orchestrator.current_workflow_id = self.current_workflow_id
-            else:
-                logger.info(
-                    "Ignoring frontend current_workflow_id=%s (not in DB)",
-                    self.current_workflow_id,
-                )
+            if not existing:
+                try:
+                    self.workflow_store.create_workflow(
+                        workflow_id=self.current_workflow_id,
+                        user_id=self.user_id,
+                        name="New Workflow",
+                        description="",
+                        nodes=[],
+                        edges=[],
+                        inputs=[],
+                        outputs=[],
+                        tree={},
+                        doubts=[],
+                        output_type="string",
+                        is_draft=True,
+                    )
+                    logger.info(
+                        "Auto-persisted canvas workflow %s for user %s",
+                        self.current_workflow_id, self.user_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to auto-persist canvas workflow %s",
+                        self.current_workflow_id,
+                    )
+            self.convo.orchestrator.current_workflow_id = self.current_workflow_id
         # Set open_tabs so list_workflows_in_library can show all drafts
         self.convo.orchestrator.open_tabs = self.open_tabs or []
 
