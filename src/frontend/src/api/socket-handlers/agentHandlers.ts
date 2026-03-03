@@ -17,7 +17,7 @@ export function registerAgentHandlers(socket: Socket): void {
     const chatStore = useChatStore.getState()
 
     chatStore.setStreaming(false)
-    chatStore.setPendingQuestion(data.question, data.task_id)
+    chatStore.setPendingQuestion({ question: data.question, options: [] })
 
     // Also add as assistant message for display
     addAssistantMessage(data.question)

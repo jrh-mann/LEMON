@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { listWorkflows } from '../api/workflows'
 import VariableModal from './VariableModal'
@@ -71,7 +70,6 @@ const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 0
 
 export default function RightSidebar() {
-  const { openModal } = useUIStore()
   const {
     currentWorkflow,
     currentAnalysis,
@@ -367,13 +365,6 @@ export default function RightSidebar() {
                   />
                 )}
 
-                <button
-                  className="ghost full-width"
-                  onClick={() => openModal('nodeProperties', { nodeId: selectedNode.id })}
-                  style={{ marginTop: 8 }}
-                >
-                  Open in modal
-                </button>
               </div>
             )}
 
