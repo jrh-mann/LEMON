@@ -87,11 +87,6 @@ export function registerChatHandlers(socket: Socket): void {
     } else {
       addAssistantMessage(data.response, data.tool_calls)
     }
-
-    // Show system message when generation was interrupted
-    if (data.system_message) {
-      addAssistantMessage(data.system_message)
-    }
   })
 
   // Streaming response chunks

@@ -716,7 +716,6 @@ export interface SocketChatResponse {
   tool_calls: ToolCall[]
   task_id?: string
   cancelled?: boolean
-  system_message?: string
 }
 
 // NOTE: SocketAgentQuestion and SocketAgentComplete were removed —

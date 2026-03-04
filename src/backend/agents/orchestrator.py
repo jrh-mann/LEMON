@@ -487,6 +487,17 @@ class Orchestrator:
             self.history.append({"role": "user", "content": user_message})
             if partial:
                 self.history.append({"role": "assistant", "content": partial})
+            # Tell the LLM its generation was interrupted so it can pick up
+            # where it left off on the next turn
+            self.history.append({
+                "role": "user",
+                "content": (
+                    "[SYSTEM] Your previous response was interrupted by the user. "
+                    "Any tool calls in progress may not have completed. "
+                    "When the user sends their next message, continue from where you left off."
+                ),
+            })
+            self.history.append({"role": "assistant", "content": "Understood."})
             return partial
         tool_desc = tool_descriptions()
 

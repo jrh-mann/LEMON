@@ -422,7 +422,6 @@ class SocketChatTask:
         }
         if cancelled:
             payload["cancelled"] = True
-            payload["system_message"] = "Generation interrupted — showing progress up to cancellation."
         self.socketio.emit("chat_response", payload, to=self.sid)
 
     def run(self) -> None:
