@@ -474,12 +474,11 @@ class Orchestrator:
                 as they stream from the LLM.
         """
         self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
-        # Store uploaded files metadata for tool access.
-        # Only overwrite if new files are provided — subsequent messages
-        # (follow-ups, answers) don't re-send files, so preserve the
-        # existing list so view_image can still access them.
-        if has_files:
-            self.uploaded_files = has_files
+        # Track which files are NEW this turn (for base64 injection into the message)
+        # vs which files exist from previous turns (for tool access via session_state).
+        new_files = has_files or []
+        if new_files:
+            self.uploaded_files = new_files
         self._logger.info("uploaded_files count=%d files=%s", len(self.uploaded_files), [f.get("name") for f in self.uploaded_files])
 
         def is_cancelled() -> bool:
@@ -506,7 +505,7 @@ class Orchestrator:
         tool_desc = tool_descriptions()
 
         system = build_system_prompt(
-            has_files=self.uploaded_files,
+            has_files=self.uploaded_files,  # all files (current + previous) for prompt context
             allow_tools=allow_tools,
             current_workflow_id=self.current_workflow_id,
             guidance=self._guidance if self._guidance else None,
@@ -520,16 +519,15 @@ class Orchestrator:
                 len(self.history)
             )
 
-        # Build user message content — inject base64 images and PDFs if uploaded.
-        # The LLM sees files directly in the conversation (vision-driven extraction).
-        # Anthropic limit: ~5MB per image (before base64). We cap at 4.5MB to be safe.
-        # PDFs: Anthropic supports native document content blocks (up to ~32MB).
+        # Build user message content — inject base64 images and PDFs if uploaded THIS TURN.
+        # Only new_files get injected; previously uploaded files are already in history
+        # and remain accessible to tools (view_image) via self.uploaded_files.
         _MAX_IMAGE_BYTES = 4_500_000
         _MAX_PDF_BYTES = 32_000_000
         effective_message: Any = user_message
-        if self.uploaded_files:
+        if new_files:
             content_blocks: List[Dict[str, Any]] = []
-            for f in self.uploaded_files:
+            for f in new_files:
                 if f.get("file_type") == "image":
                     image_path = Path(f["path"])
                     if not image_path.exists():
