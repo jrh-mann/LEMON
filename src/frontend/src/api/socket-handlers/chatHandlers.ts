@@ -1,5 +1,5 @@
 /**
- * Chat-related socket event handlers.
+ * Chat-related WebSocket event handlers.
  * Handles: chat_progress, chat_thinking, chat_response, chat_stream, chat_cancelled
  *
  * Events can come from two sources:
@@ -11,17 +11,17 @@
  * events arrive before the async page load sets currentWorkflow.id.
  * Chat.tsx reads from the buffer keyed by the currently viewed workflow.
  */
-import type { Socket } from 'socket.io-client'
 import { useChatStore, addAssistantMessage } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import type { SocketChatResponse } from '../../types'
+import type { HandlerMap } from './index'
 
-/** Register all chat-related socket event handlers */
-export function registerChatHandlers(socket: Socket): void {
+/** Register all chat-related event handlers into the handler map */
+export function registerChatHandlers(handlers: HandlerMap): void {
   // Chat progress (incremental status updates)
-  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string; task_id?: string; workflow_id?: string }) => {
-    console.log('[Socket] chat_progress:', data)
+  handlers['chat_progress'] = (data: { event: string; status?: string; tool?: string; task_id?: string; workflow_id?: string }) => {
+    console.log('[WS] chat_progress:', data)
 
     // Route builder events to workflowStore (always buffered, never filtered)
     if (data.workflow_id) {
@@ -48,13 +48,13 @@ export function registerChatHandlers(socket: Socket): void {
     }
 
     if (data.status) {
-      console.log('[Socket] Setting processing status:', data.status)
+      console.log('[WS] Setting processing status:', data.status)
       chatStore.setProcessingStatus(data.status)
     }
-  })
+  }
 
   // LLM reasoning/thinking chunks streamed during analysis
-  socket.on('chat_thinking', (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
+  handlers['chat_thinking'] = (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
     // Route builder events to workflowStore (always buffered, never filtered)
     if (data.workflow_id) {
       useWorkflowStore.getState().appendBuildThinking(data.workflow_id, data.chunk || '')
@@ -67,11 +67,11 @@ export function registerChatHandlers(socket: Socket): void {
       if (chatStore.currentTaskId && data.task_id !== chatStore.currentTaskId) return
     }
     chatStore.appendThinkingContent(data.chunk || '')
-  })
+  }
 
   // Chat response (final response from LLM)
-  socket.on('chat_response', (data: SocketChatResponse) => {
-    console.log('[Socket] chat_response:', data)
+  handlers['chat_response'] = (data: SocketChatResponse) => {
+    console.log('[WS] chat_response:', data)
 
     // Route builder events to workflowStore (always buffered, never filtered)
     if (data.workflow_id) {
@@ -93,19 +93,19 @@ export function registerChatHandlers(socket: Socket): void {
     if (taskId) {
       // Accept cancelled responses when the backend explicitly sends partial results
       if (chatStore.isTaskCancelled(taskId) && !data.cancelled) {
-        console.log('[Socket] Ignoring cancelled chat_response:', taskId)
+        console.log('[WS] Ignoring cancelled chat_response:', taskId)
         return
       }
       if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
-        console.log('[Socket] Ignoring stale chat_response:', taskId)
+        console.log('[WS] Ignoring stale chat_response:', taskId)
         return
       }
     }
-    console.log('[Socket] chat_response tool_calls:', data.tool_calls?.length || 0)
-    console.log('[Socket] chat_response response_length:', data.response?.length || 0)
-    console.log('[Socket] chat_response streaming_length:', chatStore.streamingContent.length)
+    console.log('[WS] chat_response tool_calls:', data.tool_calls?.length || 0)
+    console.log('[WS] chat_response response_length:', data.response?.length || 0)
+    console.log('[WS] chat_response streaming_length:', chatStore.streamingContent.length)
     if (data.cancelled) {
-      console.log('[Socket] chat_response is partial (user cancelled)')
+      console.log('[WS] chat_response is partial (user cancelled)')
     }
 
     chatStore.setStreaming(false)
@@ -125,10 +125,10 @@ export function registerChatHandlers(socket: Socket): void {
     } else {
       addAssistantMessage(data.response, data.tool_calls)
     }
-  })
+  }
 
   // Streaming response chunks
-  socket.on('chat_stream', (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
+  handlers['chat_stream'] = (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
     // Route builder events to workflowStore (always buffered, never filtered)
     if (data.workflow_id) {
       const ws = useWorkflowStore.getState()
@@ -156,13 +156,13 @@ export function registerChatHandlers(socket: Socket): void {
       chatStore.setStreaming(true)
     }
     chatStore.appendStreamContent(data.chunk || '')
-    console.log('[Socket] chat_stream chunk_length:', data.chunk?.length || 0)
-    console.log('[Socket] chat_stream total_length:', chatStore.streamingContent.length)
-  })
+    console.log('[WS] chat_stream chunk_length:', data.chunk?.length || 0)
+    console.log('[WS] chat_stream total_length:', chatStore.streamingContent.length)
+  }
 
   // Chat cancelled by user
-  socket.on('chat_cancelled', (data: { task_id?: string; workflow_id?: string }) => {
-    console.log('[Socket] chat_cancelled:', data)
+  handlers['chat_cancelled'] = (data: { task_id?: string; workflow_id?: string }) => {
+    console.log('[WS] chat_cancelled:', data)
 
     // Route builder events to workflowStore (always buffered, never filtered)
     if (data.workflow_id) {
@@ -186,5 +186,5 @@ export function registerChatHandlers(socket: Socket): void {
     chatStore.setProcessingStatus(null)
     chatStore.clearCurrentTaskId()
     useWorkflowStore.getState().setPlan([])
-  })
+  }
 }

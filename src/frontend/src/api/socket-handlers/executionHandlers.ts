@@ -1,45 +1,45 @@
 /**
- * Execution-related socket event handlers.
+ * Execution-related WebSocket event handlers.
  * Handles: execution_started, execution_step, execution_paused, execution_resumed,
  *          execution_complete, execution_error, execution_log,
  *          subflow_start, subflow_step, subflow_complete
  */
-import type { Socket } from 'socket.io-client'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore } from '../../stores/uiStore'
 import { beautifyNodes } from '../../utils/beautifyNodes'
 import type { FlowNode, FlowEdge, ExecutionLogEntry } from '../../types'
+import type { HandlerMap } from './index'
 
-/** Register all execution-related socket event handlers */
-export function registerExecutionHandlers(socket: Socket): void {
+/** Register all execution-related event handlers into the handler map */
+export function registerExecutionHandlers(handlers: HandlerMap): void {
   // Execution started - marks the beginning of a workflow execution session.
   // Skip if already started with same ID (optimistic update in socketActions already called startExecution).
   // Re-calling would reset executedNodeIds/executionLogs, causing a race condition in instant mode
   // where step/log events arrive before this event and get wiped.
-  socket.on('execution_started', (data: { execution_id: string }) => {
-    console.log('[Socket] execution_started:', data)
+  handlers['execution_started'] = (data: { execution_id: string }) => {
+    console.log('[WS] execution_started:', data)
     const workflowStore = useWorkflowStore.getState()
     if (workflowStore.execution.executionId === data.execution_id) {
       return  // Already started optimistically, don't reset state
     }
     workflowStore.startExecution(data.execution_id)
-  })
+  }
 
   // Execution step - fires when a node begins executing (highlight it)
-  socket.on('execution_step', (data: {
+  handlers['execution_step'] = (data: {
     execution_id: string
     node_id: string
     node_type: string
     node_label: string
     step_index: number
   }) => {
-    console.log('[Socket] execution_step:', data)
+    console.log('[WS] execution_step:', data)
     const workflowStore = useWorkflowStore.getState()
     const execution = workflowStore.execution
 
     // Only process if this is our current execution
     if (execution.executionId !== data.execution_id) {
-      console.warn('[Socket] Ignoring step from different execution')
+      console.warn('[WS] Ignoring step from different execution')
       return
     }
 
@@ -50,44 +50,44 @@ export function registerExecutionHandlers(socket: Socket): void {
 
     // Set the new executing node
     workflowStore.setExecutingNode(data.node_id)
-  })
+  }
 
   // Execution paused - user requested pause
-  socket.on('execution_paused', (data: { execution_id: string; current_node_id: string }) => {
-    console.log('[Socket] execution_paused:', data)
+  handlers['execution_paused'] = (data: { execution_id: string; current_node_id: string }) => {
+    console.log('[WS] execution_paused:', data)
     const workflowStore = useWorkflowStore.getState()
 
     if (workflowStore.execution.executionId === data.execution_id) {
       workflowStore.pauseExecution()
     }
-  })
+  }
 
   // Execution resumed - user requested resume
-  socket.on('execution_resumed', (data: { execution_id: string }) => {
-    console.log('[Socket] execution_resumed:', data)
+  handlers['execution_resumed'] = (data: { execution_id: string }) => {
+    console.log('[WS] execution_resumed:', data)
     const workflowStore = useWorkflowStore.getState()
 
     if (workflowStore.execution.executionId === data.execution_id) {
       workflowStore.resumeExecution()
     }
-  })
+  }
 
   // Execution complete - workflow finished executing (success or failure)
   // Reopens the execute modal to show results to user
-  socket.on('execution_complete', (data: {
+  handlers['execution_complete'] = (data: {
     execution_id: string
     success: boolean
     output?: unknown
     path?: string[]
     error?: string
   }) => {
-    console.log('[Socket] execution_complete:', data)
+    console.log('[WS] execution_complete:', data)
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
     const execution = workflowStore.execution
 
     if (execution.executionId !== data.execution_id) {
-      console.warn('[Socket] Ignoring completion from different execution')
+      console.warn('[WS] Ignoring completion from different execution')
       return
     }
 
@@ -108,12 +108,12 @@ export function registerExecutionHandlers(socket: Socket): void {
 
     // Reopen the execute modal to show results/error to user
     uiStore.openModal('execute')
-  })
+  }
 
   // Execution error - something went wrong during execution
   // Reopens the execute modal to show error to user
-  socket.on('execution_error', (data: { execution_id: string; error: string }) => {
-    console.error('[Socket] execution_error:', data)
+  handlers['execution_error'] = (data: { execution_id: string; error: string }) => {
+    console.error('[WS] execution_error:', data)
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
 
@@ -123,12 +123,12 @@ export function registerExecutionHandlers(socket: Socket): void {
       // Reopen the execute modal to show error to user
       uiStore.openModal('execute')
     }
-  })
+  }
 
   // ============ Execution Log Events (Dev Tools) ============
   // Detailed logging for decision evaluations, calculations, etc.
 
-  socket.on('execution_log', (data: {
+  handlers['execution_log'] = (data: {
     execution_id: string
     log_type: 'decision' | 'calculation' | 'subflow_start' | 'subflow_step' | 'subflow_complete' | 'start' | 'end'
     node_id: string
@@ -160,7 +160,7 @@ export function registerExecutionHandlers(socket: Socket): void {
     inputs?: Record<string, unknown>
     output_value?: unknown
   }) => {
-    console.log('[Socket] execution_log:', data)
+    console.log('[WS] execution_log:', data)
     const workflowStore = useWorkflowStore.getState()
 
     if (workflowStore.execution.executionId === data.execution_id) {
@@ -211,13 +211,13 @@ export function registerExecutionHandlers(socket: Socket): void {
       }
       workflowStore.addExecutionLog(logEntry as ExecutionLogEntry)
     }
-  })
+  }
 
   // ============ Subflow Visualization Events ============
   // These events enable the popup modal for visualizing subflow execution
 
   // Subflow start - opens popup modal with subflow canvas
-  socket.on('subflow_start', (data: {
+  handlers['subflow_start'] = (data: {
     execution_id: string
     parent_node_id: string
     subworkflow_id: string
@@ -225,7 +225,7 @@ export function registerExecutionHandlers(socket: Socket): void {
     nodes: FlowNode[]
     edges: FlowEdge[]
   }) => {
-    console.log('[Socket] subflow_start:', data)
+    console.log('[WS] subflow_start:', data)
     const workflowStore = useWorkflowStore.getState()
 
     if (workflowStore.execution.executionId === data.execution_id) {
@@ -240,10 +240,10 @@ export function registerExecutionHandlers(socket: Socket): void {
         beautified.edges
       )
     }
-  })
+  }
 
   // Subflow step - highlights node in subflow popup modal
-  socket.on('subflow_step', (data: {
+  handlers['subflow_step'] = (data: {
     execution_id: string
     parent_node_id: string
     subworkflow_id: string
@@ -252,7 +252,7 @@ export function registerExecutionHandlers(socket: Socket): void {
     node_label: string
     step_index: number
   }) => {
-    console.log('[Socket] subflow_step:', data)
+    console.log('[WS] subflow_step:', data)
     const workflowStore = useWorkflowStore.getState()
     const { subflowStack } = workflowStore
 
@@ -270,10 +270,10 @@ export function registerExecutionHandlers(socket: Socket): void {
 
     // Set new executing node
     workflowStore.setSubflowExecutingNode(data.node_id)
-  })
+  }
 
   // Subflow complete - closes popup modal
-  socket.on('subflow_complete', (data: {
+  handlers['subflow_complete'] = (data: {
     execution_id: string
     parent_node_id: string
     subworkflow_id: string
@@ -282,7 +282,7 @@ export function registerExecutionHandlers(socket: Socket): void {
     output?: unknown
     error?: string
   }) => {
-    console.log('[Socket] subflow_complete:', data)
+    console.log('[WS] subflow_complete:', data)
     const workflowStore = useWorkflowStore.getState()
     const { subflowStack } = workflowStore
     const topSubflow = subflowStack.length > 0 ? subflowStack[subflowStack.length - 1] : null
@@ -298,5 +298,5 @@ export function registerExecutionHandlers(socket: Socket): void {
         workflowStore.endSubflowExecution()
       }, closeDelay)
     }
-  })
+  }
 }

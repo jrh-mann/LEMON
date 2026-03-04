@@ -1,80 +1,136 @@
 /**
- * Socket connection management — singleton socket instance.
+ * WebSocket connection management — singleton native WebSocket.
  * Handler registration is delegated to socket-handlers/ modules.
- * Action functions (emit events) are in socketActions.ts.
+ * Action functions (send messages) are in socketActions.ts.
+ *
+ * Protocol: All messages are JSON with {type, payload} structure.
+ * Auth is cookie-based (lemon_session cookie sent automatically).
+ * Reconnection uses conn_id handshake to rebind background threads.
  */
-import { io, Socket } from 'socket.io-client'
-import { getSessionId } from './client'
+import { useChatStore } from '../stores/chatStore'
 import { useUIStore } from '../stores/uiStore'
-import { registerAllHandlers } from './socket-handlers'
+import { registerAllHandlers, dispatchEvent } from './socket-handlers'
 
-let socket: Socket | null = null
+let ws: WebSocket | null = null
+let savedConnId: string | null = null // Server-assigned connection ID for reconnection
+let reconnectAttempts = 0
+let intentionalClose = false // Prevents reconnect on logout/navigate-away
+const MAX_RECONNECT_ATTEMPTS = 5
+const RECONNECT_BASE_DELAY = 1000 // 1s, doubles each attempt
 
-/** Get socket server URL — uses Vite proxy in dev, env var in production */
-function getSocketUrl(): string {
+// Handler map populated once by registerAllHandlers()
+const handlers: Record<string, (payload: any) => void> = {}
+let handlersRegistered = false
+
+/** Build WebSocket URL — uses Vite proxy in dev, env var in production */
+function getWsUrl(): string {
   if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
+    return `${import.meta.env.VITE_API_URL.replace(/^http/, 'ws')}/ws`
   }
-  // In development with Vite proxy, connect to same origin
-  return window.location.origin
+  // In development with Vite proxy, connect to same origin via ws://
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws`
 }
 
-/** Get the current socket instance (may be null if not connected) */
-export function getSocket(): Socket | null {
-  return socket
+/** Check if the WebSocket is currently connected */
+export function isConnected(): boolean {
+  return ws !== null && ws.readyState === WebSocket.OPEN
 }
 
 /**
- * Create and connect the socket, registering all event handlers.
- * Returns existing socket if already connected (idempotent).
+ * Send a JSON message to the backend via WebSocket.
+ * Silently no-ops if not connected (callers should check isConnected() for user-facing errors).
  */
-export function connectSocket(): Socket {
-  if (socket) {
-    return socket
+export function sendMessage(type: string, payload: Record<string, unknown>): void {
+  if (!isConnected()) {
+    console.warn('[WS] Cannot send — not connected')
+    return
   }
-
-  const sessionId = getSessionId()
-  const socketUrl = getSocketUrl()
-
-  socket = io(socketUrl, {
-    query: { session_id: sessionId },
-    transports: ['polling'],
-    upgrade: false,
-    withCredentials: true,
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-  })
-
-  // Connection lifecycle events
-  socket.on('connect', () => {
-    console.log('[Socket] Connected:', socket?.id)
-    useUIStore.getState().clearError()
-  })
-
-  socket.on('disconnect', (reason) => {
-    console.log('[Socket] Disconnected:', reason)
-  })
-
-  socket.on('connect_error', (error) => {
-    console.error('[Socket] Connection error:', error)
-    if (!socket?.connected) {
-      const message = (error as Error)?.message || String(error)
-      useUIStore.getState().setError(`Failed to connect to server: ${message}`)
-    }
-  })
-
-  // Register all domain-specific event handlers
-  registerAllHandlers(socket)
-
-  return socket
+  ws!.send(JSON.stringify({ type, payload }))
 }
 
-/** Disconnect and dispose the socket */
+/**
+ * Connect the WebSocket, registering all event handlers.
+ * Idempotent — returns immediately if already connected.
+ */
+export function connectSocket(): void {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return
+  }
+
+  // Register handler map once
+  if (!handlersRegistered) {
+    registerAllHandlers(handlers)
+    handlersRegistered = true
+  }
+
+  intentionalClose = false
+  const url = getWsUrl()
+  console.log('[WS] Connecting to:', url)
+  ws = new WebSocket(url)
+
+  ws.onopen = () => {
+    console.log('[WS] Connected')
+    reconnectAttempts = 0
+    useUIStore.getState().clearError()
+
+    // Reconnection handshake: if we have a saved conn_id and an active task,
+    // ask the server to rebind the old conn_id to this new WebSocket.
+    const chatStore = useChatStore.getState()
+    if (savedConnId && chatStore.currentTaskId) {
+      sendMessage('reconnect', { conn_id: savedConnId })
+    }
+  }
+
+  ws.onclose = (e) => {
+    console.log('[WS] Disconnected:', e.code, e.reason)
+    ws = null
+    if (!intentionalClose) {
+      scheduleReconnect()
+    }
+  }
+
+  ws.onerror = () => {
+    console.error('[WS] Connection error')
+    useUIStore.getState().setError('Connection error')
+  }
+
+  ws.onmessage = (e) => {
+    try {
+      const { type, payload } = JSON.parse(e.data)
+
+      // Store conn_id from server for reconnection
+      if (type === 'connected' || type === 'reconnected') {
+        savedConnId = payload.conn_id
+        console.log('[WS]', type, '— conn_id:', savedConnId)
+      }
+
+      // Dispatch to registered handlers
+      dispatchEvent(handlers, type, payload)
+    } catch (err) {
+      console.error('[WS] Invalid message:', e.data, err)
+    }
+  }
+}
+
+/** Schedule a reconnect attempt with exponential backoff */
+function scheduleReconnect(): void {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    useUIStore.getState().setError('Lost connection to server')
+    return
+  }
+  const delay = RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts)
+  reconnectAttempts++
+  console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
+  setTimeout(() => connectSocket(), delay)
+}
+
+/** Disconnect and dispose the WebSocket (intentional close — no reconnect) */
 export function disconnectSocket(): void {
-  if (socket) {
-    socket.disconnect()
-    socket = null
+  intentionalClose = true
+  if (ws) {
+    ws.close()
+    ws = null
   }
 }
 

@@ -1,19 +1,19 @@
 /**
- * Socket action functions — emit events to the backend.
- * Separated from handler registration for clean separation of concerns.
+ * WebSocket action functions — send messages to the backend.
+ * Separated from connection management for clean separation of concerns.
  *
  * Exports: sendChatMessage, cancelChatTask, syncWorkflow,
  *          startWorkflowExecution, pauseWorkflowExecution,
  *          resumeWorkflowExecution, stopWorkflowExecution
  */
 import { getSessionId } from './client'
-import { getSocket } from './socket'
+import { isConnected, sendMessage } from './socket'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 
 /**
- * Send a chat message to the backend via socket.
+ * Send a chat message to the backend via WebSocket.
  * Includes current workflow state atomically to avoid race conditions.
  */
 export function sendChatMessage(
@@ -22,9 +22,8 @@ export function sendChatMessage(
   files?: import('../types').PendingFile[],
   annotations?: unknown[]
 ): void {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.error('[Socket] Not connected')
+  if (!isConnected()) {
+    console.error('[WS] Not connected')
     useUIStore.getState().setError('Not connected to server')
     return
   }
@@ -58,7 +57,7 @@ export function sendChatMessage(
     })
   }
 
-  // Debug: log whether files are included in the payload
+  // Build file payload
   const filesPayload = files && files.length > 0 ? files.map(f => ({
     id: f.id,
     name: f.name,
@@ -66,13 +65,13 @@ export function sendChatMessage(
     file_type: f.type,
     purpose: f.purpose,
   })) : undefined
-  console.log('[Socket] sendChatMessage files_count:', files?.length ?? 0,
+  console.log('[WS] sendChatMessage files_count:', files?.length ?? 0,
     'payload_files:', filesPayload?.length ?? 0,
     'file_names:', files?.map(f => f.name) ?? [],
     'data_url_lengths:', files?.map(f => f.dataUrl?.length ?? 0) ?? [])
 
   // Atomic: workflow travels with message (no race conditions)
-  sock.emit('chat', {
+  sendMessage('chat', {
     session_id: getSessionId(),
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
@@ -93,12 +92,11 @@ export function sendChatMessage(
 
 /** Cancel an in-progress chat task */
 export function cancelChatTask(taskId: string): void {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.warn('[Socket] Cannot cancel task: not connected')
+  if (!isConnected()) {
+    console.warn('[WS] Cannot cancel task: not connected')
     return
   }
-  sock.emit('cancel_task', { task_id: taskId })
+  sendMessage('cancel_task', { task_id: taskId })
 }
 
 /**
@@ -106,9 +104,8 @@ export function cancelChatTask(taskId: string): void {
  * Chat messages now carry workflow atomically, so this is only needed for non-chat syncs.
  */
 export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual'): void {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.warn('[Socket] Cannot sync workflow: not connected')
+  if (!isConnected()) {
+    console.warn('[WS] Cannot sync workflow: not connected')
     return
   }
 
@@ -120,7 +117,7 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
   const conversationIdVal = chatStore.conversationId
 
   if (!conversationIdVal) {
-    console.error('[Socket] Failed to generate conversation ID')
+    console.error('[WS] Failed to generate conversation ID')
     return
   }
 
@@ -131,7 +128,7 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
 
   const analysis = workflowStore.currentAnalysis
 
-  console.log('[Socket] Syncing workflow to backend:', {
+  console.log('[WS] Syncing workflow to backend:', {
     source,
     conversationId: conversationIdVal,
     nodes: workflow.nodes.length,
@@ -139,7 +136,7 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
     variables: analysis?.variables?.length ?? 0,
   })
 
-  sock.emit('sync_workflow', {
+  sendMessage('sync_workflow', {
     conversation_id: conversationIdVal,
     workflow,
     analysis,
@@ -148,7 +145,7 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
 }
 
 // ===== Execution Control Functions =====
-// These functions emit socket events to control workflow execution on the backend
+// These functions send WebSocket messages to control workflow execution on the backend
 
 /**
  * Start executing the current workflow with visual step-through.
@@ -160,9 +157,8 @@ export function startWorkflowExecution(
   inputs: Record<string, unknown>,
   speedMs?: number
 ): string | null {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.error('[Socket] Cannot execute workflow: not connected')
+  if (!isConnected()) {
+    console.error('[WS] Cannot execute workflow: not connected')
     useUIStore.getState().setError('Not connected to server')
     return null
   }
@@ -172,7 +168,7 @@ export function startWorkflowExecution(
 
   // Don't start if already executing
   if (execution.isExecuting) {
-    console.warn('[Socket] Workflow is already executing')
+    console.warn('[WS] Workflow is already executing')
     return execution.executionId
   }
 
@@ -188,7 +184,7 @@ export function startWorkflowExecution(
     output_type: workflowStore.currentWorkflow?.output_type || 'string',
   }
 
-  console.log('[Socket] Executing workflow:', {
+  console.log('[WS] Executing workflow:', {
     executionId,
     inputs,
     speedMs: speedMs ?? execution.executionSpeed,
@@ -199,8 +195,8 @@ export function startWorkflowExecution(
   // Start execution in store (optimistic update)
   workflowStore.startExecution(executionId)
 
-  // Emit to backend
-  sock.emit('execute_workflow', {
+  // Send to backend
+  sendMessage('execute_workflow', {
     execution_id: executionId,
     workflow,
     inputs,
@@ -212,9 +208,8 @@ export function startWorkflowExecution(
 
 /** Pause the currently executing workflow */
 export function pauseWorkflowExecution(): void {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.warn('[Socket] Cannot pause: not connected')
+  if (!isConnected()) {
+    console.warn('[WS] Cannot pause: not connected')
     return
   }
 
@@ -222,12 +217,12 @@ export function pauseWorkflowExecution(): void {
   const execution = workflowStore.execution
 
   if (!execution.isExecuting || !execution.executionId) {
-    console.warn('[Socket] No active execution to pause')
+    console.warn('[WS] No active execution to pause')
     return
   }
 
-  console.log('[Socket] Pausing execution:', execution.executionId)
-  sock.emit('pause_execution', { execution_id: execution.executionId })
+  console.log('[WS] Pausing execution:', execution.executionId)
+  sendMessage('pause_execution', { execution_id: execution.executionId })
 
   // Optimistic update
   workflowStore.pauseExecution()
@@ -235,9 +230,8 @@ export function pauseWorkflowExecution(): void {
 
 /** Resume a paused workflow execution */
 export function resumeWorkflowExecution(): void {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.warn('[Socket] Cannot resume: not connected')
+  if (!isConnected()) {
+    console.warn('[WS] Cannot resume: not connected')
     return
   }
 
@@ -245,12 +239,12 @@ export function resumeWorkflowExecution(): void {
   const execution = workflowStore.execution
 
   if (!execution.isPaused || !execution.executionId) {
-    console.warn('[Socket] No paused execution to resume')
+    console.warn('[WS] No paused execution to resume')
     return
   }
 
-  console.log('[Socket] Resuming execution:', execution.executionId)
-  sock.emit('resume_execution', { execution_id: execution.executionId })
+  console.log('[WS] Resuming execution:', execution.executionId)
+  sendMessage('resume_execution', { execution_id: execution.executionId })
 
   // Optimistic update
   workflowStore.resumeExecution()
@@ -258,9 +252,8 @@ export function resumeWorkflowExecution(): void {
 
 /** Stop the currently executing workflow */
 export function stopWorkflowExecution(): void {
-  const sock = getSocket()
-  if (!sock?.connected) {
-    console.warn('[Socket] Cannot stop: not connected')
+  if (!isConnected()) {
+    console.warn('[WS] Cannot stop: not connected')
     return
   }
 
@@ -268,12 +261,12 @@ export function stopWorkflowExecution(): void {
   const execution = workflowStore.execution
 
   if (!execution.executionId) {
-    console.warn('[Socket] No execution to stop')
+    console.warn('[WS] No execution to stop')
     return
   }
 
-  console.log('[Socket] Stopping execution:', execution.executionId)
-  sock.emit('stop_execution', { execution_id: execution.executionId })
+  console.log('[WS] Stopping execution:', execution.executionId)
+  sendMessage('stop_execution', { execution_id: execution.executionId })
 
   // Optimistic update
   workflowStore.stopExecution()
