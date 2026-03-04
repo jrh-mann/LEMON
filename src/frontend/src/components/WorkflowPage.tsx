@@ -75,6 +75,7 @@ export default function WorkflowPage() {
         if (!existingId) {
             loadedWorkflowIdRef.current = id
         }
+
         // 1. Play Home Exit animation
         setHomeExited(true)
 
