@@ -436,24 +436,9 @@ class SocketChatTask:
             )
             self._sync_convo_from_orchestrator()
             if self.is_cancelled():
-                # Emit the final workflow state to frontend so it stays in sync.
-                # The on_tool_event guard suppresses individual workflow_update events
-                # after cancel, so the frontend may have missed nodes/edges added by
-                # in-flight tool calls. Sending a batch_edit with the full workflow
-                # prevents the frontend from overwriting backend state on next message.
-                if self.convo and self.convo.orchestrator.current_workflow:
-                    wf = self.convo.orchestrator.current_workflow
-                    self.socketio.emit(
-                        "workflow_update",
-                        {
-                            "action": "batch_edit",
-                            "data": {
-                                "workflow": wf,
-                                "operations_applied": "cancel_sync",
-                            },
-                        },
-                        to=self.sid,
-                    )
+                # Still send the partial response so the frontend keeps whatever
+                # the orchestrator produced before the cancel was detected.
+                self._emit_response(response_text)
                 self.emit_cancelled()
                 return
             self._emit_response(response_text)
