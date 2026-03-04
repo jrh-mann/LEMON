@@ -474,8 +474,12 @@ class Orchestrator:
                 as they stream from the LLM.
         """
         self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
-        # Store uploaded files metadata for tool access
-        self.uploaded_files = has_files or []
+        # Store uploaded files metadata for tool access.
+        # Only overwrite if new files are provided — subsequent messages
+        # (follow-ups, answers) don't re-send files, so preserve the
+        # existing list so view_image can still access them.
+        if has_files:
+            self.uploaded_files = has_files
         self._logger.info("uploaded_files count=%d files=%s", len(self.uploaded_files), [f.get("name") for f in self.uploaded_files])
 
         def is_cancelled() -> bool:
