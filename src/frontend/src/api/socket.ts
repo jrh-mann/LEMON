@@ -128,6 +128,7 @@ function scheduleReconnect(): void {
 /** Disconnect and dispose the WebSocket (intentional close — no reconnect) */
 export function disconnectSocket(): void {
   intentionalClose = true
+  reconnectAttempts = 0
   if (ws) {
     ws.close()
     ws = null

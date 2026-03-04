@@ -146,7 +146,17 @@ def _to_anthropic_messages(
             continue
         if role in {"user", "assistant"}:
             blocks = _to_anthropic_blocks(content)
-            if blocks:
+            if not blocks:
+                # Empty content — use placeholder to preserve alternation
+                blocks = [{"type": "text", "text": "(empty)"}]
+            # Merge consecutive same-role messages instead of creating duplicates
+            if converted and converted[-1].get("role") == role:
+                existing = converted[-1].get("content", [])
+                if isinstance(existing, list):
+                    existing.extend(blocks)
+                else:
+                    converted[-1]["content"] = [{"type": "text", "text": existing}] + blocks
+            else:
                 converted.append({"role": role, "content": blocks})
     return system, converted
 

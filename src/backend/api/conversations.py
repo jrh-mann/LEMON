@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -10,6 +11,11 @@ from pathlib import Path
 from .common import utc_now
 from ..agents.orchestrator import Orchestrator
 from ..agents.orchestrator_factory import build_orchestrator
+
+logger = logging.getLogger(__name__)
+
+# Maximum conversations kept in memory before evicting oldest
+_MAX_CONVERSATIONS = 100
 
 
 @dataclass
@@ -81,6 +87,8 @@ class ConversationStore:
             convo = self._conversations[conversation_id]
             convo.updated_at = utc_now()
             return convo
+        # Evict oldest conversations when at capacity
+        self._evict_if_full()
         new_id = conversation_id or f"conv_{uuid4().hex}"
         convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root))
         self._conversations[new_id] = convo
@@ -88,3 +96,17 @@ class ConversationStore:
 
     def get(self, conversation_id: str) -> Optional[Conversation]:
         return self._conversations.get(conversation_id)
+
+    def _evict_if_full(self) -> None:
+        """Remove oldest conversations when store exceeds max capacity."""
+        if len(self._conversations) < _MAX_CONVERSATIONS:
+            return
+        # Sort by updated_at, evict oldest 10%
+        evict_count = max(1, _MAX_CONVERSATIONS // 10)
+        sorted_ids = sorted(
+            self._conversations,
+            key=lambda cid: self._conversations[cid].updated_at,
+        )
+        for cid in sorted_ids[:evict_count]:
+            logger.info("Evicting stale conversation %s", cid)
+            del self._conversations[cid]

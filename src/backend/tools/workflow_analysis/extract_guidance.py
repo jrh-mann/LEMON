@@ -72,12 +72,12 @@ class ExtractGuidanceTool(Tool):
         "list of guidance items so you know about extra context before building."
     )
     parameters: List[ToolParameter] = [
-        {
-            "name": "filename",
-            "type": "string",
-            "description": "Name of the image file to extract guidance from. If omitted, uses the first image.",
-            "required": False,
-        },
+        ToolParameter(
+            name="filename",
+            type="string",
+            description="Name of the image file to extract guidance from. If omitted, uses the first image.",
+            required=False,
+        ),
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:

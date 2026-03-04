@@ -24,12 +24,12 @@ class ViewImageTool(Tool):
         "uploaded, pass the filename to select a specific one."
     )
     parameters: List[ToolParameter] = [
-        {
-            "name": "filename",
-            "type": "string",
-            "description": "Name of the image file to view. If omitted, returns the first image. Use this when multiple images are uploaded.",
-            "required": False,
-        },
+        ToolParameter(
+            name="filename",
+            type="string",
+            description="Name of the image file to view. If omitted, returns the first image. Use this when multiple images are uploaded.",
+            required=False,
+        ),
     ]
 
     def __init__(self) -> None:

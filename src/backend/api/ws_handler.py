@@ -6,6 +6,7 @@ The dispatch loop routes incoming message types to the appropriate handler.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -41,8 +42,10 @@ def register_ws_endpoint(
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
         # --- Origin validation (CORS doesn't apply to WebSocket upgrades) ---
+        # If allowed is empty (no LEMON_CORS_ORIGINS configured), allow all origins
+        # (development mode). When origins are configured, enforce the allowlist.
         origin = ws.headers.get("origin", "")
-        if origin and allowed and origin not in allowed:
+        if allowed and origin not in allowed:
             await ws.close(code=4003, reason="Origin not allowed")
             return
 
@@ -89,7 +92,8 @@ def register_ws_endpoint(
 
                 elif msg_type == "chat":
                     from .ws_chat import handle_ws_chat
-                    handle_ws_chat(
+                    await asyncio.to_thread(
+                        handle_ws_chat,
                         ws_registry,
                         conn_id=conn_id,
                         conversation_store=conversation_store,
@@ -101,11 +105,14 @@ def register_ws_endpoint(
 
                 elif msg_type == "cancel_task":
                     from .ws_chat import handle_cancel_task
-                    handle_cancel_task(ws_registry, conn_id=conn_id, payload=payload)
+                    await asyncio.to_thread(
+                        handle_cancel_task, ws_registry, conn_id=conn_id, payload=payload,
+                    )
 
                 elif msg_type == "sync_workflow":
                     from .ws_chat import handle_sync_workflow
-                    handle_sync_workflow(
+                    await asyncio.to_thread(
+                        handle_sync_workflow,
                         ws_registry,
                         conversation_store=conversation_store,
                         payload=payload,
@@ -113,7 +120,8 @@ def register_ws_endpoint(
 
                 elif msg_type == "execute_workflow":
                     from .ws_execution import handle_execute_workflow
-                    handle_execute_workflow(
+                    await asyncio.to_thread(
+                        handle_execute_workflow,
                         ws_registry,
                         conn_id=conn_id,
                         workflow_store=workflow_store,
@@ -123,15 +131,15 @@ def register_ws_endpoint(
 
                 elif msg_type == "pause_execution":
                     from .ws_execution import handle_pause_execution
-                    handle_pause_execution(payload=payload)
+                    await asyncio.to_thread(handle_pause_execution, payload=payload)
 
                 elif msg_type == "resume_execution":
                     from .ws_execution import handle_resume_execution
-                    handle_resume_execution(payload=payload)
+                    await asyncio.to_thread(handle_resume_execution, payload=payload)
 
                 elif msg_type == "stop_execution":
                     from .ws_execution import handle_stop_execution
-                    handle_stop_execution(payload=payload)
+                    await asyncio.to_thread(handle_stop_execution, payload=payload)
 
                 else:
                     logger.warning("WS unknown message type=%s conn_id=%s", msg_type, conn_id)

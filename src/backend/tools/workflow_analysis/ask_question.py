@@ -40,7 +40,7 @@ class AskQuestionTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         questions = args.get("questions")
         if not questions or not isinstance(questions, list):
-            raise ValueError("questions array is required")
+            return {"success": False, "error": "questions array is required"}
 
         # Normalize each question entry
         normalized: List[Dict[str, Any]] = []
@@ -58,7 +58,7 @@ class AskQuestionTool(Tool):
                 })
 
         if not normalized:
-            raise ValueError("at least one question is required")
+            return {"success": False, "error": "at least one question is required"}
 
         return {
             "success": True,

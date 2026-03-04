@@ -23,7 +23,8 @@ class TestCurrentWorkflowIdInPrompt:
 
         assert "### Current Workflow" in prompt
         assert "wf_abc123" in prompt
-        assert "Use this ID for all tool calls" in prompt
+        # Implicit binding: tools auto-target this workflow
+        assert "automatically target this workflow" in prompt
 
     def test_omits_section_when_no_workflow_id(self):
         """When current_workflow_id is None, no Current Workflow section."""

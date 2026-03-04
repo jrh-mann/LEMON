@@ -26,7 +26,9 @@ _RETRY_BACKOFF = [2, 5]  # seconds between retries (exponential-ish)
 
 # Per-model max output token limits (Anthropic-imposed)
 _MODEL_MAX_TOKENS: Dict[str, int] = {
+    "opus": 32000,
     "sonnet": 64000,
+    "haiku": 8192,
 }
 
 

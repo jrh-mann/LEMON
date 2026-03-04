@@ -483,10 +483,11 @@ class TestUITools:
         assert r["questions"][0]["question"] == "What is the patient's name?"
         assert r["questions"][0]["options"] == []
 
-    def test_ask_question_empty_raises(self):
-        """Should raise ValueError when no questions provided."""
-        with pytest.raises(ValueError, match="questions"):
-            self.ask_question.execute({"questions": []})
+    def test_ask_question_empty_returns_error(self):
+        """Should return error dict when no questions provided."""
+        r = self.ask_question.execute({"questions": []})
+        assert r["success"] is False
+        assert "question" in r["error"].lower()
 
     def test_ask_question_multiple(self):
         """Should handle multiple questions in one call."""

@@ -58,6 +58,8 @@ class LoginRateLimiter:
             if blocked_until > now:
                 return False, int(blocked_until - now)
             if now > entry.get("reset_at", 0):
+                # Actually remove the expired entry from the dict
+                self._attempts.pop(key, None)
                 entry = None
         if not entry:
             self._attempts[key] = {

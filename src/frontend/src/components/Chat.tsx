@@ -66,6 +66,19 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
 
   const { chatHeight, setChatHeight } = useUIStore()
 
+  // Finalize build streams on unmount so partial content doesn't persist
+  useEffect(() => {
+    return () => {
+      const wfId = useWorkflowStore.getState().currentWorkflow?.id
+      if (wfId) {
+        const buf = useWorkflowStore.getState().buildBuffers[wfId]
+        if (buf?.streaming) {
+          useWorkflowStore.getState().finalizeBuildStream(wfId)
+        }
+      }
+    }
+  }, [])
+
   // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
   // Tracks whether the user has scrolled up inside the thinking container so we
   // stop snapping to the bottom while they're reading earlier reasoning.

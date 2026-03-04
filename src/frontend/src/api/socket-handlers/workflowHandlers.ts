@@ -166,8 +166,7 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
   // These events handle workflow creation and saving by the LLM
 
   // Workflow created - LLM called create_workflow, track the workflow_id for this tab.
-  // IMPORTANT: Must re-read getState() after each set() call to avoid stale references
-  // that would overwrite the ID update when spreading the old workflow object.
+  // Uses a single atomic state update to avoid race conditions from multiple getState() calls.
   handlers['workflow_created'] = (data: {
     workflow_id: string
     name: string
@@ -175,31 +174,22 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
     is_draft: boolean
   }) => {
     console.log('[WS] workflow_created:', data)
-    const currentId = useWorkflowStore.getState().currentWorkflow?.id
+    const store = useWorkflowStore.getState()
+    const currentId = store.currentWorkflow?.id
 
     // Sync workflow ID if backend generated a different one
     if (!currentId || currentId !== data.workflow_id) {
-      useWorkflowStore.getState().setCurrentWorkflowId(data.workflow_id)
-      console.log('[WS] Updated workflow ID:', currentId, '->', data.workflow_id)
+      store.setCurrentWorkflowId(data.workflow_id)
     }
 
-    // Update name (re-read state to get the workflow with the correct ID)
-    if (data.name) {
-      const wf = useWorkflowStore.getState().currentWorkflow
-      if (wf) {
-        useWorkflowStore.getState().setCurrentWorkflow({
-          ...wf,
-          metadata: { ...wf.metadata, name: data.name }
-        })
-      }
-    }
-
-    // Store workflow-level output_type (re-read state again)
-    if (data.output_type) {
-      const wf = useWorkflowStore.getState().currentWorkflow
-      if (wf) {
-        useWorkflowStore.getState().setCurrentWorkflow({ ...wf, output_type: data.output_type })
-      }
+    // Apply name and output_type in a single atomic update
+    const wf = useWorkflowStore.getState().currentWorkflow
+    if (wf) {
+      useWorkflowStore.getState().setCurrentWorkflow({
+        ...wf,
+        ...(data.name ? { metadata: { ...wf.metadata, name: data.name } } : {}),
+        ...(data.output_type ? { output_type: data.output_type } : {}),
+      })
     }
 
     console.log('[WS] workflow_created complete - ID:', data.workflow_id, 'name:', data.name, 'output_type:', data.output_type)

@@ -64,8 +64,8 @@ class ConnectionRegistry:
         if ws:
             try:
                 await ws.send_json({"type": event, "payload": payload})
-            except Exception:
-                pass  # Connection gone — let the task finish gracefully
+            except Exception as exc:
+                logger.debug("send_to failed for conn_id=%s event=%s: %s", conn_id, event, exc)
 
     def send_to_sync(self, conn_id: str, event: str, payload: dict) -> None:
         """Send from a background thread (sync context).
@@ -82,8 +82,8 @@ class ConnectionRegistry:
                 self._loop,
             )
             future.result(timeout=0.5)  # Short timeout for streaming hot path
-        except Exception:
-            pass  # Connection gone, let the task finish gracefully
+        except Exception as exc:
+            logger.debug("send_to_sync failed for conn_id=%s event=%s: %s", conn_id, event, exc)
 
     def sleep_sync(self, seconds: float) -> None:
         """Non-blocking sleep from background thread (replaces socketio.sleep)."""
