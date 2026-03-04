@@ -99,47 +99,59 @@ def variable_ref_error(var_ref: Optional[str], session_state: Dict[str, Any]) ->
 def get_subworkflow_output_type(
     subworkflow_id: str,
     session_state: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Get the output definition from a subworkflow.
-    
+
     Used to infer the type of subprocess output variables.
-    
+
     Args:
         subworkflow_id: ID of the subworkflow to query
         session_state: Current session state with workflow_store and user_id
-        
+
     Returns:
-        Output definition dict with 'name' and 'type', or None if not found
+        Output definition dict with 'name' and 'type', or dict with 'error' key on failure.
+        For building workflows, uses the workflow's output_type field as fallback.
     """
     workflow_store = session_state.get("workflow_store")
     user_id = session_state.get("user_id")
-    
-    if not workflow_store or not user_id or not subworkflow_id:
-        return None
-    
+
+    if not workflow_store or not user_id:
+        return {"error": "No workflow_store or user_id in session — cannot look up subworkflow"}
+    if not subworkflow_id:
+        return {"error": "No subworkflow_id provided"}
+
     try:
         subworkflow = workflow_store.get_workflow(subworkflow_id, user_id)
         if subworkflow is None:
-            return None
-        
+            return {"error": f"Subworkflow '{subworkflow_id}' not found in user's library"}
+
+        # If subworkflow is still being built, use its declared output_type
+        if getattr(subworkflow, "building", False):
+            return {
+                "name": "output",
+                "type": subworkflow.output_type or "string",
+                "description": None,
+                "building": True,
+            }
+
         # Get the first output (workflows typically have one primary output)
         outputs = subworkflow.outputs
         if outputs and len(outputs) > 0:
             output = outputs[0]
             return {
                 "name": output.get("name", "output"),
-                "type": output.get("type", "string"),  # Default to string if no type
+                "type": output.get("type", "string"),
                 "description": output.get("description"),
             }
-        
-        # No outputs defined - return default
+
+        # No outputs defined — fall back to workflow's declared output_type
         return {
             "name": "output",
-            "type": "string",
+            "type": subworkflow.output_type or "string",
             "description": None,
         }
-    except Exception:
-        return None
+    except Exception as exc:
+        return {"error": f"Failed to look up subworkflow '{subworkflow_id}': {exc}"}
 
 
 def validate_subprocess_node(
@@ -195,9 +207,14 @@ def validate_subprocess_node(
         
         for parent_var_name in input_mapping.keys():
             if parent_var_name.strip().lower() not in parent_var_names:
+                # List available variable names so the LLM can self-correct
+                available = sorted(
+                    var.get("name", "") for var in parent_variables if var.get("name")
+                )
                 errors.append(
                     f"Subprocess node '{node_id}': input_mapping references "
-                    f"non-existent parent variable '{parent_var_name}'"
+                    f"non-existent parent variable '{parent_var_name}'. "
+                    f"Available variables: {available}"
                 )
     
     # Optionally validate subworkflow exists in database
@@ -215,6 +232,9 @@ def validate_subprocess_node(
                             f"Subprocess node '{node_id}': subworkflow_id '{subworkflow_id}' "
                             f"not found in user's workflow library"
                         )
+                    elif getattr(subworkflow, "building", False):
+                        # Subworkflow is still being built — valid reference, skip output check
+                        pass
                     else:
                         # Validate subworkflow has output type defined
                         outputs = subworkflow.outputs
@@ -545,10 +565,11 @@ def build_new_node(
                 output_info = get_subworkflow_output_type(
                     subworkflow_id_param or "", session_state,
                 )
-                output_type_val = (
-                    output_info.get("type", "string") if output_info else "string"
-                )
-                output_desc = output_info.get("description") if output_info else None
+                # If subworkflow lookup failed, return the error to the LLM
+                if "error" in output_info:
+                    return {}, [], output_info["error"]
+                output_type_val = output_info.get("type", "string")
+                output_desc = output_info.get("description")
 
                 var_id = generate_variable_id(
                     output_variable, output_type_val, "subprocess",

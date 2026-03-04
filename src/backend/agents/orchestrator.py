@@ -60,6 +60,11 @@ class Orchestrator:
         # Persisted across turns so that build_system_prompt() can inject them
         # even after history truncation drops the original tool_result message.
         self._guidance: List[Dict[str, Any]] = []
+        # Repo root path — needed for background subworkflow builders
+        self.repo_root: Optional[Any] = None
+        # SocketIO instance and session ID — for emitting events from background threads
+        self.socketio: Optional[Any] = None
+        self.sid: Optional[str] = None
 
     @property
     def current_workflow(self) -> Dict[str, Any]:
@@ -218,6 +223,13 @@ class Orchestrator:
                 session_state["workflow_store"] = self.workflow_store
             if self.user_id is not None:
                 session_state["user_id"] = self.user_id
+            # Pass repo_root, socketio, sid for background subworkflow builders
+            if self.repo_root is not None:
+                session_state["repo_root"] = self.repo_root
+            if self.socketio is not None:
+                session_state["socketio"] = self.socketio
+            if self.sid is not None:
+                session_state["sid"] = self.sid
 
             data = self.tools.execute(
                 tool_name,

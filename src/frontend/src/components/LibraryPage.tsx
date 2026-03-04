@@ -222,7 +222,12 @@ export default function LibraryPage() {
                         {workflows.map(wf => (
                             <div key={wf.id} className="library-card" onClick={(e) => handleSelect(wf, e)}>
                                 <div className="library-card-header">
-                                    <h3 className="library-card-name">{wf.name}</h3>
+                                    <h3 className="library-card-name">
+                                        {wf.name}
+                                        {wf.building && (
+                                            <span className="library-card-building">Building...</span>
+                                        )}
+                                    </h3>
                                     {activeTab === 'mine' && (
                                         <button
                                             className="library-card-delete"

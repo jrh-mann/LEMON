@@ -142,6 +142,65 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "create_subworkflow",
+                "description": (
+                    "Create a subworkflow and build it in the background. Returns a workflow_id "
+                    "immediately that you can use as the subworkflow_id in a subprocess node. "
+                    "A background orchestrator builds the subworkflow's nodes and connections "
+                    "autonomously using your brief. FIRST check list_workflows_in_library to "
+                    "see if a suitable workflow already exists before calling this."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name for the subworkflow (e.g., 'BMI Calculator', 'Credit Score Assessment')",
+                        },
+                        "output_type": {
+                            "type": "string",
+                            "enum": ["string", "number", "bool", "json"],
+                            "description": "Type of value the subworkflow returns",
+                        },
+                        "brief": {
+                            "type": "string",
+                            "description": (
+                                "Detailed description of the subworkflow's logic. Include: "
+                                "what it calculates/decides, step-by-step decision logic, "
+                                "all inputs with types, expected output meaning. More detail = better result."
+                            ),
+                        },
+                        "inputs": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Input variable name",
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "enum": ["string", "number", "bool", "json"],
+                                        "description": "Input variable type",
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "description": "What this input represents",
+                                    },
+                                },
+                                "required": ["name", "type"],
+                            },
+                            "description": "Input variables the subworkflow expects",
+                        },
+                    },
+                    "required": ["name", "output_type", "brief", "inputs"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "ask_question",
                 "description": (
                     "Ask the user a clarification question. Use this whenever you are "
@@ -335,7 +394,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "type": "object",
                                     "description": "Output variable definition",
                                     "properties": {
-                                        "name": {"type": "string", "description": "Name for the calculated result (e.g., 'BMI')"},
+                                        "name": {"type": "string", "description": "Name for the calculated result. Must be alphanumeric with underscores only, no spaces (e.g., 'BMI', 'Total_Score', 'DTI_Ratio')"},
                                         "description": {"type": "string", "description": "Description of what this value represents"},
                                     },
                                     "required": ["name"],

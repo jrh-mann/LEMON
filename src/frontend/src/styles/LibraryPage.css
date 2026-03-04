@@ -249,6 +249,24 @@
     font-weight: 500;
 }
 
+/* Badge for subworkflows being built in the background */
+.library-card-building {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    padding: 1px 8px;
+    border-radius: 999px;
+    animation: building-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes building-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 .library-card-votes {
     display: flex;
     align-items: center;

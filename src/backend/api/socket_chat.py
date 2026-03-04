@@ -350,9 +350,12 @@ class SocketChatTask:
             return
         self.convo.orchestrator.sync_workflow(lambda: self.convo.workflow_state)
         self.convo.orchestrator.sync_workflow_analysis(lambda: self.convo.workflow_analysis)
-        # Set workflow_store and user_id for tool access
+        # Set workflow_store, user_id, and context needed for subworkflow spawning
         self.convo.orchestrator.workflow_store = self.workflow_store
         self.convo.orchestrator.user_id = self.user_id
+        self.convo.orchestrator.repo_root = self.repo_root
+        self.convo.orchestrator.socketio = self.socketio
+        self.convo.orchestrator.sid = self.sid
         # Ensure the canvas workflow exists in the database so tools can
         # load and edit it. The frontend generates a wf_ UUID when a new tab
         # is opened — if that ID isn't in the DB yet, auto-create an empty
@@ -433,6 +436,24 @@ class SocketChatTask:
             )
             self._sync_convo_from_orchestrator()
             if self.is_cancelled():
+                # Emit the final workflow state to frontend so it stays in sync.
+                # The on_tool_event guard suppresses individual workflow_update events
+                # after cancel, so the frontend may have missed nodes/edges added by
+                # in-flight tool calls. Sending a batch_edit with the full workflow
+                # prevents the frontend from overwriting backend state on next message.
+                if self.convo and self.convo.orchestrator.current_workflow:
+                    wf = self.convo.orchestrator.current_workflow
+                    self.socketio.emit(
+                        "workflow_update",
+                        {
+                            "action": "batch_edit",
+                            "data": {
+                                "workflow": wf,
+                                "operations_applied": "cancel_sync",
+                            },
+                        },
+                        to=self.sid,
+                    )
                 self.emit_cancelled()
                 return
             self._emit_response(response_text)

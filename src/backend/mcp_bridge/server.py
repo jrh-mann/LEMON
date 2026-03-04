@@ -37,6 +37,7 @@ from ..tools import (
     ExecuteWorkflowTool,
     ListWorkflowsInLibrary,
     CreateWorkflowTool,
+    CreateSubworkflowTool,
     SaveWorkflowToLibrary,
 )
 logger = logging.getLogger("backend.mcp")
@@ -124,6 +125,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
     list_library_tool = ListWorkflowsInLibrary()
     create_workflow_tool = CreateWorkflowTool()
+    create_subworkflow_tool = CreateSubworkflowTool()
     save_workflow_tool = SaveWorkflowToLibrary()
 
     @server.tool(
@@ -512,6 +514,32 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         # Use provided user_id or default for MCP mode
         state.setdefault("user_id", user_id or "mcp_user")
         return create_workflow_tool.execute(args, session_state=state)
+
+    @server.tool(name="create_subworkflow")
+    def create_subworkflow(
+        name: str,
+        output_type: str,
+        brief: str,
+        inputs: list[dict[str, Any]],
+        user_id: str | None = None,
+        session_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a subworkflow and build it in the background.
+
+        Returns workflow_id immediately. A background orchestrator
+        builds the subworkflow's nodes and connections autonomously.
+        """
+        args: dict[str, Any] = {
+            "name": name,
+            "output_type": output_type,
+            "brief": brief,
+            "inputs": inputs,
+        }
+        state = dict(session_state or {})
+        state.setdefault("workflow_store", _workflow_store)
+        state.setdefault("user_id", user_id or "mcp_user")
+        state.setdefault("repo_root", _repo_root())
+        return create_subworkflow_tool.execute(args, session_state=state)
 
     @server.tool(name="execute_workflow")
     def execute_workflow(

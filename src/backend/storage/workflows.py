@@ -43,6 +43,7 @@ class WorkflowRecord:
     review_status: str = "unreviewed"  # "unreviewed" or "reviewed"
     net_votes: int = 0  # upvotes - downvotes
     published_at: Optional[str] = None  # When workflow was published
+    building: bool = False  # True while a background orchestrator is building this workflow
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,12 @@ class WorkflowStore:
                 except sqlite3.OperationalError:
                     conn.execute(f"ALTER TABLE workflows ADD COLUMN {col} DEFAULT {default}")
 
+            # Add building column if it doesn't exist (migration for existing DBs)
+            try:
+                conn.execute("SELECT building FROM workflows LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE workflows ADD COLUMN building BOOLEAN NOT NULL DEFAULT 0")
+
             # Create indexes for peer review queries
             conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_published ON workflows(is_published)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_review_status ON workflows(review_status)")
@@ -179,6 +186,7 @@ class WorkflowStore:
         output_type: Optional[str] = None,
         is_draft: bool = True,
         is_published: bool = False,
+        building: bool = False,
     ) -> None:
         """Create a new workflow in the database.
 
@@ -224,16 +232,16 @@ class WorkflowStore:
                     nodes, edges, inputs, outputs, tree, doubts,
                     validation_score, validation_count, is_validated,
                     output_type, is_draft, is_published, review_status, net_votes, published_at,
-                    created_at, updated_at
+                    building, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id, user_id, name, description, domain, tags_json,
                     nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
                     validation_score, validation_count, is_validated,
                     output_type or "string", is_draft, is_published, "unreviewed", 0, published_at,
-                    now, now
+                    building, now, now
                 ),
             )
         self._logger.info("Created workflow id=%s user=%s name=%s is_published=%s", workflow_id, user_id, name, is_published)
@@ -255,7 +263,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       created_at, updated_at
+                       building, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND user_id = ?
                 """,
@@ -287,6 +295,7 @@ class WorkflowStore:
         is_published: Optional[bool] = None,
         review_status: Optional[str] = None,
         net_votes: Optional[int] = None,
+        building: Optional[bool] = None,
     ) -> bool:
         """Update an existing workflow.
 
@@ -360,6 +369,9 @@ class WorkflowStore:
         if net_votes is not None:
             updates.append("net_votes = ?")
             params.append(net_votes)
+        if building is not None:
+            updates.append("building = ?")
+            params.append(building)
 
         if not updates:
             return True  # No updates requested
@@ -442,7 +454,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       created_at, updated_at
+                       building, created_at, updated_at
                 FROM workflows
                 WHERE user_id = ?
                 ORDER BY updated_at DESC
@@ -512,7 +524,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       created_at, updated_at
+                       building, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -582,6 +594,7 @@ class WorkflowStore:
                 review_status=row["review_status"] or "unreviewed",
                 net_votes=row["net_votes"] or 0,
                 published_at=row["published_at"],
+                building=bool(row["building"]) if row["building"] is not None else False,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
@@ -639,7 +652,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       created_at, updated_at
+                       building, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY {order_by}
@@ -667,7 +680,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       created_at, updated_at
+                       building, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND is_published = 1
                 """,

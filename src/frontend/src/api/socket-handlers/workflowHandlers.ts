@@ -239,4 +239,10 @@ export function registerWorkflowHandlers(socket: Socket): void {
     const workflowStore = useWorkflowStore.getState()
     workflowStore.setPlan(data.items)
   })
+
+  // Subworkflow built — background orchestrator finished building a subworkflow
+  // Library page will pick up the change on next load/refresh
+  socket.on('subworkflow_ready', (data: { workflow_id: string }) => {
+    console.log('[Socket] subworkflow_ready:', data.workflow_id)
+  })
 }

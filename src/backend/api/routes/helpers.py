@@ -93,4 +93,5 @@ def serialize_workflow_summary(wf: WorkflowRecord) -> Dict[str, Any]:
         "output_values": output_values,
         "created_at": wf.created_at,
         "updated_at": wf.updated_at,
+        "building": getattr(wf, "building", False),
     }

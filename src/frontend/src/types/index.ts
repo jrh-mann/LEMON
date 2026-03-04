@@ -298,6 +298,7 @@ export interface WorkflowSummary {
   published_at?: string
   publisher_id?: string
   user_vote?: number | null  // Current user's vote: +1, -1, or null
+  building?: boolean  // True while a background orchestrator is building this workflow
 }
 
 // Peer review status type

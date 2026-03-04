@@ -1,0 +1,283 @@
+"""Tool for creating a subworkflow and spawning a background orchestrator to build it.
+
+The main orchestrator calls this tool when it encounters a subprocess node that needs
+a new subworkflow. The tool:
+1. Creates a workflow in the DB immediately (returning workflow_id)
+2. Registers any declared input variables
+3. Spawns a background thread with a fresh Orchestrator to build the subworkflow
+4. Returns immediately so the main orchestrator can continue in parallel
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+from typing import Any, Dict, List
+
+from ..core import Tool, ToolParameter, extract_session_deps
+from ..workflow_library.create_workflow import generate_workflow_id
+from ..constants import VALID_WORKFLOW_OUTPUT_TYPES
+
+logger = logging.getLogger(__name__)
+
+
+def _run_subworkflow_builder(
+    workflow_id: str,
+    brief: str,
+    repo_root: Any,
+    workflow_store: Any,
+    user_id: str,
+    socketio: Any,
+    sid: str,
+) -> None:
+    """Background thread: build a subworkflow using a fresh orchestrator.
+
+    Args:
+        workflow_id: ID of the workflow to build into
+        brief: Detailed description of what the subworkflow should do
+        repo_root: Path to repo root for tool construction
+        workflow_store: WorkflowStore instance for DB access
+        user_id: Owner user ID
+        socketio: SocketIO instance for emitting events (can be None)
+        sid: Socket session ID for emitting events (can be None)
+    """
+    try:
+        # Import here to avoid circular imports
+        from ...agents.orchestrator_factory import build_orchestrator
+
+        orchestrator = build_orchestrator(repo_root)
+        orchestrator.workflow_store = workflow_store
+        orchestrator.user_id = user_id
+        orchestrator.current_workflow_id = workflow_id
+        # Pass full context so the background builder can emit progress events
+        # and spawn nested subworkflows (which need repo_root to build_orchestrator)
+        orchestrator.repo_root = repo_root
+        orchestrator.socketio = socketio
+        orchestrator.sid = sid
+
+        logger.info(
+            "Background builder started for subworkflow %s: %s",
+            workflow_id, brief[:100],
+        )
+
+        # Run the orchestrator with the brief — it will use its tools to build
+        # the subworkflow autonomously (add_node, add_connection, etc.)
+        orchestrator.respond(brief, allow_tools=True)
+
+        # Save the workflow to library (mark as non-draft)
+        workflow_store.update_workflow(
+            workflow_id, user_id, is_draft=False, building=False,
+        )
+
+        logger.info("Background builder finished for subworkflow %s", workflow_id)
+
+        # Notify frontend that the subworkflow is ready
+        if socketio and sid:
+            socketio.emit(
+                "subworkflow_ready",
+                {"workflow_id": workflow_id},
+                to=sid,
+            )
+
+    except Exception as exc:
+        logger.error(
+            "Background builder FAILED for subworkflow %s: %s",
+            workflow_id, exc, exc_info=True,
+        )
+        # Clear building flag even on failure so the workflow isn't stuck
+        try:
+            workflow_store.update_workflow(
+                workflow_id, user_id, building=False,
+            )
+        except Exception:
+            pass
+
+
+class CreateSubworkflowTool(Tool):
+    """Create a subworkflow and spawn a background orchestrator to build it.
+
+    This tool is used by the main orchestrator when it needs a subprocess node
+    that references a subworkflow. It creates the workflow record in the DB
+    immediately and returns the workflow_id so the caller can wire up the
+    subprocess node. A background thread then builds out the subworkflow's
+    nodes and connections autonomously.
+    """
+
+    name = "create_subworkflow"
+    description = (
+        "Create a new subworkflow and build it in the background. Returns a "
+        "workflow_id immediately that you can use in a subprocess node's "
+        "subworkflow_id field. The subworkflow is built autonomously by a "
+        "background orchestrator using your brief. FIRST check if a suitable "
+        "workflow already exists with list_workflows_in_library before calling this."
+    )
+    parameters = [
+        ToolParameter(
+            "name", "string",
+            "Name for the subworkflow (e.g., 'BMI Calculator', 'Credit Score Assessment')",
+            required=True,
+        ),
+        ToolParameter(
+            "output_type", "string",
+            "Type of value the subworkflow returns: 'string', 'number', 'bool', or 'json'",
+            required=True,
+        ),
+        ToolParameter(
+            "brief", "string",
+            "Detailed description of the subworkflow's logic. Include: what it calculates "
+            "or decides, step-by-step decision logic, all inputs with types, expected output "
+            "meaning. The more detail, the better the background builder performs.",
+            required=True,
+        ),
+        ToolParameter(
+            "inputs", "array",
+            "Array of input variable definitions: [{\"name\": \"Age\", \"type\": \"number\", "
+            "\"description\": \"Patient age in years\"}]. Types: string, number, bool, json.",
+            required=True,
+        ),
+    ]
+
+    def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        # --- Validate parameters ---
+        name = args.get("name")
+        if not name or not isinstance(name, str) or not name.strip():
+            return {
+                "success": False,
+                "error": "'name' is required and must be a non-empty string",
+                "error_code": "MISSING_NAME",
+            }
+
+        output_type = args.get("output_type")
+        if not output_type or output_type not in VALID_WORKFLOW_OUTPUT_TYPES:
+            return {
+                "success": False,
+                "error": f"'output_type' must be one of: {', '.join(sorted(VALID_WORKFLOW_OUTPUT_TYPES))}",
+                "error_code": "INVALID_OUTPUT_TYPE",
+            }
+
+        brief = args.get("brief")
+        if not brief or not isinstance(brief, str) or not brief.strip():
+            return {
+                "success": False,
+                "error": "'brief' is required and must be a non-empty string",
+                "error_code": "MISSING_BRIEF",
+            }
+
+        inputs = args.get("inputs")
+        if not isinstance(inputs, list):
+            return {
+                "success": False,
+                "error": "'inputs' must be an array of {name, type, description} objects",
+                "error_code": "INVALID_INPUTS",
+            }
+
+        # --- Extract session dependencies ---
+        session_state, workflow_store, user_id, err = extract_session_deps(
+            kwargs, action="create subworkflow",
+        )
+        if err:
+            return err
+
+        repo_root = session_state.get("repo_root")
+        if not repo_root:
+            return {
+                "success": False,
+                "error": "No repo_root in session state",
+                "error_code": "NO_REPO_ROOT",
+            }
+
+        # --- Create the workflow in DB ---
+        workflow_id = generate_workflow_id()
+        name_clean = name.strip()
+
+        try:
+            workflow_store.create_workflow(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                name=name_clean,
+                description=brief.strip()[:500],  # First 500 chars as description
+                output_type=output_type,
+                is_draft=False,
+                building=True,  # Mark as building until background thread finishes
+            )
+        except Exception as exc:
+            return {
+                "success": False,
+                "error": f"Failed to create subworkflow in DB: {exc}",
+                "error_code": "CREATE_FAILED",
+            }
+
+        # --- Register input variables via the add_workflow_variable tool ---
+        from ..workflow_input import AddWorkflowVariableTool
+        add_var_tool = AddWorkflowVariableTool()
+
+        registered_inputs: List[Dict[str, str]] = []
+        for inp in inputs:
+            if not isinstance(inp, dict) or "name" not in inp:
+                continue
+            var_result = add_var_tool.execute(
+                {
+                    "workflow_id": workflow_id,
+                    "name": inp["name"],
+                    "type": inp.get("type", "string"),
+                    "description": inp.get("description", ""),
+                },
+                session_state=session_state,
+            )
+            if var_result.get("success"):
+                registered_inputs.append({
+                    "name": inp["name"],
+                    "type": inp.get("type", "string"),
+                    "variable_id": var_result.get("variable_id", ""),
+                })
+            else:
+                logger.warning(
+                    "Failed to register input variable '%s' for subworkflow %s: %s",
+                    inp.get("name"), workflow_id, var_result.get("error"),
+                )
+
+        # --- Build a detailed prompt for the background orchestrator ---
+        input_desc = "\n".join(
+            f"  - {inp['name']} ({inp.get('type', 'string')}): {inp.get('description', '')}"
+            for inp in inputs if isinstance(inp, dict) and "name" in inp
+        )
+        builder_prompt = (
+            f"You are building a subworkflow called '{name_clean}'.\n"
+            f"Output type: {output_type}\n\n"
+            f"Input variables (already registered):\n{input_desc}\n\n"
+            f"Requirements:\n{brief.strip()}\n\n"
+            f"The workflow ID is {workflow_id}. Use this workflow_id in all tool calls.\n"
+            f"Build this workflow completely: add all necessary nodes and connections.\n"
+            f"When done, call set_workflow_output to declare the output."
+        )
+
+        # --- Spawn background builder thread ---
+        socketio = session_state.get("socketio")
+        sid = session_state.get("sid")
+
+        thread = threading.Thread(
+            target=_run_subworkflow_builder,
+            args=(workflow_id, builder_prompt, repo_root, workflow_store, user_id, socketio, sid),
+            daemon=True,
+            name=f"subworkflow-builder-{workflow_id}",
+        )
+        thread.start()
+
+        logger.info(
+            "Created subworkflow %s ('%s') and spawned background builder",
+            workflow_id, name_clean,
+        )
+
+        return {
+            "success": True,
+            "workflow_id": workflow_id,
+            "name": name_clean,
+            "output_type": output_type,
+            "status": "building",
+            "registered_inputs": registered_inputs,
+            "message": (
+                f"Subworkflow '{name_clean}' created with ID {workflow_id}. "
+                f"It is being built in the background. You can now use this workflow_id "
+                f"as the subworkflow_id in a subprocess node."
+            ),
+        }
