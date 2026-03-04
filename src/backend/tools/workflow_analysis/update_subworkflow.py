@@ -43,6 +43,14 @@ def _run_subworkflow_updater(
         socketio: SocketIO instance for emitting events (can be None)
         sid: Socket session ID for emitting events (can be None)
     """
+    # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
+    from ...api.builder_callbacks import BackgroundBuilderCallbacks
+
+    # Set up unified callbacks — emits same chat_* events as main orchestrator,
+    # tagged with workflow_id so frontend routes them to workflowStore
+    cb = BackgroundBuilderCallbacks(socketio, sid, workflow_id)
+    response_text = ""
+
     try:
         from ...agents.orchestrator_factory import build_orchestrator
 
@@ -63,8 +71,18 @@ def _run_subworkflow_updater(
             workflow_id, len(build_history), instructions[:100],
         )
 
+        cb.emit_progress("Updating workflow...", event="start")
+
         # Run the orchestrator with the update instructions
-        orchestrator.respond(instructions, allow_tools=True)
+        # Uses the same callback pattern as SocketChatTask.run()
+        response_text = orchestrator.respond(
+            instructions, allow_tools=True,
+            stream=cb.stream_chunk,
+            on_tool_event=cb.on_tool_event,
+            should_cancel=cb.is_cancelled,
+            thinking_budget=30_000,
+            on_thinking=cb.stream_thinking,
+        )
 
         # Persist the updated conversation history and clear building flag
         workflow_store.update_workflow(
@@ -74,14 +92,6 @@ def _run_subworkflow_updater(
         )
 
         logger.info("Background updater finished for subworkflow %s", workflow_id)
-
-        # Notify frontend that the subworkflow update is complete
-        if socketio and sid:
-            socketio.emit(
-                "subworkflow_ready",
-                {"workflow_id": workflow_id},
-                to=sid,
-            )
 
     except Exception as exc:
         logger.error(
@@ -95,6 +105,16 @@ def _run_subworkflow_updater(
             )
         except Exception:
             pass
+    finally:
+        # Always emit chat_response to signal build completion to frontend
+        cb.emit_response(response_text)
+        # Notify frontend for library badge refresh
+        if socketio and sid:
+            socketio.emit(
+                "subworkflow_ready",
+                {"workflow_id": workflow_id},
+                to=sid,
+            )
 
 
 class UpdateSubworkflowTool(Tool):
@@ -194,6 +214,15 @@ class UpdateSubworkflowTool(Tool):
         # --- Spawn background updater thread ---
         socketio = session_state.get("socketio")
         sid = session_state.get("sid")
+
+        # Notify frontend that this subworkflow is being rebuilt so the
+        # library page can show the "Building..." badge
+        if socketio and sid:
+            socketio.emit("subworkflow_building", {
+                "workflow_id": workflow_id,
+                "name": workflow.name,
+                "building": True,
+            }, to=sid)
 
         thread = threading.Thread(
             target=_run_subworkflow_updater,

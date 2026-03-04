@@ -41,6 +41,14 @@ def _run_subworkflow_builder(
         socketio: SocketIO instance for emitting events (can be None)
         sid: Socket session ID for emitting events (can be None)
     """
+    # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
+    from ...api.builder_callbacks import BackgroundBuilderCallbacks
+
+    # Set up unified callbacks — emits same chat_* events as main orchestrator,
+    # tagged with workflow_id so frontend routes them to workflowStore
+    cb = BackgroundBuilderCallbacks(socketio, sid, workflow_id)
+    response_text = ""
+
     try:
         # Import here to avoid circular imports
         from ...agents.orchestrator_factory import build_orchestrator
@@ -60,9 +68,19 @@ def _run_subworkflow_builder(
             workflow_id, brief[:100],
         )
 
+        cb.emit_progress("Building workflow...", event="start")
+
         # Run the orchestrator with the brief — it will use its tools to build
         # the subworkflow autonomously (add_node, add_connection, etc.)
-        orchestrator.respond(brief, allow_tools=True)
+        # Uses the same callback pattern as SocketChatTask.run()
+        response_text = orchestrator.respond(
+            brief, allow_tools=True,
+            stream=cb.stream_chunk,
+            on_tool_event=cb.on_tool_event,
+            should_cancel=cb.is_cancelled,
+            thinking_budget=30_000,
+            on_thinking=cb.stream_thinking,
+        )
 
         # Save the workflow to library and persist the builder's conversation
         # history so the user can see how it was built and resume later
@@ -74,14 +92,6 @@ def _run_subworkflow_builder(
         )
 
         logger.info("Background builder finished for subworkflow %s", workflow_id)
-
-        # Notify frontend that the subworkflow is ready
-        if socketio and sid:
-            socketio.emit(
-                "subworkflow_ready",
-                {"workflow_id": workflow_id},
-                to=sid,
-            )
 
     except Exception as exc:
         logger.error(
@@ -95,6 +105,16 @@ def _run_subworkflow_builder(
             )
         except Exception:
             pass
+    finally:
+        # Always emit chat_response to signal build completion to frontend
+        cb.emit_response(response_text)
+        # Notify frontend for library badge refresh
+        if socketio and sid:
+            socketio.emit(
+                "subworkflow_ready",
+                {"workflow_id": workflow_id},
+                to=sid,
+            )
 
 
 class CreateSubworkflowTool(Tool):
@@ -258,6 +278,15 @@ class CreateSubworkflowTool(Tool):
         # --- Spawn background builder thread ---
         socketio = session_state.get("socketio")
         sid = session_state.get("sid")
+
+        # Notify frontend that a new subworkflow was created so the library
+        # page can auto-refresh and show the "Building..." badge
+        if socketio and sid:
+            socketio.emit("subworkflow_created", {
+                "workflow_id": workflow_id,
+                "name": name_clean,
+                "building": True,
+            }, to=sid)
 
         thread = threading.Thread(
             target=_run_subworkflow_builder,

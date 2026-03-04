@@ -276,6 +276,7 @@ export interface WorkflowDetailResponse {
   variables: WorkflowVariable[]
   outputs: WorkflowOutput[]
   build_history?: Array<{ role: string; content: string }>
+  building?: boolean  // True while a background orchestrator is building this workflow
 }
 
 export interface WorkflowSummary {
@@ -716,6 +717,7 @@ export interface SocketChatResponse {
   conversation_id: string
   tool_calls: ToolCall[]
   task_id?: string
+  workflow_id?: string  // Present when event comes from a background builder
   cancelled?: boolean
 }
 

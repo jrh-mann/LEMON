@@ -1,7 +1,9 @@
 /**
  * Workflow-related socket event handlers.
  * Handles: workflow_update, analysis_updated, workflow_created,
- *          workflow_saved, pending_question, plan_updated
+ *          workflow_saved, pending_question, plan_updated,
+ *          subworkflow_created, subworkflow_building,
+ *          subworkflow_stream, subworkflow_ready
  */
 import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../../stores/chatStore'
@@ -18,8 +20,14 @@ export function registerWorkflowHandlers(socket: Socket): void {
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
 
-    // No cross-tab filter needed: backend emits with to=self.sid,
-    // so events are already scoped to the originating socket session.
+    // Filter by workflow_id: background subworkflow builders emit events
+    // for their own workflow — ignore them unless the user is viewing that workflow
+    const eventWorkflowId = data.data.workflow_id as string | undefined
+    const currentWorkflowId = workflowStore.currentWorkflow?.id
+    if (eventWorkflowId && currentWorkflowId && eventWorkflowId !== currentWorkflowId) {
+      console.log('[Socket] Ignoring workflow_update for different workflow:', eventWorkflowId)
+      return
+    }
 
     switch (data.action) {
       case 'add_node':
@@ -157,7 +165,9 @@ export function registerWorkflowHandlers(socket: Socket): void {
   // ===== Workflow Library Events =====
   // These events handle workflow creation and saving by the LLM
 
-  // Workflow created - LLM called create_workflow, track the workflow_id for this tab
+  // Workflow created - LLM called create_workflow, track the workflow_id for this tab.
+  // IMPORTANT: Must re-read getState() after each set() call to avoid stale references
+  // that would overwrite the ID update when spreading the old workflow object.
   socket.on('workflow_created', (data: {
     workflow_id: string
     name: string
@@ -165,34 +175,30 @@ export function registerWorkflowHandlers(socket: Socket): void {
     is_draft: boolean
   }) => {
     console.log('[Socket] workflow_created:', data)
-    const workflowStore = useWorkflowStore.getState()
-    const currentId = workflowStore.currentWorkflow?.id
+    const currentId = useWorkflowStore.getState().currentWorkflow?.id
 
-    // Only update workflow ID if frontend didn't already have one
-    // Frontend generates ID on tab creation, backend should use that same ID
-    // If IDs match (expected case), no need to update
-    // If IDs differ, it means backend generated a new ID (legacy behavior) - update to sync
+    // Sync workflow ID if backend generated a different one
     if (!currentId || currentId !== data.workflow_id) {
-      workflowStore.setCurrentWorkflowId(data.workflow_id)
+      useWorkflowStore.getState().setCurrentWorkflowId(data.workflow_id)
       console.log('[Socket] Updated workflow ID:', currentId, '->', data.workflow_id)
-    } else {
-      console.log('[Socket] Workflow ID already matches:', data.workflow_id)
     }
 
-    // Update the workflow name
-    const currentWf = workflowStore.currentWorkflow
-    if (currentWf && data.name) {
-      workflowStore.setCurrentWorkflow({
-        ...currentWf,
-        metadata: { ...currentWf.metadata, name: data.name }
-      })
+    // Update name (re-read state to get the workflow with the correct ID)
+    if (data.name) {
+      const wf = useWorkflowStore.getState().currentWorkflow
+      if (wf) {
+        useWorkflowStore.getState().setCurrentWorkflow({
+          ...wf,
+          metadata: { ...wf.metadata, name: data.name }
+        })
+      }
     }
 
-    // Store workflow-level output_type from backend
+    // Store workflow-level output_type (re-read state again)
     if (data.output_type) {
-      const currentWf2 = workflowStore.currentWorkflow
-      if (currentWf2) {
-        workflowStore.setCurrentWorkflow({ ...currentWf2, output_type: data.output_type })
+      const wf = useWorkflowStore.getState().currentWorkflow
+      if (wf) {
+        useWorkflowStore.getState().setCurrentWorkflow({ ...wf, output_type: data.output_type })
       }
     }
 
@@ -240,9 +246,40 @@ export function registerWorkflowHandlers(socket: Socket): void {
     workflowStore.setPlan(data.items)
   })
 
-  // Subworkflow built — background orchestrator finished building a subworkflow
-  // Library page will pick up the change on next load/refresh
+  // ===== Background Subworkflow Build Events =====
+  // These events handle live streaming and library auto-refresh for
+  // subworkflows being built by background orchestrators.
+
+  // New subworkflow created — trigger library refresh so it appears
+  // with a "Building..." badge without manual page reload
+  socket.on('subworkflow_created', (data: { workflow_id: string; name: string; building: boolean }) => {
+    console.log('[Socket] subworkflow_created:', data.workflow_id, data.name)
+    useWorkflowStore.getState().incrementLibraryRefresh()
+  })
+
+  // Existing subworkflow is being rebuilt by update_subworkflow tool
+  socket.on('subworkflow_building', (data: { workflow_id: string; name: string; building: boolean }) => {
+    console.log('[Socket] subworkflow_building:', data.workflow_id, data.name)
+    useWorkflowStore.getState().incrementLibraryRefresh()
+  })
+
+  // NOTE: subworkflow_stream is no longer needed — background builders now emit
+  // chat_stream with workflow_id, which is handled by chatHandlers.ts routing.
+
+  // Subworkflow build complete — refresh library badge.
+  // Build events are already buffered unconditionally by chatHandlers,
+  // so we only need to clean up the buffer if the user isn't viewing it.
   socket.on('subworkflow_ready', (data: { workflow_id: string }) => {
     console.log('[Socket] subworkflow_ready:', data.workflow_id)
+    const ws = useWorkflowStore.getState()
+
+    // Refresh library so "Building..." badge clears
+    ws.incrementLibraryRefresh()
+
+    // Clean up buffer if user isn't viewing this workflow —
+    // the complete build state is persisted in DB anyway.
+    if (!ws.currentWorkflow?.id || ws.currentWorkflow.id !== data.workflow_id) {
+      ws.removeBuildBuffer(data.workflow_id)
+    }
   })
 }

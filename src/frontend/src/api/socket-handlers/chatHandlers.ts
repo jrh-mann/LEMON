@@ -1,6 +1,15 @@
 /**
  * Chat-related socket event handlers.
  * Handles: chat_progress, chat_thinking, chat_response, chat_stream, chat_cancelled
+ *
+ * Events can come from two sources:
+ * 1. Main orchestrator — tagged with task_id → routed to chatStore
+ * 2. Background builder — tagged with workflow_id → routed to workflowStore
+ *
+ * Builder events are ALWAYS buffered into workflowStore.buildBuffers[workflow_id]
+ * without filtering by currentWorkflow.id. This avoids race conditions where
+ * events arrive before the async page load sets currentWorkflow.id.
+ * Chat.tsx reads from the buffer keyed by the currently viewed workflow.
  */
 import type { Socket } from 'socket.io-client'
 import { useChatStore, addAssistantMessage } from '../../stores/chatStore'
@@ -11,8 +20,17 @@ import type { SocketChatResponse } from '../../types'
 /** Register all chat-related socket event handlers */
 export function registerChatHandlers(socket: Socket): void {
   // Chat progress (incremental status updates)
-  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string; task_id?: string }) => {
+  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string; task_id?: string; workflow_id?: string }) => {
     console.log('[Socket] chat_progress:', data)
+
+    // Route builder events to workflowStore (always buffered, never filtered)
+    if (data.workflow_id) {
+      if (data.status) {
+        useWorkflowStore.getState().setBuildProcessingStatus(data.workflow_id, data.status)
+      }
+      return
+    }
+
     const chatStore = useChatStore.getState()
     useUIStore.getState().clearError()
     const taskId = data.task_id
@@ -36,7 +54,13 @@ export function registerChatHandlers(socket: Socket): void {
   })
 
   // LLM reasoning/thinking chunks streamed during analysis
-  socket.on('chat_thinking', (data: { chunk: string; task_id?: string }) => {
+  socket.on('chat_thinking', (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
+    // Route builder events to workflowStore (always buffered, never filtered)
+    if (data.workflow_id) {
+      useWorkflowStore.getState().appendBuildThinking(data.workflow_id, data.chunk || '')
+      return
+    }
+
     const chatStore = useChatStore.getState()
     if (data.task_id) {
       if (chatStore.isTaskCancelled(data.task_id)) return
@@ -48,6 +72,20 @@ export function registerChatHandlers(socket: Socket): void {
   // Chat response (final response from LLM)
   socket.on('chat_response', (data: SocketChatResponse) => {
     console.log('[Socket] chat_response:', data)
+
+    // Route builder events to workflowStore (always buffered, never filtered)
+    if (data.workflow_id) {
+      const ws = useWorkflowStore.getState()
+      ws.finalizeBuildStream(data.workflow_id)
+      ws.setBuildProcessingStatus(data.workflow_id, null)
+      ws.setBuildToolCalls(data.workflow_id, data.tool_calls || [])
+      // Dispatch event so WorkflowPage can re-fetch complete build state from DB
+      window.dispatchEvent(new CustomEvent('subworkflow-build-complete', {
+        detail: { workflowId: data.workflow_id },
+      }))
+      return
+    }
+
     const chatStore = useChatStore.getState()
     useUIStore.getState().clearError()
     const taskId = data.task_id
@@ -90,7 +128,15 @@ export function registerChatHandlers(socket: Socket): void {
   })
 
   // Streaming response chunks
-  socket.on('chat_stream', (data: { chunk: string; task_id?: string }) => {
+  socket.on('chat_stream', (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
+    // Route builder events to workflowStore (always buffered, never filtered)
+    if (data.workflow_id) {
+      const ws = useWorkflowStore.getState()
+      ws.setBuildStreaming(data.workflow_id, true)
+      ws.appendBuildStream(data.workflow_id, data.chunk || '')
+      return
+    }
+
     const chatStore = useChatStore.getState()
     const taskId = data.task_id
 
@@ -115,8 +161,17 @@ export function registerChatHandlers(socket: Socket): void {
   })
 
   // Chat cancelled by user
-  socket.on('chat_cancelled', (data: { task_id?: string }) => {
+  socket.on('chat_cancelled', (data: { task_id?: string; workflow_id?: string }) => {
     console.log('[Socket] chat_cancelled:', data)
+
+    // Route builder events to workflowStore (always buffered, never filtered)
+    if (data.workflow_id) {
+      const ws = useWorkflowStore.getState()
+      ws.setBuildStreaming(data.workflow_id, false)
+      ws.setBuildProcessingStatus(data.workflow_id, null)
+      return
+    }
+
     const chatStore = useChatStore.getState()
     const taskId = data.task_id
 

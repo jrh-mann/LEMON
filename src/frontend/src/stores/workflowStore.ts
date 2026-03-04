@@ -1,7 +1,28 @@
 import { create } from 'zustand'
-import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, ExecutionLogEntry, PendingFile } from '../types'
+import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, ExecutionLogEntry, PendingFile, Message } from '../types'
 import type { Annotation } from '../components/ImageAnnotator'
 import { patchWorkflow } from '../api/workflows'
+
+// Build state buffer per workflow_id — events are never filtered at arrival.
+// Each background builder gets its own buffer keyed by workflow_id.
+export interface BuildBuffer {
+  history: Message[] | null       // loaded from DB on page mount, or null while live-streaming
+  streaming: boolean
+  streamContent: string
+  thinkingContent: string
+  processingStatus: string | null
+  toolCalls: Array<{ tool: string; arguments?: Record<string, unknown>; result?: Record<string, unknown>; success?: boolean }>
+}
+
+// Default empty buffer for new entries
+const emptyBuildBuffer: BuildBuffer = {
+  history: null,
+  streaming: false,
+  streamContent: '',
+  thinkingContent: '',
+  processingStatus: null,
+  toolCalls: [],
+}
 
 // Execution state for visual workflow execution
 export interface ExecutionState {
@@ -67,6 +88,26 @@ interface WorkflowState {
 
   // Extraction plan items (from update_plan tool)
   plan: Array<{ text: string; done: boolean }>
+
+  // Library refresh trigger — incremented by socket handlers when the library
+  // list needs re-fetching (subworkflow created, build finished, etc.)
+  libraryRefreshTrigger: number
+  incrementLibraryRefresh: () => void
+
+  // Build buffers keyed by workflow_id — builder events are never filtered at arrival.
+  // Each background builder gets its own buffer. Chat.tsx reads from
+  // buildBuffers[currentWorkflow.id] to render the right build state.
+  buildBuffers: Record<string, BuildBuffer>
+  // Buffer-keyed mutators (get-or-create a buffer for the given workflow_id)
+  appendBuildStream: (workflowId: string, chunk: string) => void
+  appendBuildThinking: (workflowId: string, chunk: string) => void
+  setBuildProcessingStatus: (workflowId: string, status: string | null) => void
+  setBuildStreaming: (workflowId: string, streaming: boolean) => void
+  finalizeBuildStream: (workflowId: string) => void
+  setBuildHistory: (workflowId: string, messages: Message[] | null) => void
+  setBuildToolCalls: (workflowId: string, tools: BuildBuffer['toolCalls']) => void
+  removeBuildBuffer: (workflowId: string) => void
+  clearBuildState: () => void  // clears ALL buffers (page unmount)
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
@@ -204,6 +245,84 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   pendingAnnotations: [],
   filesSent: false,
   plan: [],
+  libraryRefreshTrigger: 0,
+  incrementLibraryRefresh: () => set((s) => ({ libraryRefreshTrigger: s.libraryRefreshTrigger + 1 })),
+
+  // Build buffers keyed by workflow_id — events are never filtered at arrival
+  buildBuffers: {},
+
+  // Append a streaming text chunk to a build buffer
+  appendBuildStream: (workflowId, chunk) => set((s) => {
+    const buf = s.buildBuffers[workflowId] || { ...emptyBuildBuffer }
+    return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, streamContent: buf.streamContent + chunk } } }
+  }),
+
+  // Append a thinking text chunk to a build buffer
+  appendBuildThinking: (workflowId, chunk) => set((s) => {
+    const buf = s.buildBuffers[workflowId] || { ...emptyBuildBuffer }
+    return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, thinkingContent: buf.thinkingContent + chunk } } }
+  }),
+
+  // Set the processing status label for a build buffer
+  setBuildProcessingStatus: (workflowId, status) => set((s) => {
+    const buf = s.buildBuffers[workflowId] || { ...emptyBuildBuffer }
+    return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, processingStatus: status } } }
+  }),
+
+  // Toggle streaming flag for a build buffer
+  setBuildStreaming: (workflowId, streaming) => set((s) => {
+    const buf = s.buildBuffers[workflowId] || { ...emptyBuildBuffer }
+    return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, streaming } } }
+  }),
+
+  // Convert accumulated stream text into a finalized message in buildHistory
+  finalizeBuildStream: (workflowId) => set((s) => {
+    const buf = s.buildBuffers[workflowId]
+    if (!buf) return s
+    const content = buf.streamContent
+    if (!content) {
+      return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, streaming: false, streamContent: '' } } }
+    }
+    const msg: Message = {
+      id: `bs_${Date.now()}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date().toISOString(),
+      tool_calls: [],
+    }
+    return {
+      buildBuffers: {
+        ...s.buildBuffers,
+        [workflowId]: {
+          ...buf,
+          history: [...(buf.history || []), msg],
+          streaming: false,
+          streamContent: '',
+        },
+      },
+    }
+  }),
+
+  // Set build history for a workflow (loaded from DB or set to null for normal editing)
+  setBuildHistory: (workflowId, messages) => set((s) => {
+    const buf = s.buildBuffers[workflowId] || { ...emptyBuildBuffer }
+    return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, history: messages } } }
+  }),
+
+  // Set tool calls for a build buffer
+  setBuildToolCalls: (workflowId, tools) => set((s) => {
+    const buf = s.buildBuffers[workflowId] || { ...emptyBuildBuffer }
+    return { buildBuffers: { ...s.buildBuffers, [workflowId]: { ...buf, toolCalls: tools } } }
+  }),
+
+  // Remove a single build buffer (cleanup when user isn't viewing and build is done)
+  removeBuildBuffer: (workflowId) => set((s) => {
+    const { [workflowId]: _, ...rest } = s.buildBuffers
+    return { buildBuffers: rest }
+  }),
+
+  // Reset all build buffers (called on page unmount)
+  clearBuildState: () => set({ buildBuffers: {} }),
 
   // Execution state
   execution: { ...initialExecutionState },

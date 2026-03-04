@@ -152,10 +152,12 @@ export default function WorkflowPage() {
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId
 
-                // Load the subworkflow builder's conversation history as chat messages
-                // so the user can see how the workflow was built
+                // Load build state into workflowStore (NOT chatStore).
+                // chatStore is the user's orchestrator conversation — never modify it here.
+                const ws = useWorkflowStore.getState()
+
                 if (workflowData.build_history?.length) {
-                    const chatStore = useChatStore.getState()
+                    // Completed subworkflow build — show builder conversation (read-only)
                     const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
                         id: `bh_${crypto.randomUUID()}`,
                         role: msg.role as 'user' | 'assistant',
@@ -163,7 +165,23 @@ export default function WorkflowPage() {
                         timestamp: new Date().toISOString(),
                         tool_calls: [],
                     }))
-                    chatStore.setMessages(historyMessages)
+                    ws.setBuildHistory(workflowId, historyMessages)
+                } else if (workflowData.building) {
+                    // Still building — show building indicator and enable streaming.
+                    // Builder events are already being buffered by chatHandlers,
+                    // so we just mark the buffer as having a history entry to trigger
+                    // build mode in Chat.tsx.
+                    ws.setBuildHistory(workflowId, [{
+                        id: `bh_building_${crypto.randomUUID()}`,
+                        role: 'system' as const,
+                        content: 'This workflow is currently being built by a background agent. Live progress will appear below.',
+                        timestamp: new Date().toISOString(),
+                        tool_calls: [],
+                    }])
+                    ws.setBuildStreaming(workflowId, true)
+                } else {
+                    // Normal editing workflow — no build buffer needed
+                    ws.removeBuildBuffer(workflowId)
                 }
 
                 // After state is set, trigger the staggered reveal if we are still hidden
@@ -192,6 +210,57 @@ export default function WorkflowPage() {
         loadWorkflow()
         return () => { isActive = false }
     }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited])
+
+    // Re-fetch workflow when a background subworkflow build completes.
+    // This loads the complete build_history and final nodes/edges,
+    // replacing the partial streaming view.
+    useEffect(() => {
+        if (!workflowId) return
+
+        const handleBuildComplete = async (e: Event) => {
+            const detail = (e as CustomEvent).detail
+            if (detail.workflowId !== workflowId) return
+
+            try {
+                const workflowData = await getWorkflow(workflowId)
+
+                // Update flowchart with final state
+                const fc = transformFlowchartFromBackend({
+                    nodes: workflowData.nodes || [],
+                    edges: workflowData.edges || [],
+                })
+                setFlowchart(fc)
+
+                // Load complete build_history into workflowStore buffer (not chatStore)
+                const ws = useWorkflowStore.getState()
+                if (workflowData.build_history?.length) {
+                    const historyMessages = workflowData.build_history.map(
+                        (msg: { role: string; content: string }) => ({
+                            id: `bh_${crypto.randomUUID()}`,
+                            role: msg.role as 'user' | 'assistant',
+                            content: msg.content,
+                            timestamp: new Date().toISOString(),
+                            tool_calls: [],
+                        })
+                    )
+                    ws.setBuildHistory(workflowId, historyMessages)
+                }
+            } catch (err) {
+                console.error('[WorkflowPage] Failed to re-fetch after build complete:', err)
+            }
+        }
+
+        window.addEventListener('subworkflow-build-complete', handleBuildComplete)
+        return () => window.removeEventListener('subworkflow-build-complete', handleBuildComplete)
+    }, [workflowId, setFlowchart])
+
+    // Clear all build state when leaving (unmounting) this page.
+    // This ensures returning to a normal editing workflow shows chatStore messages.
+    useEffect(() => {
+        return () => {
+            useWorkflowStore.getState().clearBuildState()
+        }
+    }, [])
 
     // Error toast auto-dismiss
     useEffect(() => {
