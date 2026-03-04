@@ -172,17 +172,13 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(
         name="ask_question",
-        description="Ask the user a clarification question with optional clickable options.",
+        description="Ask the user one or more clarification questions with optional clickable options.",
     )
     def ask_question(
-        question: str,
-        options: list[dict[str, str]] | None = None,
+        questions: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        """Ask the user a question with optional clickable choices."""
-        args: dict[str, Any] = {"question": question}
-        if options is not None:
-            args["options"] = options
-        return ask_question_tool.execute(args)
+        """Ask the user clarification questions. Each item has 'question' and optional 'options'."""
+        return ask_question_tool.execute({"questions": questions})
 
     @server.tool(name="get_current_workflow")
     def get_current_workflow(

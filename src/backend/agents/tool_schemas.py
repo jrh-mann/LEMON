@@ -404,8 +404,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                                 "properties": {
                                                     "input_id": {"type": "string"},
                                                     "comparator": {"type": "string"},
-                                                    "value": {},
-                                                    "value2": {}
+                                                    "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                                                    "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]}
                                                 },
                                                 "required": ["input_id", "comparator"]
                                             },
@@ -544,8 +544,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "properties": {
                                         "input_id": {"type": "string"},
                                         "comparator": {"type": "string"},
-                                        "value": {},
-                                        "value2": {}
+                                        "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                                        "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]}
                                     },
                                     "required": ["input_id", "comparator"]
                                 },
