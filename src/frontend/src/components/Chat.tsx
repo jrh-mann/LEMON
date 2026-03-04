@@ -372,7 +372,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                     {showProcessing && (
                       <span className="processing-status">
                         <span className="status-dot"></span>
-                        {processingStatus}
+                        {showProcessing}
                       </span>
                     )}
                     {!isViewingBuild && planChecklist}
@@ -387,7 +387,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                     )}
                     <span className="processing-status">
                       <span className="status-dot"></span>
-                      {processingStatus}
+                      {showProcessing}
                     </span>
                     {!isViewingBuild && planChecklist}
                   </>

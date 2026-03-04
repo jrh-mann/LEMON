@@ -254,8 +254,9 @@ export default function WorkflowPage() {
         return () => window.removeEventListener('subworkflow-build-complete', handleBuildComplete)
     }, [workflowId, setFlowchart])
 
-    // Clear all build state when leaving (unmounting) this page.
-    // This ensures returning to a normal editing workflow shows chatStore messages.
+    // Clear build state when leaving this page.
+    // Chat state is NOT cleared — the socket stays connected across navigations,
+    // so in-flight orchestrator tasks continue receiving events normally.
     useEffect(() => {
         return () => {
             useWorkflowStore.getState().clearBuildState()
