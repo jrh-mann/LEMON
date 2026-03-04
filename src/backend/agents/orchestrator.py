@@ -56,6 +56,8 @@ class Orchestrator:
         self.current_workflow_id: Optional[str] = None
         # All open tabs with workflows (for list_workflows_in_library to show drafts)
         self.open_tabs: List[Dict[str, Any]] = []
+        # Files uploaded by the user — persisted across turns for tool access (e.g. view_image)
+        self.uploaded_files: List[Dict[str, Any]] = []
         # Guidance notes extracted from uploaded images by extract_guidance tool.
         # Persisted across turns so that build_system_prompt() can inject them
         # even after history truncation drops the original tool_result message.
