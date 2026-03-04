@@ -295,26 +295,22 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "enum": ["string", "number", "bool", "json"],
                             "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
                         },
-                        "output_variable": {
-                            "type": "string",
+                        "output": {
                             "description": (
-                                "For 'end' nodes returning number/bool: Name of the variable to return (e.g., 'BMI'). "
-                                "Returns the raw value preserving type. Do NOT use output_template for numeric returns. "
-                                "For 'subprocess' nodes: Name for the variable that stores the subworkflow's output."
+                                "For 'end' nodes: what to return. Smart routing: "
+                                "variable name (e.g., 'BMI') returns that variable's typed value; "
+                                "template with {vars} (e.g., 'Your BMI is {BMI}') does string interpolation; "
+                                "literal value (e.g., 42, true) returns a static value."
                             ),
                         },
-                        "output_template": {
+                        "output_variable": {
                             "type": "string",
-                            "description": "For 'end' nodes returning STRINGS only: Python f-string template (e.g. 'Patient BMI is {BMI}'). Do NOT use for number/bool outputs.",
-                        },
-                        "output_value": {
-                            "type": "string",
-                            "description": "For 'end' nodes: Static literal value to return (e.g., 42, true, 'fixed string').",
+                            "description": "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
                         },
                         "condition": {
                             "description": (
                                 "REQUIRED for 'decision' nodes. Can be simple or compound.\n"
-                                "Simple: {input_id, comparator, value, value2?}\n"
+                                "Simple: {variable, comparator, value, value2?}\n"
                                 "Compound: {operator: 'and'|'or', conditions: [simple, simple, ...]}\n"
                                 "Use compound when a decision checks MULTIPLE variables (e.g., 'Symptoms AND A1c > 58').\n"
                                 "Compound must have >= 2 sub-conditions. No nesting."
@@ -324,7 +320,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "type": "object",
                                     "description": "Simple condition",
                                     "properties": {
-                                        "input_id": {"type": "string", "description": "ID of the workflow variable to check"},
+                                        "variable": {"type": "string", "description": "Name of the workflow variable to check (e.g., 'Age', 'Patient Name')"},
                                         "comparator": {
                                             "type": "string",
                                             "enum": [
@@ -339,7 +335,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                         "value": {"description": "Value to compare against"},
                                         "value2": {"description": "Second value for range comparators (within_range, date_between)"}
                                     },
-                                    "required": ["input_id", "comparator"]
+                                    "required": ["variable", "comparator"]
                                 },
                                 {
                                     "type": "object",
@@ -351,12 +347,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "input_id": {"type": "string"},
+                                                    "variable": {"type": "string"},
                                                     "comparator": {"type": "string"},
                                                     "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
                                                     "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]}
                                                 },
-                                                "required": ["input_id", "comparator"]
+                                                "required": ["variable", "comparator"]
                                             },
                                             "minItems": 2
                                         }
@@ -469,13 +465,13 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "enum": ["string", "number", "bool", "json"],
                             "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
                         },
-                        "output_template": {
-                            "type": "string",
-                            "description": "For 'end' nodes: Python f-string template (e.g. 'Result: {Age}').",
-                        },
-                        "output_value": {
-                            "type": "string",
-                            "description": "For 'end' nodes: Static value (or JSON string).",
+                        "output": {
+                            "description": (
+                                "For 'end' nodes: what to return. Smart routing: "
+                                "variable name (e.g., 'BMI') returns that variable's typed value; "
+                                "template with {vars} (e.g., 'Your BMI is {BMI}') does string interpolation; "
+                                "literal value (e.g., 42, true) returns a static value."
+                            ),
                         },
                         "condition": {
                             "description": (
@@ -486,12 +482,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                 {
                                     "type": "object",
                                     "properties": {
-                                        "input_id": {"type": "string"},
+                                        "variable": {"type": "string"},
                                         "comparator": {"type": "string"},
                                         "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
                                         "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]}
                                     },
-                                    "required": ["input_id", "comparator"]
+                                    "required": ["variable", "comparator"]
                                 },
                                 {
                                     "type": "object",
@@ -514,11 +510,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "output_variable": {
                             "type": "string",
-                            "description": (
-                                "For 'end' nodes returning number/bool: Name of the variable to return (e.g., 'BMI'). "
-                                "Returns the raw value preserving type. Do NOT use output_template for numeric returns. "
-                                "For 'subprocess' nodes: Name for the variable that stores the subworkflow's output."
-                            ),
+                            "description": "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
                         },
                         "calculation": {
                             "type": "object",
@@ -628,8 +620,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "type": "array",
                             "description": (
                                 "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
-                                "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
-                                "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                                "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                                "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
                                 "delete_node: {op, node_id}\n"
                                 "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
                                 "delete_connection: {op, from (node_id), to (node_id)}"
@@ -653,14 +645,13 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                                     "x": {"type": "number"},
                                     "y": {"type": "number"},
                                     "condition": {
-                                        "description": "For decision nodes: simple {input_id, comparator, value} or compound {operator, conditions: [...]}",
+                                        "description": "For decision nodes: simple {variable, comparator, value} or compound {operator, conditions: [...]}",
                                     },
                                     "output_type": {"type": "string", "enum": ["string", "number", "bool", "json"]},
-                                    "output_template": {"type": "string"},
-                                    "output_value": {"type": "string"},
+                                    "output": {"description": "For end nodes: variable name, template with {vars}, or literal value"},
                                     "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
                                     "input_mapping": {"type": "object", "description": "For subprocess: parent->subworkflow input mapping"},
-                                    "output_variable": {"type": "string", "description": "For end nodes: variable name to return raw value (number/bool). For subprocess: name for output variable."},
+                                    "output_variable": {"type": "string", "description": "For subprocess only: name for output variable"},
                                     "calculation": {"type": "object", "description": "For calculation nodes: {output, operator, operands} - see add_node for full schema"},
                                     "node_id": {"type": "string", "description": "Existing node ID"},
                                     "from": {"type": "string", "description": "Source node ID or temp ID"},

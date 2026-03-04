@@ -45,21 +45,41 @@ ALL_COMPARATORS = [
 
 
 def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> str | None:
-    """Validate a single simple condition (input_id + comparator + value).
+    """Validate a single simple condition and resolve variable references.
+
+    Accepts either ``variable`` (name-based, preferred) or ``input_id`` (legacy ID).
+    When ``variable`` is provided, resolves it to an ``input_id`` via case-insensitive
+    name lookup so downstream code (execution engine) works unchanged.
 
     Args:
-        condition: Simple condition dict with input_id, comparator, value, value2.
+        condition: Condition dict with variable (or input_id), comparator, value, value2.
         variables: List of workflow variable definitions.
 
     Returns:
         Error message if invalid, None if valid.
     """
+    # Resolve variable name → input_id if the LLM used the name-based key
+    var_name = condition.get("variable")
     input_id = condition.get("input_id")
-    comparator = condition.get("comparator")
-    value = condition.get("value")
 
-    if not input_id:
-        return "condition.input_id is required"
+    if var_name:
+        # Name-based lookup (case-insensitive)
+        normalized = var_name.strip().lower()
+        matched = None
+        for var in variables:
+            if var.get("name", "").strip().lower() == normalized:
+                matched = var
+                break
+        if not matched:
+            available = ", ".join(
+                v.get("name", "?") for v in variables
+            ) or "none"
+            return f"Variable '{var_name}' not found. Available: {available}"
+        # Inject resolved ID so the execution engine can use it
+        condition["input_id"] = matched["id"]
+        input_id = matched["id"]
+    elif not input_id:
+        return "condition.variable is required (name of the workflow variable to check)"
     if not comparator:
         return "condition.comparator is required"
     if value is None and comparator not in ("is_true", "is_false"):
@@ -77,7 +97,10 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
             break
 
     if not var_def:
-        return f"condition.input_id '{input_id}' not found in workflow variables"
+        available = ", ".join(
+            f"{v.get('name', '?')} ({v.get('id')})" for v in variables
+        ) or "none"
+        return f"Variable '{input_id}' not found. Available: {available}"
 
     # Check comparator is valid for this variable type
     var_type = var_def.get("type", "string")
@@ -99,7 +122,7 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
 def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
     """Validate a decision condition — simple or compound (AND/OR).
 
-    Simple conditions have input_id/comparator/value.
+    Simple conditions have variable/comparator/value.
     Compound conditions have operator ("and"/"or") and a conditions array
     of 2+ simple conditions.  Nesting is not allowed.
 
@@ -111,7 +134,7 @@ def validate_decision_condition(condition: Dict[str, Any], variables: list) -> s
         Error message if invalid, None if valid.
     """
     if not isinstance(condition, dict):
-        return "condition must be an object with input_id, comparator, and value"
+        return "condition must be an object with variable, comparator, and value"
 
     # Compound condition path
     if "operator" in condition:
@@ -247,7 +270,7 @@ class AddNodeTool(WorkflowTool):
     other workflows (subflows) and calculation nodes for mathematical operations.
     
     For decision nodes, a 'condition' object is REQUIRED with:
-    - input_id: The workflow variable to compare (e.g., "var_age_int")
+    - variable: The workflow variable name to compare (e.g., "Age")
     - comparator: The comparison operator (e.g., "gte", "eq", "str_contains")
     - value: The value to compare against
     - value2: (optional) Second value for range comparisons
@@ -289,7 +312,7 @@ class AddNodeTool(WorkflowTool):
             "object",
             (
                 "REQUIRED for decision nodes: Structured condition to evaluate. "
-                "Object with: input_id (string), comparator (string), value (any), value2 (optional for ranges). "
+                "Object with: variable (name string), comparator (string), value (any), value2 (optional for ranges). "
                 "Comparators by type: "
                 "int/float: eq,neq,lt,lte,gt,gte,within_range | "
                 "bool: is_true,is_false | "
@@ -312,27 +335,23 @@ class AddNodeTool(WorkflowTool):
             required=False,
         ),
         ToolParameter(
-"output_type",
+            "output_type",
             "string",
             (
-                "Optional: data type for output nodes (string, number, bool, json). "
-                "Use 'number' or 'bool' with output_variable for typed returns."
+                "Optional: data type for end nodes (string, number, bool, json). "
+                "Defaults to 'string'. Use 'number' or 'bool' to preserve typed returns."
             ),
             required=False,
         ),
         ToolParameter(
-            "output_template",
-            "string",
-            (
-                "Optional: python f-string template for STRING outputs only (e.g., 'Patient BMI is {BMI}'). "
-                "Do NOT use for number/bool outputs - use output_variable instead."
-            ),
-            required=False,
-        ),
-        ToolParameter(
-            "output_value",
+            "output",
             "any",
-            "Optional: static literal value to return (e.g., 42, true, 'fixed string')",
+            (
+                "For end nodes: what to return. Smart routing: "
+                "variable name (e.g., 'BMI') → returns that variable's typed value; "
+                "template with {vars} (e.g., 'Your BMI is {BMI}') → string interpolation; "
+                "literal value (e.g., 42, true) → static return value."
+            ),
             required=False,
         ),
         # Subprocess-specific parameters
@@ -351,10 +370,7 @@ class AddNodeTool(WorkflowTool):
         ToolParameter(
             "output_variable",
             "string",
-            (
-                "For output/end nodes: variable name to return (e.g., 'BMI' returns the BMI variable's value). "
-                "For subprocess nodes: name for the variable that stores subworkflow output."
-            ),
+            "For subprocess nodes only: name for the variable that stores subworkflow output.",
             required=False,
         ),
     ]

@@ -448,7 +448,7 @@ def build_new_node(
         if not condition:
             return {}, [], (
                 f"Decision node '{label}' requires a 'condition' object. "
-                "Provide: {input_id: '<var_id>', comparator: '<comparator>', value: <value>}"
+                "Provide: {variable: '<name>', comparator: '<comparator>', value: <value>}"
             )
         cond_err = validate_decision_condition(condition, variables)
         if cond_err:
@@ -518,6 +518,30 @@ def build_new_node(
     # ------------------------------------------------------------------
     # 6. End-node output config
     # ------------------------------------------------------------------
+    # Desugar unified `output` param into internal fields for end nodes.
+    # Smart routing: template if contains {}, variable if name matches, else literal.
+    if node_type == "end" and "output" in params:
+        raw_output = params["output"]
+        if isinstance(raw_output, str) and "{" in raw_output and "}" in raw_output:
+            # Template string — e.g., "Your BMI is {BMI}"
+            params["output_template"] = raw_output
+        elif isinstance(raw_output, str):
+            # Check if it matches a workflow variable name (case-insensitive)
+            normalized = raw_output.strip().lower()
+            matched_var = None
+            for var in variables:
+                if var.get("name", "").strip().lower() == normalized:
+                    matched_var = var
+                    break
+            if matched_var:
+                params["output_variable"] = raw_output
+            else:
+                # Plain string literal
+                params["output_value"] = raw_output
+        else:
+            # Literal value (number, bool, etc.)
+            params["output_value"] = raw_output
+
     if node_type == "end":
         new_node["output_type"] = params.get("output_type", "string")
         if params.get("output_variable"):

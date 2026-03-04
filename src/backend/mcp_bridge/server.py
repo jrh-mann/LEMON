@@ -195,8 +195,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         y: float | None = None,
         condition: dict[str, Any] | None = None,
         output_type: str | None = None,
-        output_template: str | None = None,
-        output_value: str | None = None,
+        output: Any | None = None,
         subworkflow_id: str | None = None,
         input_mapping: dict[str, str] | None = None,
         output_variable: str | None = None,
@@ -209,8 +208,9 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             type: Node type (start, process, decision, subprocess, calculation, end)
             label: Display text for the node
             x, y: Optional coordinates
-            condition: For decision nodes - {input_id, comparator, value, value2?}
-            output_type/template/value: For end nodes
+            condition: For decision nodes - {variable, comparator, value, value2?}
+            output_type: For end nodes - data type (string, number, bool, json)
+            output: For end nodes - variable name, template, or literal
             subworkflow_id/input_mapping/output_variable: For subprocess nodes
             calculation: For calculation nodes - {output, operator, operands}
         """
@@ -223,10 +223,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["condition"] = condition
         if output_type is not None:
             args["output_type"] = output_type
-        if output_template is not None:
-            args["output_template"] = output_template
-        if output_value is not None:
-            args["output_value"] = output_value
+        if output is not None:
+            args["output"] = output
         if subworkflow_id is not None:
             args["subworkflow_id"] = subworkflow_id
         if input_mapping is not None:
@@ -248,8 +246,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         y: float | None = None,
         condition: dict[str, Any] | None = None,
         output_type: str | None = None,
-        output_template: str | None = None,
-        output_value: str | None = None,
+        output: Any | None = None,
         subworkflow_id: str | None = None,
         input_mapping: dict[str, str] | None = None,
         output_variable: str | None = None,
@@ -261,8 +258,9 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         Args:
             node_id: ID of the node to modify
             label, type, x, y: Basic node properties
-            condition: For decision nodes - {input_id, comparator, value, value2?}
-            output_type/template/value: For end nodes
+            condition: For decision nodes - {variable, comparator, value, value2?}
+            output_type: For end nodes - data type
+            output: For end nodes - variable name, template, or literal
             subworkflow_id/input_mapping/output_variable: For subprocess nodes
             calculation: For calculation nodes - {output, operator, operands}
         """
@@ -279,10 +277,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             args["condition"] = condition
         if output_type is not None:
             args["output_type"] = output_type
-        if output_template is not None:
-            args["output_template"] = output_template
-        if output_value is not None:
-            args["output_value"] = output_value
+        if output is not None:
+            args["output"] = output
         if subworkflow_id is not None:
             args["subworkflow_id"] = subworkflow_id
         if input_mapping is not None:

@@ -40,7 +40,7 @@ class BatchEditWorkflowTool(WorkflowTool):
     When adding connections from decision nodes, use add_connection with label "true" or "false".
     To change an edge label, use modify_connection.
 
-    For decision nodes, include a 'condition' object with: input_id, comparator, value, value2 (optional).
+    For decision nodes, include a 'condition' object with: variable (name), comparator, value, value2 (optional).
     Comparators by type:
     - int/float: eq, neq, lt, lte, gt, gte, within_range
     - bool: is_true, is_false
@@ -52,7 +52,7 @@ class BatchEditWorkflowTool(WorkflowTool):
     {
       "operations": [
         {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_decision", "x": 100, "y": 100,
-         "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
+         "condition": {"variable": "Age", "comparator": "gte", "value": 18}},
         {"op": "add_node", "type": "end", "label": "Child", "id": "temp_child", "x": 50, "y": 200},
         {"op": "add_node", "type": "end", "label": "Adult", "id": "temp_adult", "x": 150, "y": 200},
         {"op": "add_connection", "from": "temp_decision", "to": "temp_child", "label": "false"},
@@ -77,7 +77,7 @@ class BatchEditWorkflowTool(WorkflowTool):
         Operations format:
         [
             {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_1",
-             "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
+             "condition": {"variable": "Age", "comparator": "gte", "value": 18}},
             {"op": "add_connection", "from": "input_age", "to": "temp_1", "label": "true"},
             {"op": "modify_connection", "from": "temp_1", "to": "output_1", "label": "false"},
             {"op": "modify_node", "node_id": "node_abc", "label": "Updated label"},

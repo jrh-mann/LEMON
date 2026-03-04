@@ -24,7 +24,7 @@ class ModifyNodeTool(WorkflowTool):
     """Modify an existing node's properties.
     
     For decision nodes, you can update the 'condition' field with a structured
-    condition object containing input_id, comparator, value, and optionally value2.
+    condition object containing variable (name), comparator, value, and optionally value2.
     
     For calculation nodes, you can update the 'calculation' field with output,
     operator, and operands.
@@ -44,7 +44,7 @@ class ModifyNodeTool(WorkflowTool):
             "object",
             (
                 "For decision nodes: Structured condition to evaluate. "
-                "Object with: input_id (string), comparator (string), value (any), value2 (optional for ranges). "
+                "Object with: variable (name string), comparator (string), value (any), value2 (optional for ranges). "
                 "Comparators by type: "
                 "int/float: eq,neq,lt,lte,gt,gte,within_range | "
                 "bool: is_true,is_false | "
@@ -68,19 +68,21 @@ class ModifyNodeTool(WorkflowTool):
         ToolParameter(
             "output_type",
             "string",
-            "Optional: data type for output nodes (string, int, bool, json, file)",
+            (
+                "Optional: data type for end nodes (string, number, bool, json). "
+                "Defaults to 'string'. Use 'number' or 'bool' to preserve typed returns."
+            ),
             required=False,
         ),
         ToolParameter(
-            "output_template",
-            "string",
-            "Optional: python f-string template for output (e.g., 'Result: {value}')",
-            required=False,
-        ),
-        ToolParameter(
-            "output_value",
+            "output",
             "any",
-            "Optional: static value to return",
+            (
+                "For end nodes: what to return. Smart routing: "
+                "variable name (e.g., 'BMI') → returns that variable's typed value; "
+                "template with {vars} (e.g., 'Your BMI is {BMI}') → string interpolation; "
+                "literal value (e.g., 42, true) → static return value."
+            ),
             required=False,
         ),
         # Subprocess-specific parameters
@@ -99,10 +101,7 @@ class ModifyNodeTool(WorkflowTool):
         ToolParameter(
             "output_variable",
             "string",
-            (
-                "For 'end' nodes returning number/bool: Name of the variable to return (preserves type). "
-                "For subprocess: name for the variable that stores subworkflow output."
-            ),
+            "For subprocess nodes only: name for the variable that stores subworkflow output.",
             required=False,
         ),
     ]
