@@ -6,6 +6,17 @@ from multiple tool modules, avoiding duplicate definitions.
 
 from __future__ import annotations
 
+import uuid
+
+
+def generate_workflow_id() -> str:
+    """Generate a unique workflow ID.
+
+    Format: wf_{32_hex_chars} — canonical format used by frontend, backend,
+    and REST API. Uses full UUID4 hex for guaranteed uniqueness.
+    """
+    return f"wf_{uuid.uuid4().hex}"
+
 WORKFLOW_EDIT_TOOLS = frozenset(
     {
         "add_node",
@@ -40,7 +51,6 @@ WORKFLOW_BOUND_TOOLS = (
 # Tools that create or modify workflow library entries
 WORKFLOW_LIBRARY_TOOLS = frozenset(
     {
-        "create_workflow",
         "save_workflow_to_library",
         "list_workflows_in_library",
     }
@@ -68,7 +78,7 @@ USER_TYPE_TO_INTERNAL = {
     "date": "date",
 }
 
-# Valid output types at the workflow level (create_workflow output_type param).
+# Valid output types at the workflow level (output_type param).
 # This is distinct from VALID_VARIABLE_TYPES — workflows can return "json"
 # but not "enum" or "date" at the top level.
 VALID_WORKFLOW_OUTPUT_TYPES = frozenset({"string", "number", "bool", "json"})

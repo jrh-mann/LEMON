@@ -163,7 +163,7 @@ class GetCurrentWorkflowTool(WorkflowTool):
                     "workflow": {"nodes": [], "edges": []},
                     "node_count": 0,
                     "edge_count": 0,
-                    "message": "No workflow exists yet. Call create_workflow first to create one.",
+                    "message": "No workflow loaded yet. The workflow is created automatically when the canvas opens.",
                     "summary": {
                         "node_count": 0,
                         "edge_count": 0,

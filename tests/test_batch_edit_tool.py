@@ -6,7 +6,7 @@ using create_workflow, then tools operate on them by ID with auto-save to databa
 
 import pytest
 from src.backend.tools.workflow_edit import BatchEditWorkflowTool
-from src.backend.tools import CreateWorkflowTool
+from src.backend.tools.constants import generate_workflow_id
 from tests.conftest import make_session_with_workflow
 
 
@@ -420,13 +420,14 @@ class TestBatchEditSubprocessNodes:
     def test_subprocess_node_preserves_all_fields(self, workflow_store, test_user_id):
         """Should preserve subworkflow_id, input_mapping, and output_variable fields."""
         # Create a real subworkflow to reference
-        create_tool = CreateWorkflowTool()
-        sub_session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        sub_result = create_tool.execute(
-            {"name": "BMI Analyzer", "output_type": "string"},
-            session_state=sub_session
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="BMI Analyzer",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         variables = [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
@@ -462,13 +463,14 @@ class TestBatchEditSubprocessNodes:
     def test_subprocess_auto_registers_output_variable_as_input(self, workflow_store, test_user_id):
         """Should automatically register output_variable as a workflow variable."""
         # Create a real subworkflow to reference
-        create_tool = CreateWorkflowTool()
-        sub_session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        sub_result = create_tool.execute(
-            {"name": "BMI Analyzer", "output_type": "string"},
-            session_state=sub_session
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="BMI Analyzer",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         variables = [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
@@ -505,13 +507,14 @@ class TestBatchEditSubprocessNodes:
     def test_subprocess_output_variable_allows_subsequent_decision_reference(self, workflow_store, test_user_id):
         """Should allow decision nodes to reference subprocess output_variable."""
         # Create a real subworkflow to reference
-        create_tool = CreateWorkflowTool()
-        sub_session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        sub_result = create_tool.execute(
-            {"name": "BMI Analyzer", "output_type": "string"},
-            session_state=sub_session
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="BMI Analyzer",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         variables = [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]
         workflow_id, session = make_session_with_workflow(
@@ -582,13 +585,14 @@ class TestBatchEditSubprocessNodes:
     def test_subprocess_with_complete_workflow(self, workflow_store, test_user_id):
         """Should successfully create a complete workflow with subprocess."""
         # Create a real subworkflow to reference
-        create_tool = CreateWorkflowTool()
-        sub_session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        sub_result = create_tool.execute(
-            {"name": "BMI Processor", "output_type": "string"},
-            session_state=sub_session
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="BMI Processor",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         variables = [{"id": "var_bmi_float", "name": "BMI", "type": "float", "source": "input"}]
         workflow_id, session = make_session_with_workflow(

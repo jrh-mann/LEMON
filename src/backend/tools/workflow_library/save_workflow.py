@@ -15,7 +15,7 @@ from ..core import Tool, ToolParameter, extract_session_deps
 class SaveWorkflowToLibrary(Tool):
     """Save a draft workflow to the user's permanent library.
     
-    When the LLM creates a workflow using create_workflow, it starts as
+    When a workflow is auto-created by the canvas, it starts as
     a draft (is_draft=True). Drafts are visible to the LLM but not shown
     in the user's browse library. This tool publishes the draft to the
     user's permanent library by setting is_draft=False.

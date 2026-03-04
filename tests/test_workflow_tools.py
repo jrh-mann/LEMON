@@ -28,7 +28,7 @@ class TestGetCurrentWorkflowTool:
         assert result["success"] is True
         assert result["workflow_id"] is None
         assert result["node_count"] == 0
-        assert "create_workflow" in result.get("message", "").lower()
+        assert "no workflow loaded" in result.get("message", "").lower()
 
     def test_returns_workflow_from_database(self, workflow_store, test_user_id):
         """Should return workflow loaded from database"""
@@ -115,22 +115,28 @@ class TestAddNodeTool:
     
     def test_add_subprocess_node_assigns_correct_color(self, workflow_store, test_user_id):
         """Should assign rose color to subprocess nodes with proper config"""
-        # First create a subworkflow to reference
-        from src.backend.tools import CreateWorkflowTool
-        create_tool = CreateWorkflowTool()
+        from src.backend.tools.constants import generate_workflow_id
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        subworkflow_result = create_tool.execute(
-            {"name": "Subworkflow", "output_type": "string"},
-            session_state=session
+
+        # First create a subworkflow to reference
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="Subworkflow",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = subworkflow_result["workflow_id"]
-        
+
         # Now create main workflow and add subprocess node
-        main_result = create_tool.execute(
-            {"name": "Main Workflow", "output_type": "string"},
-            session_state=session
+        workflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=workflow_id,
+            user_id=test_user_id,
+            name="Main Workflow",
+            description="",
+            output_type="string",
         )
-        workflow_id = main_result["workflow_id"]
         
         args = {
             "workflow_id": workflow_id,
@@ -230,16 +236,19 @@ class TestModifyNodeTool:
     
     def test_modify_node_to_subprocess(self, workflow_store, test_user_id):
         """Should allow changing node type to subprocess with required fields"""
-        # First create a subworkflow to reference
-        from src.backend.tools import CreateWorkflowTool
-        create_tool = CreateWorkflowTool()
+        from src.backend.tools.constants import generate_workflow_id
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        subworkflow_result = create_tool.execute(
-            {"name": "Subworkflow", "output_type": "string"},
-            session_state=session
+
+        # First create a subworkflow to reference
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="Subworkflow",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = subworkflow_result["workflow_id"]
-        
+
         # Create main workflow with a process node
         nodes = [{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0, "color": "slate"}]
         workflow_id, session = make_session_with_workflow(

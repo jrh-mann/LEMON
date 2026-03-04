@@ -696,7 +696,7 @@ def _rederive_subprocess_variable_types(
             continue  # Can't look up type without a subworkflow reference
 
         output_info = get_subworkflow_output_type(subworkflow_id, session_state)
-        if output_info is None:
+        if output_info is None or "error" in output_info:
             continue  # Subworkflow not found or inaccessible — leave as-is
 
         current_type = output_info.get("type", "string")
@@ -777,7 +777,7 @@ def load_workflow_for_tool(
             "success": False,
             "error": "workflow_id is required",
             "error_code": "MISSING_WORKFLOW_ID",
-            "message": "You must provide a workflow_id. Create a workflow first using create_workflow.",
+            "message": "You must provide a workflow_id. The workflow is created automatically when the canvas opens.",
         }
     
     # Get workflow_store and user_id from session

@@ -22,7 +22,7 @@ from .workflow_input import (
 from .workflow_output import SetWorkflowOutputTool
 from .validate_workflow import ValidateWorkflowTool
 from .execute_workflow import ExecuteWorkflowTool
-from .workflow_library import ListWorkflowsInLibrary, CreateWorkflowTool, SaveWorkflowToLibrary
+from .workflow_library import ListWorkflowsInLibrary, SaveWorkflowToLibrary
 
 __all__ = [
     "Tool",
@@ -52,6 +52,5 @@ __all__ = [
     "ValidateWorkflowTool",
     "ExecuteWorkflowTool",
     "ListWorkflowsInLibrary",
-    "CreateWorkflowTool",
     "SaveWorkflowToLibrary",
 ]

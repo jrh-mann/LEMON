@@ -11,7 +11,7 @@ Tests the full lifecycle:
 
 import pytest
 
-from src.backend.tools import CreateWorkflowTool
+from src.backend.tools.constants import generate_workflow_id
 from src.backend.tools.workflow_edit import (
     AddConnectionTool,
     AddNodeTool,
@@ -34,7 +34,6 @@ from tests.conftest import make_session_with_workflow
 def tools():
     """All tool instances needed for the integration test."""
     return {
-        "create": CreateWorkflowTool(),
         "add_var": AddWorkflowVariableTool(),
         "remove_var": RemoveWorkflowVariableTool(),
         "add_node": AddNodeTool(),
@@ -55,12 +54,14 @@ def _create_cvd_workflow(workflow_store, test_user_id, tools):
     """
     # 1. Create workflow
     session = {"workflow_store": workflow_store, "user_id": test_user_id}
-    res = tools["create"].execute(
-        {"name": "CVD Screening", "output_type": "string"},
-        session_state=session,
+    wf_id = generate_workflow_id()
+    workflow_store.create_workflow(
+        workflow_id=wf_id,
+        user_id=test_user_id,
+        name="CVD Screening",
+        description="",
+        output_type="string",
     )
-    assert res["success"], f"create_workflow failed: {res}"
-    wf_id = res["workflow_id"]
 
     # 2. Add variables
     for var in [
@@ -136,12 +137,14 @@ def _create_diabetes_workflow(workflow_store, test_user_id, tools):
     Decision condition (AND): symptoms_present is_true  AND  a1c > 58
     """
     session = {"workflow_store": workflow_store, "user_id": test_user_id}
-    res = tools["create"].execute(
-        {"name": "Diabetes Check", "output_type": "string"},
-        session_state=session,
+    wf_id = generate_workflow_id()
+    workflow_store.create_workflow(
+        workflow_id=wf_id,
+        user_id=test_user_id,
+        name="Diabetes Check",
+        description="",
+        output_type="string",
     )
-    assert res["success"], f"create_workflow failed: {res}"
-    wf_id = res["workflow_id"]
 
     for var in [
         {"workflow_id": wf_id, "name": "Symptoms Present", "type": "boolean"},
@@ -459,11 +462,14 @@ class TestAddNodeCompoundValidation:
         """Adding a decision node with a valid compound condition should succeed."""
         # Create workflow with variables
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        res = tools["create"].execute(
-            {"name": "Test Validation", "output_type": "string"},
-            session_state=session,
+        wf_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=wf_id,
+            user_id=test_user_id,
+            name="Test Validation",
+            description="",
+            output_type="string",
         )
-        wf_id = res["workflow_id"]
 
         # Add two boolean variables
         for name in ["Flag A", "Flag B"]:
@@ -503,11 +509,14 @@ class TestAddNodeCompoundValidation:
     ):
         """add_node should reject nested compound conditions."""
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        res = tools["create"].execute(
-            {"name": "Test Nested", "output_type": "string"},
-            session_state=session,
+        wf_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=wf_id,
+            user_id=test_user_id,
+            name="Test Nested",
+            description="",
+            output_type="string",
         )
-        wf_id = res["workflow_id"]
 
         tools["add_var"].execute(
             {"workflow_id": wf_id, "name": "X", "type": "boolean"},

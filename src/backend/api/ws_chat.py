@@ -252,14 +252,6 @@ class WsChatTask:
                     "task_id": self.task_id,
                 })
 
-            if tool == "create_workflow":
-                self._emit("workflow_created", {
-                    "workflow_id": result.get("workflow_id"),
-                    "name": result.get("name"),
-                    "output_type": result.get("output_type"),
-                    "is_draft": True,
-                })
-
             if tool == "save_workflow_to_library":
                 self._emit("workflow_saved", {
                     "workflow_id": result.get("workflow_id"),

@@ -15,8 +15,7 @@ import threading
 from typing import Any, Dict, List
 
 from ..core import Tool, ToolParameter, extract_session_deps
-from ..workflow_library.create_workflow import generate_workflow_id
-from ..constants import VALID_WORKFLOW_OUTPUT_TYPES
+from ..constants import generate_workflow_id, VALID_WORKFLOW_OUTPUT_TYPES
 
 logger = logging.getLogger(__name__)
 

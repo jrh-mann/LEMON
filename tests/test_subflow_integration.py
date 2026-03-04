@@ -108,17 +108,18 @@ class TestAddSubprocessNodeTool:
     
     def test_add_subprocess_node_success(self, workflow_store, test_user_id):
         """Test successfully adding a subprocess node."""
-        # Create a mock subworkflow to reference
-        from src.backend.tools import CreateWorkflowTool
-        create_tool = CreateWorkflowTool()
+        from src.backend.tools.constants import generate_workflow_id
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        
-        # Create subworkflow
-        sub_result = create_tool.execute(
-            {"name": "Simple Calculator", "output_type": "string"},
-            session_state=session
+
+        # Create a real subworkflow to reference
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="Simple Calculator",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         # Create main workflow with a variable to map
         variables = [
@@ -166,16 +167,18 @@ class TestAddSubprocessNodeTool:
     
     def test_add_subprocess_node_missing_output_variable(self, workflow_store, test_user_id):
         """Test that subprocess without output_variable fails validation."""
-        # Create a subworkflow to reference
-        from src.backend.tools import CreateWorkflowTool
-        create_tool = CreateWorkflowTool()
+        from src.backend.tools.constants import generate_workflow_id
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        
-        sub_result = create_tool.execute(
-            {"name": "Subworkflow", "output_type": "string"},
-            session_state=session
+
+        # Create a subworkflow to reference
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="Subworkflow",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id
@@ -195,16 +198,18 @@ class TestAddSubprocessNodeTool:
     
     def test_add_subprocess_node_invalid_input_mapping(self, workflow_store, test_user_id):
         """Test that subprocess with invalid input_mapping fails validation."""
-        # Create a subworkflow to reference
-        from src.backend.tools import CreateWorkflowTool
-        create_tool = CreateWorkflowTool()
+        from src.backend.tools.constants import generate_workflow_id
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        
-        sub_result = create_tool.execute(
-            {"name": "Subworkflow", "output_type": "string"},
-            session_state=session
+
+        # Create a subworkflow to reference
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="Subworkflow",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         variables = [
             {"id": "input_value_int", "name": "Value", "type": "int", "source": "input"}
@@ -235,16 +240,18 @@ class TestModifySubprocessNodeTool:
     
     def test_modify_subprocess_node(self, workflow_store, test_user_id):
         """Test modifying a subprocess node."""
-        # Create a subworkflow to reference
-        from src.backend.tools import CreateWorkflowTool
-        create_tool = CreateWorkflowTool()
+        from src.backend.tools.constants import generate_workflow_id
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
-        
-        sub_result = create_tool.execute(
-            {"name": "Subworkflow", "output_type": "string"},
-            session_state=session
+
+        # Create a subworkflow to reference
+        subworkflow_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=subworkflow_id,
+            user_id=test_user_id,
+            name="Subworkflow",
+            description="",
+            output_type="string",
         )
-        subworkflow_id = sub_result["workflow_id"]
         
         # Create main workflow with subprocess node
         nodes = [
