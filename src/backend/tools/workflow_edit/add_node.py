@@ -82,6 +82,10 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
         input_id = matched["id"]
     elif not input_id:
         return "condition.variable is required (name of the workflow variable to check)"
+
+    comparator = condition.get("comparator")
+    value = condition.get("value")
+
     if not comparator:
         return "condition.comparator is required"
     if value is None and comparator not in ("is_true", "is_false"):
