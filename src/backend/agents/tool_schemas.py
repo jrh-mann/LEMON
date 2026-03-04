@@ -201,6 +201,34 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "update_subworkflow",
+                "description": (
+                    "Update an existing subworkflow by resuming its builder with new instructions. "
+                    "The builder retains full context of how the workflow was originally built. "
+                    "Returns immediately while the update happens in the background."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "ID of the subworkflow to update",
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": (
+                                "Detailed instructions for what to change. Be specific about "
+                                "which nodes to add/modify/remove and what logic to change."
+                            ),
+                        },
+                    },
+                    "required": ["workflow_id", "instructions"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "ask_question",
                 "description": (
                     "Ask the user a clarification question. Use this whenever you are "

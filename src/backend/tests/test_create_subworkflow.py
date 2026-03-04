@@ -22,6 +22,7 @@ from ..tools.workflow_edit.helpers import (
     get_subworkflow_output_type,
     validate_subprocess_node,
 )
+from ..tools.workflow_analysis.update_subworkflow import UpdateSubworkflowTool
 
 
 @pytest.fixture
@@ -328,6 +329,117 @@ class TestSubworkflowValidation:
         assert "Age" in mapping_errors[0]
         assert "Income" in mapping_errors[0]
         assert "Has_Debt" in mapping_errors[0]
+
+
+class TestBuildHistory:
+    """Test build_history persistence on workflows."""
+
+    def test_build_history_stored_and_retrieved(self, workflow_store, user_id):
+        """build_history is stored as JSON and retrieved correctly."""
+        history = [
+            {"role": "user", "content": "Build a BMI calculator"},
+            {"role": "assistant", "content": "I'll create nodes for the calculation."},
+        ]
+        workflow_store.create_workflow(
+            workflow_id="wf_hist1",
+            user_id=user_id,
+            name="History Test",
+            description="",
+            build_history=history,
+        )
+
+        wf = workflow_store.get_workflow("wf_hist1", user_id)
+        assert wf is not None
+        assert len(wf.build_history) == 2
+        assert wf.build_history[0]["role"] == "user"
+        assert wf.build_history[1]["content"] == "I'll create nodes for the calculation."
+
+    def test_build_history_updated(self, workflow_store, user_id):
+        """build_history can be updated via update_workflow."""
+        workflow_store.create_workflow(
+            workflow_id="wf_hist2",
+            user_id=user_id,
+            name="Update History Test",
+            description="",
+            build_history=[{"role": "user", "content": "original"}],
+        )
+
+        new_history = [
+            {"role": "user", "content": "original"},
+            {"role": "assistant", "content": "done"},
+            {"role": "user", "content": "update instructions"},
+            {"role": "assistant", "content": "updated"},
+        ]
+        workflow_store.update_workflow("wf_hist2", user_id, build_history=new_history)
+
+        wf = workflow_store.get_workflow("wf_hist2", user_id)
+        assert wf is not None
+        assert len(wf.build_history) == 4
+
+    def test_build_history_defaults_to_empty(self, workflow_store, user_id):
+        """build_history defaults to empty list when not specified."""
+        workflow_store.create_workflow(
+            workflow_id="wf_hist3",
+            user_id=user_id,
+            name="No History",
+            description="",
+        )
+
+        wf = workflow_store.get_workflow("wf_hist3", user_id)
+        assert wf is not None
+        assert wf.build_history == []
+
+
+class TestUpdateSubworkflow:
+    """Test update_subworkflow tool."""
+
+    def test_rejects_missing_workflow_id(self, session_state):
+        """Tool rejects calls with missing workflow_id."""
+        tool = UpdateSubworkflowTool()
+        result = tool.execute(
+            {"instructions": "Add a new node"},
+            session_state=session_state,
+        )
+        assert result["success"] is False
+        assert "workflow_id" in result["error"].lower()
+
+    def test_rejects_missing_instructions(self, session_state):
+        """Tool rejects calls with missing instructions."""
+        tool = UpdateSubworkflowTool()
+        result = tool.execute(
+            {"workflow_id": "wf_test"},
+            session_state=session_state,
+        )
+        assert result["success"] is False
+        assert "instructions" in result["error"].lower()
+
+    def test_rejects_nonexistent_workflow(self, session_state):
+        """Tool rejects updating a workflow that doesn't exist."""
+        tool = UpdateSubworkflowTool()
+        result = tool.execute(
+            {"workflow_id": "wf_nonexistent", "instructions": "Change something"},
+            session_state=session_state,
+        )
+        assert result["success"] is False
+        assert "not found" in result["error"].lower()
+
+    def test_rejects_while_building(self, session_state, workflow_store, user_id):
+        """Tool rejects updating a workflow that is still being built."""
+        workflow_store.create_workflow(
+            workflow_id="wf_still_building",
+            user_id=user_id,
+            name="Still Building",
+            description="",
+            building=True,
+        )
+
+        tool = UpdateSubworkflowTool()
+        result = tool.execute(
+            {"workflow_id": "wf_still_building", "instructions": "Change something"},
+            session_state=session_state,
+        )
+        assert result["success"] is False
+        assert result["error_code"] == "STILL_BUILDING"
 
 
 if __name__ == "__main__":

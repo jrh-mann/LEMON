@@ -275,6 +275,7 @@ export interface WorkflowDetailResponse {
   edges: FlowEdge[]
   variables: WorkflowVariable[]
   outputs: WorkflowOutput[]
+  build_history?: Array<{ role: string; content: string }>
 }
 
 export interface WorkflowSummary {

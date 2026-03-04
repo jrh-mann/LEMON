@@ -212,6 +212,7 @@ def register_workflow_routes(
             "outputs": workflow.outputs,
             "tree": workflow.tree,
             "doubts": workflow.doubts,
+            "build_history": workflow.build_history,
         }
         return jsonify(response)
 

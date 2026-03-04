@@ -152,6 +152,20 @@ export default function WorkflowPage() {
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId
 
+                // Load the subworkflow builder's conversation history as chat messages
+                // so the user can see how the workflow was built
+                if (workflowData.build_history?.length) {
+                    const chatStore = useChatStore.getState()
+                    const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
+                        id: `bh_${crypto.randomUUID()}`,
+                        role: msg.role as 'user' | 'assistant',
+                        content: msg.content,
+                        timestamp: new Date().toISOString(),
+                        tool_calls: [],
+                    }))
+                    chatStore.setMessages(historyMessages)
+                }
+
                 // After state is set, trigger the staggered reveal if we are still hidden
                 // and NOT currently in a card-zoom transition
                 const state = useUIStore.getState()

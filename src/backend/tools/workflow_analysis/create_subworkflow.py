@@ -64,9 +64,13 @@ def _run_subworkflow_builder(
         # the subworkflow autonomously (add_node, add_connection, etc.)
         orchestrator.respond(brief, allow_tools=True)
 
-        # Save the workflow to library (mark as non-draft)
+        # Save the workflow to library and persist the builder's conversation
+        # history so the user can see how it was built and resume later
         workflow_store.update_workflow(
-            workflow_id, user_id, is_draft=False, building=False,
+            workflow_id, user_id,
+            is_draft=False,
+            building=False,
+            build_history=orchestrator.history,
         )
 
         logger.info("Background builder finished for subworkflow %s", workflow_id)

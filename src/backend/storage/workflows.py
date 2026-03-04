@@ -6,7 +6,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -44,6 +44,7 @@ class WorkflowRecord:
     net_votes: int = 0  # upvotes - downvotes
     published_at: Optional[str] = None  # When workflow was published
     building: bool = False  # True while a background orchestrator is building this workflow
+    build_history: List[Dict[str, str]] = field(default_factory=list)  # Conversation history from the background builder
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,12 @@ class WorkflowStore:
             except sqlite3.OperationalError:
                 conn.execute("ALTER TABLE workflows ADD COLUMN building BOOLEAN NOT NULL DEFAULT 0")
 
+            # Add build_history column — stores the background builder's conversation history
+            try:
+                conn.execute("SELECT build_history FROM workflows LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE workflows ADD COLUMN build_history TEXT NOT NULL DEFAULT '[]'")
+
             # Create indexes for peer review queries
             conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_published ON workflows(is_published)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_review_status ON workflows(review_status)")
@@ -187,6 +194,7 @@ class WorkflowStore:
         is_draft: bool = True,
         is_published: bool = False,
         building: bool = False,
+        build_history: Optional[List[Dict[str, str]]] = None,
     ) -> None:
         """Create a new workflow in the database.
 
@@ -220,6 +228,7 @@ class WorkflowStore:
         outputs_json = json.dumps(outputs or [])
         tree_json = json.dumps(tree or {})
         doubts_json = json.dumps(doubts or [])
+        build_history_json = json.dumps(build_history or [])
 
         # Set published_at if publishing
         published_at = now if is_published else None
@@ -232,16 +241,16 @@ class WorkflowStore:
                     nodes, edges, inputs, outputs, tree, doubts,
                     validation_score, validation_count, is_validated,
                     output_type, is_draft, is_published, review_status, net_votes, published_at,
-                    building, created_at, updated_at
+                    building, build_history, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id, user_id, name, description, domain, tags_json,
                     nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
                     validation_score, validation_count, is_validated,
                     output_type or "string", is_draft, is_published, "unreviewed", 0, published_at,
-                    building, now, now
+                    building, build_history_json, now, now
                 ),
             )
         self._logger.info("Created workflow id=%s user=%s name=%s is_published=%s", workflow_id, user_id, name, is_published)
@@ -263,7 +272,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, created_at, updated_at
+                       building, build_history, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND user_id = ?
                 """,
@@ -296,6 +305,7 @@ class WorkflowStore:
         review_status: Optional[str] = None,
         net_votes: Optional[int] = None,
         building: Optional[bool] = None,
+        build_history: Optional[List[Dict[str, str]]] = None,
     ) -> bool:
         """Update an existing workflow.
 
@@ -372,6 +382,9 @@ class WorkflowStore:
         if building is not None:
             updates.append("building = ?")
             params.append(building)
+        if build_history is not None:
+            updates.append("build_history = ?")
+            params.append(json.dumps(build_history))
 
         if not updates:
             return True  # No updates requested
@@ -454,7 +467,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, created_at, updated_at
+                       building, build_history, created_at, updated_at
                 FROM workflows
                 WHERE user_id = ?
                 ORDER BY updated_at DESC
@@ -524,7 +537,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, created_at, updated_at
+                       building, build_history, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -595,6 +608,7 @@ class WorkflowStore:
                 net_votes=row["net_votes"] or 0,
                 published_at=row["published_at"],
                 building=bool(row["building"]) if row["building"] is not None else False,
+                build_history=json.loads(row["build_history"]) if row["build_history"] else [],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
@@ -652,7 +666,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, created_at, updated_at
+                       building, build_history, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY {order_by}
@@ -680,7 +694,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, created_at, updated_at
+                       building, build_history, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND is_published = 1
                 """,
