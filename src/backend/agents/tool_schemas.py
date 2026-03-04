@@ -27,12 +27,17 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "view_image",
                 "description": (
-                    "Re-examine the uploaded workflow image. Returns the image so you "
-                    "can look at it again during the conversation. No parameters needed."
+                    "Re-examine an uploaded workflow image. When multiple images are "
+                    "uploaded, pass the filename to select a specific one."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "filename": {
+                            "type": "string",
+                            "description": "Name of the image file to view. If omitted, returns the first image.",
+                        },
+                    },
                     "required": [],
                 },
             },
@@ -43,13 +48,19 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "name": "extract_guidance",
                 "description": (
                     "Extract side information (sticky notes, legends, annotations, linked "
-                    "guidance panels) from the uploaded workflow image. Makes a separate "
+                    "guidance panels) from an uploaded workflow image. Makes a separate "
                     "API call and returns structured guidance items. Call this BEFORE "
-                    "building the workflow to discover extra context in the image."
+                    "building the workflow to discover extra context in the image. "
+                    "When multiple images are uploaded, pass the filename to select one."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "filename": {
+                            "type": "string",
+                            "description": "Name of the image file. If omitted, uses the first image.",
+                        },
+                    },
                     "required": [],
                 },
             },

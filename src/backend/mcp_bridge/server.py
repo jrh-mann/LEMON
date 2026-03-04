@@ -126,25 +126,33 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(
         name="view_image",
-        description="Re-examine the uploaded workflow image.",
+        description="Re-examine an uploaded workflow image. Pass filename when multiple images are uploaded.",
     )
     def view_image(
+        filename: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return the uploaded image as a base64 content block."""
         state = dict(session_state or {})
-        return view_image_tool.execute({}, session_state=state)
+        tool_args: dict[str, Any] = {}
+        if filename:
+            tool_args["filename"] = filename
+        return view_image_tool.execute(tool_args, session_state=state)
 
     @server.tool(
         name="extract_guidance",
-        description="Extract side information from the uploaded workflow image.",
+        description="Extract side information from an uploaded workflow image. Pass filename when multiple images are uploaded.",
     )
     def extract_guidance(
+        filename: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Extract guidance (notes, legends, linked panels) from the image."""
         state = dict(session_state or {})
-        return extract_guidance_tool.execute({}, session_state=state)
+        tool_args: dict[str, Any] = {}
+        if filename:
+            tool_args["filename"] = filename
+        return extract_guidance_tool.execute(tool_args, session_state=state)
 
     @server.tool(
         name="update_plan",

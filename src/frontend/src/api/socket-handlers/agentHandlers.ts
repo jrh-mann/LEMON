@@ -18,6 +18,7 @@ export function registerAgentHandlers(socket: Socket): void {
 
     chatStore.setStreaming(false)
     chatStore.setPendingQuestion({ question: data.question, options: [] })
+    useWorkflowStore.getState().setPlan([])
 
     // Also add as assistant message for display
     addAssistantMessage(data.question)
@@ -32,6 +33,7 @@ export function registerAgentHandlers(socket: Socket): void {
 
     chatStore.setStreaming(false)
     chatStore.clearPendingQuestion()
+    workflowStore.setPlan([])
 
     addAssistantMessage(data.message)
 
@@ -68,6 +70,7 @@ export function registerAgentHandlers(socket: Socket): void {
     chatStore.setProcessingStatus(null)
     chatStore.clearStreamContent()
     chatStore.clearCurrentTaskId()
+    useWorkflowStore.getState().setPlan([])
 
     addAssistantMessage(`Error: ${data.error}`)
     uiStore.setError(data.error)

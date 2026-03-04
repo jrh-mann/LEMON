@@ -38,6 +38,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     filesSent,
     markFilesSent,
     plan,
+    setPlan,
   } = useWorkflowStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -213,6 +214,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       markTaskCancelled(currentTaskId)
     }
     finalizeStreamingMessage()
+    setPlan([])  // Clear checklist on manual stop
     clearCurrentTaskId()
     textareaRef.current?.focus()
   }

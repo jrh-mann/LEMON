@@ -71,19 +71,39 @@ class ExtractGuidanceTool(Tool):
         "guidance panels) from the uploaded workflow image. Returns a structured "
         "list of guidance items so you know about extra context before building."
     )
-    parameters: List[ToolParameter] = []  # No params — uses session_state uploaded_files
+    parameters: List[ToolParameter] = [
+        {
+            "name": "filename",
+            "type": "string",
+            "description": "Name of the image file to extract guidance from. If omitted, uses the first image.",
+            "required": False,
+        },
+    ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
         uploaded_files = session_state.get("uploaded_files", [])
+        requested_name = args.get("filename")
 
-        # Find first image in uploaded files
-        image_file = next(
-            (f for f in uploaded_files if f.get("file_type") == "image"),
-            None,
-        )
-        if not image_file:
+        # Collect all uploaded images
+        images = [f for f in uploaded_files if f.get("file_type") == "image"]
+        if not images:
             return {"success": False, "error": "No uploaded image found in session."}
+
+        # If a filename is specified, find that specific image
+        if requested_name:
+            image_file = next(
+                (f for f in images if f.get("name") == requested_name),
+                None,
+            )
+            if not image_file:
+                available = [f.get("name", "?") for f in images]
+                return {
+                    "success": False,
+                    "error": f"Image '{requested_name}' not found. Available images: {available}",
+                }
+        else:
+            image_file = images[0]
 
         image_path = Path(image_file["path"])
         if not image_path.is_absolute():

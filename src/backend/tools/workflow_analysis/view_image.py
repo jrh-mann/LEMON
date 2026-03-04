@@ -20,9 +20,17 @@ class ViewImageTool(Tool):
     name = "view_image"
     description = (
         "Re-examine an uploaded workflow image. Returns the image so you can "
-        "look at it again during the conversation."
+        "look at it again during the conversation. When multiple images are "
+        "uploaded, pass the filename to select a specific one."
     )
-    parameters: List[ToolParameter] = []  # No params — uses session_state uploaded_files
+    parameters: List[ToolParameter] = [
+        {
+            "name": "filename",
+            "type": "string",
+            "description": "Name of the image file to view. If omitted, returns the first image. Use this when multiple images are uploaded.",
+            "required": False,
+        },
+    ]
 
     def __init__(self) -> None:
         self._logger = logging.getLogger(__name__)
@@ -30,14 +38,27 @@ class ViewImageTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
         uploaded_files = session_state.get("uploaded_files", [])
+        requested_name = args.get("filename")
 
-        # Find first image in uploaded files
-        image_file = next(
-            (f for f in uploaded_files if f.get("file_type") == "image"),
-            None,
-        )
-        if not image_file:
+        # Collect all uploaded images
+        images = [f for f in uploaded_files if f.get("file_type") == "image"]
+        if not images:
             return {"success": False, "error": "No uploaded image found in session."}
+
+        # If a filename is specified, find that specific image
+        if requested_name:
+            image_file = next(
+                (f for f in images if f.get("name") == requested_name),
+                None,
+            )
+            if not image_file:
+                available = [f.get("name", "?") for f in images]
+                return {
+                    "success": False,
+                    "error": f"Image '{requested_name}' not found. Available images: {available}",
+                }
+        else:
+            image_file = images[0]
 
         image_path = Path(image_file["path"])
         if not image_path.is_absolute():
@@ -66,6 +87,13 @@ class ViewImageTool(Tool):
 
         self._logger.info("ViewImageTool returning image %s (%d bytes)", image_path.name, len(raw))
 
+        # List all available image names so the LLM knows what else is uploaded
+        available_names = [f.get("name", "?") for f in images]
+        label = image_file.get("name", image_path.name)
+        caption = f"Image: {label}"
+        if len(images) > 1:
+            caption += f" (uploaded images: {', '.join(available_names)})"
+
         return {
             "success": True,
             "content": [
@@ -75,7 +103,7 @@ class ViewImageTool(Tool):
                 },
                 {
                     "type": "text",
-                    "text": f"Image: {image_file.get('name', image_path.name)}",
+                    "text": caption,
                 },
             ],
         }
