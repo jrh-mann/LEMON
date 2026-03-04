@@ -69,8 +69,6 @@ class AddWorkflowVariableTool(WorkflowTool):
         "Use this when the workflow needs data from users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
         "For subprocess outputs, use the output_variable parameter when adding a subprocess node instead."
     )
-    category = "workflow_input"
-    prompt_hint = ""
     parameters = [
         # workflow_id is REQUIRED and must be first
         ToolParameter(
@@ -90,7 +88,6 @@ class AddWorkflowVariableTool(WorkflowTool):
             "string",
             "Variable type: 'string', 'number', 'boolean', or 'enum'",
             required=True,
-            schema_override={"type": "string", "enum": ["string", "number", "boolean", "enum"], "description": "Variable type: 'string', 'number', 'boolean', or 'enum'"},
         ),
         ToolParameter(
             "description",
@@ -103,7 +100,6 @@ class AddWorkflowVariableTool(WorkflowTool):
             "array",
             "For enum type: array of allowed values (e.g., ['Male', 'Female', 'Other'])",
             required=False,
-            schema_override={"type": "array", "items": {"type": "string"}, "description": "For enum type: array of allowed values (e.g., ['Male', 'Female', 'Other'])"},
         ),
         ToolParameter(
             "range_min",

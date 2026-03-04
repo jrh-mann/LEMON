@@ -33,8 +33,6 @@ class ListWorkflowVariablesTool(WorkflowTool):
         "Use this to see what variables can be referenced in decision conditions "
         "and output templates."
     )
-    category = "workflow_input"
-    prompt_hint = ""
     parameters = [
         # workflow_id is REQUIRED and must be first
         ToolParameter(

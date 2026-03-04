@@ -17,70 +17,14 @@ class ToolParameter:
     type: str
     description: str
     required: bool = True
-    # Full JSON Schema dict for this property.  When set, replaces the
-    # auto-generated {"type": …, "description": …}.  Use for complex
-    # types: enum, oneOf, nested objects, arrays with item schemas.
-    schema_override: Optional[Dict[str, Any]] = None
 
 
 class Tool:
-    """Base class for all LLM-callable tools.
-
-    Subclasses define class-level metadata that the framework uses
-    to auto-generate JSON schemas, MCP wrappers, system-prompt hints,
-    and category membership — eliminating the need to register a tool
-    in multiple files.
-    """
+    """Base class for all LLM-callable tools."""
 
     name: str
     description: str
     parameters: List[ToolParameter]
-
-    # Category for grouping — replaces hardcoded frozensets in constants.py.
-    # Values: "workflow_edit", "workflow_input", "workflow_library", etc.
-    category: str = ""
-
-    # System prompt hint — auto-injected into "WHEN TO CALL TOOLS" section.
-    # Example: "ADD/CREATE (node) → call add_node with workflow_id"
-    prompt_hint: str = ""
-
-    # ------------------------------------------------------------------ #
-    # Schema generation
-    # ------------------------------------------------------------------ #
-
-    @classmethod
-    def json_schema(cls) -> Dict[str, Any]:
-        """Auto-generate an Anthropic function-calling schema.
-
-        Reads ``cls.parameters`` (a list of :class:`ToolParameter`) and
-        produces the ``{"type": "function", "function": {…}}`` dict
-        expected by the Anthropic API.
-        """
-        properties: Dict[str, Any] = {}
-        required: List[str] = []
-        for p in cls.parameters:
-            if p.schema_override:
-                prop = {**p.schema_override}
-                if "description" not in prop:
-                    prop["description"] = p.description
-            else:
-                prop = {"type": p.type, "description": p.description}
-            properties[p.name] = prop
-            if p.required:
-                required.append(p.name)
-
-        return {
-            "type": "function",
-            "function": {
-                "name": cls.name,
-                "description": cls.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
-            },
-        }
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         raise NotImplementedError

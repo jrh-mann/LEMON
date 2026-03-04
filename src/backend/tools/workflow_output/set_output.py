@@ -39,8 +39,6 @@ class SetWorkflowOutputTool(WorkflowTool):
         "The output type is REQUIRED and determines the type of the derived variable "
         "when this workflow is called as a subprocess. Common types: string, int, float, bool."
     )
-    category = "workflow_input"
-    prompt_hint = ""
     parameters = [
         # workflow_id is REQUIRED and must be first
         ToolParameter(
@@ -60,7 +58,6 @@ class SetWorkflowOutputTool(WorkflowTool):
             "string",
             "Output type: 'string', 'number', 'bool', 'enum', or 'date'. This is REQUIRED.",
             required=True,
-            schema_override={"type": "string", "enum": ["string", "number", "bool", "enum", "date"], "description": "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values."},
         ),
         ToolParameter(
             "description",

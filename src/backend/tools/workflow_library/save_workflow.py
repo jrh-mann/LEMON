@@ -33,8 +33,6 @@ class SaveWorkflowToLibrary(Tool):
         "appear in the user's browse library. Use this when the user asks to save "
         "the workflow or confirms they want to keep it."
     )
-    category = "workflow_library"
-    prompt_hint = "SAVE/KEEP/PUBLISH (workflow) → call save_workflow_to_library with workflow_id"
     parameters = [
         ToolParameter(
             "workflow_id",
@@ -65,7 +63,6 @@ class SaveWorkflowToLibrary(Tool):
             "array",
             "Optional list of tags (updates existing if provided)",
             required=False,
-            schema_override={"type": "array", "items": {"type": "string"}, "description": "Optional list of tags"},
         ),
     ]
 

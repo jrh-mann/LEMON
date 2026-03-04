@@ -53,7 +53,7 @@ def _run_subworkflow_builder(
         # Import here to avoid circular imports
         from ...agents.orchestrator_factory import build_orchestrator
 
-        orchestrator = build_orchestrator()
+        orchestrator = build_orchestrator(repo_root)
         orchestrator.workflow_store = workflow_store
         orchestrator.user_id = user_id
         orchestrator.current_workflow_id = workflow_id
@@ -128,8 +128,6 @@ class CreateSubworkflowTool(Tool):
     """
 
     name = "create_subworkflow"
-    category = "workflow_analysis"
-    prompt_hint = ""
     description = (
         "Create a new subworkflow and build it in the background. Returns a "
         "workflow_id immediately that you can use in a subprocess node's "
@@ -147,11 +145,6 @@ class CreateSubworkflowTool(Tool):
             "output_type", "string",
             "Type of value the subworkflow returns: 'string', 'number', 'bool', or 'json'",
             required=True,
-            schema_override={
-                "type": "string",
-                "enum": ["string", "number", "bool", "json"],
-                "description": "Type of value the subworkflow returns",
-            },
         ),
         ToolParameter(
             "brief", "string",
@@ -165,29 +158,6 @@ class CreateSubworkflowTool(Tool):
             "Array of input variable definitions: [{\"name\": \"Age\", \"type\": \"number\", "
             "\"description\": \"Patient age in years\"}]. Types: string, number, bool, json.",
             required=True,
-            schema_override={
-                "type": "array",
-                "description": "Input variables the subworkflow expects",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Input variable name",
-                        },
-                        "type": {
-                            "type": "string",
-                            "enum": ["string", "number", "bool", "json"],
-                            "description": "Input variable type",
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "What this input represents",
-                        },
-                    },
-                    "required": ["name", "type"],
-                },
-            },
         ),
     ]
 
@@ -262,7 +232,7 @@ class CreateSubworkflowTool(Tool):
             }
 
         # --- Register input variables via the add_workflow_variable tool ---
-        from ..workflow_input.add import AddWorkflowVariableTool
+        from ..workflow_input import AddWorkflowVariableTool
         add_var_tool = AddWorkflowVariableTool()
 
         registered_inputs: List[Dict[str, str]] = []

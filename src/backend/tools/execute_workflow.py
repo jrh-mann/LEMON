@@ -25,8 +25,6 @@ class ExecuteWorkflowTool(WorkflowTool):
         "variable names (or IDs) to their values. Returns the output, the "
         "path of nodes visited, and the final variable context."
     )
-    category = "workflow_execution"
-    prompt_hint = "RUN/EXECUTE/TEST/TRY → call execute_workflow with workflow_id"
     parameters = [
         ToolParameter(
             "workflow_id",
@@ -42,7 +40,6 @@ class ExecuteWorkflowTool(WorkflowTool):
                 "Example: {\"Age\": 25, \"Smoker\": false}"
             ),
             required=True,
-            schema_override={"type": "object", "description": "Input values keyed by variable name or ID. Example: {\"Age\": 25, \"Smoker\": false}"},
         ),
     ]
 

@@ -39,7 +39,7 @@ def orchestrator_with_workflow(tmp_path):
     ensuring tools have access to workflow_store and user_id for database operations.
     """
     # Create orchestrator
-    orch = build_orchestrator()
+    orch = build_orchestrator(repo_root=_repo_root())
     
     # Create in-memory workflow store for testing
     db_path = tmp_path / "test_workflows.sqlite"

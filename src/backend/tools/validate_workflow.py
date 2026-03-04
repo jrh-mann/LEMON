@@ -24,8 +24,6 @@ class ValidateWorkflowTool(WorkflowTool):
         "Validate the workflow for structural correctness. Requires workflow_id. "
         "Checks reachability, disconnected nodes, decision node conditions, and more."
     )
-    category = "workflow_validation"
-    prompt_hint = "VALIDATE/CHECK/VERIFY → call validate_workflow with workflow_id"
     parameters = [
         # workflow_id is REQUIRED and must be first
         ToolParameter(

@@ -18,19 +18,18 @@ class ViewImageTool(Tool):
     """Load an uploaded image from disk and return it as an image content block."""
 
     name = "view_image"
-    category = "workflow_analysis"
-    prompt_hint = ""
     description = (
         "Re-examine an uploaded workflow image. Returns the image so you can "
         "look at it again during the conversation. When multiple images are "
         "uploaded, pass the filename to select a specific one."
     )
     parameters: List[ToolParameter] = [
-        ToolParameter(
-            "filename", "string",
-            "Name of the image file to view. If omitted, returns the first image. Use this when multiple images are uploaded.",
-            required=False,
-        ),
+        {
+            "name": "filename",
+            "type": "string",
+            "description": "Name of the image file to view. If omitted, returns the first image. Use this when multiple images are uploaded.",
+            "required": False,
+        },
     ]
 
     def __init__(self) -> None:

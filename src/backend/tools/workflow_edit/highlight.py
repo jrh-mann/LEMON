@@ -13,13 +13,10 @@ from ..core import Tool, ToolParameter
 
 
 class HighlightNodeTool(Tool):
-    category = "workflow_edit"
-    prompt_hint = ""
-
     name = "highlight_node"
     description = "Highlight a node on the canvas to draw the user's attention to it. The node pulses briefly."
     parameters = [
-        ToolParameter("workflow_id", "string", "ID of the workflow containing the node", required=False),
+        ToolParameter("workflow_id", "string", "ID of the workflow containing the node"),
         ToolParameter("node_id", "string", "ID of the node to highlight"),
     ]
 

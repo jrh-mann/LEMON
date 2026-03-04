@@ -32,7 +32,7 @@ def main() -> None:
 
     setup_logging()
     repo_root = Path(__file__).parent.parent.parent
-    orchestrator = build_orchestrator()
+    orchestrator = build_orchestrator(repo_root)
 
     if args.one_shot:
         print(orchestrator.respond(args.one_shot))

@@ -17,9 +17,6 @@ from .helpers import resolve_node_id, save_workflow_changes
 class AddConnectionTool(WorkflowTool):
     """Connect two nodes with an edge."""
 
-    category = "workflow_edit"
-    prompt_hint = "CONNECT/LINK → call add_connection with workflow_id"
-
     name = "add_connection"
     description = "Create an edge connecting two nodes. Requires workflow_id."
     parameters = [

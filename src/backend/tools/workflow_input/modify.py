@@ -44,8 +44,6 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         "subprocess nodes are read-only — modify the producing node instead. "
         "NOTE: Changing the type will also update the variable ID."
     )
-    category = "workflow_input"
-    prompt_hint = ""
     parameters = [
         # workflow_id is REQUIRED and must be first
         ToolParameter(
@@ -65,7 +63,6 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             "string",
             "New type: 'string', 'number', 'integer', 'boolean', 'enum', or 'date'. If not provided, type is unchanged.",
             required=False,
-            schema_override={"type": "string", "enum": ["string", "number", "integer", "boolean", "enum", "date"], "description": "New type for the variable. 'number' = float, 'integer' = int."},
         ),
         ToolParameter(
             "new_name",
@@ -84,7 +81,6 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             "array",
             "For enum type: array of allowed values. Required if changing to enum type.",
             required=False,
-            schema_override={"type": "array", "items": {"type": "string"}, "description": "For enum type: array of allowed values"},
         ),
         ToolParameter(
             "range_min",

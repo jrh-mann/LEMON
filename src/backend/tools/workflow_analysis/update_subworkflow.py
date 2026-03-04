@@ -54,7 +54,7 @@ def _run_subworkflow_updater(
     try:
         from ...agents.orchestrator_factory import build_orchestrator
 
-        orchestrator = build_orchestrator()
+        orchestrator = build_orchestrator(repo_root)
         orchestrator.workflow_store = workflow_store
         orchestrator.user_id = user_id
         orchestrator.current_workflow_id = workflow_id
@@ -126,8 +126,6 @@ class UpdateSubworkflowTool(Tool):
     """
 
     name = "update_subworkflow"
-    category = "workflow_analysis"
-    prompt_hint = ""
     description = (
         "Update an existing subworkflow by resuming its builder with new "
         "instructions. The builder has full context of how the workflow was "

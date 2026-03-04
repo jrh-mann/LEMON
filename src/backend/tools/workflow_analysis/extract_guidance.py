@@ -66,19 +66,18 @@ class ExtractGuidanceTool(Tool):
     """
 
     name = "extract_guidance"
-    category = "workflow_analysis"
-    prompt_hint = ""
     description = (
         "Extract side information (sticky notes, legends, annotations, linked "
         "guidance panels) from the uploaded workflow image. Returns a structured "
         "list of guidance items so you know about extra context before building."
     )
     parameters: List[ToolParameter] = [
-        ToolParameter(
-            "filename", "string",
-            "Name of the image file to extract guidance from. If omitted, uses the first image.",
-            required=False,
-        ),
+        {
+            "name": "filename",
+            "type": "string",
+            "description": "Name of the image file to extract guidance from. If omitted, uses the first image.",
+            "required": False,
+        },
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:

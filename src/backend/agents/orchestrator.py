@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+import os
 import json
 import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from ..tools import ToolRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..mcp_bridge.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
@@ -30,7 +32,9 @@ class ToolResult:
 class Orchestrator:
     """Minimal orchestrator that uses the LLM to choose tools."""
 
-    def __init__(self) -> None:
+    def __init__(self, tools: ToolRegistry):
+        self.tools = tools
+
         # Single canonical workflow dict (nodes + edges + variables + outputs)
         self.workflow: Dict[str, Any] = {
             "nodes": [],
@@ -42,6 +46,8 @@ class Orchestrator:
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
+        # MCP mode is opt-in (must explicitly enable it)
+        self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() in {"1", "true", "yes", "on"}
 
         # Session context for tools (workflow_store, user_id)
         self.workflow_store: Optional[Any] = None
@@ -190,20 +196,52 @@ class Orchestrator:
             json.dumps(args, ensure_ascii=True),
         )
 
-        # All tool calls dispatch through MCP — the MCP server has its own
-        # WorkflowStore and injects shared resources into session_state.
-        mcp_args = {
-            **args,
-            "session_state": {
+        if self._use_mcp:
+            # MCP mode: Only pass serializable data (workflow_store can't be serialized)
+            # The MCP server should have its own workflow_store instance
+            mcp_args = {
+                **args,
+                "session_state": {
+                    "current_workflow": self.current_workflow,
+                    "workflow_analysis": self.workflow_analysis,
+                    "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
+                    "user_id": self.user_id,  # Serialize user_id (string)
+                    "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+                    "uploaded_files": getattr(self, "uploaded_files", []),
+                },
+            }
+            data = call_mcp_tool(tool_name, mcp_args)
+        else:
+            # Direct mode: Pass workflow_store object reference
+            session_state = {
                 "current_workflow": self.current_workflow,
                 "workflow_analysis": self.workflow_analysis,
-                "current_workflow_id": self.current_workflow_id,
-                "user_id": self.user_id,
-                "open_tabs": self.open_tabs,
-                "uploaded_files": self.uploaded_files,
-            },
-        }
-        data = call_mcp_tool(tool_name, mcp_args)
+                "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
+                "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+                "uploaded_files": getattr(self, "uploaded_files", []),
+            }
+            # Add workflow_store and user_id if available
+            if self.workflow_store is not None:
+                session_state["workflow_store"] = self.workflow_store
+            if self.user_id is not None:
+                session_state["user_id"] = self.user_id
+            # Pass repo_root, socketio, sid for background subworkflow builders
+            if self.repo_root is not None:
+                session_state["repo_root"] = self.repo_root
+            if self.socketio is not None:
+                session_state["socketio"] = self.socketio
+            if self.sid is not None:
+                session_state["sid"] = self.sid
+
+            data = self.tools.execute(
+                tool_name,
+                args,
+                stream=stream,
+                should_cancel=should_cancel,
+                on_progress=on_progress,
+                on_thinking=on_thinking,
+                session_state=session_state,
+            )
         result = self._normalize_tool_result(tool_name, data)
         self._tool_logger.info(
             "tool_response name=%s data=%s",

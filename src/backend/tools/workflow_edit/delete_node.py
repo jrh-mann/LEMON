@@ -17,9 +17,6 @@ from .helpers import resolve_node_id, save_workflow_changes
 class DeleteNodeTool(WorkflowTool):
     """Delete a node from the workflow."""
 
-    category = "workflow_edit"
-    prompt_hint = "DELETE/REMOVE (node) → call delete_node with workflow_id"
-
     name = "delete_node"
     description = "Remove a node and all connected edges from the workflow. Requires workflow_id."
     parameters = [
