@@ -63,6 +63,7 @@ interface WorkflowState {
   // Pending files for analysis (images and PDFs)
   pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
+  filesSent: boolean  // Whether pendingFiles have already been sent to backend
 
   // Extraction plan items (from update_plan tool)
   plan: Array<{ text: string; done: boolean }>
@@ -112,6 +113,7 @@ interface WorkflowState {
   addPendingFile: (file: PendingFile) => void
   removePendingFile: (fileId: string) => void
   clearPendingFiles: () => void
+  markFilesSent: () => void  // Mark that pendingFiles have been sent to backend
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
   setPlan: (items: Array<{ text: string; done: boolean }>) => void
@@ -203,6 +205,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   historyIndex: -1,
   pendingFiles: [],
   pendingAnnotations: [],
+  filesSent: false,
   plan: [],
 
   // Execution state
@@ -531,9 +534,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
   // Pending files
-  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file] })),
+  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file], filesSent: false })),
   removePendingFile: (fileId) => set((state) => ({ pendingFiles: state.pendingFiles.filter(f => f.id !== fileId) })),
-  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [] }),
+  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [], filesSent: false }),
+  markFilesSent: () => set({ filesSent: true }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
   setPlan: (items) => set({ plan: items }),
@@ -568,6 +572,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingFiles: [],
       pendingAnnotations: [],
+      filesSent: false,
       plan: [],
       execution: { ...initialExecutionState },
     }),

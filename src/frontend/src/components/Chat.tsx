@@ -35,6 +35,8 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     pendingFiles,
     clearPendingFiles,
     addPendingFile,
+    filesSent,
+    markFilesSent,
     plan,
   } = useWorkflowStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -176,15 +178,19 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending files and annotations if available
+    // Send via socket - only include files on first send (not every follow-up message)
+    const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
     sendChatMessage(
       trimmed,
       conversationId,
-      pendingFiles.length > 0 ? pendingFiles : undefined,
+      filesToSend,
     )
 
-    // Keep pending files around so user can reference them in Source Image tab
-    // Files are only cleared when user explicitly clicks x or uploads new ones
+    // Mark files as sent so they aren't re-sent on every subsequent message.
+    // Files stay in pendingFiles for the Source Image tab display.
+    if (filesToSend) {
+      markFilesSent()
+    }
 
     // Clear input, pending question, and reset voice base text
     clearPendingQuestion()
