@@ -8,29 +8,36 @@ returns the execution result including subflow outputs.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from flask import Flask, jsonify, request, g
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import JSONResponse
 
+from ..deps import require_auth
+from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
 
 
 def register_execution_routes(
-    app: Flask,
+    app: FastAPI,
     *,
     workflow_store: WorkflowStore,
 ) -> None:
-    """Register execution endpoints on the Flask app.
+    """Register execution endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         workflow_store: Workflow storage backend for loading workflows.
     """
+    router = APIRouter()
 
-    @app.post("/api/execute/<workflow_id>")
-    def execute_workflow(workflow_id: str) -> Any:
+    @router.post("/api/execute/{workflow_id}")
+    async def execute_workflow(
+        workflow_id: str,
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Execute a workflow with provided input values.
 
         Request body should contain input values keyed by input name:
@@ -45,32 +52,39 @@ def register_execution_routes(
         """
         from ...execution.interpreter import TreeInterpreter
 
-        user_id = g.auth_user.id
-
         # Load the workflow
-        workflow = workflow_store.get_workflow(workflow_id, user_id)
+        workflow = workflow_store.get_workflow(workflow_id, user.id)
         if not workflow:
-            return jsonify({
-                "success": False,
-                "error": f"Workflow '{workflow_id}' not found",
-                "path": [],
-                "context": {},
-            }), 404
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": f"Workflow '{workflow_id}' not found",
+                    "path": [],
+                    "context": {},
+                },
+                status_code=404,
+            )
 
         # Validate workflow has tree structure
         if not workflow.tree or "start" not in workflow.tree:
-            return jsonify({
-                "success": False,
-                "error": (
-                    "Workflow has no execution tree. "
-                    "Build the workflow tree first."
-                ),
-                "path": [],
-                "context": {},
-            }), 400
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": (
+                        "Workflow has no execution tree. "
+                        "Build the workflow tree first."
+                    ),
+                    "path": [],
+                    "context": {},
+                },
+                status_code=400,
+            )
 
         # Get input values from request
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
 
         # Convert input names to input IDs for the interpreter
         # User provides: {"Age": 25} -> interpreter needs: {"input_age_int": 25}
@@ -93,7 +107,7 @@ def register_execution_routes(
             workflow_id=workflow_id,
             call_stack=[],
             workflow_store=workflow_store,
-            user_id=user_id,
+            user_id=user.id,
             output_type=workflow.output_type or "string",
         )
 
@@ -113,4 +127,6 @@ def register_execution_routes(
         if result.subflow_results:
             response["subflow_results"] = result.subflow_results
 
-        return jsonify(response)
+        return JSONResponse(response)
+
+    app.include_router(router)

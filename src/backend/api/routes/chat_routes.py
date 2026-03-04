@@ -10,39 +10,50 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from flask import Flask, jsonify, request
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import JSONResponse
 
 from ..common import utc_now
 from ..conversations import ConversationStore
+from ..deps import require_auth
 from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
+from ...storage.auth import AuthUser
 from ...utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.api")
 
 
 def register_chat_routes(
-    app: Flask,
+    app: FastAPI,
     *,
     conversation_store: ConversationStore,
     repo_root: Path,
 ) -> None:
-    """Register chat endpoints on the Flask app.
+    """Register chat endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         conversation_store: In-memory conversation manager.
         repo_root: Repository root path for image uploads.
     """
+    router = APIRouter()
 
-    @app.post("/api/chat")
-    def chat() -> Any:
-        payload = request.get_json(force=True, silent=True) or {}
+    @router.post("/api/chat")
+    async def chat(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
         message = payload.get("message", "")
         conversation_id = payload.get("conversation_id")
         image_data = payload.get("image")
 
         if not isinstance(message, str) or not message.strip():
-            return jsonify({"error": "message is required"}), 400
+            return JSONResponse({"error": "message is required"}, status_code=400)
 
         convo = conversation_store.get_or_create(conversation_id)
         if isinstance(image_data, str) and image_data.strip():
@@ -50,7 +61,9 @@ def register_chat_routes(
                 save_uploaded_image(image_data, repo_root=repo_root)
             except Exception as exc:
                 logger.exception("Failed to save uploaded image")
-                return jsonify({"error": f"Invalid image data: {exc}"}), 400
+                return JSONResponse(
+                    {"error": f"Invalid image data: {exc}"}, status_code=400
+                )
 
         executed_tools: list[dict[str, Any]] = []
 
@@ -75,7 +88,7 @@ def register_chat_routes(
         response_summary = summarize_response(response_text)
         flowchart = extract_flowchart(response_text)
         convo.updated_at = utc_now()
-        return jsonify(
+        return JSONResponse(
             {
                 "conversation_id": convo.id,
                 "response": response_summary,
@@ -84,11 +97,14 @@ def register_chat_routes(
             }
         )
 
-    @app.get("/api/chat/<conversation_id>")
-    def get_conversation(conversation_id: str) -> Any:
+    @router.get("/api/chat/{conversation_id}")
+    async def get_conversation(
+        conversation_id: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         convo = conversation_store.get(conversation_id)
         if not convo:
-            return jsonify({"error": "conversation not found"}), 404
+            return JSONResponse({"error": "conversation not found"}, status_code=404)
         messages = []
         for idx, msg in enumerate(convo.orchestrator.history):
             role = msg.get("role", "assistant")
@@ -102,7 +118,7 @@ def register_chat_routes(
                     "tool_calls": extract_tool_calls(content),
                 }
             )
-        return jsonify(
+        return JSONResponse(
             {
                 "id": convo.id,
                 "messages": messages,
@@ -111,3 +127,5 @@ def register_chat_routes(
                 "updated_at": convo.updated_at,
             }
         )
+
+    app.include_router(router)

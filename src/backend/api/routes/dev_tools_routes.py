@@ -8,31 +8,36 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
-from flask import Flask, jsonify, request, g
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import JSONResponse
 
+from ..deps import require_auth
+from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
 
 
 def register_dev_tools_routes(
-    app: Flask,
+    app: FastAPI,
     *,
     repo_root: Path,
     workflow_store: WorkflowStore,
 ) -> None:
-    """Register dev tools endpoints on the Flask app.
+    """Register dev tools endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         repo_root: Repository root path for tool registry construction.
         workflow_store: Workflow storage backend (injected into tool session state).
     """
+    router = APIRouter()
 
-    @app.get("/api/tools")
-    def list_tools() -> Any:
+    @router.get("/api/tools")
+    async def list_tools(
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """List all available MCP tools with their schemas.
 
         Returns array of tools, each with name, description, and inputSchema.
@@ -42,13 +47,17 @@ def register_dev_tools_routes(
 
         try:
             tools = list_mcp_tools()
-            return jsonify({"tools": tools})
+            return JSONResponse({"tools": tools})
         except Exception as e:
             logger.exception("Failed to list MCP tools: %s", e)
-            return jsonify({"error": str(e), "tools": []}), 500
+            return JSONResponse({"error": str(e), "tools": []}, status_code=500)
 
-    @app.post("/api/tools/<tool_name>/execute")
-    def execute_tool(tool_name: str) -> Any:
+    @router.post("/api/tools/{tool_name}/execute")
+    async def execute_tool(
+        tool_name: str,
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Execute an MCP tool with the provided arguments.
 
         Request body should contain the tool arguments as JSON.
@@ -58,7 +67,10 @@ def register_dev_tools_routes(
         """
         from ...tools import build_tool_registry
 
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
 
         # Build session_state like the orchestrator does
         # This allows tools to work with the same context as via chat
@@ -68,7 +80,7 @@ def register_dev_tools_routes(
             "current_workflow_id": None,
             "open_tabs": [],
             "workflow_store": workflow_store,
-            "user_id": g.auth_user.id if hasattr(g, "auth_user") else None,
+            "user_id": user.id,
         }
 
         try:
@@ -83,7 +95,9 @@ def register_dev_tools_routes(
             if not isinstance(result, dict):
                 result = {"result": result}
             success = result.get("success", "error" not in result)
-            return jsonify({"success": success, "result": result})
+            return JSONResponse({"success": success, "result": result})
         except Exception as e:
             logger.exception("Failed to execute tool %s: %s", tool_name, e)
-            return jsonify({"success": False, "error": str(e)}), 500
+            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+    app.include_router(router)

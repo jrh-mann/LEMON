@@ -7,27 +7,32 @@ Python source code.
 
 from __future__ import annotations
 
-from typing import Any
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import JSONResponse
 
-from flask import Flask, jsonify, request, g
-
+from ..deps import require_auth
+from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
 
 
 def register_compilation_routes(
-    app: Flask,
+    app: FastAPI,
     *,
     workflow_store: WorkflowStore,
 ) -> None:
-    """Register compilation endpoints on the Flask app.
+    """Register compilation endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         workflow_store: Workflow storage backend for subflow resolution.
     """
+    router = APIRouter()
 
-    @app.post("/api/workflows/compile")
-    def compile_workflow_to_python_endpoint() -> Any:
+    @router.post("/api/workflows/compile")
+    async def compile_workflow_to_python_endpoint(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Compile a workflow to Python code.
 
         Request body:
@@ -51,7 +56,11 @@ def register_compilation_routes(
         """
         from ...execution.python_compiler import compile_workflow_to_python
 
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
         nodes = payload.get("nodes", [])
         edges = payload.get("edges", [])
         variables = payload.get("variables", [])
@@ -65,21 +74,19 @@ def register_compilation_routes(
 
         # Validate required fields
         if not nodes:
-            return jsonify({
-                "success": False,
-                "error": "No nodes provided",
-                "code": None,
-                "warnings": [],
-            }), 400
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "No nodes provided",
+                    "code": None,
+                    "warnings": [],
+                },
+                status_code=400,
+            )
 
         # Closure to securely fetch subflows within user's permission domain
         def _fetch_subworkflow(sub_id: str):
-            return workflow_store.get_workflow(
-                sub_id,
-                getattr(g, "auth_user", None).id
-                if hasattr(g, "auth_user")
-                else None,
-            )
+            return workflow_store.get_workflow(sub_id, user.id)
 
         # Compile workflow to Python
         result = compile_workflow_to_python(
@@ -95,15 +102,20 @@ def register_compilation_routes(
         )
 
         if result.success:
-            return jsonify({
+            return JSONResponse({
                 "success": True,
                 "code": result.code,
                 "warnings": result.warnings,
             })
         else:
-            return jsonify({
-                "success": False,
-                "error": result.error,
-                "code": None,
-                "warnings": result.warnings,
-            }), 400
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": result.error,
+                    "code": None,
+                    "warnings": result.warnings,
+                },
+                status_code=400,
+            )
+
+    app.include_router(router)

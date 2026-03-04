@@ -1,7 +1,8 @@
 """Routes package for the LEMON API server.
 
 Replaces the monolithic routes.py with focused sub-modules.
-Each module registers its own Flask routes via a register_*() function.
+Each module registers its own FastAPI routes via a register_*() function
+that creates an APIRouter and includes it on the app.
 The top-level register_routes() delegates to all sub-modules.
 
 Public API:
@@ -13,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flask import Flask
+from fastapi import FastAPI
 
 from ..conversations import ConversationStore
 from ...storage.auth import AuthStore
@@ -22,7 +23,7 @@ from ...storage.workflows import WorkflowStore
 # Re-export for test file that imports this helper directly
 from .helpers import _infer_outputs_from_nodes
 
-from .middleware import register_middleware
+from .middleware import RequestLoggingMiddleware
 from .info_route import register_info_route
 from .auth_routes import register_auth_routes
 from .chat_routes import register_chat_routes
@@ -38,27 +39,27 @@ __all__ = ["register_routes", "_infer_outputs_from_nodes"]
 
 
 def register_routes(
-    app: Flask,
+    app: FastAPI,
     *,
     conversation_store: ConversationStore,
     repo_root: Path,
     auth_store: AuthStore,
     workflow_store: WorkflowStore,
 ) -> None:
-    """Register all HTTP routes on the Flask app.
+    """Register all HTTP routes on the FastAPI app.
 
     Delegates to focused sub-modules, passing only the dependencies
     each module requires. Called once at startup from api_server.py.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         conversation_store: In-memory conversation manager.
         repo_root: Repository root path.
         auth_store: Auth store for user/session persistence.
         workflow_store: Workflow storage backend.
     """
-    # Middleware (logging + auth enforcement) — must be registered first
-    register_middleware(app, auth_store=auth_store)
+    # Middleware (request logging) — must be registered first
+    app.add_middleware(RequestLoggingMiddleware)
 
     # Public info endpoint (no auth required)
     register_info_route(app)

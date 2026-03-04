@@ -7,10 +7,11 @@ management, and current-user queries.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict
+from typing import Dict
 from uuid import uuid4
 
-from flask import Flask, jsonify, request, make_response, g
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import JSONResponse
 
 from ..auth import (
     apply_login_rate_limit,
@@ -26,6 +27,7 @@ from ..auth import (
     validate_password,
     verify_password,
 )
+from ..deps import require_auth
 from ...storage.auth import AuthStore, AuthUser
 
 
@@ -38,23 +40,29 @@ def _serialize_user(user: AuthUser) -> Dict[str, str]:
     }
 
 
-def register_auth_routes(app: Flask, *, auth_store: AuthStore) -> None:
-    """Register authentication endpoints on the Flask app.
+def register_auth_routes(app: FastAPI, *, auth_store: AuthStore) -> None:
+    """Register authentication endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         auth_store: Auth store for user/session persistence.
     """
+    router = APIRouter()
     auth_config = get_auth_config()
     # Pre-computed dummy hash for constant-time comparison on unknown emails
     dummy_password_hash = hash_password("dummy-password", config=auth_config)
     allow_registration = is_registration_allowed()
 
-    @app.post("/api/auth/register")
-    def register_user() -> Any:
+    @router.post("/api/auth/register")
+    async def register_user(request: Request) -> JSONResponse:
         if not allow_registration:
-            return jsonify({"error": "Registration is disabled."}), 403
-        payload = request.get_json(force=True, silent=True) or {}
+            return JSONResponse({"error": "Registration is disabled."}, status_code=403)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
         email = normalize_email(str(payload.get("email", "")))
         name = str(payload.get("name", "")).strip()
         password = str(payload.get("password", ""))
@@ -68,14 +76,14 @@ def register_auth_routes(app: Flask, *, auth_store: AuthStore) -> None:
             errors.append("Name is required.")
         errors.extend(list(validate_password(password, auth_config)))
         if errors:
-            return jsonify({"error": errors[0], "errors": errors}), 400
+            return JSONResponse({"error": errors[0], "errors": errors}, status_code=400)
 
         user_id = f"user_{uuid4().hex}"
         password_hash = hash_password(password, config=auth_config)
         try:
             auth_store.create_user(user_id, email, name, password_hash)
         except sqlite3.IntegrityError:
-            return jsonify({"error": "Email is already registered."}), 409
+            return JSONResponse({"error": "Email is already registered."}, status_code=409)
 
         token, expires_at = issue_session(
             auth_store,
@@ -83,26 +91,32 @@ def register_auth_routes(app: Flask, *, auth_store: AuthStore) -> None:
             remember=remember,
             config=auth_config,
         )
-        response = make_response(
-            jsonify({"user": {"id": user_id, "email": email, "name": name}}),
-            201,
+        response = JSONResponse(
+            {"user": {"id": user_id, "email": email, "name": name}},
+            status_code=201,
         )
         set_session_cookie(response, token, expires_at, config=auth_config)
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    @app.post("/api/auth/login")
-    def login_user() -> Any:
-        payload = request.get_json(force=True, silent=True) or {}
+    @router.post("/api/auth/login")
+    async def login_user(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
         email = normalize_email(str(payload.get("email", "")))
         password = str(payload.get("password", ""))
         remember = bool(payload.get("remember"))
 
         email_error = validate_email(email)
         if email_error:
-            return jsonify({"error": email_error}), 400
+            return JSONResponse({"error": email_error}, status_code=400)
 
-        identifier = f"{request.remote_addr or 'unknown'}:{email}"
+        # Use client IP for rate-limiting identifier
+        client_host = request.client.host if request.client else "unknown"
+        identifier = f"{client_host}:{email}"
         rate_limit_response = apply_login_rate_limit(identifier)
         if rate_limit_response is not None:
             return rate_limit_response
@@ -111,11 +125,11 @@ def register_auth_routes(app: Flask, *, auth_store: AuthStore) -> None:
         if not user:
             verify_password(password, dummy_password_hash)
             note_login_failure(identifier)
-            return jsonify({"error": "Invalid email or password."}), 401
+            return JSONResponse({"error": "Invalid email or password."}, status_code=401)
 
         if not verify_password(password, user.password_hash):
             note_login_failure(identifier)
-            return jsonify({"error": "Invalid email or password."}), 401
+            return JSONResponse({"error": "Invalid email or password."}, status_code=401)
 
         auth_store.update_last_login(user.id)
         token, expires_at = issue_session(
@@ -124,29 +138,28 @@ def register_auth_routes(app: Flask, *, auth_store: AuthStore) -> None:
             remember=remember,
             config=auth_config,
         )
-        response = make_response(jsonify({"user": _serialize_user(user)}))
+        response = JSONResponse({"user": _serialize_user(user)})
         set_session_cookie(response, token, expires_at, config=auth_config)
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    @app.post("/api/auth/logout")
-    def logout_user() -> Any:
+    @router.post("/api/auth/logout")
+    async def logout_user(request: Request) -> JSONResponse:
         from ..auth import hash_session_token
 
         token = request.cookies.get("lemon_session")
         if token:
             token_hash = hash_session_token(token)
             auth_store.delete_session_by_token_hash(token_hash)
-        response = make_response(jsonify({"success": True}))
+        response = JSONResponse({"success": True})
         clear_session_cookie(response, config=auth_config)
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    @app.get("/api/auth/me")
-    def auth_me() -> Any:
-        user = getattr(g, "auth_user", None)
-        if not user:
-            return jsonify({"error": "Authentication required."}), 401
-        response = make_response(jsonify({"user": _serialize_user(user)}))
+    @router.get("/api/auth/me")
+    async def auth_me(user: AuthUser = Depends(require_auth)) -> JSONResponse:
+        response = JSONResponse({"user": _serialize_user(user)})
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    app.include_router(router)

@@ -6,21 +6,21 @@ server name, version, and available endpoint paths.
 
 from __future__ import annotations
 
-from typing import Any
+from fastapi import APIRouter, FastAPI
+from starlette.responses import JSONResponse
 
-from flask import Flask, jsonify
 
-
-def register_info_route(app: Flask) -> None:
-    """Register the /api/info endpoint on the Flask app.
+def register_info_route(app: FastAPI) -> None:
+    """Register the /api/info endpoint on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
     """
+    router = APIRouter()
 
-    @app.get("/api/info")
-    def api_info() -> Any:
-        return jsonify(
+    @router.get("/api/info")
+    async def api_info() -> JSONResponse:
+        return JSONResponse(
             {
                 "name": "LEMON Backend",
                 "version": "0.1",
@@ -31,3 +31,5 @@ def register_info_route(app: Flask) -> None:
                 },
             }
         )
+
+    app.include_router(router)
