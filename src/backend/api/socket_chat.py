@@ -234,6 +234,24 @@ class SocketChatTask:
                     to=self.sid,
                 )
 
+                # When edit tools produce derived variable changes (e.g. adding a
+                # calculation node auto-registers an output variable, or deleting a
+                # subprocess node removes one), push an analysis_updated event so the
+                # frontend Variables tab stays in sync without waiting for the next
+                # WORKFLOW_INPUT_TOOLS call.
+                has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
+                has_removed_vars = isinstance(result.get("removed_variable_ids"), list) and result["removed_variable_ids"]
+                if (has_new_vars or has_removed_vars) and self.convo:
+                    self.socketio.emit(
+                        "analysis_updated",
+                        {
+                            "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
+                            "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                            "task_id": self.task_id,
+                        },
+                        to=self.sid,
+                    )
+
             if tool in WORKFLOW_INPUT_TOOLS and self.convo:
                 # Emit variables (unified variable system) - includes inputs, subprocess, calculated
                 # Frontend receives under 'variables' key for display in Variables tab

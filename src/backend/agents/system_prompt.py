@@ -15,8 +15,12 @@ from typing import Any, Dict, List, Optional
 
 def build_system_prompt(
     *,
+    last_session_id: Optional[str] = None,
     has_files: Optional[List[Dict[str, Any]]] = None,
     allow_tools: bool = True,
+    reasoning: str = "",
+    guidance: Optional[List[Dict[str, Any]]] = None,
+    current_workflow_id: Optional[str] = None,
 ) -> str:
     """Build the system prompt for the orchestrator LLM.
 
@@ -25,8 +29,14 @@ def build_system_prompt(
     rules, and vision-driven image analysis.
 
     Args:
+        last_session_id: Current analyze_workflow session ID, if any.
         has_files: List of uploaded file metadata dicts, if any.
         allow_tools: Whether tool calling is enabled for this response.
+        reasoning: Analysis reasoning context from subagent.
+        guidance: Guidance notes extracted from the workflow image.
+        current_workflow_id: ID of the workflow currently open on the
+            canvas, if any.  Injected so the LLM can pass it to tools
+            without a discovery step.
 
     Returns:
         Complete system prompt string.
@@ -35,18 +45,35 @@ def build_system_prompt(
         "You are a workflow manipulation assistant. Your job is to help users create and modify flowcharts by calling tools.\n\n"
         "## CRITICAL: Workflow ID-Centric Architecture\n"
         "Every workflow operation requires a workflow_id. The workflow must exist before you can edit it.\n\n"
-        "### Creating a New Workflow\n"
-        "ALWAYS call create_workflow FIRST when building a new workflow:\n"
+        "### Primary Workflow (Canvas)\n"
+        "When the user has a workflow open on the canvas, its ID is provided below as 'Current Workflow'. "
+        "Use that ID directly — do NOT call create_workflow for it. Start adding variables and nodes immediately.\n\n"
+        "### Subworkflows\n"
+        "Call create_workflow ONLY when you need to create a SEPARATE sub-workflow (e.g., for use in subprocess nodes):\n"
         "```\n"
-        "create_workflow(name='BMI Calculator', output_type='number')\n"
-        "// Returns: {workflow_id: 'wf_abc123', ...}\n"
+        "create_workflow(name='eGFR Calculator', output_type='number')\n"
+        "// Returns: {workflow_id: 'wf_xyz789', ...}\n"
         "```\n"
-        "Then use that workflow_id in ALL subsequent tool calls.\n\n"
+        "Each create_workflow call generates a unique ID. Use that subworkflow's ID when building its nodes.\n\n"
         "### Editing an Existing Workflow\n"
         "If the user mentions an existing workflow by name, call list_workflows_in_library to find its ID first.\n\n"
+    )
+
+    # Inject the current workflow ID so the LLM can use it directly
+    # without calling create_workflow for the primary canvas workflow.
+    if current_workflow_id:
+        system += (
+            f"### Current Workflow\n"
+            f"The workflow currently open on the canvas has ID: `{current_workflow_id}`.\n"
+            f"This is the PRIMARY workflow. Use this ID for all tool calls that build/edit it.\n"
+            f"Do NOT call create_workflow for this workflow — it already exists.\n"
+            f"Start adding variables and nodes immediately using this ID.\n\n"
+        )
+
+    system += (
         "## CRITICAL: When to Call Tools\n"
         "ALWAYS call tools immediately when the user uses action verbs:\n"
-        "- CREATE NEW WORKFLOW → call create_workflow (FIRST!)\n"
+        "- CREATE SUBWORKFLOW → call create_workflow (only for sub-workflows, NOT the primary canvas workflow)\n"
         "- ADD/CREATE (node) → call add_node with workflow_id\n"
         "- DELETE/REMOVE (node) → call delete_node with workflow_id\n"
         "- DELETE/REMOVE (connection/edge) → call delete_connection with workflow_id\n"
@@ -64,8 +91,7 @@ def build_system_prompt(
         "Examples:\n"
         "- User: 'Create a BMI calculation workflow'\n"
         "  → First call list_workflows_in_library(search_query='BMI') to check\n"
-        "  → If none exist, call create_workflow(name='BMI Calculator', output_type='number')\n"
-        "  → Then use the returned workflow_id for all subsequent tools\n"
+        "  → If none exist, use the current canvas workflow ID to start building (add variables, add nodes)\n"
         "- User: 'Show me my saved workflows' → Call list_workflows_in_library()\n"
         "- User: 'Do I have any healthcare workflows?' → Call list_workflows_in_library(domain='Healthcare')\n\n"
         "DO NOT ask for confirmation. DO NOT clarify unless the request is truly ambiguous (e.g., 'add a node' without any description). "
@@ -310,6 +336,17 @@ def build_system_prompt(
         "1. Do NOT chain them sequentially if they are independent failure conditions.\n"
         "2. Consider calculating a 'score' or checking them in a way that keeps the visual tree balanced.\n"
         "3. If sequential checks are necessary, try to alternate left/right branching for visual balance.\n\n"
+        "## Derived Variables (Auto-Managed)\n"
+        "Calculation and subprocess nodes automatically create derived variables. "
+        "You do NOT need to call add_workflow_variable for them:\n"
+        "- **Calculation nodes** → auto-register a `number` variable named after `calculation.output.name` (source='calculated')\n"
+        "- **Subprocess nodes** → auto-register a variable named after `output_variable`, type inferred from the subworkflow (source='subprocess')\n\n"
+        "Derived variables are read-only — do NOT call modify_workflow_variable or remove_workflow_variable on them. "
+        "To change a derived variable, modify the producing node instead:\n"
+        "- Rename a calc output → modify_node with updated `calculation.output.name`\n"
+        "- Change subprocess output → modify_node with updated `output_variable`\n"
+        "- Delete a calc/subprocess node → the derived variable is automatically removed\n\n"
+        "ONLY call add_workflow_variable for user-input variables (data the user provides at execution time).\n\n"
         "## Image Analysis (CRITICAL)\n"
         "When the user uploads a workflow image, you can SEE it directly in the conversation.\n\n"
         "Follow this EXACT process:\n"
@@ -331,11 +368,89 @@ def build_system_prompt(
         "on the canvas so the user can see which node you mean."
     )
 
+    # Append session ID if active so the LLM can reference it in
+    # follow-up analyze_workflow calls.
+    if last_session_id:
+        system += f" Current analyze_workflow session_id: {last_session_id}."
+
+    # File-aware instructions based on uploaded files.
+    # Single file → analyse immediately.  Multiple files → ask the user
+    # to classify them before proceeding.
+    uploaded = has_files or []
+    if len(uploaded) == 1:
+        system += " The user has uploaded a file; analyze_workflow will use the latest upload."
+    elif len(uploaded) > 1:
+        unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
+        if unclassified:
+            numbered_files = "\n".join(
+                f"  {i+1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
+            )
+            system += (
+                f" The user has uploaded {len(uploaded)} files."
+                " BEFORE analyzing, ask the user THREE things in this EXACT compact format:\n\n"
+                "**1. File types:** **flowchart** (the workflow diagram), **guidance** (definitions/legends/context), **mixed** (both)\n\n"
+                "Files:\n"
+                f"{numbered_files}\n\n"
+                "**2. What to extract from each:** e.g. 'full decision tree', 'just the medication names', 'risk scoring thresholds'\n\n"
+                "**3. How are they related?** e.g. 'liver workup discovers abnormal HbA1c which triggers the diabetes pathway'\n\n"
+                "Once you have all three pieces of information, call analyze_workflow with the files parameter "
+                "and pass the relationship description and per-file extraction notes in the relationship field."
+                " IMPORTANT: Use the exact file NAME as the 'id' field in each entry of the files array."
+            )
+        else:
+            system += (
+                f" The user has uploaded {len(uploaded)} files and they are classified."
+                " Call analyze_workflow with the files parameter to begin analysis."
+            )
+
     # Disable tools for plain-text-only responses
     if not allow_tools:
         system += (
             " Tools are disabled for this response. Do NOT call tools; respond in "
             "plain text only."
         )
+
+    # Inject subagent reasoning context so the LLM understands domain
+    # terminology and variable naming choices from prior analysis.
+    if reasoning:
+        system += (
+            "\n\n## Analysis Context\n"
+            "The following reasoning was produced by the workflow analysis system when "
+            "interpreting the user's workflow image. Use this context to understand domain "
+            "terminology, variable naming choices, and assumptions.\n\n"
+            f"{reasoning}"
+        )
+
+    # Inject guidance notes extracted from the workflow image.
+    # Standalone notes are general context; linked notes are tied to
+    # specific flowchart nodes.
+    if guidance:
+        standalone = [g for g in guidance if not g.get("linked_to")]
+        linked = [g for g in guidance if g.get("linked_to")]
+
+        system += "\n\n## Image Guidance Notes\n"
+        system += (
+            "Notes and guidance panels found alongside the workflow diagram. "
+            "Use them when interpreting the workflow and answering user questions.\n\n"
+        )
+
+        if standalone:
+            for g in standalone:
+                system += (
+                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                    f'({g.get("location", "")})\n'
+                )
+
+        if linked:
+            system += (
+                "\nDetailed guidance panels for specific flowchart nodes:\n"
+            )
+            for g in linked:
+                link_via = f" via {g['link_type']}" if g.get("link_type") else ""
+                system += (
+                    f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
+                    f'({g.get("location", "")}) -> linked to node: '
+                    f'"{g["linked_to"]}"{link_via}\n'
+                )
 
     return system

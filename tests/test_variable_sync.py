@@ -787,3 +787,138 @@ class TestLazyReDeriveSubprocessVariables:
         ) as mock_save:
             load_workflow_for_tool(parent_id, session_state)
             mock_save.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Socket-level: analysis_updated emitted for edit tools with variable changes
+# ---------------------------------------------------------------------------
+
+class TestSocketVariableSyncOnEditTools:
+    """Verify socket_chat emits analysis_updated when WORKFLOW_EDIT_TOOLS
+    produce new_variables or removed_variable_ids, so the frontend's
+    Variables tab stays in sync without waiting for a WORKFLOW_INPUT_TOOL."""
+
+    def _make_task(self):
+        """Build a minimal SocketChatTask with mocked socketio and convo."""
+        from unittest.mock import Mock, MagicMock
+        from src.backend.api.socket_chat import SocketChatTask
+
+        socketio = MagicMock()
+        convo = MagicMock()
+        # Orchestrator's workflow_analysis property returns variables/outputs
+        convo.orchestrator.workflow_analysis = {
+            "variables": [_variable("age", source="input")],
+            "outputs": [],
+        }
+
+        task = SocketChatTask(
+            socketio=socketio,
+            conversation_store=MagicMock(),
+            repo_root=MagicMock(),
+            workflow_store=MagicMock(),
+            user_id="test_user",
+            sid="test_sid",
+            task_id="task_1",
+            message="test",
+            conversation_id=None,
+            files_data=[],
+            workflow=None,
+            analysis=None,
+        )
+        task.convo = convo
+        return task, socketio
+
+    def test_analysis_updated_emitted_for_add_node_with_new_variables(self):
+        """add_node creating a calc node should emit analysis_updated."""
+        task, socketio = self._make_task()
+        result = {
+            "success": True,
+            "action": "add_node",
+            "node": _calc_node("n1", "Total", "calc_total"),
+            "new_variables": [_variable("calc_total", source_node_id="n1")],
+        }
+
+        # Simulate tool_start then tool_complete
+        task.on_tool_event("tool_start", "add_node", {"type": "calculation"}, None)
+        task.on_tool_event("tool_complete", "add_node", {}, result)
+
+        # Should emit both workflow_update AND analysis_updated
+        events = [call.args[0] for call in socketio.emit.call_args_list]
+        assert "workflow_update" in events
+        assert "analysis_updated" in events
+
+    def test_analysis_updated_emitted_for_delete_node_with_removed_variables(self):
+        """delete_node removing a calc node should emit analysis_updated."""
+        task, socketio = self._make_task()
+        result = {
+            "success": True,
+            "action": "delete_node",
+            "node_id": "n1",
+            "removed_variable_ids": ["var_calc_total_number"],
+        }
+
+        task.on_tool_event("tool_start", "delete_node", {"node_id": "n1"}, None)
+        task.on_tool_event("tool_complete", "delete_node", {}, result)
+
+        events = [call.args[0] for call in socketio.emit.call_args_list]
+        assert "workflow_update" in events
+        assert "analysis_updated" in events
+
+    def test_no_analysis_updated_for_edit_tool_without_variable_changes(self):
+        """add_node for a process node (no variable changes) should NOT emit analysis_updated."""
+        task, socketio = self._make_task()
+        result = {
+            "success": True,
+            "action": "add_node",
+            "node": {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0},
+        }
+
+        task.on_tool_event("tool_start", "add_node", {"type": "process"}, None)
+        task.on_tool_event("tool_complete", "add_node", {}, result)
+
+        events = [call.args[0] for call in socketio.emit.call_args_list]
+        assert "workflow_update" in events
+        assert "analysis_updated" not in events
+
+    def test_analysis_updated_payload_has_variables_and_outputs(self):
+        """analysis_updated should carry the current variables and outputs."""
+        task, socketio = self._make_task()
+        result = {
+            "success": True,
+            "action": "add_node",
+            "node": _calc_node("n1", "BMI", "calc_bmi"),
+            "new_variables": [_variable("calc_bmi", source_node_id="n1")],
+        }
+
+        task.on_tool_event("tool_start", "add_node", {"type": "calculation"}, None)
+        task.on_tool_event("tool_complete", "add_node", {}, result)
+
+        # Find the analysis_updated emit call
+        analysis_calls = [
+            call for call in socketio.emit.call_args_list
+            if call.args[0] == "analysis_updated"
+        ]
+        assert len(analysis_calls) == 1
+        payload = analysis_calls[0].args[1]
+        assert "variables" in payload
+        assert "outputs" in payload
+        assert "task_id" in payload
+
+    def test_modify_node_with_both_new_and_removed_emits_analysis_updated(self):
+        """modify_node renaming a calc output (both new_variables and removed_variable_ids)
+        should emit analysis_updated."""
+        task, socketio = self._make_task()
+        result = {
+            "success": True,
+            "action": "modify_node",
+            "node": _calc_node("n1", "Grand Total", "calc_grand_total"),
+            "removed_variable_ids": ["var_calc_total_number"],
+            "new_variables": [_variable("calc_grand_total", source_node_id="n1")],
+        }
+
+        task.on_tool_event("tool_start", "modify_node", {"node_id": "n1"}, None)
+        task.on_tool_event("tool_complete", "modify_node", {}, result)
+
+        events = [call.args[0] for call in socketio.emit.call_args_list]
+        assert "workflow_update" in events
+        assert "analysis_updated" in events

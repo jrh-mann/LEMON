@@ -243,13 +243,12 @@ class Orchestrator:
             if tool_name in WORKFLOW_INPUT_TOOLS:
                 self._update_analysis_from_tool_result(tool_name, result.data)
 
-        # Track current_workflow_id when create_workflow succeeds so that
-        # subsequent tool calls have the correct fallback workflow reference.
-        if tool_name == "create_workflow" and result.success and isinstance(result.data, dict):
-            new_wf_id = result.data.get("workflow_id")
-            if new_wf_id:
-                self.current_workflow_id = new_wf_id
-                self._logger.info("Updated current_workflow_id to %s after create_workflow", new_wf_id)
+        # NOTE: create_workflow no longer updates current_workflow_id here.
+        # The canvas/primary workflow ID is set by the socket handler from the
+        # frontend-generated ID. Subworkflow IDs created by create_workflow are
+        # returned to the LLM in the tool result and referenced via workflow_id
+        # parameter in subsequent tool calls — they should not override the
+        # primary canvas workflow ID.
 
         return result
 
@@ -281,11 +280,18 @@ class Orchestrator:
         return f"Tool error ({result.tool})"
 
     def _update_workflow_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update workflow structure based on successful tool execution."""
+        """Update workflow structure based on successful tool execution.
+
+        Also syncs derived variables (from calc/subprocess nodes) that tools
+        return via 'new_variables' and 'removed_variable_ids' keys.
+        """
         if tool_name == "add_node":
             node = result.get("node")
             if node:
                 self.workflow["nodes"].append(node)
+            # Sync auto-registered variables (calc/subprocess output vars)
+            for var in result.get("new_variables", []):
+                self.workflow["variables"].append(var)
 
         elif tool_name == "modify_node":
             node = result.get("node")
@@ -295,6 +301,14 @@ class Orchestrator:
                     if n["id"] == node["id"]:
                         nodes[i] = node
                         break
+            # Sync derived variable removals (e.g. calc output renamed, type changed)
+            for var_id in result.get("removed_variable_ids", []):
+                self.workflow["variables"] = [
+                    v for v in self.workflow["variables"] if v.get("id") != var_id
+                ]
+            # Sync newly-created derived variables
+            for var in result.get("new_variables", []):
+                self.workflow["variables"].append(var)
 
         elif tool_name == "delete_node":
             node_id = result.get("node_id")
@@ -305,6 +319,11 @@ class Orchestrator:
                 self.workflow["edges"] = [
                     e for e in self.workflow["edges"]
                     if e["from"] != node_id and e["to"] != node_id
+                ]
+            # Remove derived variables whose producing node was deleted
+            for var_id in result.get("removed_variable_ids", []):
+                self.workflow["variables"] = [
+                    v for v in self.workflow["variables"] if v.get("id") != var_id
                 ]
 
         elif tool_name == "add_connection":
@@ -326,6 +345,10 @@ class Orchestrator:
             if new_workflow:
                 self.workflow["nodes"] = new_workflow.get("nodes", [])
                 self.workflow["edges"] = new_workflow.get("edges", [])
+            # Sync variables if batch edit auto-registered calc/subprocess outputs
+            wa = result.get("workflow_analysis", {})
+            if "variables" in wa:
+                self.workflow["variables"] = wa["variables"]
 
     # Shared validator instance for post-tool checks (non-strict).
     _workflow_validator = WorkflowValidator()
@@ -447,6 +470,7 @@ class Orchestrator:
         system = build_system_prompt(
             has_files=self.uploaded_files,
             allow_tools=allow_tools,
+            current_workflow_id=self.current_workflow_id,
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow

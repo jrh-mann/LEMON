@@ -16,6 +16,7 @@ from ..storage.workflows import WorkflowStore
 from ..utils.logging import setup_logging
 from ..utils.paths import lemon_data_dir
 from ..tools import (
+    AskQuestionTool,
     ViewImageTool,
     ExtractGuidanceTool,
     UpdatePlanTool,
@@ -95,6 +96,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     view_image_tool = ViewImageTool()
     extract_guidance_tool = ExtractGuidanceTool()
     update_plan_tool = UpdatePlanTool()
+    ask_question_tool = AskQuestionTool()
 
     # Workflow manipulation tools
     get_workflow_tool = GetCurrentWorkflowTool()
@@ -163,6 +165,20 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     ) -> dict[str, Any]:
         """Update plan checklist items."""
         return update_plan_tool.execute({"items": items})
+
+    @server.tool(
+        name="ask_question",
+        description="Ask the user a clarification question with optional clickable options.",
+    )
+    def ask_question(
+        question: str,
+        options: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """Ask the user a question with optional clickable choices."""
+        args: dict[str, Any] = {"question": question}
+        if options is not None:
+            args["options"] = options
+        return ask_question_tool.execute(args)
 
     @server.tool(name="get_current_workflow")
     def get_current_workflow(
