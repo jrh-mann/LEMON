@@ -351,12 +351,23 @@ class WsChatTask:
                         "Auto-persisted canvas workflow %s for user %s",
                         self.current_workflow_id, self.user_id,
                     )
+                    # Notify the frontend so it can sync its store/URL
+                    self._emit("workflow_created", {
+                        "workflow_id": self.current_workflow_id,
+                        "name": "New Workflow",
+                        "is_draft": True,
+                    })
                 except Exception:
                     logger.exception(
                         "Failed to auto-persist canvas workflow %s",
                         self.current_workflow_id,
                     )
             self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+            # Look up workflow name from DB for system prompt display
+            if self.workflow_store:
+                record = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
+                if record:
+                    self.convo.orchestrator.current_workflow_name = record.name
         self.convo.orchestrator.open_tabs = self.open_tabs or []
 
     def _sync_convo_from_orchestrator(self) -> None:
@@ -462,7 +473,7 @@ def handle_ws_chat(
         files_data=payload.get("files") or [],
         workflow=payload.get("workflow"),
         analysis=payload.get("analysis"),
-        current_workflow_id=payload.get("current_workflow_id"),
+        current_workflow_id=payload.get("current_workflow_id") or f"wf_{uuid4().hex}",
         open_tabs=payload.get("open_tabs"),
         img_annotations=payload.get("annotations"),
     )

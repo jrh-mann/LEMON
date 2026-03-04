@@ -36,7 +36,6 @@ from ..tools import (
     ValidateWorkflowTool,
     ExecuteWorkflowTool,
     ListWorkflowsInLibrary,
-    CreateWorkflowTool,
     CreateSubworkflowTool,
     UpdateSubworkflowTool,
     SaveWorkflowToLibrary,
@@ -125,7 +124,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     _data_dir = lemon_data_dir(_repo_root())
     _workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
     list_library_tool = ListWorkflowsInLibrary()
-    create_workflow_tool = CreateWorkflowTool()
     create_subworkflow_tool = CreateSubworkflowTool()
     update_subworkflow_tool = UpdateSubworkflowTool()
     save_workflow_tool = SaveWorkflowToLibrary()
@@ -182,17 +180,15 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="get_current_workflow")
     def get_current_workflow(
-        workflow_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Get the current workflow state for a given workflow_id."""
+        """Get the current workflow state."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
-        return get_workflow_tool.execute({"workflow_id": workflow_id}, session_state=state)
+        return get_workflow_tool.execute({}, session_state=state)
 
     @server.tool(name="add_node")
     def add_node(
-        workflow_id: str,
         type: str,
         label: str,
         x: float | None = None,
@@ -207,10 +203,9 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         calculation: dict[str, Any] | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Add a node to the specified workflow.
-        
+        """Add a node to the current workflow.
+
         Args:
-            workflow_id: Target workflow ID
             type: Node type (start, process, decision, subprocess, calculation, end)
             label: Display text for the node
             x, y: Optional coordinates
@@ -219,7 +214,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             subworkflow_id/input_mapping/output_variable: For subprocess nodes
             calculation: For calculation nodes - {output, operator, operands}
         """
-        args: dict[str, Any] = {"workflow_id": workflow_id, "type": type, "label": label}
+        args: dict[str, Any] = {"type": type, "label": label}
         if x is not None:
             args["x"] = x
         if y is not None:
@@ -246,7 +241,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="modify_node")
     def modify_node(
-        workflow_id: str,
         node_id: str,
         label: str | None = None,
         type: str | None = None,
@@ -262,10 +256,9 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         calculation: dict[str, Any] | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Modify a node in the specified workflow.
-        
+        """Modify a node in the current workflow.
+
         Args:
-            workflow_id: Target workflow ID
             node_id: ID of the node to modify
             label, type, x, y: Basic node properties
             condition: For decision nodes - {input_id, comparator, value, value2?}
@@ -273,7 +266,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             subworkflow_id/input_mapping/output_variable: For subprocess nodes
             calculation: For calculation nodes - {output, operator, operands}
         """
-        args: dict[str, Any] = {"workflow_id": workflow_id, "node_id": node_id}
+        args: dict[str, Any] = {"node_id": node_id}
         if label is not None:
             args["label"] = label
         if type is not None:
@@ -304,29 +297,26 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="delete_node")
     def delete_node(
-        workflow_id: str,
         node_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Delete a node from the specified workflow."""
+        """Delete a node from the current workflow."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return delete_node_tool.execute(
-            {"workflow_id": workflow_id, "node_id": node_id},
+            {"node_id": node_id},
             session_state=state,
         )
 
     @server.tool(name="add_connection")
     def add_connection(
-        workflow_id: str,
         from_node_id: str,
         to_node_id: str,
         label: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Add a connection between nodes in the specified workflow."""
+        """Add a connection between nodes in the current workflow."""
         args: dict[str, Any] = {
-            "workflow_id": workflow_id,
             "from_node_id": from_node_id,
             "to_node_id": to_node_id,
         }
@@ -338,17 +328,15 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="delete_connection")
     def delete_connection(
-        workflow_id: str,
         from_node_id: str,
         to_node_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Delete a connection in the specified workflow."""
+        """Delete a connection in the current workflow."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return delete_conn_tool.execute(
             {
-                "workflow_id": workflow_id,
                 "from_node_id": from_node_id,
                 "to_node_id": to_node_id,
             },
@@ -357,31 +345,28 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="batch_edit_workflow")
     def batch_edit_workflow(
-        workflow_id: str,
         operations: list[dict[str, Any]],
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Apply multiple operations to the specified workflow in a single batch."""
+        """Apply multiple operations to the current workflow in a single batch."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return batch_edit_tool.execute(
-            {"workflow_id": workflow_id, "operations": operations},
+            {"operations": operations},
             session_state=state,
         )
 
     @server.tool(name="highlight_node")
     def highlight_node(
         node_id: str,
-        workflow_id: str | None = None,
     ) -> dict[str, Any]:
         """Highlight a node on the canvas to draw the user's attention to it."""
         return highlight_tool.execute(
-            {"node_id": node_id, "workflow_id": workflow_id or ""},
+            {"node_id": node_id},
         )
 
     @server.tool(name="add_workflow_variable")
     def add_workflow_variable(
-        workflow_id: str,
         name: str,
         type: str,
         description: str | None = None,
@@ -390,8 +375,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         range_max: float | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Add a variable to the specified workflow."""
-        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name, "type": type}
+        """Add a variable to the current workflow."""
+        args: dict[str, Any] = {"name": name, "type": type}
         if description:
             args["description"] = description
         if enum_values:
@@ -406,23 +391,21 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="list_workflow_variables")
     def list_workflow_variables(
-        workflow_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """List all variables in the specified workflow."""
+        """List all variables in the current workflow."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
-        return list_variables_tool.execute({"workflow_id": workflow_id}, session_state=state)
+        return list_variables_tool.execute({}, session_state=state)
 
     @server.tool(name="remove_workflow_variable")
     def remove_workflow_variable(
-        workflow_id: str,
         name: str,
         force: bool = False,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Remove a variable from the specified workflow."""
-        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name}
+        """Remove a variable from the current workflow."""
+        args: dict[str, Any] = {"name": name}
         if force:
             args["force"] = force
         state = dict(session_state or {})
@@ -431,7 +414,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="modify_workflow_variable")
     def modify_workflow_variable(
-        workflow_id: str,
         name: str,
         new_type: str | None = None,
         new_name: str | None = None,
@@ -441,8 +423,8 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         range_max: float | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Modify a variable in the specified workflow."""
-        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name}
+        """Modify a variable in the current workflow."""
+        args: dict[str, Any] = {"name": name}
         if new_type is not None:
             args["new_type"] = new_type
         if new_name is not None:
@@ -461,14 +443,13 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="set_workflow_output")
     def set_workflow_output(
-        workflow_id: str,
         name: str,
         type: str,
         description: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Set the output configuration for the specified workflow."""
-        args: dict[str, Any] = {"workflow_id": workflow_id, "name": name, "type": type}
+        """Set the output configuration for the current workflow."""
+        args: dict[str, Any] = {"name": name, "type": type}
         if description is not None:
             args["description"] = description
         state = dict(session_state or {})
@@ -477,41 +458,12 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="validate_workflow")
     def validate_workflow(
-        workflow_id: str,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Validate the specified workflow for errors."""
+        """Validate the current workflow for errors."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
-        return validate_tool.execute({"workflow_id": workflow_id}, session_state=state)
-
-    @server.tool(name="create_workflow")
-    def create_workflow(
-        name: str,
-        output_type: str,
-        description: str | None = None,
-        domain: str | None = None,
-        tags: list[str] | None = None,
-        user_id: str | None = None,
-        session_state: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Create a new workflow in the library.
-        
-        Must be called before using any workflow editing tools.
-        Returns the workflow_id to use for subsequent tool calls.
-        """
-        args: dict[str, Any] = {"name": name, "output_type": output_type}
-        if description:
-            args["description"] = description
-        if domain:
-            args["domain"] = domain
-        if tags:
-            args["tags"] = tags
-        state = dict(session_state or {})
-        state.setdefault("workflow_store", _workflow_store)
-        # Use provided user_id or default for MCP mode
-        state.setdefault("user_id", user_id or "mcp_user")
-        return create_workflow_tool.execute(args, session_state=state)
+        return validate_tool.execute({}, session_state=state)
 
     @server.tool(name="create_subworkflow")
     def create_subworkflow(
@@ -555,15 +507,14 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="execute_workflow")
     def execute_workflow(
-        workflow_id: str,
         input_values: dict[str, Any],
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Execute the specified workflow with the given input values."""
+        """Execute the current workflow with the given input values."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
         return execute_tool.execute(
-            {"workflow_id": workflow_id, "input_values": input_values},
+            {"input_values": input_values},
             session_state=state,
         )
 
@@ -595,7 +546,6 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
 
     @server.tool(name="save_workflow_to_library")
     def save_workflow_to_library(
-        workflow_id: str,
         name: str | None = None,
         description: str | None = None,
         domain: str | None = None,
@@ -604,12 +554,11 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Save a draft workflow to the user's permanent library.
-        
+
         Drafts are workflows created by the LLM that haven't been saved yet.
         This tool publishes the draft to the user's library (is_draft=False).
-        
+
         Args:
-            workflow_id: The workflow to save
             name: Optional new name (updates existing if provided)
             description: Optional new description
             domain: Optional domain/category
@@ -617,7 +566,7 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
             user_id: User ID for ownership (defaults to mcp_user in MCP mode)
             session_state: Session context
         """
-        args: dict[str, Any] = {"workflow_id": workflow_id}
+        args: dict[str, Any] = {}
         if name is not None:
             args["name"] = name
         if description is not None:

@@ -35,12 +35,6 @@ class SaveWorkflowToLibrary(Tool):
     )
     parameters = [
         ToolParameter(
-            "workflow_id",
-            "string",
-            "The ID of the workflow to save (from create_workflow)",
-            required=True,
-        ),
-        ToolParameter(
             "name",
             "string",
             "Optional new name for the workflow (updates existing name if provided)",
@@ -76,12 +70,13 @@ class SaveWorkflowToLibrary(Tool):
         Returns:
             Dict with success status and workflow info
         """
-        # Validate required parameters
-        workflow_id = args.get("workflow_id")
+        # Resolve workflow_id: check args first, then fall back to session_state
+        session_state = kwargs.get("session_state", {})
+        workflow_id = args.get("workflow_id") or session_state.get("current_workflow_id")
         if not workflow_id or not isinstance(workflow_id, str):
             return {
                 "success": False,
-                "error": "workflow_id is required",
+                "error": "No active workflow to save. Create a workflow first.",
                 "error_code": "MISSING_WORKFLOW_ID",
             }
         

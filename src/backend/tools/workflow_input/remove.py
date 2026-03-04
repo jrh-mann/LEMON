@@ -1,7 +1,7 @@
 """Remove workflow variable tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -21,7 +21,7 @@ class RemoveWorkflowVariableTool(WorkflowTool):
     Only removes variables with source='input'. Subprocess/calculated variables
     should be removed by modifying or deleting the nodes that create them.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
@@ -29,18 +29,10 @@ class RemoveWorkflowVariableTool(WorkflowTool):
     name = "remove_workflow_variable"
     description = (
         "Remove a registered workflow input variable by name (case-insensitive). "
-        "Requires workflow_id. "
         "If the variable is used in decision node conditions, deletion will fail by default. "
         "Use force=true to cascade delete (automatically clears condition from affected nodes)."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the variable (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",

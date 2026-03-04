@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..tools import ToolRegistry
-from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
+from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_BOUND_TOOLS
 from ..mcp_bridge.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .system_prompt import build_system_prompt
@@ -52,8 +52,9 @@ class Orchestrator:
         # Session context for tools (workflow_store, user_id)
         self.workflow_store: Optional[Any] = None
         self.user_id: Optional[str] = None
-        # ID of current workflow on canvas (None if unsaved/new)
+        # ID and name of current workflow on canvas (None if unsaved/new)
         self.current_workflow_id: Optional[str] = None
+        self.current_workflow_name: Optional[str] = None
         # All open tabs with workflows (for list_workflows_in_library to show drafts)
         self.open_tabs: List[Dict[str, Any]] = []
         # Files uploaded by the user — persisted across turns for tool access (e.g. view_image)
@@ -189,6 +190,10 @@ class Orchestrator:
         on_progress: Optional[Callable[[str], None]] = None,
         on_thinking: Optional[Callable[[str], None]] = None,
     ) -> ToolResult:
+        # Auto-inject workflow_id for bound tools so the LLM doesn't need to pass it.
+        if tool_name in WORKFLOW_BOUND_TOOLS and self.current_workflow_id:
+            args.setdefault("workflow_id", self.current_workflow_id)
+
         self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
         self._tool_logger.info(
             "tool_request name=%s args=%s",
@@ -261,12 +266,6 @@ class Orchestrator:
             if tool_name in WORKFLOW_INPUT_TOOLS:
                 self._update_analysis_from_tool_result(tool_name, result.data)
 
-        # NOTE: create_workflow no longer updates current_workflow_id here.
-        # The canvas/primary workflow ID is set by the socket handler from the
-        # frontend-generated ID. Subworkflow IDs created by create_workflow are
-        # returned to the LLM in the tool result and referenced via workflow_id
-        # parameter in subsequent tool calls — they should not override the
-        # primary canvas workflow ID.
 
         # Persist guidance notes from extract_guidance so they survive history
         # truncation and remain available in the system prompt for later turns.
@@ -510,6 +509,7 @@ class Orchestrator:
             has_files=self.uploaded_files,  # all files (current + previous) for prompt context
             allow_tools=allow_tools,
             current_workflow_id=self.current_workflow_id,
+            current_workflow_name=self.current_workflow_name,
             guidance=self._guidance if self._guidance else None,
         )
 

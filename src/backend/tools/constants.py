@@ -28,6 +28,15 @@ WORKFLOW_INPUT_TOOLS = frozenset(
     }
 )
 
+# Tools that are "bound" to the orchestrator's current workflow.
+# The orchestrator auto-injects workflow_id into args for these tools,
+# so the LLM doesn't need to pass it explicitly.
+WORKFLOW_BOUND_TOOLS = (
+    WORKFLOW_EDIT_TOOLS
+    | WORKFLOW_INPUT_TOOLS
+    | {"get_current_workflow", "validate_workflow", "execute_workflow", "save_workflow_to_library"}
+)
+
 # Tools that create or modify workflow library entries
 WORKFLOW_LIBRARY_TOOLS = frozenset(
     {

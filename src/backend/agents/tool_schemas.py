@@ -102,50 +102,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "create_workflow",
-                "description": (
-                    "Create a new workflow in the user's library. ALWAYS call this FIRST before "
-                    "adding nodes or variables to a new workflow. Returns a workflow_id that must "
-                    "be passed to ALL subsequent tool calls (add_node, add_connection, etc.). "
-                    "The workflow starts empty and must be built step by step."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Name for the workflow (e.g., 'BMI Calculator', 'Loan Approval')",
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Description of what the workflow does",
-                        },
-                        "output_type": {
-                            "type": "string",
-                            "enum": ["string", "number", "bool", "json"],
-                            "description": "Type of value the workflow returns when executed. Use 'number' for all numeric values.",
-                        },
-                        "domain": {
-                            "type": "string",
-                            "description": "Domain/category for the workflow (e.g., 'Healthcare', 'Finance')",
-                        },
-                        "tags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "List of tags for categorization",
-                        },
-                    },
-                    "required": ["name", "output_type"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "create_subworkflow",
                 "description": (
                     "Create a subworkflow and build it in the background. Returns a workflow_id "
-                    "immediately that you can use as the subworkflow_id in a subprocess node. "
+                    "that you can use as the subworkflow_id in a subprocess node. "
                     "A background orchestrator builds the subworkflow's nodes and connections "
                     "autonomously using your brief. FIRST check list_workflows_in_library to "
                     "see if a suitable workflow already exists before calling this."
@@ -285,20 +245,14 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "get_current_workflow",
                 "description": (
-                    "Get a workflow's current state as JSON (nodes and edges). "
+                    "Get the active workflow's current state as JSON (nodes and edges). "
                     "Returns workflow structure with semantic descriptions to help you understand "
-                    "node IDs and connections. Use this before making changes to see what exists. "
-                    "Requires workflow_id."
+                    "node IDs and connections. Use this before making changes to see what exists."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to retrieve (from create_workflow)",
-                        },
-                    },
-                    "required": ["workflow_id"],
+                    "properties": {},
+                    "required": [],
                 },
             },
         },
@@ -307,8 +261,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "add_node",
                 "description": (
-                    "Add a new node (block) to a workflow. Returns the created node with a real ID. "
-                    "Requires workflow_id. "
+                    "Add a new node (block) to the active workflow. Returns the created node with a real ID. "
                     "Note: Decision nodes should have 2 branches (true/false). You can add them separately "
                     "with add_node + add_connection, or use batch_edit_workflow to create the decision + branches "
                     "atomically with temporary IDs.\n\n"
@@ -320,10 +273,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to add the node to (from create_workflow)",
-                        },
                         "type": {
                             "type": "string",
                             "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
@@ -482,7 +431,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "required": ["output", "operator", "operands"],
                         },
                     },
-                    "required": ["workflow_id", "type", "label"],
+                    "required": ["type", "label"],
                 },
             },
         },
@@ -491,8 +440,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "modify_node",
                 "description": (
-                    "Update an existing node's properties (label, type, position). "
-                    "Requires workflow_id. "
+                    "Update an existing node's properties (label, type, position) in the active workflow. "
                     "You must know the node_id first - call get_current_workflow to find it.\n\n"
                     "For SUBPROCESS nodes: You can update subworkflow_id, input_mapping, and output_variable.\n"
                     "For DECISION nodes: You can update the condition.\n"
@@ -501,10 +449,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow containing the node",
-                        },
                         "node_id": {
                             "type": "string",
                             "description": "ID of the node to modify",
@@ -581,7 +525,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "For 'calculation' nodes: Updated calculation definition. See add_node for schema.",
                         },
                     },
-                    "required": ["workflow_id", "node_id"],
+                    "required": ["node_id"],
                 },
             },
         },
@@ -590,23 +534,18 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "delete_node",
                 "description": (
-                    "Remove a node and all connected edges from the workflow. "
-                    "Requires workflow_id. "
+                    "Remove a node and all connected edges from the active workflow. "
                     "Validates that the result is still a valid workflow structure."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow containing the node",
-                        },
                         "node_id": {
                             "type": "string",
                             "description": "ID of the node to delete",
                         }
                     },
-                    "required": ["workflow_id", "node_id"],
+                    "required": ["node_id"],
                 },
             },
         },
@@ -615,17 +554,13 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "add_connection",
                 "description": (
-                    "Create an edge connecting two nodes. For decision nodes, use label "
-                    "'true' or 'false'. Requires workflow_id. "
+                    "Create an edge connecting two nodes in the active workflow. For decision nodes, use label "
+                    "'true' or 'false'. "
                     "Validates that the connection creates a valid workflow."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to add the connection to",
-                        },
                         "from_node_id": {
                             "type": "string",
                             "description": "Source node ID",
@@ -639,7 +574,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "Edge label (e.g., 'true', 'false', or empty)",
                         },
                     },
-                    "required": ["workflow_id", "from_node_id", "to_node_id"],
+                    "required": ["from_node_id", "to_node_id"],
                 },
             },
         },
@@ -648,16 +583,12 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "delete_connection",
                 "description": (
-                    "Remove an edge between two nodes. Requires workflow_id. "
+                    "Remove an edge between two nodes in the active workflow. "
                     "Validates that removing the connection doesn't create an invalid workflow structure."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow containing the connection",
-                        },
                         "from_node_id": {
                             "type": "string",
                             "description": "Source node ID",
@@ -667,7 +598,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "Target node ID",
                         },
                     },
-                    "required": ["workflow_id", "from_node_id", "to_node_id"],
+                    "required": ["from_node_id", "to_node_id"],
                 },
             },
         },
@@ -676,7 +607,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "batch_edit_workflow",
                 "description": (
-                    "Apply multiple workflow changes in a single atomic operation. Requires workflow_id. "
+                    "Apply multiple changes to the active workflow in a single atomic operation. "
                     "All changes are validated together - if any fail, none are applied. "
                     "\n\n"
                     "PRIMARY USE CASE - Temporary ID References: "
@@ -693,10 +624,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to edit",
-                        },
                         "operations": {
                             "type": "array",
                             "description": (
@@ -743,7 +670,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             },
                         }
                     },
-                    "required": ["workflow_id", "operations"],
+                    "required": ["operations"],
                 },
             },
         },
@@ -752,19 +679,14 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "validate_workflow",
                 "description": (
-                    "Check if a workflow is valid. Requires workflow_id. "
+                    "Check if the active workflow is valid. "
                     "Reports errors like disconnected nodes, missing branches, or unreachable paths. "
                     "Use this when the user asks to validate, check, or verify the workflow."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to validate",
-                        },
-                    },
-                    "required": ["workflow_id"],
+                    "properties": {},
+                    "required": [],
                 },
             },
         },
@@ -773,8 +695,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "execute_workflow",
                 "description": (
-                    "Run a workflow with the given input values and return the result. "
-                    "Requires workflow_id. "
+                    "Run the active workflow with the given input values and return the result. "
                     "Provide input values as a JSON object mapping variable names to their values. "
                     "Returns the output, the path of nodes visited, and the final variable context. "
                     "Use this when the user asks to run, execute, test, or try the workflow."
@@ -782,10 +703,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to execute",
-                        },
                         "input_values": {
                             "type": "object",
                             "description": (
@@ -794,7 +711,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             ),
                         },
                     },
-                    "required": ["workflow_id", "input_values"],
+                    "required": ["input_values"],
                 },
             },
         },
@@ -803,7 +720,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "add_workflow_variable",
                 "description": (
-                    "Register a user-input variable for a workflow. Requires workflow_id. "
+                    "Register a user-input variable for the active workflow. "
                     "This variable will appear in the Variables tab under 'Inputs' where users "
                     "provide values at execution time. Use this when the workflow needs data from "
                     "users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
@@ -814,10 +731,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to add the variable to",
-                        },
                         "name": {
                             "type": "string",
                             "description": "Human-readable variable name (e.g., 'Patient Age', 'Email Address')",
@@ -845,7 +758,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "For number type: maximum allowed value",
                         },
                     },
-                    "required": ["workflow_id", "name", "type"],
+                    "required": ["name", "type"],
                 },
             },
         },
@@ -854,7 +767,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "list_workflow_variables",
                 "description": (
-                    "Get all registered workflow variables. Requires workflow_id. "
+                    "Get all registered variables for the active workflow. "
                     "Returns both user-input variables (source='input') and derived variables "
                     "(e.g., subprocess outputs with source='subprocess'). "
                     "Variable IDs use the format var_{name}_{type} for inputs, var_sub_{name}_{type} for subprocess outputs. "
@@ -862,13 +775,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to list variables from",
-                        },
-                    },
-                    "required": ["workflow_id"],
+                    "properties": {},
+                    "required": [],
                 },
             },
         },
@@ -877,18 +785,13 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "remove_workflow_variable",
                 "description": (
-                    "Remove a registered workflow input variable by name (case-insensitive). "
-                    "Requires workflow_id. "
+                    "Remove a registered input variable from the active workflow by name (case-insensitive). "
                     "If the variable is used in decision node conditions, deletion will fail by default. "
                     "Use force=true to cascade delete (automatically clears conditions from affected nodes)."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow containing the variable",
-                        },
                         "name": {
                             "type": "string",
                             "description": "Name of the variable to remove (case-insensitive)",
@@ -898,7 +801,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "If true, removes variable even if referenced by nodes (cascade delete). Default: false",
                         },
                     },
-                    "required": ["workflow_id", "name"],
+                    "required": ["name"],
                 },
             },
         },
@@ -907,8 +810,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "modify_workflow_variable",
                 "description": (
-                    "Modify an existing user-input workflow variable's properties (type, name, description, range, enum values). "
-                    "Requires workflow_id. "
+                    "Modify an existing user-input variable's properties in the active workflow (type, name, description, range, enum values). "
                     "ONLY works on user-input variables (source='input'). "
                     "Derived variables (from calculation or subprocess nodes) CANNOT be modified — "
                     "modify the producing node instead (e.g. change the calc output name or subprocess output_variable). "
@@ -917,10 +819,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow containing the variable",
-                        },
                         "name": {
                             "type": "string",
                             "description": "Name of the variable to modify (case-insensitive match)",
@@ -952,7 +850,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "For number/integer types: maximum allowed value",
                         },
                     },
-                    "required": ["workflow_id", "name"],
+                    "required": ["name"],
                 },
             },
         },
@@ -995,7 +893,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "save_workflow_to_library",
                 "description": (
-                    "Save a draft workflow to the user's permanent library. "
+                    "Save the active workflow to the user's permanent library. "
                     "Drafts are workflows you've created that haven't been explicitly saved yet. "
                     "Once saved, the workflow appears in the user's browse library. "
                     "Use this when the user asks to save the workflow, confirms they want to keep it, "
@@ -1004,10 +902,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to save (from create_workflow)",
-                        },
                         "name": {
                             "type": "string",
                             "description": "Optional new name for the workflow",
@@ -1026,7 +920,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "Optional list of tags",
                         },
                     },
-                    "required": ["workflow_id"],
+                    "required": [],
                 },
             },
         },
@@ -1035,8 +929,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "set_workflow_output",
                 "description": (
-                    "Declare a workflow's output with a name and REQUIRED type. "
-                    "Requires workflow_id. "
+                    "Declare the active workflow's output with a name and REQUIRED type. "
                     "The output type is critical for subprocess variable inference - when this workflow "
                     "is used as a subprocess, the calling workflow uses this type for the derived variable. "
                     "Use this to ensure proper type inference when workflows are called as subprocesses."
@@ -1044,10 +937,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow to set output for",
-                        },
                         "name": {
                             "type": "string",
                             "description": "Name of the output (e.g., 'BMI Result', 'Credit Score', 'Risk Level')",
@@ -1062,7 +951,7 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                             "description": "Optional description of what this output represents",
                         },
                     },
-                    "required": ["workflow_id", "name", "type"],
+                    "required": ["name", "type"],
                 },
             },
         },
@@ -1078,10 +967,6 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "workflow_id": {
-                            "type": "string",
-                            "description": "ID of the workflow containing the node",
-                        },
                         "node_id": {
                             "type": "string",
                             "description": "ID of the node to highlight",

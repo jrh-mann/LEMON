@@ -1,7 +1,7 @@
 """Delete connection tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -18,14 +18,8 @@ class DeleteConnectionTool(WorkflowTool):
     """Remove an edge from the workflow."""
 
     name = "delete_connection"
-    description = "Remove a connection between two nodes. Requires workflow_id."
+    description = "Remove a connection between two nodes."
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the connection (from create_workflow)",
-            required=True,
-        ),
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),
     ]

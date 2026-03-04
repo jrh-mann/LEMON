@@ -1,7 +1,7 @@
 """List workflow variables tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database
 """
 
@@ -20,28 +20,20 @@ class ListWorkflowVariablesTool(WorkflowTool):
     - Subprocess outputs (source='subprocess') - derived from subflow execution
     - Calculated values (source='calculated') - computed during execution
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
 
     name = "list_workflow_variables"
     description = (
-        "Get all workflow variables. Requires workflow_id. "
+        "Get all workflow variables. "
         "Returns ALL variables available in the workflow, including user inputs, "
         "subprocess outputs, and calculated values. "
         "Use this to see what variables can be referenced in decision conditions "
         "and output templates."
     )
-    parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to list variables from (from create_workflow)",
-            required=True,
-        ),
-    ]
+    parameters = []
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)

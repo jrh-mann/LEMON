@@ -21,17 +21,11 @@ class ExecuteWorkflowTool(WorkflowTool):
     name = "execute_workflow"
     description = (
         "Run a workflow with the given input values and return the result. "
-        "Provide the workflow_id and input values as a JSON object mapping "
+        "Provide input values as a JSON object mapping "
         "variable names (or IDs) to their values. Returns the output, the "
         "path of nodes visited, and the final variable context."
     )
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to execute",
-            required=True,
-        ),
         ToolParameter(
             "input_values",
             "object",

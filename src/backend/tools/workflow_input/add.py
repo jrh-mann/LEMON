@@ -5,7 +5,7 @@ that users provide values for at execution time. For subprocess outputs or
 calculated variables, those are created automatically when adding nodes.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -57,26 +57,19 @@ class AddWorkflowVariableTool(WorkflowTool):
     values at execution time. These variables appear in the Variables tab
     under the 'Inputs' section.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
 
     name = "add_workflow_variable"
     description = (
-        "Register an input variable for the workflow. Requires workflow_id. "
+        "Register an input variable for the workflow. "
         "This variable will appear in the Variables tab where users can provide values at execution time. "
         "Use this when the workflow needs data from users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
         "For subprocess outputs, use the output_variable parameter when adding a subprocess node instead."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to add the variable to (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",

@@ -1,7 +1,7 @@
 """Batch edit workflow tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -21,15 +21,13 @@ from .add_node import validate_decision_condition
 
 class BatchEditWorkflowTool(WorkflowTool):
     """Apply multiple workflow changes atomically.
-    
-    Requires workflow_id - the workflow must exist in the library first
-    (create it with create_workflow tool).
+
+    Uses the current workflow from session state.
     """
 
     name = "batch_edit_workflow"
     description = """
     Apply multiple workflow changes in a single atomic operation.
-    Requires workflow_id - workflow must exist in library first.
     Validation uses lenient mode - you can create decision nodes without branches, then add connections later.
 
     Use this for efficient bulk operations:
@@ -52,7 +50,6 @@ class BatchEditWorkflowTool(WorkflowTool):
 
     Example: Add decision with condition and both branches
     {
-      "workflow_id": "wf_abc123",
       "operations": [
         {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_decision", "x": 100, "y": 100,
          "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
@@ -67,13 +64,6 @@ class BatchEditWorkflowTool(WorkflowTool):
     {"op": "modify_connection", "from": "node_abc", "to": "node_xyz", "label": "true"}
     """
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to edit (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "operations",
             "array",

@@ -6,7 +6,7 @@ workflow calls this one as a subprocess, the output type determines the type
 of the derived variable.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -27,7 +27,7 @@ class SetWorkflowOutputTool(WorkflowTool):
     workflow is used as a subprocess, the calling workflow needs to know what
     type of value to expect.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
@@ -35,18 +35,10 @@ class SetWorkflowOutputTool(WorkflowTool):
     name = "set_workflow_output"
     description = (
         "Declare the workflow's output with a name, type, and optional description. "
-        "Requires workflow_id. "
         "The output type is REQUIRED and determines the type of the derived variable "
         "when this workflow is called as a subprocess. Common types: string, int, float, bool."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to set output for (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",

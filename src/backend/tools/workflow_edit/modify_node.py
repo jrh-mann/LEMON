@@ -1,7 +1,7 @@
 """Modify node tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -31,14 +31,8 @@ class ModifyNodeTool(WorkflowTool):
     """
 
     name = "modify_node"
-    description = "Update an existing node's label, type, position, condition, or calculation. Requires workflow_id."
+    description = "Update an existing node's label, type, position, condition, or calculation."
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the node (from create_workflow)",
-            required=True,
-        ),
         ToolParameter("node_id", "string", "ID of the node to modify", required=True),
         ToolParameter("label", "string", "New label text", required=False),
         ToolParameter("type", "string", "New node type", required=False),

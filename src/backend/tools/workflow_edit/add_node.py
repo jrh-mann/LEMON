@@ -8,7 +8,7 @@ For calculation nodes, validates the operator and operands, and auto-registers
 the output variable with source='calculated'.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -262,15 +262,8 @@ class AddNodeTool(WorkflowTool):
     """
 
     name = "add_node"
-    description = "Add a new node (block) to the workflow. Requires workflow_id."
+    description = "Add a new node (block) to the workflow."
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to add the node to (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "type",
             "string",

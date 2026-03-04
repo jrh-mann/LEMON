@@ -5,7 +5,7 @@ Only modifies user-input variables (source='input'). Derived variables
 and cannot be modified directly — modify the node instead.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -31,7 +31,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
     IMPORTANT: Changing a variable's type will update its ID (since IDs include
     the type). Any decision nodes referencing the old ID will need to be updated.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
@@ -39,19 +39,11 @@ class ModifyWorkflowVariableTool(WorkflowTool):
     name = "modify_workflow_variable"
     description = (
         "Modify an existing workflow input variable's properties (type, description, range, enum values). "
-        "Requires workflow_id. "
         "Only works on user-input variables (source='input'). Derived variables from calculation or "
         "subprocess nodes are read-only — modify the producing node instead. "
         "NOTE: Changing the type will also update the variable ID."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the variable (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",

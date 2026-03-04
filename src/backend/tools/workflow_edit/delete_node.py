@@ -1,7 +1,7 @@
 """Delete node tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -18,14 +18,8 @@ class DeleteNodeTool(WorkflowTool):
     """Delete a node from the workflow."""
 
     name = "delete_node"
-    description = "Remove a node and all connected edges from the workflow. Requires workflow_id."
+    description = "Remove a node and all connected edges from the workflow."
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the node (from create_workflow)",
-            required=True,
-        ),
         ToolParameter("node_id", "string", "ID of the node to delete", required=True),
     ]
 

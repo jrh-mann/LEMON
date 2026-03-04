@@ -1,7 +1,7 @@
 """Validate workflow tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database
 - Performs structural validation
 """
@@ -15,24 +15,16 @@ from .core import WorkflowTool, ToolParameter
 
 class ValidateWorkflowTool(WorkflowTool):
     """Validate the workflow structure.
-    
-    Requires workflow_id - the workflow must exist in the library first.
+
+    Uses the current workflow from session state.
     """
 
     name = "validate_workflow"
     description = (
-        "Validate the workflow for structural correctness. Requires workflow_id. "
+        "Validate the workflow for structural correctness. "
         "Checks reachability, disconnected nodes, decision node conditions, and more."
     )
-    parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to validate (from create_workflow)",
-            required=True,
-        ),
-    ]
+    parameters = []
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)

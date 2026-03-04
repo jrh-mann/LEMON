@@ -40,10 +40,9 @@ class CreateWorkflowTool(Tool):
 
     name = "create_workflow"
     description = (
-        "Create a new workflow in the user's library. Returns a workflow_id that must "
-        "be used in all subsequent tool calls to edit this workflow. The workflow starts "
+        "Create a new workflow in the user's library. The workflow starts "
         "empty (no nodes or edges) and must be built using add_node, add_connection, etc. "
-        "Always call this FIRST before adding nodes or variables to a workflow."
+        "Only call this for subworkflows — the primary canvas workflow already exists."
     )
     parameters = [
         ToolParameter(
@@ -155,8 +154,8 @@ class CreateWorkflowTool(Tool):
                 "workflow_id": workflow_id,
                 "name": name.strip(),
                 "output_type": output_type,
-                "message": f"Created workflow '{name.strip()}' with ID {workflow_id}. "
-                           f"Use this workflow_id in all subsequent tool calls.",
+                "message": f"Created workflow '{name.strip()}' ({workflow_id}). "
+                           f"You are now editing this workflow.",
             }
             
         except Exception as e:

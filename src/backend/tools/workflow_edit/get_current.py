@@ -1,7 +1,7 @@
 """Get current workflow tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database
 - Read-only - does not save changes
 """
@@ -147,15 +147,8 @@ class GetCurrentWorkflowTool(WorkflowTool):
     uses_validator = False
 
     name = "get_current_workflow"
-    description = "Get a workflow from the library as JSON (nodes, edges, variables). Requires workflow_id."
-    parameters: List[ToolParameter] = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to retrieve (from create_workflow)",
-            required=True,
-        ),
-    ]
+    description = "Get the current workflow as JSON (nodes, edges, variables)."
+    parameters: List[ToolParameter] = []
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)
