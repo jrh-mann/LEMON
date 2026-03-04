@@ -64,9 +64,9 @@ class Orchestrator:
         self._guidance: List[Dict[str, Any]] = []
         # Repo root path — needed for background subworkflow builders
         self.repo_root: Optional[Any] = None
-        # SocketIO instance and session ID — for emitting events from background threads
-        self.socketio: Optional[Any] = None
-        self.sid: Optional[str] = None
+        # WebSocket registry and connection ID — for emitting events from background threads
+        self.ws_registry: Optional[Any] = None
+        self.conn_id: Optional[str] = None
 
     @property
     def current_workflow(self) -> Dict[str, Any]:
@@ -225,13 +225,13 @@ class Orchestrator:
                 session_state["workflow_store"] = self.workflow_store
             if self.user_id is not None:
                 session_state["user_id"] = self.user_id
-            # Pass repo_root, socketio, sid for background subworkflow builders
+            # Pass repo_root, ws_registry, conn_id for background subworkflow builders
             if self.repo_root is not None:
                 session_state["repo_root"] = self.repo_root
-            if self.socketio is not None:
-                session_state["socketio"] = self.socketio
-            if self.sid is not None:
-                session_state["sid"] = self.sid
+            if self.ws_registry is not None:
+                session_state["ws_registry"] = self.ws_registry
+            if self.conn_id is not None:
+                session_state["conn_id"] = self.conn_id
 
             data = self.tools.execute(
                 tool_name,

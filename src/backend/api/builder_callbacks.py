@@ -1,14 +1,12 @@
 """Reusable callback class for background subworkflow builders.
 
-Emits the same chat_* socket events as SocketChatTask, but tags each
-event with `workflow_id` instead of `task_id`. The frontend routes
-events by checking for workflow_id — if present and matching the
-currently viewed workflow, they go to workflowStore; otherwise they
-go to chatStore as usual.
+Emits the same chat_* events as WsChatTask, but tags each event with
+`workflow_id` instead of `task_id`. The frontend routes events by
+checking for workflow_id — if present and matching the currently viewed
+workflow, they go to workflowStore; otherwise they go to chatStore.
 
-This unifies the event infrastructure so background builders get
-thinking, progress, streaming, tool tracking, and cancellation
-support — the same features the main orchestrator has.
+Uses ConnectionRegistry + conn_id instead of SocketIO + sid. All emit
+calls go through registry.send_to_sync() for thread-safe async bridging.
 """
 
 from __future__ import annotations
@@ -17,6 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from ..tools.constants import WORKFLOW_EDIT_TOOLS
+from .ws_registry import ConnectionRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -25,43 +24,47 @@ class BackgroundBuilderCallbacks:
     """Emit chat_* events for a background builder, tagged with workflow_id.
 
     Used by create_subworkflow and update_subworkflow to provide the same
-    rich event stream as the main orchestrator's SocketChatTask.
+    rich event stream as the main orchestrator's WsChatTask.
     """
 
-    def __init__(self, socketio: Any, sid: str, workflow_id: str) -> None:
-        self.socketio = socketio
-        self.sid = sid
+    def __init__(self, ws_registry: ConnectionRegistry, conn_id: str, workflow_id: str) -> None:
+        self.ws_registry = ws_registry
+        self.conn_id = conn_id
         self.workflow_id = workflow_id
         self.cancelled = False
         self.executed_tools: List[Dict[str, Any]] = []
 
+    def _emit(self, event: str, payload: dict) -> None:
+        """Emit via registry (sync, from background thread)."""
+        if not self.ws_registry or not self.conn_id:
+            return
+        self.ws_registry.send_to_sync(self.conn_id, event, payload)
+
     def stream_chunk(self, chunk: str) -> None:
         """Emit chat_stream with workflow_id tag."""
-        if self.cancelled or not self.socketio or not self.sid:
+        if self.cancelled:
             return
-        self.socketio.emit("chat_stream", {
+        self._emit("chat_stream", {
             "chunk": chunk,
             "workflow_id": self.workflow_id,
-        }, to=self.sid)
+        })
 
     def stream_thinking(self, chunk: str) -> None:
         """Emit chat_thinking with workflow_id tag."""
-        if not chunk or self.cancelled or not self.socketio or not self.sid:
+        if not chunk or self.cancelled:
             return
-        self.socketio.emit("chat_thinking", {
+        self._emit("chat_thinking", {
             "chunk": chunk,
             "workflow_id": self.workflow_id,
-        }, to=self.sid)
+        })
 
     def emit_progress(self, status: str, event: str = "update") -> None:
         """Emit chat_progress with workflow_id tag."""
-        if not self.socketio or not self.sid:
-            return
-        self.socketio.emit("chat_progress", {
+        self._emit("chat_progress", {
             "event": event,
             "status": status,
             "workflow_id": self.workflow_id,
-        }, to=self.sid)
+        })
 
     def is_cancelled(self) -> bool:
         """Check if this build has been cancelled."""
@@ -78,7 +81,7 @@ class BackgroundBuilderCallbacks:
         args: Dict[str, Any],
         result: Optional[Dict[str, Any]],
     ) -> None:
-        """Handle tool lifecycle events — mirrors SocketChatTask.on_tool_event.
+        """Handle tool lifecycle events — mirrors WsChatTask.on_tool_event.
 
         Tracks tool calls and emits workflow_update for edit tools so nodes
         appear on the canvas live during the build.
@@ -90,7 +93,6 @@ class BackgroundBuilderCallbacks:
                 "status": "running",
             })
         elif event == "tool_complete" and isinstance(result, dict):
-            # Update tool entry with result
             for entry in reversed(self.executed_tools):
                 if entry.get("tool") == tool and "result" not in entry:
                     entry["result"] = result
@@ -98,22 +100,18 @@ class BackgroundBuilderCallbacks:
                     entry["status"] = "complete"
                     break
 
-            # Emit workflow_update for edit tools so nodes appear on canvas live
             if result.get("success") and tool in WORKFLOW_EDIT_TOOLS:
-                if self.socketio and self.sid:
-                    action = result.get("action", tool)
-                    self.socketio.emit("workflow_update", {
-                        "action": action,
-                        "data": result,
-                    }, to=self.sid)
+                action = result.get("action", tool)
+                self._emit("workflow_update", {
+                    "action": action,
+                    "data": result,
+                })
 
     def emit_response(self, response_text: str) -> None:
         """Emit chat_response with workflow_id tag — signals build complete."""
-        if not self.socketio or not self.sid:
-            return
-        self.socketio.emit("chat_response", {
+        self._emit("chat_response", {
             "response": response_text,
             "workflow_id": self.workflow_id,
             "tool_calls": self.executed_tools,
             "cancelled": self.cancelled,
-        }, to=self.sid)
+        })

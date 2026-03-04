@@ -1,0 +1,517 @@
+"""WebSocket chat workflow for the API server.
+
+Replaces socket_chat.py — uses ConnectionRegistry + conn_id instead of
+SocketIO + sid. Background threads use registry.send_to_sync() to emit
+events to the async WebSocket.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Event, Lock
+from typing import Any, Dict, Optional
+from uuid import uuid4
+
+from .common import utc_now
+from .conversations import Conversation, ConversationStore
+from .response_utils import extract_tool_calls, summarize_response
+from .tool_summaries import ToolSummaryTracker
+from .ws_registry import ConnectionRegistry
+from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
+from ..utils.uploads import save_uploaded_file, save_annotations
+from ..utils.paths import lemon_data_dir
+from ..storage.workflows import WorkflowStore
+
+logger = logging.getLogger("backend.api")
+
+# ---------- Task cancellation state ----------
+
+_TASK_STATE: Dict[str, Dict[str, Dict[str, Any]]] = {}
+_TASK_LOCK = Lock()
+_TASK_TTL_SECONDS = 1800.0
+
+
+def _purge_stale_tasks_locked(now: float) -> None:
+    stale_sessions: list[str] = []
+    for conn_id, tasks in _TASK_STATE.items():
+        stale_tasks = [
+            task_id
+            for task_id, state in tasks.items()
+            if now - state.get("created_at", now) > _TASK_TTL_SECONDS
+        ]
+        for task_id in stale_tasks:
+            tasks.pop(task_id, None)
+        if not tasks:
+            stale_sessions.append(conn_id)
+    for conn_id in stale_sessions:
+        _TASK_STATE.pop(conn_id, None)
+
+
+def _register_task(conn_id: str, task_id: str) -> None:
+    with _TASK_LOCK:
+        now = time.monotonic()
+        _purge_stale_tasks_locked(now)
+        session_tasks = _TASK_STATE.setdefault(conn_id, {})
+        session_tasks.setdefault(
+            task_id,
+            {"cancelled": False, "notified": False, "created_at": now},
+        )
+
+
+def _cancel_task(conn_id: str, task_id: str) -> None:
+    with _TASK_LOCK:
+        now = time.monotonic()
+        _purge_stale_tasks_locked(now)
+        session_tasks = _TASK_STATE.setdefault(conn_id, {})
+        state = session_tasks.get(task_id)
+        if not state:
+            session_tasks[task_id] = {"cancelled": True, "notified": False, "created_at": now}
+            return
+        state["cancelled"] = True
+
+
+def _is_task_cancelled(conn_id: str, task_id: str) -> bool:
+    with _TASK_LOCK:
+        _purge_stale_tasks_locked(time.monotonic())
+        state = _TASK_STATE.get(conn_id, {}).get(task_id)
+        return bool(state and state.get("cancelled"))
+
+
+def _mark_task_notified(conn_id: str, task_id: str) -> bool:
+    with _TASK_LOCK:
+        state = _TASK_STATE.get(conn_id, {}).get(task_id)
+        if not state or state.get("notified"):
+            return False
+        state["notified"] = True
+        return True
+
+
+def _clear_task(conn_id: str, task_id: str) -> None:
+    with _TASK_LOCK:
+        session_tasks = _TASK_STATE.get(conn_id)
+        if not session_tasks:
+            return
+        session_tasks.pop(task_id, None)
+        if not session_tasks:
+            _TASK_STATE.pop(conn_id, None)
+
+
+# ---------- Chat task ----------
+
+@dataclass
+class WsChatTask:
+    """Manages a single chat turn — runs in a background thread."""
+
+    registry: ConnectionRegistry
+    conversation_store: ConversationStore
+    repo_root: Path
+    workflow_store: WorkflowStore
+    user_id: str
+    conn_id: str
+    task_id: str
+    message: str
+    conversation_id: Optional[str]
+    files_data: list[dict[str, Any]]
+    workflow: Optional[Dict[str, Any]]
+    analysis: Optional[Dict[str, Any]]
+    current_workflow_id: Optional[str] = None
+    open_tabs: Optional[list[Dict[str, Any]]] = None
+    done: Event = field(default_factory=Event)
+    executed_tools: list[dict[str, Any]] = field(default_factory=list)
+    tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
+    did_stream: bool = False
+    convo: Optional[Conversation] = None
+    img_annotations: Optional[list[dict[str, Any]]] = None
+    saved_file_paths: list[dict[str, Any]] = field(default_factory=list)
+
+    # --- Helpers ---
+
+    def is_cancelled(self) -> bool:
+        return _is_task_cancelled(self.conn_id, self.task_id)
+
+    def _emit(self, event: str, payload: dict) -> None:
+        """Emit a JSON message via the registry (sync, from background thread)."""
+        self.registry.send_to_sync(self.conn_id, event, payload)
+
+    def emit_progress(self, event: str, status: str, *, tool: Optional[str] = None) -> None:
+        payload: Dict[str, Any] = {"event": event, "status": status, "task_id": self.task_id}
+        if tool:
+            payload["tool"] = tool
+        self._emit("chat_progress", payload)
+
+    def emit_error(self, error: str) -> None:
+        if self.is_cancelled():
+            return
+        self._emit("agent_error", {"task_id": self.task_id, "error": error})
+
+    def emit_cancelled(self) -> None:
+        if _mark_task_notified(self.conn_id, self.task_id):
+            self._emit("chat_cancelled", {"task_id": self.task_id})
+
+    def stream_chunk(self, chunk: str) -> None:
+        """Stream text to frontend character-by-character for typewriter effect."""
+        if self.is_cancelled():
+            return
+        self.did_stream = True
+        for char in chunk:
+            if self.is_cancelled():
+                return
+            self._emit("chat_stream", {"chunk": char, "task_id": self.task_id})
+            self.registry.sleep_sync(0.005)  # 5ms delay for visible typewriter effect
+
+    def stream_thinking(self, chunk: str) -> None:
+        """Stream LLM reasoning/thinking chunks to the frontend."""
+        if not chunk or self.is_cancelled():
+            return
+        self._emit("chat_thinking", {"chunk": chunk, "task_id": self.task_id})
+
+    def heartbeat(self) -> None:
+        while not self.done.is_set():
+            self.registry.sleep_sync(5)
+            if self.done.is_set() or self.is_cancelled():
+                break
+            self.emit_progress("heartbeat", "Analysing...")
+
+    def flush_tool_summary(self) -> None:
+        summary = self.tool_summary.flush()
+        if summary:
+            self.stream_chunk(summary)
+
+    def on_tool_event(
+        self,
+        event: str,
+        tool: str,
+        args: Dict[str, Any],
+        result: Optional[Dict[str, Any]],
+    ) -> None:
+        cancelled = self.is_cancelled()
+
+        if event == "tool_start":
+            entry: Dict[str, Any] = {"tool": tool, "arguments": args}
+            if cancelled:
+                entry["interrupted"] = True
+            self.executed_tools.append(entry)
+        if event == "tool_complete":
+            if isinstance(result, dict) and result.get("skipped"):
+                return
+            success = True
+            if isinstance(result, dict) and "success" in result:
+                success = bool(result.get("success"))
+            self.tool_summary.note(tool, success=success)
+            for executed in reversed(self.executed_tools):
+                if executed.get("tool") == tool and "result" not in executed:
+                    executed["result"] = result
+                    executed["success"] = success
+                    if cancelled:
+                        executed["interrupted"] = True
+                    break
+        if event == "tool_batch_complete":
+            self.flush_tool_summary()
+
+        # Skip socket emissions when cancelled
+        if cancelled:
+            return
+
+        if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
+            self._emit("plan_updated", {"items": result.get("items", [])})
+
+        if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            questions = result.get("questions", [])
+            for q in questions:
+                self._emit("pending_question", {
+                    "question": q.get("question", ""),
+                    "options": q.get("options", []),
+                })
+
+        if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            if tool in WORKFLOW_EDIT_TOOLS:
+                action = result.get("action")
+                logger.info(
+                    "Emitting workflow_update action=%s tool=%s workflow_id=%s",
+                    action, tool, result.get("workflow_id"),
+                )
+                self._emit("workflow_update", {"action": action, "data": result})
+
+                has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
+                has_removed_vars = isinstance(result.get("removed_variable_ids"), list) and result["removed_variable_ids"]
+                if (has_new_vars or has_removed_vars) and self.convo:
+                    self._emit("analysis_updated", {
+                        "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
+                        "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                        "task_id": self.task_id,
+                    })
+
+            if tool in WORKFLOW_INPUT_TOOLS and self.convo:
+                self._emit("analysis_updated", {
+                    "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
+                    "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
+                    "task_id": self.task_id,
+                })
+
+            if tool == "create_workflow":
+                self._emit("workflow_created", {
+                    "workflow_id": result.get("workflow_id"),
+                    "name": result.get("name"),
+                    "output_type": result.get("output_type"),
+                    "is_draft": True,
+                })
+
+            if tool == "save_workflow_to_library":
+                self._emit("workflow_saved", {
+                    "workflow_id": result.get("workflow_id"),
+                    "name": result.get("name"),
+                    "is_draft": False,
+                    "already_saved": result.get("already_saved", False),
+                })
+
+    # --- File handling ---
+
+    def _save_uploaded_files(self) -> bool:
+        """Save all uploaded files to disk and populate self.saved_file_paths."""
+        logger.info("_save_uploaded_files: files_data count=%d", len(self.files_data))
+        if not self.files_data:
+            return True
+        for file_info in self.files_data:
+            data_url = file_info.get("data_url", "")
+            logger.info(
+                "_save_uploaded_files: processing file id=%s name=%s data_url_len=%d",
+                file_info.get("id", "?"), file_info.get("name", "?"),
+                len(data_url) if isinstance(data_url, str) else 0,
+            )
+            if not isinstance(data_url, str) or not data_url.strip():
+                logger.warning("_save_uploaded_files: skipping file with empty data_url: %s", file_info.get("name"))
+                continue
+            try:
+                rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
+                abs_path = str(lemon_data_dir(self.repo_root) / rel_path)
+                self.saved_file_paths.append({
+                    "id": file_info.get("id", ""),
+                    "name": file_info.get("name", ""),
+                    "path": abs_path,
+                    "file_type": file_type,
+                    "purpose": file_info.get("purpose", "unclassified"),
+                })
+            except Exception as exc:
+                logger.exception("Failed to save uploaded file: %s", file_info.get("name"))
+                self.emit_error(f"Invalid file '{file_info.get('name', '?')}': {exc}")
+                return False
+        if self.img_annotations and isinstance(self.img_annotations, list) and self.saved_file_paths:
+            first_image = next(
+                (f for f in self.saved_file_paths if f["file_type"] == "image"), None
+            )
+            if first_image:
+                save_annotations(first_image["path"], self.img_annotations, repo_root=self.repo_root)
+        return True
+
+    # --- Workflow sync ---
+
+    def _sync_payload_workflow(self) -> None:
+        if not self.convo:
+            return
+        if isinstance(self.workflow, dict):
+            self.convo.update_workflow_state(self.workflow)
+        if isinstance(self.analysis, dict):
+            self.convo.update_workflow_analysis(self.analysis)
+
+    def _sync_orchestrator_from_convo(self) -> None:
+        if not self.convo:
+            return
+        self.convo.orchestrator.sync_workflow(lambda: self.convo.workflow_state)
+        self.convo.orchestrator.sync_workflow_analysis(lambda: self.convo.workflow_analysis)
+        self.convo.orchestrator.workflow_store = self.workflow_store
+        self.convo.orchestrator.user_id = self.user_id
+        self.convo.orchestrator.repo_root = self.repo_root
+        # Pass ws_registry + conn_id for background subworkflow builders
+        self.convo.orchestrator.ws_registry = self.registry
+        self.convo.orchestrator.conn_id = self.conn_id
+        # Ensure the canvas workflow exists in the database
+        if self.current_workflow_id and self.workflow_store:
+            existing = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
+            if not existing:
+                try:
+                    self.workflow_store.create_workflow(
+                        workflow_id=self.current_workflow_id,
+                        user_id=self.user_id,
+                        name="New Workflow",
+                        description="",
+                        nodes=[],
+                        edges=[],
+                        inputs=[],
+                        outputs=[],
+                        tree={},
+                        doubts=[],
+                        output_type="string",
+                        is_draft=True,
+                    )
+                    logger.info(
+                        "Auto-persisted canvas workflow %s for user %s",
+                        self.current_workflow_id, self.user_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to auto-persist canvas workflow %s",
+                        self.current_workflow_id,
+                    )
+            self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+        self.convo.orchestrator.open_tabs = self.open_tabs or []
+
+    def _sync_convo_from_orchestrator(self) -> None:
+        if not self.convo:
+            return
+        self.convo.update_workflow_state(self.convo.orchestrator.current_workflow)
+        self.convo.update_workflow_analysis(self.convo.orchestrator.workflow_analysis)
+
+    def _emit_response(self, response_text: str, cancelled: bool = False) -> None:
+        tool_calls = extract_tool_calls(response_text, include_result=False)
+        if not tool_calls and self.executed_tools:
+            tool_calls = self.executed_tools
+        summary = summarize_response(response_text) if tool_calls else ""
+        if self.convo:
+            self.convo.updated_at = utc_now()
+        payload: Dict[str, Any] = {
+            "response": summary if tool_calls else ("" if self.did_stream else response_text),
+            "conversation_id": self.convo.id if self.convo else "",
+            "tool_calls": tool_calls,
+            "task_id": self.task_id,
+        }
+        if cancelled:
+            payload["cancelled"] = True
+        self._emit("chat_response", payload)
+
+    # --- Main run loop ---
+
+    def run(self) -> None:
+        self.emit_progress("start", "Thinking...")
+        threading.Thread(target=self.heartbeat, daemon=True).start()
+        try:
+            self.convo = self.conversation_store.get_or_create(self.conversation_id)
+            if not self._save_uploaded_files():
+                return
+            self._sync_payload_workflow()
+            self._sync_orchestrator_from_convo()
+            response_text = self.convo.orchestrator.respond(
+                self.message,
+                has_files=self.saved_file_paths if self.saved_file_paths else [],
+                stream=self.stream_chunk,
+                allow_tools=True,
+                should_cancel=self.is_cancelled,
+                on_tool_event=self.on_tool_event,
+                thinking_budget=30_000,
+                on_thinking=self.stream_thinking,
+            )
+            self._sync_convo_from_orchestrator()
+            if self.is_cancelled():
+                self._emit_response(response_text, cancelled=True)
+                self.emit_cancelled()
+                return
+            self._emit_response(response_text)
+        except Exception as exc:
+            logger.exception("WS chat failed")
+            self.emit_error(str(exc))
+        finally:
+            self.done.set()
+            _clear_task(self.conn_id, self.task_id)
+
+
+# ---------- Handler functions (called from ws_handler.py dispatch loop) ----------
+
+def handle_ws_chat(
+    registry: ConnectionRegistry,
+    *,
+    conn_id: str,
+    conversation_store: ConversationStore,
+    repo_root: Path,
+    workflow_store: Any,
+    user_id: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Handle incoming chat message — spawn background task."""
+    message = payload.get("message", "")
+    task_id = payload.get("task_id")
+
+    raw_files = payload.get("files")
+    logger.info(
+        "handle_ws_chat: message_len=%d files_present=%s files_count=%d",
+        len(message) if isinstance(message, str) else 0,
+        raw_files is not None,
+        len(raw_files) if isinstance(raw_files, list) else 0,
+    )
+
+    if not isinstance(message, str) or not message.strip():
+        registry.send_to_sync(conn_id, "agent_error", {"task_id": task_id, "error": "message is required"})
+        return
+
+    if not isinstance(task_id, str) or not task_id.strip():
+        task_id = uuid4().hex
+    _register_task(conn_id, task_id)
+
+    task = WsChatTask(
+        registry=registry,
+        conversation_store=conversation_store,
+        repo_root=repo_root,
+        workflow_store=workflow_store,
+        user_id=user_id,
+        conn_id=conn_id,
+        task_id=task_id,
+        message=message,
+        conversation_id=payload.get("conversation_id"),
+        files_data=payload.get("files") or [],
+        workflow=payload.get("workflow"),
+        analysis=payload.get("analysis"),
+        current_workflow_id=payload.get("current_workflow_id"),
+        open_tabs=payload.get("open_tabs"),
+        img_annotations=payload.get("annotations"),
+    )
+    threading.Thread(target=task.run, daemon=True, name=f"ws-chat-{task_id}").start()
+
+
+def handle_cancel_task(
+    registry: ConnectionRegistry,
+    *,
+    conn_id: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Handle cancel_task message."""
+    task_id = payload.get("task_id")
+    if not isinstance(task_id, str) or not task_id.strip():
+        return
+    _cancel_task(conn_id, task_id)
+    if _mark_task_notified(conn_id, task_id):
+        registry.send_to_sync(conn_id, "chat_cancelled", {"task_id": task_id})
+
+
+def handle_sync_workflow(
+    registry: ConnectionRegistry,
+    *,
+    conversation_store: ConversationStore,
+    payload: Dict[str, Any],
+) -> None:
+    """Handle full workflow sync from frontend (fire-and-forget)."""
+    conversation_id = payload.get("conversation_id")
+    workflow = payload.get("workflow")
+    source = payload.get("source", "unknown")
+
+    if not conversation_id:
+        logger.warning("sync_workflow missing conversation_id")
+        return
+    if not isinstance(workflow, dict):
+        logger.warning("sync_workflow invalid workflow format")
+        return
+
+    convo = conversation_store.get_or_create(conversation_id)
+    convo.update_workflow_state(workflow)
+
+    analysis = payload.get("analysis")
+    if isinstance(analysis, dict):
+        convo.update_workflow_analysis(analysis)
+
+    logger.info(
+        "Synced workflow conv=%s source=%s nodes=%d edges=%d",
+        conversation_id, source,
+        len(workflow.get("nodes", [])),
+        len(workflow.get("edges", [])),
+    )

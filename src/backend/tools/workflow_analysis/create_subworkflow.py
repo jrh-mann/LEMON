@@ -27,8 +27,8 @@ def _run_subworkflow_builder(
     repo_root: Any,
     workflow_store: Any,
     user_id: str,
-    socketio: Any,
-    sid: str,
+    ws_registry: Any,
+    conn_id: str,
 ) -> None:
     """Background thread: build a subworkflow using a fresh orchestrator.
 
@@ -38,15 +38,15 @@ def _run_subworkflow_builder(
         repo_root: Path to repo root for tool construction
         workflow_store: WorkflowStore instance for DB access
         user_id: Owner user ID
-        socketio: SocketIO instance for emitting events (can be None)
-        sid: Socket session ID for emitting events (can be None)
+        ws_registry: ConnectionRegistry for emitting events (can be None)
+        conn_id: Connection ID for emitting events (can be None)
     """
     # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
     from ...api.builder_callbacks import BackgroundBuilderCallbacks
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
     # tagged with workflow_id so frontend routes them to workflowStore
-    cb = BackgroundBuilderCallbacks(socketio, sid, workflow_id)
+    cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id)
     response_text = ""
 
     try:
@@ -60,8 +60,8 @@ def _run_subworkflow_builder(
         # Pass full context so the background builder can emit progress events
         # and spawn nested subworkflows (which need repo_root to build_orchestrator)
         orchestrator.repo_root = repo_root
-        orchestrator.socketio = socketio
-        orchestrator.sid = sid
+        orchestrator.ws_registry = ws_registry
+        orchestrator.conn_id = conn_id
 
         logger.info(
             "Background builder started for subworkflow %s: %s",
@@ -109,11 +109,10 @@ def _run_subworkflow_builder(
         # Always emit chat_response to signal build completion to frontend
         cb.emit_response(response_text)
         # Notify frontend for library badge refresh
-        if socketio and sid:
-            socketio.emit(
-                "subworkflow_ready",
+        if ws_registry and conn_id:
+            ws_registry.send_to_sync(
+                conn_id, "subworkflow_ready",
                 {"workflow_id": workflow_id},
-                to=sid,
             )
 
 
@@ -276,21 +275,21 @@ class CreateSubworkflowTool(Tool):
         )
 
         # --- Spawn background builder thread ---
-        socketio = session_state.get("socketio")
-        sid = session_state.get("sid")
+        ws_registry = session_state.get("ws_registry")
+        conn_id = session_state.get("conn_id")
 
         # Notify frontend that a new subworkflow was created so the library
         # page can auto-refresh and show the "Building..." badge
-        if socketio and sid:
-            socketio.emit("subworkflow_created", {
+        if ws_registry and conn_id:
+            ws_registry.send_to_sync(conn_id, "subworkflow_created", {
                 "workflow_id": workflow_id,
                 "name": name_clean,
                 "building": True,
-            }, to=sid)
+            })
 
         thread = threading.Thread(
             target=_run_subworkflow_builder,
-            args=(workflow_id, builder_prompt, repo_root, workflow_store, user_id, socketio, sid),
+            args=(workflow_id, builder_prompt, repo_root, workflow_store, user_id, ws_registry, conn_id),
             daemon=True,
             name=f"subworkflow-builder-{workflow_id}",
         )
