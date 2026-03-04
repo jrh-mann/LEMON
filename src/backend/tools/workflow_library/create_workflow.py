@@ -45,6 +45,8 @@ class CreateWorkflowTool(Tool):
         "empty (no nodes or edges) and must be built using add_node, add_connection, etc. "
         "Always call this FIRST before adding nodes or variables to a workflow."
     )
+    category = "workflow_library"
+    prompt_hint = "CREATE SUBWORKFLOW → call create_workflow (only for sub-workflows, NOT the primary canvas workflow)"
     parameters = [
         ToolParameter(
             "name",
@@ -63,6 +65,7 @@ class CreateWorkflowTool(Tool):
             "string",
             "Type of value the workflow returns: 'string', 'number', 'bool', or 'json'",
             required=True,
+            schema_override={"type": "string", "enum": ["string", "number", "bool", "json"], "description": "Type of value the workflow returns when executed. Use 'number' for all numeric values."},
         ),
         ToolParameter(
             "domain",
@@ -75,6 +78,7 @@ class CreateWorkflowTool(Tool):
             "array",
             "List of tags for categorization",
             required=False,
+            schema_override={"type": "array", "items": {"type": "string"}, "description": "List of tags for categorization"},
         ),
     ]
 

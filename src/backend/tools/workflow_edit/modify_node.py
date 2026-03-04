@@ -30,6 +30,9 @@ class ModifyNodeTool(WorkflowTool):
     operator, and operands.
     """
 
+    category = "workflow_edit"
+    prompt_hint = "MODIFY/CHANGE/UPDATE/RENAME → call modify_node with workflow_id"
+
     name = "modify_node"
     description = "Update an existing node's label, type, position, condition, or calculation. Requires workflow_id."
     parameters = [
@@ -41,7 +44,17 @@ class ModifyNodeTool(WorkflowTool):
         ),
         ToolParameter("node_id", "string", "ID of the node to modify", required=True),
         ToolParameter("label", "string", "New label text", required=False),
-        ToolParameter("type", "string", "New node type", required=False),
+        ToolParameter(
+            "type",
+            "string",
+            "New node type",
+            required=False,
+            schema_override={
+                "type": "string",
+                "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
+                "description": "New node type",
+            },
+        ),
         ToolParameter("x", "number", "New X coordinate", required=False),
         ToolParameter("y", "number", "New Y coordinate", required=False),
         # Decision node condition
@@ -59,6 +72,32 @@ class ModifyNodeTool(WorkflowTool):
                 "enum: enum_eq,enum_neq"
             ),
             required=False,
+            schema_override={
+                "description": (
+                    "For 'decision' nodes: Simple or compound condition. "
+                    "See add_node for full schema details."
+                ),
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "input_id": {"type": "string"},
+                            "comparator": {"type": "string"},
+                            "value": {},
+                            "value2": {}
+                        },
+                        "required": ["input_id", "comparator"]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "operator": {"type": "string", "enum": ["and", "or"]},
+                            "conditions": {"type": "array", "minItems": 2}
+                        },
+                        "required": ["operator", "conditions"]
+                    }
+                ]
+            },
         ),
         # Calculation node config
         ToolParameter(
@@ -70,12 +109,21 @@ class ModifyNodeTool(WorkflowTool):
                 "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}."
             ),
             required=False,
+            schema_override={
+                "type": "object",
+                "description": "For 'calculation' nodes: Updated calculation definition. See add_node for schema.",
+            },
         ),
         ToolParameter(
             "output_type",
             "string",
             "Optional: data type for output nodes (string, int, bool, json, file)",
             required=False,
+            schema_override={
+                "type": "string",
+                "enum": ["string", "number", "bool", "json"],
+                "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+            },
         ),
         ToolParameter(
             "output_template",
@@ -101,6 +149,11 @@ class ModifyNodeTool(WorkflowTool):
             "object",
             "For subprocess: dict mapping parent input names to subworkflow input names",
             required=False,
+            schema_override={
+                "type": "object",
+                "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names.",
+                "additionalProperties": {"type": "string"},
+            },
         ),
         ToolParameter(
             "output_variable",

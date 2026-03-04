@@ -146,6 +146,9 @@ class GetCurrentWorkflowTool(WorkflowTool):
 
     uses_validator = False
 
+    category = "workflow_edit"
+    prompt_hint = "WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow with workflow_id"
+
     name = "get_current_workflow"
     description = "Get a workflow from the library as JSON (nodes, edges, variables). Requires workflow_id."
     parameters: List[ToolParameter] = [

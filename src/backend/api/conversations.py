@@ -82,7 +82,7 @@ class ConversationStore:
             convo.updated_at = utc_now()
             return convo
         new_id = conversation_id or f"conv_{uuid4().hex}"
-        convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root))
+        convo = Conversation(id=new_id, orchestrator=build_orchestrator())
         self._conversations[new_id] = convo
         return convo
 

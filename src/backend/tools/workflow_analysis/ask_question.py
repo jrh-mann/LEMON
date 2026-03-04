@@ -17,6 +17,8 @@ class AskQuestionTool(Tool):
     """
 
     name = "ask_question"
+    category = "workflow_analysis"
+    prompt_hint = ""
     description = (
         "Ask the user one or more clarification questions. Use this whenever "
         "you are UNSURE about any detail — a threshold, label, branch condition, "
@@ -34,6 +36,42 @@ class AskQuestionTool(Tool):
                 "automatically adds one with a free-text input."
             ),
             required=True,
+            schema_override={
+                "type": "array",
+                "description": (
+                    "Array of questions. Each has 'question' (text) and optional "
+                    "'options' (clickable choices). Do NOT include 'Other' — the "
+                    "UI adds one automatically."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The question text.",
+                        },
+                        "options": {
+                            "type": "array",
+                            "description": "Optional clickable choices (2-4 recommended).",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Display text for the option.",
+                                    },
+                                    "value": {
+                                        "type": "string",
+                                        "description": "Value sent back when user clicks this option.",
+                                    },
+                                },
+                                "required": ["label", "value"],
+                            },
+                        },
+                    },
+                    "required": ["question"],
+                },
+            },
         ),
     ]
 

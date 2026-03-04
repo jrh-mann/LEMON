@@ -26,6 +26,9 @@ class BatchEditWorkflowTool(WorkflowTool):
     (create it with create_workflow tool).
     """
 
+    category = "workflow_edit"
+    prompt_hint = ""
+
     name = "batch_edit_workflow"
     description = """
     Apply multiple workflow changes in a single atomic operation.
@@ -79,6 +82,51 @@ class BatchEditWorkflowTool(WorkflowTool):
             "array",
             "List of operations to perform. Each operation has 'op' and parameters.",
             required=True,
+            schema_override={
+                "type": "array",
+                "description": (
+                    "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
+                    "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                    "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output_template?, output_value?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                    "delete_node: {op, node_id}\n"
+                    "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
+                    "delete_connection: {op, from (node_id), to (node_id)}"
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "op": {
+                            "type": "string",
+                            "enum": [
+                                "add_node",
+                                "modify_node",
+                                "delete_node",
+                                "add_connection",
+                                "delete_connection",
+                            ],
+                        },
+                        "id": {"type": "string", "description": "Temp ID for new nodes (e.g., temp_1)"},
+                        "type": {"type": "string", "enum": ["start", "process", "decision", "subprocess", "calculation", "end"]},
+                        "label": {"type": "string"},
+                        "x": {"type": "number"},
+                        "y": {"type": "number"},
+                        "condition": {
+                            "description": "For decision nodes: simple {input_id, comparator, value} or compound {operator, conditions: [...]}",
+                        },
+                        "output_type": {"type": "string", "enum": ["string", "number", "bool", "json"]},
+                        "output_template": {"type": "string"},
+                        "output_value": {"type": "string"},
+                        "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
+                        "input_mapping": {"type": "object", "description": "For subprocess: parent->subworkflow input mapping"},
+                        "output_variable": {"type": "string", "description": "For end nodes: variable name to return raw value (number/bool). For subprocess: name for output variable."},
+                        "calculation": {"type": "object", "description": "For calculation nodes: {output, operator, operands} - see add_node for full schema"},
+                        "node_id": {"type": "string", "description": "Existing node ID"},
+                        "from": {"type": "string", "description": "Source node ID or temp ID"},
+                        "to": {"type": "string", "description": "Target node ID or temp ID"},
+                    },
+                    "required": ["op"],
+                },
+            },
         ),
     ]
 

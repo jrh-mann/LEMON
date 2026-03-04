@@ -13,6 +13,18 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
+def _tool_usage_hints() -> str:
+    """Auto-generate the action-verb → tool mapping from Tool.prompt_hint."""
+    from ..tools.discovery import discover_tool_classes
+
+    hints = [
+        cls.prompt_hint
+        for cls in discover_tool_classes()
+        if getattr(cls, "prompt_hint", "")
+    ]
+    return "\n".join(f"- {h}" for h in hints)
+
+
 def build_system_prompt(
     *,
     last_session_id: Optional[str] = None,
@@ -73,18 +85,8 @@ def build_system_prompt(
     system += (
         "## CRITICAL: When to Call Tools\n"
         "ALWAYS call tools immediately when the user uses action verbs:\n"
-        "- CREATE SUBWORKFLOW → call create_workflow (only for sub-workflows, NOT the primary canvas workflow)\n"
-        "- ADD/CREATE (node) → call add_node with workflow_id\n"
-        "- DELETE/REMOVE (node) → call delete_node with workflow_id\n"
-        "- DELETE/REMOVE (connection/edge) → call delete_connection with workflow_id\n"
-        "- DISCONNECT/UNLINK → call delete_connection with workflow_id\n"
-        "- MODIFY/CHANGE/UPDATE/RENAME → call modify_node with workflow_id\n"
-        "- CONNECT/LINK → call add_connection with workflow_id\n"
-        "- WHAT/SHOW/LIST/DESCRIBE → call get_current_workflow with workflow_id\n"
-        "- VALIDATE/CHECK/VERIFY → call validate_workflow with workflow_id\n"
-        "- RUN/EXECUTE/TEST/TRY → call execute_workflow with workflow_id\n"
-        "- VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library\n"
-        "- SAVE/KEEP/PUBLISH (workflow) → call save_workflow_to_library with workflow_id\n\n"
+        f"{_tool_usage_hints()}\n"
+        "- DISCONNECT/UNLINK → call delete_connection with workflow_id\n\n"
         "## Checking for Existing Workflows\n"
         "WHENEVER the user wants to create a new workflow, ALWAYS call list_workflows_in_library first to check "
         "if a similar workflow already exists. This prevents duplicates and helps users discover what they've already built.\n\n"

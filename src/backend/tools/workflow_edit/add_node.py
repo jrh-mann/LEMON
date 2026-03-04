@@ -261,6 +261,9 @@ class AddNodeTool(WorkflowTool):
     as a derived variable with type inferred from the subworkflow's output.
     """
 
+    category = "workflow_edit"
+    prompt_hint = "ADD/CREATE (node) → call add_node with workflow_id"
+
     name = "add_node"
     description = "Add a new node (block) to the workflow. Requires workflow_id."
     parameters = [
@@ -276,6 +279,11 @@ class AddNodeTool(WorkflowTool):
             "string",
             "Node type: start, process, decision, subprocess, calculation, or end",
             required=True,
+            schema_override={
+                "type": "string",
+                "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
+                "description": "Node type",
+            },
         ),
         ToolParameter("label", "string", "Display text for the node", required=True),
         ToolParameter(
@@ -305,6 +313,60 @@ class AddNodeTool(WorkflowTool):
                 "enum: enum_eq,enum_neq"
             ),
             required=False,
+            schema_override={
+                "description": (
+                    "REQUIRED for 'decision' nodes. Can be simple or compound.\n"
+                    "Simple: {input_id, comparator, value, value2?}\n"
+                    "Compound: {operator: 'and'|'or', conditions: [simple, simple, ...]}\n"
+                    "Use compound when a decision checks MULTIPLE variables (e.g., 'Symptoms AND A1c > 58').\n"
+                    "Compound must have >= 2 sub-conditions. No nesting."
+                ),
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "description": "Simple condition",
+                        "properties": {
+                            "input_id": {"type": "string", "description": "ID of the workflow variable to check"},
+                            "comparator": {
+                                "type": "string",
+                                "enum": [
+                                    "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
+                                    "is_true", "is_false",
+                                    "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
+                                    "date_eq", "date_before", "date_after", "date_between",
+                                    "enum_eq", "enum_neq"
+                                ],
+                                "description": "Comparison operator"
+                            },
+                            "value": {"description": "Value to compare against"},
+                            "value2": {"description": "Second value for range comparators (within_range, date_between)"}
+                        },
+                        "required": ["input_id", "comparator"]
+                    },
+                    {
+                        "type": "object",
+                        "description": "Compound condition (AND/OR)",
+                        "properties": {
+                            "operator": {"type": "string", "enum": ["and", "or"]},
+                            "conditions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "input_id": {"type": "string"},
+                                        "comparator": {"type": "string"},
+                                        "value": {},
+                                        "value2": {}
+                                    },
+                                    "required": ["input_id", "comparator"]
+                                },
+                                "minItems": 2
+                            }
+                        },
+                        "required": ["operator", "conditions"]
+                    }
+                ]
+            },
         ),
         # Calculation node config (REQUIRED for calculation nodes)
         ToolParameter(
@@ -317,15 +379,76 @@ class AddNodeTool(WorkflowTool):
                 "Operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average, etc."
             ),
             required=False,
+            schema_override={
+                "type": "object",
+                "description": (
+                    "For 'calculation' nodes: Defines a mathematical operation on variables. "
+                    "The result is stored in an output variable that can be used by subsequent nodes."
+                ),
+                "properties": {
+                    "output": {
+                        "type": "object",
+                        "description": "Output variable definition",
+                        "properties": {
+                            "name": {"type": "string", "description": "Name for the calculated result. Must be alphanumeric with underscores only, no spaces (e.g., 'BMI', 'Total_Score', 'DTI_Ratio')"},
+                            "description": {"type": "string", "description": "Description of what this value represents"},
+                        },
+                        "required": ["name"],
+                    },
+                    "operator": {
+                        "type": "string",
+                        "description": "Mathematical operator to apply. See system prompt for full list.",
+                        "enum": [
+                            "add", "subtract", "multiply", "divide", "floor_divide", "modulo", "power",
+                            "negate", "abs", "sqrt", "square", "cube", "reciprocal",
+                            "floor", "ceil", "round", "sign",
+                            "ln", "log10", "log", "exp",
+                            "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+                            "degrees", "radians",
+                            "min", "max", "sum", "average", "hypot",
+                            "geometric_mean", "harmonic_mean", "variance", "std_dev", "range"
+                        ],
+                    },
+                    "operands": {
+                        "type": "array",
+                        "description": "List of operands for the operator",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "kind": {
+                                    "type": "string",
+                                    "enum": ["variable", "literal"],
+                                    "description": "'variable' to reference a workflow variable, 'literal' for a constant number",
+                                },
+                                "ref": {
+                                    "type": "string",
+                                    "description": "For kind='variable': variable ID (e.g., 'var_weight_number')",
+                                },
+                                "value": {
+                                    "type": "number",
+                                    "description": "For kind='literal': the constant numeric value",
+                                },
+                            },
+                            "required": ["kind"],
+                        },
+                    },
+                },
+                "required": ["output", "operator", "operands"],
+            },
         ),
         ToolParameter(
-"output_type",
+            "output_type",
             "string",
             (
                 "Optional: data type for output nodes (string, number, bool, json). "
                 "Use 'number' or 'bool' with output_variable for typed returns."
             ),
             required=False,
+            schema_override={
+                "type": "string",
+                "enum": ["string", "number", "bool", "json"],
+                "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+            },
         ),
         ToolParameter(
             "output_template",
@@ -354,6 +477,11 @@ class AddNodeTool(WorkflowTool):
             "object",
             "For subprocess: dict mapping parent variable names to subworkflow input names",
             required=False,
+            schema_override={
+                "type": "object",
+                "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names. Example: {\"ParentAge\": \"SubAge\", \"ParentIncome\": \"SubIncome\"}",
+                "additionalProperties": {"type": "string"},
+            },
         ),
         ToolParameter(
             "output_variable",

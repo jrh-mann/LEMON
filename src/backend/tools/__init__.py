@@ -1,57 +1,17 @@
-"""Tool registry and workflow tools."""
+"""Tool registry, base classes, and discovery.
 
-from .core import Tool, ToolParameter, ToolRegistry
+Individual tool classes are auto-discovered by ``discover_tool_classes()``
+— no need to import them explicitly here.
+"""
+
+from .core import Tool, ToolParameter, ToolRegistry, WorkflowTool
 from .discovery import build_tool_registry, discover_tool_classes
-from .workflow_analysis import AskQuestionTool, CreateSubworkflowTool, UpdateSubworkflowTool, ExtractGuidanceTool, ViewImageTool, UpdatePlanTool
-from .workflow_edit import (
-    GetCurrentWorkflowTool,
-    AddNodeTool,
-    ModifyNodeTool,
-    DeleteNodeTool,
-    AddConnectionTool,
-    DeleteConnectionTool,
-    BatchEditWorkflowTool,
-    HighlightNodeTool,
-)
-from .workflow_input import (
-    AddWorkflowVariableTool,
-    ListWorkflowVariablesTool,
-    ModifyWorkflowVariableTool,
-    RemoveWorkflowVariableTool,
-)
-from .workflow_output import SetWorkflowOutputTool
-from .validate_workflow import ValidateWorkflowTool
-from .execute_workflow import ExecuteWorkflowTool
-from .workflow_library import ListWorkflowsInLibrary, CreateWorkflowTool, SaveWorkflowToLibrary
 
 __all__ = [
     "Tool",
     "ToolParameter",
     "ToolRegistry",
+    "WorkflowTool",
     "build_tool_registry",
     "discover_tool_classes",
-    "AskQuestionTool",
-    "CreateSubworkflowTool",
-    "UpdateSubworkflowTool",
-    "ExtractGuidanceTool",
-    "ViewImageTool",
-    "UpdatePlanTool",
-    "GetCurrentWorkflowTool",
-    "AddNodeTool",
-    "ModifyNodeTool",
-    "DeleteNodeTool",
-    "AddConnectionTool",
-    "DeleteConnectionTool",
-    "BatchEditWorkflowTool",
-    "HighlightNodeTool",
-    "AddWorkflowVariableTool",
-    "ListWorkflowVariablesTool",
-    "ModifyWorkflowVariableTool",
-    "RemoveWorkflowVariableTool",
-    "SetWorkflowOutputTool",
-    "ValidateWorkflowTool",
-    "ExecuteWorkflowTool",
-    "ListWorkflowsInLibrary",
-    "CreateWorkflowTool",
-    "SaveWorkflowToLibrary",
 ]

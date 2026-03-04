@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Set
 
-from ..core import Tool, extract_session_deps
+from ..core import Tool, ToolParameter, extract_session_deps
 
 
 class ListWorkflowsInLibrary(Tool):
@@ -24,42 +24,23 @@ class ListWorkflowsInLibrary(Tool):
     - Getting the ID of the current workflow (even if unsaved)
     """
 
-    @property
-    def name(self) -> str:
-        return "list_workflows_in_library"
+    name = "list_workflows_in_library"
+    description = (
+        "List all workflows saved in the user's library, plus any open unsaved workflows "
+        "(drafts) from all tabs. Returns workflow metadata including name, description, "
+        "domain, tags, validation status, and input/output information. "
+        "Open drafts appear with status 'draft' or 'current (unsaved)' for the active tab. "
+        "Use this to see all workflows the user has, including work in progress."
+    )
+    category = "workflow_library"
+    prompt_hint = "VIEW/LIST/SHOW (library/saved workflows) → call list_workflows_in_library"
 
-    @property
-    def description(self) -> str:
-        return (
-            "List all workflows saved in the user's library, plus any open unsaved workflows "
-            "(drafts) from all tabs. Returns workflow metadata including name, description, "
-            "domain, tags, validation status, and input/output information. "
-            "Open drafts appear with status 'draft' or 'current (unsaved)' for the active tab. "
-            "Use this to see all workflows the user has, including work in progress."
-        )
-
-    @property
-    def parameters(self) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "search_query": {
-                    "type": "string",
-                    "description": "Optional text to search for in workflow names, descriptions, or domains",
-                },
-                "domain": {
-                    "type": "string",
-                    "description": "Optional domain filter (e.g., 'Healthcare', 'Finance')",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of workflows to return (default: 50, max: 100)",
-                    "minimum": 1,
-                    "maximum": 100,
-                },
-            },
-            "required": [],
-        }
+    parameters = [
+        ToolParameter("search_query", "string", "Optional text to search for in workflow names, descriptions, or domains", required=False),
+        ToolParameter("domain", "string", "Optional domain filter (e.g., 'Healthcare', 'Finance')", required=False),
+        ToolParameter("limit", "integer", "Maximum number of workflows to return (default: 50, max: 100)", required=False,
+                      schema_override={"type": "integer", "description": "Maximum number of workflows to return (default: 50, max: 100)", "minimum": 1, "maximum": 100}),
+    ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """Execute the list_workflows_in_library tool.

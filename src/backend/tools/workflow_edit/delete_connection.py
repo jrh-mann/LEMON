@@ -17,6 +17,9 @@ from .helpers import resolve_node_id, save_workflow_changes
 class DeleteConnectionTool(WorkflowTool):
     """Remove an edge from the workflow."""
 
+    category = "workflow_edit"
+    prompt_hint = "DELETE/REMOVE (connection/edge) → call delete_connection with workflow_id"
+
     name = "delete_connection"
     description = "Remove a connection between two nodes. Requires workflow_id."
     parameters = [

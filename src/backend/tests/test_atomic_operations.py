@@ -99,7 +99,7 @@ class AtomicTestSession:
 @pytest.fixture
 def orchestrator() -> Orchestrator:
     """Create orchestrator with real tools and LLM."""
-    return build_orchestrator(_repo_root())
+    return build_orchestrator()
 
 
 @pytest.fixture

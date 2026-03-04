@@ -16,6 +16,8 @@ class UpdatePlanTool(Tool):
     """Update the plan checklist shown to the user during workflow extraction."""
 
     name = "update_plan"
+    category = "workflow_analysis"
+    prompt_hint = ""
     description = (
         "Update the step-by-step plan shown to the user. Call this to outline "
         "what you see in the image and mark items as done as you build the workflow."
@@ -28,6 +30,24 @@ class UpdatePlanTool(Tool):
                 "List of plan items. Each item has 'text' (string) and 'done' (boolean)."
             ),
             required=True,
+            schema_override={
+                "type": "array",
+                "description": "List of plan items to display.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Description of this plan step.",
+                        },
+                        "done": {
+                            "type": "boolean",
+                            "description": "Whether this step is completed.",
+                        },
+                    },
+                    "required": ["text", "done"],
+                },
+            },
         ),
     ]
 

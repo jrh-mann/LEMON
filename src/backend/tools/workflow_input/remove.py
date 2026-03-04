@@ -33,6 +33,8 @@ class RemoveWorkflowVariableTool(WorkflowTool):
         "If the variable is used in decision node conditions, deletion will fail by default. "
         "Use force=true to cascade delete (automatically clears condition from affected nodes)."
     )
+    category = "workflow_input"
+    prompt_hint = ""
     parameters = [
         # workflow_id is REQUIRED and must be first
         ToolParameter(
