@@ -56,6 +56,10 @@ class Orchestrator:
         self.current_workflow_id: Optional[str] = None
         # All open tabs with workflows (for list_workflows_in_library to show drafts)
         self.open_tabs: List[Dict[str, Any]] = []
+        # Guidance notes extracted from uploaded images by extract_guidance tool.
+        # Persisted across turns so that build_system_prompt() can inject them
+        # even after history truncation drops the original tool_result message.
+        self._guidance: List[Dict[str, Any]] = []
 
     @property
     def current_workflow(self) -> Dict[str, Any]:
@@ -249,6 +253,13 @@ class Orchestrator:
         # returned to the LLM in the tool result and referenced via workflow_id
         # parameter in subsequent tool calls — they should not override the
         # primary canvas workflow ID.
+
+        # Persist guidance notes from extract_guidance so they survive history
+        # truncation and remain available in the system prompt for later turns.
+        if result.success and tool_name == "extract_guidance":
+            guidance_items = result.data.get("guidance")
+            if isinstance(guidance_items, list):
+                self._guidance = guidance_items
 
         return result
 
@@ -471,6 +482,7 @@ class Orchestrator:
             has_files=self.uploaded_files,
             allow_tools=allow_tools,
             current_workflow_id=self.current_workflow_id,
+            guidance=self._guidance if self._guidance else None,
         )
 
         # Limit history to last 20 messages (10 exchanges) to prevent context overflow
@@ -481,10 +493,12 @@ class Orchestrator:
                 len(self.history)
             )
 
-        # Build user message content — inject base64 image if uploaded files contain images.
-        # The LLM sees the image directly in the conversation (vision-driven extraction).
+        # Build user message content — inject base64 images and PDFs if uploaded.
+        # The LLM sees files directly in the conversation (vision-driven extraction).
         # Anthropic limit: ~5MB per image (before base64). We cap at 4.5MB to be safe.
+        # PDFs: Anthropic supports native document content blocks (up to ~32MB).
         _MAX_IMAGE_BYTES = 4_500_000
+        _MAX_PDF_BYTES = 32_000_000
         effective_message: Any = user_message
         if self.uploaded_files:
             content_blocks: List[Dict[str, Any]] = []
@@ -511,8 +525,28 @@ class Orchestrator:
                         "type": "image",
                         "source": {"type": "base64", "media_type": media, "data": b64},
                     })
+                elif f.get("file_type") == "pdf":
+                    pdf_path = Path(f["path"])
+                    if not pdf_path.exists():
+                        self._logger.warning("PDF file not found: %s", pdf_path)
+                        continue
+                    raw_bytes = pdf_path.read_bytes()
+                    if len(raw_bytes) > _MAX_PDF_BYTES:
+                        self._logger.warning(
+                            "PDF %s too large (%d bytes > %d), skipping",
+                            pdf_path.name, len(raw_bytes), _MAX_PDF_BYTES,
+                        )
+                        continue
+                    b64 = base64.b64encode(raw_bytes).decode()
+                    self._logger.info(
+                        "Injecting PDF %s (%d bytes)", pdf_path.name, len(raw_bytes),
+                    )
+                    content_blocks.append({
+                        "type": "document",
+                        "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
+                    })
             if content_blocks:
-                # Append the text after the image(s) so the LLM sees both
+                # Append the text after the file(s) so the LLM sees both
                 content_blocks.append({"type": "text", "text": user_message})
                 effective_message = content_blocks
 

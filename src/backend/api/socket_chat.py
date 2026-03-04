@@ -549,10 +549,3 @@ def handle_sync_workflow(
         len(workflow.get("nodes", [])),
         len(workflow.get("edges", []))
     )
-
-    # Acknowledge (for debugging)
-    socketio.emit('workflow_synced', {
-        'conversation_id': conversation_id,
-        'nodes_count': len(workflow.get("nodes", [])),
-        'edges_count': len(workflow.get("edges", []))
-    }, to=sid)

@@ -24,6 +24,7 @@ WORKFLOW_INPUT_TOOLS = frozenset(
         "list_workflow_variables",
         "modify_workflow_variable",
         "remove_workflow_variable",
+        "set_workflow_output",
     }
 )
 

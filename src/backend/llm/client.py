@@ -519,7 +519,7 @@ def call_llm_stream(
             return stream.get_final_message()
 
     def _notify_retry_stream(attempt: int, msg: str) -> None:
-        on_delta(f"\n\n*Retrying ({attempt + 1}/{_MAX_RETRIES})...*\n\n")
+        on_delta(f"\n\n*Retrying ({attempt}/{_MAX_RETRIES})...*\n\n")
 
     start = time.perf_counter()
     request_id = uuid.uuid4().hex

@@ -716,21 +716,8 @@ export interface SocketChatResponse {
   task_id?: string
 }
 
-export interface SocketAgentQuestion {
-  task_id: string
-  question: string
-}
-
-export interface SocketAgentComplete {
-  task_id: string
-  message: string
-  result?: {
-    workflow_id: string
-    name: string
-    nodes: FlowNode[]
-    edges: FlowEdge[]
-  }
-}
+// NOTE: SocketAgentQuestion and SocketAgentComplete were removed —
+// the backend never emits these events (vestigial from prior subagent architecture).
 
 export interface SocketAgentError {
   task_id?: string

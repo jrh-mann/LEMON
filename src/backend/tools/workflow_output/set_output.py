@@ -130,10 +130,16 @@ class SetWorkflowOutputTool(WorkflowTool):
         if save_error:
             return save_error
 
+        # Return workflow_analysis so the orchestrator can sync its in-memory
+        # outputs list (required for both direct and MCP modes).
         action = "Updated" if found else "Set"
         return {
             "success": True,
             "workflow_id": workflow_id,
             "message": f"{action} workflow output '{name}' (type: {output_type}) for workflow {workflow_id}",
             "output": output_def,
+            "workflow_analysis": {
+                "variables": workflow_data.get("variables", []),
+                "outputs": outputs,
+            },
         }
