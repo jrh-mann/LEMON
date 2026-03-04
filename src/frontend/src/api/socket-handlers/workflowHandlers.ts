@@ -232,11 +232,12 @@ export function registerWorkflowHandlers(socket: Socket): void {
     }
   })
 
-  // Inline question from ask_question tool — show card with option chips in chat
+  // Inline question from ask_question tool — enqueue so multiple questions
+  // are shown one at a time (answering one reveals the next).
   socket.on('pending_question', (data: { question: string; options: { label: string; value: string }[] }) => {
     console.log('[Socket] pending_question:', data)
     const chatStore = useChatStore.getState()
-    chatStore.setPendingQuestion(data)
+    chatStore.enqueuePendingQuestion(data)
   })
 
   // Plan updates (from update_plan tool — extraction progress checklist)

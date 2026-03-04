@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
+import { useWorkflowStore } from '../stores/workflowStore'
 import { listWorkflows, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
 import type { WorkflowSummary } from '../types'
 import '../styles/LibraryPage.css'
@@ -10,6 +11,9 @@ type BrowserTab = 'mine' | 'published' | 'peer_review'
 export default function LibraryPage() {
     const navigate = useNavigate()
     const { setZoomingCard, setZoomPhase } = useUIStore()
+    // When socket handlers signal library changes (subworkflow created/finished),
+    // this counter increments and triggers a re-fetch of all cached tabs
+    const libraryRefreshTrigger = useWorkflowStore(s => s.libraryRefreshTrigger)
 
     const [activeTab, setActiveTab] = useState<BrowserTab>('mine')
     const [myWorkflows, setMyWorkflows] = useState<WorkflowSummary[] | null>(null)
@@ -53,6 +57,17 @@ export default function LibraryPage() {
     useEffect(() => {
         fetchTabData(activeTab)
     }, [activeTab, fetchTabData])
+
+    // When socket events signal library changes (subworkflow created/finished),
+    // invalidate all cached tabs so they re-fetch fresh data
+    useEffect(() => {
+        if (libraryRefreshTrigger === 0) return // skip initial render
+        setMyWorkflows(null)
+        setPublicWorkflows(null)
+        setPeerReviewWorkflows(null)
+        // fetchTabData re-runs automatically: nulling data recreates fetchTabData
+        // (via useCallback deps), which re-triggers the [activeTab, fetchTabData] effect
+    }, [libraryRefreshTrigger])
 
     // Force refresh the active tab
     const refreshActiveTab = useCallback(async () => {

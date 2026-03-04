@@ -217,16 +217,20 @@ class SocketChatTask:
                 to=self.sid,
             )
 
-        # Show inline question card in chat when ask_question tool completes
+        # Show inline question cards in chat when ask_question tool completes.
+        # Each question is emitted separately — the frontend enqueues them and
+        # shows one at a time, collecting answers before sending to the backend.
         if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
-            self.socketio.emit(
-                "pending_question",
-                {
-                    "question": result.get("question", ""),
-                    "options": result.get("options", []),
-                },
-                to=self.sid,
-            )
+            questions = result.get("questions", [])
+            for q in questions:
+                self.socketio.emit(
+                    "pending_question",
+                    {
+                        "question": q.get("question", ""),
+                        "options": q.get("options", []),
+                    },
+                    to=self.sid,
+                )
 
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             if tool in WORKFLOW_EDIT_TOOLS:

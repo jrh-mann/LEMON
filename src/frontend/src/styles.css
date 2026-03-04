@@ -2776,6 +2776,36 @@ body {
   background: var(--teal);
   color: white;
 }
+.option-chip-other {
+  border-style: dashed;
+}
+.option-chip-other.active {
+  background: var(--teal);
+  color: white;
+}
+.custom-answer-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.custom-answer-input {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--bg, #fff);
+  color: var(--ink);
+  outline: none;
+}
+.custom-answer-input:focus {
+  border-color: var(--teal);
+}
+.custom-answer-send {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+}
 
 /* Thinking stream — live LLM reasoning displayed below the processing status */
 .thinking-stream {

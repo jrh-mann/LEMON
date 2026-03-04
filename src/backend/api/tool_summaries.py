@@ -15,7 +15,7 @@ TOOL_STATUS_MESSAGES = {
     "delete_node": "Removed a workflow node.",
     "add_connection": "Connections added.",
     "delete_connection": "Connections removed.",
-    "batch_edit_workflow": "Applied workflow changes.",
+    "batch_edit_workflow": "Applied batched workflow changes.",
 }
 
 TOOL_FAILURE_MESSAGES = {

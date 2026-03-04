@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import type { Message, ToolCall } from '../types'
 import { useWorkflowStore } from './workflowStore'
 
+// Shape of a single inline question from the ask_question tool
+type PendingQuestion = { question: string; options: { label: string; value: string }[] }
+
 interface ChatState {
   // Conversation — conversationId is per-tab in workflowStore, mirrored here for socket operations
   messages: Message[]
@@ -19,8 +22,9 @@ interface ChatState {
   // Live reasoning stream from LLM extended thinking
   thinkingContent: string
 
-  // Inline question from ask_question tool (rendered as a card with option chips)
-  pendingQuestion: { question: string; options: { label: string; value: string }[] } | null
+  // Queue of inline questions from ask_question tool (rendered as cards with option chips).
+  // Multiple questions are queued and shown one at a time — answering one reveals the next.
+  pendingQuestions: PendingQuestion[]
 
   // Actions
   addMessage: (message: Message) => void
@@ -46,8 +50,8 @@ interface ChatState {
   appendThinkingContent: (content: string) => void
   clearThinkingContent: () => void
 
-  // Inline question
-  setPendingQuestion: (question: { question: string; options: { label: string; value: string }[] } | null) => void
+  // Inline question queue — enqueue pushes, clearPendingQuestion pops the front
+  enqueuePendingQuestion: (question: PendingQuestion) => void
   clearPendingQuestion: () => void
 
   // User message helper
@@ -84,7 +88,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   cancelledTaskIds: {},
   processingStatus: null,
   thinkingContent: '',
-  pendingQuestion: null,
+  pendingQuestions: [],
   // Actions
   addMessage: (message) =>
     set((state) => ({
@@ -179,10 +183,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({ thinkingContent: state.thinkingContent + content })),
   clearThinkingContent: () => set({ thinkingContent: '' }),
 
-  // Inline question
-  setPendingQuestion: (question) => set({ pendingQuestion: question }),
+  // Inline question queue — enqueue appends, clear pops the front item
+  enqueuePendingQuestion: (question) =>
+    set((state) => ({ pendingQuestions: [...state.pendingQuestions, question] })),
 
-  clearPendingQuestion: () => set({ pendingQuestion: null }),
+  clearPendingQuestion: () =>
+    set((state) => ({ pendingQuestions: state.pendingQuestions.slice(1) })),
 
   // User message helper
   sendUserMessage: (content) => {
@@ -213,7 +219,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentTaskId: null,
       processingStatus: null,
       thinkingContent: '',
-      pendingQuestion: null,
+      pendingQuestions: [],
     }),
 
   // Reset
@@ -227,7 +233,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       cancelledTaskIds: {},
       processingStatus: null,
       thinkingContent: '',
-      pendingQuestion: null,
+      pendingQuestions: [],
     }),
 }))
 

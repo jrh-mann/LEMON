@@ -9,6 +9,10 @@ import type { Message } from '../types'
 
 export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const [inputValue, setInputValue] = useState('')
+  const [showCustomAnswer, setShowCustomAnswer] = useState(false)
+  const [customAnswer, setCustomAnswer] = useState('')
+  // Collected answers for multi-question batches — only sent after the last answer
+  const collectedAnswers = useRef<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -23,7 +27,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     processingStatus,
     thinkingContent,
     currentTaskId,
-    pendingQuestion,
+    pendingQuestions,
     clearPendingQuestion,
     sendUserMessage,
     finalizeStreamingMessage,
@@ -40,6 +44,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     plan,
     setPlan,
   } = useWorkflowStore()
+
+  // Current question is the front of the queue (null if empty)
+  const pendingQuestion = pendingQuestions[0] ?? null
 
   // Read build buffer keyed by the currently viewed workflow.
   // Events are always buffered by workflow_id, so if the user navigates
@@ -214,13 +221,33 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     baseTextRef.current = ''
   }
 
-  // Handle clicking an option chip on a question card
-  const handleAnswerQuestion = (answer: string) => {
-    sendUserMessage(answer)
-    sendChatMessage(answer, conversationId)
+  // Handle clicking an option chip on a question card.
+  // For multi-question batches, answers are collected locally and only
+  // sent to the backend after the last question is answered.
+  const handleAnswerQuestion = (optionLabel: string) => {
+    const questionText = pendingQuestion?.question || ''
+    const answer = questionText
+      ? `${questionText}: ${optionLabel}`
+      : optionLabel
+
+    // Show the clicked label in chat
+    sendUserMessage(optionLabel)
+    // Collect the answer
+    collectedAnswers.current.push(answer)
+    // Pop the current question from the queue
     clearPendingQuestion()
+    setShowCustomAnswer(false)
+    setCustomAnswer('')
     setInputValue('')
     baseTextRef.current = ''
+
+    // If no more questions remain, send all collected answers to the backend
+    const remaining = pendingQuestions.length - 1  // -1 because clearPendingQuestion hasn't re-rendered yet
+    if (remaining <= 0) {
+      const fullMessage = collectedAnswers.current.join('\n')
+      sendChatMessage(fullMessage, conversationId)
+      collectedAnswers.current = []
+    }
   }
 
   const handleStop = () => {
@@ -432,11 +459,49 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                   <button
                     key={i}
                     className="option-chip"
-                    onClick={() => handleAnswerQuestion(opt.value)}
+                    onClick={() => { setShowCustomAnswer(false); handleAnswerQuestion(opt.label) }}
                   >
                     {opt.label}
                   </button>
                 ))}
+                <button
+                  className={`option-chip option-chip-other ${showCustomAnswer ? 'active' : ''}`}
+                  onClick={() => setShowCustomAnswer(!showCustomAnswer)}
+                >
+                  Other
+                </button>
+              </div>
+            )}
+            {showCustomAnswer && (
+              <div className="custom-answer-row">
+                <input
+                  type="text"
+                  className="custom-answer-input"
+                  placeholder="Type your answer..."
+                  value={customAnswer}
+                  onChange={(e) => setCustomAnswer(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && customAnswer.trim()) {
+                      handleAnswerQuestion(customAnswer.trim())
+                      setCustomAnswer('')
+                      setShowCustomAnswer(false)
+                    }
+                  }}
+                  autoFocus
+                />
+                <button
+                  className="primary custom-answer-send"
+                  disabled={!customAnswer.trim()}
+                  onClick={() => {
+                    if (customAnswer.trim()) {
+                      handleAnswerQuestion(customAnswer.trim())
+                      setCustomAnswer('')
+                      setShowCustomAnswer(false)
+                    }
+                  }}
+                >
+                  Send
+                </button>
               </div>
             )}
           </div>

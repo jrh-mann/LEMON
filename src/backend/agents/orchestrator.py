@@ -667,6 +667,7 @@ class Orchestrator:
             )
 
             tool_failure: Optional[ToolResult] = None
+            asked_question = False
             skipped_calls: List[Dict[str, Any]] = []
             for idx, call in enumerate(tool_calls):
                 if is_cancelled():
@@ -718,6 +719,12 @@ class Orchestrator:
                     )
                     if on_tool_event:
                         on_tool_event("tool_complete", tool_name, args, result.data)
+                    # ask_question: stop the tool loop — wait for user's answer.
+                    # The pending_question socket event was already emitted by
+                    # on_tool_event, so the frontend shows the question card.
+                    if tool_name == "ask_question" and result.success:
+                        asked_question = True
+                        break
                     if not result.success:
                         tool_failure = result
                         skipped_calls = tool_calls[idx + 1:]
@@ -772,6 +779,10 @@ class Orchestrator:
 
             if on_tool_event:
                 on_tool_event("tool_batch_complete", "", {}, None)
+
+            # ask_question was called — don't call LLM again, wait for user's answer
+            if asked_question:
+                break
 
             if is_cancelled():
                 return finalize_cancel()

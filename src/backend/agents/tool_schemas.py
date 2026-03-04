@@ -231,38 +231,52 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "ask_question",
                 "description": (
-                    "Ask the user a clarification question. Use this whenever you are "
-                    "UNSURE about any detail — a threshold, label, branch condition, or "
-                    "ambiguous text. Provide options when possible so the user can click "
-                    "instead of typing. Do NOT guess; ask."
+                    "Ask the user one or more clarification questions. Use this whenever "
+                    "you are UNSURE about any detail — a threshold, label, branch condition, "
+                    "or ambiguous text. Provide options when possible so the user can click "
+                    "instead of typing. Do NOT guess; ask. You may batch multiple questions."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "The question to ask the user.",
-                        },
-                        "options": {
+                        "questions": {
                             "type": "array",
-                            "description": "Optional clickable choices (2-4 recommended).",
+                            "description": (
+                                "Array of questions. Each has 'question' (text) and optional "
+                                "'options' (clickable choices). Do NOT include 'Other' — the "
+                                "UI adds one automatically."
+                            ),
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "label": {
+                                    "question": {
                                         "type": "string",
-                                        "description": "Display text for the option.",
+                                        "description": "The question text.",
                                     },
-                                    "value": {
-                                        "type": "string",
-                                        "description": "Value sent back when user clicks this option.",
+                                    "options": {
+                                        "type": "array",
+                                        "description": "Optional clickable choices (2-4 recommended).",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string",
+                                                    "description": "Display text for the option.",
+                                                },
+                                                "value": {
+                                                    "type": "string",
+                                                    "description": "Value sent back when user clicks this option.",
+                                                },
+                                            },
+                                            "required": ["label", "value"],
+                                        },
                                     },
                                 },
-                                "required": ["label", "value"],
+                                "required": ["question"],
                             },
                         },
                     },
-                    "required": ["question"],
+                    "required": ["questions"],
                 },
             },
         },
