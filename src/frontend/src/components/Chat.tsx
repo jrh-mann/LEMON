@@ -24,6 +24,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     thinkingContent,
     currentTaskId,
     pendingQuestion,
+    clearPendingQuestion,
     sendUserMessage,
     finalizeStreamingMessage,
     markTaskCancelled,
@@ -32,9 +33,14 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
 
   const {
     pendingFiles,
-    pendingAnnotations,
     clearPendingFiles,
+    addPendingFile,
+    filesSent,
+    markFilesSent,
+    plan,
+    setPlan,
   } = useWorkflowStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { chatHeight, setChatHeight } = useUIStore()
 
@@ -73,6 +79,27 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
     rawToggleListening()
   }, [isListening, inputValue, rawToggleListening])
+
+  // Handle file upload from chat input area
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const isImage = file.type.startsWith('image/')
+      addPendingFile({
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl,
+        type: isImage ? 'image' : 'pdf',
+        purpose: 'unclassified',
+      })
+    }
+    reader.readAsDataURL(file)
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
+  }, [addPendingFile])
 
   // Track if user has scrolled up manually (ignore programmatic scrolls)
   const handleScroll = useCallback(() => {
@@ -152,18 +179,31 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending files and annotations if available
+    // Send via socket - only include files on first send (not every follow-up message)
+    const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
     sendChatMessage(
       trimmed,
       conversationId,
-      pendingFiles.length > 0 ? pendingFiles : undefined,
-      pendingAnnotations.length > 0 ? pendingAnnotations : undefined
+      filesToSend,
     )
 
-    // Keep pending files around so user can reference them in Source Image tab
-    // Files are only cleared when user explicitly clicks x or uploads new ones
+    // Mark files as sent so they aren't re-sent on every subsequent message.
+    // Files stay in pendingFiles for the Source Image tab display.
+    if (filesToSend) {
+      markFilesSent()
+    }
 
-    // Clear input and reset voice base text
+    // Clear input, pending question, and reset voice base text
+    clearPendingQuestion()
+    setInputValue('')
+    baseTextRef.current = ''
+  }
+
+  // Handle clicking an option chip on a question card
+  const handleAnswerQuestion = (answer: string) => {
+    sendUserMessage(answer)
+    sendChatMessage(answer, conversationId)
+    clearPendingQuestion()
     setInputValue('')
     baseTextRef.current = ''
   }
@@ -174,6 +214,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       markTaskCancelled(currentTaskId)
     }
     finalizeStreamingMessage()
+    setPlan([])  // Clear checklist on manual stop
     clearCurrentTaskId()
     textareaRef.current?.focus()
   }
@@ -236,11 +277,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
         <div className="resize-grip"></div>
       </div>
 
-      <div className="chat-header">
-        <h3>Orchestrator</h3>
-        <p className="muted">Describe your workflow or ask questions</p>
-      </div>
-
       <div className="chat-messages" id="chatThread" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
@@ -268,52 +304,80 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           ))
         )}
 
-        {isStreaming && (
-          <div className="message assistant streaming">
-            <div className="message-content">
-              {streamingContent ? (
-                <>
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: renderMarkdown(streamingContent),
-                    }}
-                  />
-                  {processingStatus && (
+
+        {isStreaming && (() => {
+          // Rolling plan window: show ~8 items centered around current progress
+          const maxVisible = 8
+          const firstPending = plan.findIndex(item => !item.done)
+          const anchor = firstPending === -1 ? plan.length : firstPending
+          const windowStart = Math.max(0, anchor - 3)
+          const visiblePlan = plan.slice(windowStart, windowStart + maxVisible)
+
+          // Reusable plan checklist rendered below the processing status
+          const planChecklist = visiblePlan.length > 0 && (
+            <div className="plan-checklist">
+              {visiblePlan.map((item, i) => {
+                // First non-done item is the "current" one (orange)
+                const isActive = !item.done && (i === 0 || visiblePlan[i - 1]?.done)
+                return (
+                  <div key={windowStart + i} className={`plan-item ${item.done ? 'done' : ''} ${isActive ? 'active' : ''}`}>
+                    <span className="plan-icon">{item.done ? '\u2713' : '\u25CB'}</span>
+                    <span className="plan-text">{item.text}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+
+          return (
+            <div className="message assistant streaming">
+              <div className="message-content">
+                {streamingContent ? (
+                  <>
+                    {thinkingContent && (
+                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                        <span className="thinking-label">Reasoning</span>
+                        <div className="thinking-text">{thinkingContent}</div>
+                      </div>
+                    )}
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: renderMarkdown(streamingContent),
+                      }}
+                    />
+                    {processingStatus && (
+                      <span className="processing-status">
+                        <span className="status-dot"></span>
+                        {processingStatus}
+                      </span>
+                    )}
+                    {planChecklist}
+                  </>
+                ) : processingStatus ? (
+                  <>
+                    {thinkingContent && (
+                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
+                        <span className="thinking-label">Reasoning</span>
+                        <div className="thinking-text">{thinkingContent}</div>
+                      </div>
+                    )}
                     <span className="processing-status">
                       <span className="status-dot"></span>
                       {processingStatus}
                     </span>
-                  )}
-                  {thinkingContent && (
-                    <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
-                      <span className="thinking-label">Reasoning</span>
-                      <div className="thinking-text">{thinkingContent}</div>
-                    </div>
-                  )}
-                </>
-              ) : processingStatus ? (
-                <>
-                  <span className="processing-status">
-                    <span className="status-dot"></span>
-                    {processingStatus}
+                    {planChecklist}
+                  </>
+                ) : (
+                  <span className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
                   </span>
-                  {thinkingContent && (
-                    <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
-                      <span className="thinking-label">Reasoning</span>
-                      <div className="thinking-text">{thinkingContent}</div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <span className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         <div ref={messagesEndRef} />
       </div>
@@ -336,8 +400,21 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           </div>
         )}
         {pendingQuestion && (
-          <div className="pending-question-hint">
-            <span>Awaiting your response...</span>
+          <div className="question-card">
+            <p className="question-text">{pendingQuestion.question}</p>
+            {pendingQuestion.options.length > 0 && (
+              <div className="question-options">
+                {pendingQuestion.options.map((opt, i) => (
+                  <button
+                    key={i}
+                    className="option-chip"
+                    onClick={() => handleAnswerQuestion(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <div className="chat-input-wrapper">
@@ -351,6 +428,26 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             onKeyDown={handleKeyDown}
             disabled={isStreaming}
           />
+          {/* Hidden file input for image/PDF upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            style={{ display: 'none' }}
+            onChange={handleFileUpload}
+          />
+          <button
+            className="voice-btn"
+            title="Upload image or PDF"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isStreaming}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </button>
           <button
             className={`voice-btn ${isListening ? 'listening' : ''}`}
             id="voiceBtn"
@@ -389,6 +486,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           )}
         </div>
       </div>
+
     </div>
   )
 }

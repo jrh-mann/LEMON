@@ -19,6 +19,7 @@ from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..utils.uploads import save_uploaded_file, save_annotations
+from ..utils.paths import lemon_data_dir
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -148,6 +149,16 @@ class SocketChatTask:
             self.socketio.emit("chat_stream", {"chunk": char, "task_id": self.task_id}, to=self.sid)
             self.socketio.sleep(0.005)  # 5ms delay for visible typewriter effect
 
+    def stream_thinking(self, chunk: str) -> None:
+        """Stream LLM reasoning/thinking chunks to the frontend."""
+        if not chunk or self.is_cancelled():
+            return
+        self.socketio.emit(
+            "chat_thinking",
+            {"chunk": chunk, "task_id": self.task_id},
+            to=self.sid,
+        )
+
     def heartbeat(self) -> None:
         while not self.done.is_set():
             self.socketio.sleep(5)
@@ -171,21 +182,6 @@ class SocketChatTask:
             return
         if event == "tool_start":
             self.executed_tools.append({"tool": tool, "arguments": args})
-        # Stream LLM thinking chunks to the frontend during analysis
-        if event == "tool_thinking" and tool == "analyze_workflow":
-            chunk = args.get("chunk", "")
-            if chunk:
-                self.socketio.emit(
-                    "chat_thinking", {"chunk": chunk, "task_id": self.task_id}, to=self.sid,
-                )
-            return
-        if tool == "analyze_workflow":
-            if event == "tool_progress":
-                # Phase-specific progress from the subagent (e.g., "Extracting guidance (1/2)...")
-                status = args.get("status", "Analysing workflow...")
-                self.emit_progress(event, status, tool=tool)
-            else:
-                self.emit_progress(event, "Analysing workflow...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -202,46 +198,43 @@ class SocketChatTask:
                     break
         if event == "tool_batch_complete":
             self.flush_tool_summary()
-        # Emit workflow_modified when publish_latest_analysis produces a flowchart.
-        # analyze_workflow stores the analysis but does NOT auto-publish — the
-        # orchestrator must explicitly call publish_latest_analysis to render it.
-        if tool == "publish_latest_analysis" and event == "tool_complete" and isinstance(result, dict):
-            flowchart = result.get("flowchart") if isinstance(result.get("flowchart"), dict) else None
-            if flowchart and flowchart.get("nodes"):
-                analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else None
-                self.socketio.emit(
-                    "workflow_modified",
-                    {
-                        "action": "create_workflow",
-                        "data": {
-                            "flowchart": flowchart,
-                            "analysis": analysis,
-                        },
-                    },
-                    to=self.sid,
-                )
 
-        if tool in ("add_image_question", "analyze_workflow") and event == "tool_complete" and isinstance(result, dict) and "annotations" in result:
+        # Emit plan_updated when update_plan completes — carries checklist items to frontend
+        if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
             self.socketio.emit(
-                "annotations_update",
+                "plan_updated",
+                {"items": result.get("items", [])},
+                to=self.sid,
+            )
+
+        # Show inline question card in chat when ask_question tool completes
+        if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            self.socketio.emit(
+                "pending_question",
                 {
-                    "annotations": result.get("annotations", [])
+                    "question": result.get("question", ""),
+                    "options": result.get("options", []),
                 },
                 to=self.sid,
             )
 
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             if tool in WORKFLOW_EDIT_TOOLS:
+                action = result.get("action")
+                logger.info(
+                    "Emitting workflow_update action=%s tool=%s workflow_id=%s",
+                    action, tool, result.get("workflow_id"),
+                )
                 self.socketio.emit(
                     "workflow_update",
                     {
-                        "action": result.get("action"),
+                        "action": action,
                         "data": result,
                     },
                     to=self.sid,
                 )
 
-            if (tool in WORKFLOW_INPUT_TOOLS or tool == "analyze_workflow") and self.convo:
+            if tool in WORKFLOW_INPUT_TOOLS and self.convo:
                 # Emit variables (unified variable system) - includes inputs, subprocess, calculated
                 # Frontend receives under 'variables' key for display in Variables tab
                 # Include task_id so frontend can filter out updates for inactive tabs
@@ -301,10 +294,12 @@ class SocketChatTask:
                 continue
             try:
                 rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
+                # Resolve to absolute path so orchestrator can read the file directly
+                abs_path = str(lemon_data_dir(self.repo_root) / rel_path)
                 self.saved_file_paths.append({
                     "id": file_info.get("id", ""),
                     "name": file_info.get("name", ""),
-                    "path": rel_path,
+                    "path": abs_path,
                     "file_type": file_type,
                     "purpose": file_info.get("purpose", "unclassified"),
                 })
@@ -415,6 +410,8 @@ class SocketChatTask:
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
+                thinking_budget=30_000,  # Enable extended thinking (reasoning)
+                on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()
             if self.is_cancelled():

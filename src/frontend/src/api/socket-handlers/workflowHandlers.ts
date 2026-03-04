@@ -1,107 +1,25 @@
 /**
  * Workflow-related socket event handlers.
- * Handles: workflow_modified, workflow_update, analysis_updated,
- *          workflow_created, workflow_saved, annotations_update
+ * Handles: workflow_update, analysis_updated, workflow_created,
+ *          workflow_saved, pending_question, plan_updated
  */
 import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../../stores/chatStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore } from '../../stores/uiStore'
 import { transformFlowchartFromBackend, transformNodeFromBackend } from '../../utils/canvas'
-import { syncWorkflow } from '../socketActions'
 import type { WorkflowAnalysis } from '../../types'
 
 /** Register all workflow-related socket event handlers */
 export function registerWorkflowHandlers(socket: Socket): void {
-  // Workflow modification events (from orchestrator editing tools)
-  socket.on('workflow_modified', (data: { action: string; data: Record<string, unknown> }) => {
-    console.log('[Socket] workflow_modified:', data)
-    const workflowStore = useWorkflowStore.getState()
-    const uiStore = useUIStore.getState()
-
-    switch (data.action) {
-      case 'create_workflow':
-        // Full workflow created - load it
-        {
-          const payload = data.data as {
-            flowchart?: { nodes?: unknown[]; edges?: unknown[] }
-            analysis?: WorkflowAnalysis
-            nodes?: unknown[]
-            edges?: unknown[]
-          }
-          if (payload.analysis) {
-            workflowStore.setAnalysis(payload.analysis)
-          }
-          const flowchartData = payload.flowchart?.nodes ? payload.flowchart : payload
-          if (flowchartData.nodes && flowchartData.edges) {
-            // Transform backend data (top-left coords, BlockType) to frontend format
-            const flowchart = transformFlowchartFromBackend(flowchartData as { nodes: unknown[]; edges: unknown[] })
-            workflowStore.setFlowchart(flowchart)
-            // Switch canvas to workflow tab to show the new workflow
-            uiStore.setCanvasTab('workflow')
-            // Sync workflow to backend session (establish backend as source of truth)
-            syncWorkflow('upload')
-          }
-        }
-        break
-
-      case 'add_block':
-        // Single block added - transform from backend format
-        if (data.data.node) {
-          const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
-          workflowStore.addNode(node)
-        }
-        break
-
-      case 'update_block':
-        // Block updated - transform from backend format
-        if (data.data.node) {
-          const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
-          workflowStore.updateNode(node.id, node)
-        }
-        break
-
-      case 'delete_block':
-        // Block deleted
-        if (data.data.deleted_block_id) {
-          workflowStore.deleteNode(data.data.deleted_block_id as string)
-        }
-        break
-
-      case 'connect_blocks':
-        // Edge added
-        if (data.data.edge) {
-          const edge = data.data.edge as typeof workflowStore.flowchart.edges[0]
-          workflowStore.addEdge(edge)
-        }
-        break
-
-      case 'disconnect_blocks':
-        // Edge removed
-        if (data.data.removed_connection_id) {
-          workflowStore.deleteEdgeById(data.data.removed_connection_id as string)
-        }
-        break
-
-      default:
-        console.warn('[Socket] Unknown workflow action:', data.action)
-    }
-  })
-
   // Workflow update events (from orchestrator manipulation tools)
   socket.on('workflow_update', (data: { action: string; data: Record<string, unknown> }) => {
-    console.log('[Socket] workflow_update:', data)
+    console.log('[Socket] workflow_update:', data.action, 'workflow_id:', data.data.workflow_id)
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
 
-    // Filter updates for different workflows to prevent cross-tab contamination
-    const currentId = workflowStore.currentWorkflow?.id
-    const updatedId = data.data.workflow_id as string | undefined
-
-    if (updatedId && currentId && updatedId !== currentId) {
-      console.log('[Socket] Ignoring update for different workflow:', updatedId, 'current:', currentId)
-      return
-    }
+    // No cross-tab filter needed: backend emits with to=self.sid,
+    // so events are already scoped to the originating socket session.
 
     switch (data.action) {
       case 'add_node':
@@ -186,6 +104,15 @@ export function registerWorkflowHandlers(socket: Socket): void {
         }
         break
 
+      case 'highlight_node':
+        // Pulse a node to draw user's attention
+        if (data.data.node_id) {
+          workflowStore.highlightNode(data.data.node_id as string)
+          uiStore.setCanvasTab('workflow')
+          console.log('[Socket] Highlighting node:', data.data.node_id)
+        }
+        break
+
       default:
         console.warn('[Socket] Unknown workflow_update action:', data.action)
     }
@@ -215,8 +142,6 @@ export function registerWorkflowHandlers(socket: Socket): void {
     const currentAnalysis = workflowStore.currentAnalysis ?? {
       variables: [],
       outputs: [],
-      tree: {},
-      doubts: [],
     }
 
     const updatedAnalysis: WorkflowAnalysis = {
@@ -301,10 +226,17 @@ export function registerWorkflowHandlers(socket: Socket): void {
     }
   })
 
-  // Annotations update (from orchestrator image questions)
-  socket.on('annotations_update', (data: { annotations: unknown[] }) => {
-    console.log('[Socket] annotations_update:', data)
+  // Inline question from ask_question tool — show card with option chips in chat
+  socket.on('pending_question', (data: { question: string; options: { label: string; value: string }[] }) => {
+    console.log('[Socket] pending_question:', data)
+    const chatStore = useChatStore.getState()
+    chatStore.setPendingQuestion(data)
+  })
+
+  // Plan updates (from update_plan tool — extraction progress checklist)
+  socket.on('plan_updated', (data: { items: Array<{ text: string; done: boolean }> }) => {
+    console.log('[Socket] plan_updated:', data)
     const workflowStore = useWorkflowStore.getState()
-    workflowStore.setPendingAnnotations(data.annotations as any)
+    workflowStore.setPlan(data.items)
   })
 }

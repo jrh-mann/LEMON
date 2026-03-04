@@ -19,16 +19,12 @@ class Conversation:
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
 
-    # Single canonical workflow dict (nodes + edges + variables + outputs + metadata)
+    # Single canonical workflow dict (nodes + edges + variables + outputs)
     workflow: Dict[str, Any] = field(default_factory=lambda: {
         "nodes": [],
         "edges": [],
         "variables": [],
         "outputs": [],
-        "tree": {},
-        "doubts": [],
-        "reasoning": "",
-        "guidance": [],
     })
 
     @property
@@ -41,14 +37,10 @@ class Conversation:
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata (variables/outputs/tree/doubts) for tools."""
+        """View of workflow metadata (variables/outputs) for tools."""
         return {
             "variables": self.workflow.get("variables", []),
             "outputs": self.workflow.get("outputs", []),
-            "tree": self.workflow.get("tree", {}),
-            "doubts": self.workflow.get("doubts", []),
-            "reasoning": self.workflow.get("reasoning", ""),
-            "guidance": self.workflow.get("guidance", []),
         }
 
     def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
@@ -66,7 +58,7 @@ class Conversation:
         self.updated_at = utc_now()
 
     def update_workflow_analysis(self, analysis: Dict[str, Any]) -> None:
-        """Update workflow metadata (variables/outputs/tree/doubts).
+        """Update workflow metadata (variables/outputs).
 
         Args:
             analysis: Workflow analysis with 'variables' and 'outputs' keys.
@@ -74,17 +66,8 @@ class Conversation:
         if not isinstance(analysis, dict):
             return
 
-        variables = analysis.get("variables", [])
-        self.workflow["variables"] = variables
+        self.workflow["variables"] = analysis.get("variables", [])
         self.workflow["outputs"] = analysis.get("outputs", [])
-        if "tree" in analysis:
-            self.workflow["tree"] = analysis.get("tree", {})
-        if "doubts" in analysis:
-            self.workflow["doubts"] = analysis.get("doubts", [])
-        if "reasoning" in analysis:
-            self.workflow["reasoning"] = analysis.get("reasoning", "")
-        if "guidance" in analysis:
-            self.workflow["guidance"] = analysis.get("guidance", [])
         self.updated_at = utc_now()
 
 

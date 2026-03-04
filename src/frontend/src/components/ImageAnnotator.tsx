@@ -367,7 +367,7 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                     // All questions answered, submit combined response to chat
                     const chatStore = useChatStore.getState()
                     const workflowStore = useWorkflowStore.getState()
-                    const { pendingFiles } = workflowStore
+                    const { pendingFiles, filesSent, markFilesSent } = workflowStore
 
                     // Format a combined message
                     const answeredQuestions = updated.filter(
@@ -379,13 +379,20 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                         combinedMessage += `\nQ${i + 1}: ${q.question}\nA: ${q.text}\n`
                     })
 
+                    // Only send files if they haven't been sent yet
+                    const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
+
                     chatStore.sendUserMessage(combinedMessage)
                     sendChatMessage(
                         combinedMessage,
                         chatStore.conversationId,
-                        pendingFiles.length > 0 ? pendingFiles : undefined,
+                        filesToSend,
                         updated
                     )
+
+                    if (filesToSend) {
+                        markFilesSent()
+                    }
                 } else {
                     // Show a toast so the user isn't confused why the chat isn't responding yet
                     import('react-hot-toast').then(({ toast }) => {

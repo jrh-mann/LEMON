@@ -371,8 +371,6 @@ function SaveWorkflowForm() {
         edges: flowchart.edges,
         variables: currentAnalysis?.variables || [],
         outputs: currentAnalysis?.outputs || [],
-        tree: currentAnalysis?.tree || {},
-        doubts: currentAnalysis?.doubts || [],
         validation_score: 0,
         validation_count: 0,
         is_validated: false,

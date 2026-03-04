@@ -46,6 +46,7 @@ interface WorkflowState {
   selectedNodeId: string | null
   selectedNodeIds: string[]
   selectedEdge: { from: string; to: string } | null  // Selected edge for editing
+  highlightedNodeId: string | null  // Node pulsing to draw attention
   connectMode: boolean
   connectFromId: string | null
 
@@ -62,6 +63,10 @@ interface WorkflowState {
   // Pending files for analysis (images and PDFs)
   pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
+  filesSent: boolean  // Whether pendingFiles have already been sent to backend
+
+  // Extraction plan items (from update_plan tool)
+  plan: Array<{ text: string; done: boolean }>
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
@@ -108,8 +113,11 @@ interface WorkflowState {
   addPendingFile: (file: PendingFile) => void
   removePendingFile: (fileId: string) => void
   clearPendingFiles: () => void
+  markFilesSent: () => void  // Mark that pendingFiles have been sent to backend
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
+  setPlan: (items: Array<{ text: string; done: boolean }>) => void
+  highlightNode: (nodeId: string) => void  // Pulse a node briefly (auto-clears after 3s)
 
   // Reset
   reset: () => void
@@ -187,12 +195,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   selectedNodeId: null,
   selectedNodeIds: [],
   selectedEdge: null,
+  highlightedNodeId: null,
   connectMode: false,
   connectFromId: null,
   history: [],
   historyIndex: -1,
   pendingFiles: [],
   pendingAnnotations: [],
+  filesSent: false,
+  plan: [],
 
   // Execution state
   execution: { ...initialExecutionState },
@@ -520,11 +531,22 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
   // Pending files
-  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file] })),
+  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file], filesSent: false })),
   removePendingFile: (fileId) => set((state) => ({ pendingFiles: state.pendingFiles.filter(f => f.id !== fileId) })),
-  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [] }),
+  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [], filesSent: false }),
+  markFilesSent: () => set({ filesSent: true }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
+  setPlan: (items) => set({ plan: items }),
+  highlightNode: (nodeId) => {
+    set({ highlightedNodeId: nodeId })
+    // Auto-clear after 3 seconds
+    setTimeout(() => {
+      if (get().highlightedNodeId === nodeId) {
+        set({ highlightedNodeId: null })
+      }
+    }, 3000)
+  },
 
   // Reset
   reset: () =>
@@ -548,6 +570,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingFiles: [],
       pendingAnnotations: [],
+      filesSent: false,
+      plan: [],
       execution: { ...initialExecutionState },
     }),
 

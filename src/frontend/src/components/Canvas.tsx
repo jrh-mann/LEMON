@@ -80,6 +80,7 @@ export default function Canvas() {
     setPendingAnnotations,
     clearPendingFiles,
     execution,  // Execution state for visual highlighting
+    highlightedNodeId,  // Node pulsing from highlight_node tool
   } = useWorkflowStore()
 
   const {
@@ -701,45 +702,38 @@ export default function Canvas() {
 
   // Mouse wheel zoom handler - zooms centered on cursor position
   // Wheel up = zoom in, wheel down = zoom out
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      // Prevent default scroll behavior on the canvas
-      e.preventDefault()
+  // Registered via useEffect with { passive: false } because React's onWheel
+  // is passive by default, making e.preventDefault() a no-op (page still scrolls).
+  const handleWheelRef = useRef<(e: WheelEvent) => void>(() => {})
+  handleWheelRef.current = (e: WheelEvent) => {
+    e.preventDefault()
 
-      const svg = svgRef.current
-      const container = containerRef.current
-      if (!svg || !container) return
+    const svg = svgRef.current
+    const container = containerRef.current
+    if (!svg || !container) return
 
-      // Calculate zoom factor based on wheel delta
-      // Smaller factor for smoother zooming
-      const zoomFactor = 0.1
-      const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
+    const zoomFactor = 0.1
+    const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
+    if (newZoom === zoom) return
 
-      // Calculate new zoom level with clamping
-      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
+    const cursorSVG = screenToSVG(e.clientX, e.clientY)
+    const zoomRatio = zoom / newZoom
+    const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
+    const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
 
-      // If zoom didn't change (at limits), don't update
-      if (newZoom === zoom) return
+    setZoom(newZoom)
+    setPanOffset({ x: newPanX, y: newPanY })
+  }
 
-      // Get cursor position in SVG coordinates before zoom
-      const cursorSVG = screenToSVG(e.clientX, e.clientY)
-
-      // Calculate the ratio of zoom change
-      const zoomRatio = zoom / newZoom
-
-      // Adjust pan offset to keep cursor position fixed
-      // The formula ensures that the point under the cursor stays in place
-      // newPan = oldPan + cursorSVG * (1 - zoomRatio)
-      // This compensates for the viewBox width/height change when zooming
-      const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
-      const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
-
-      // Apply the new zoom and pan offset
-      setZoom(newZoom)
-      setPanOffset({ x: newPanX, y: newPanY })
-    },
-    [zoom, panOffset, screenToSVG, setZoom]
-  )
+  // Attach non-passive wheel listener to the SVG element
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const handler = (e: WheelEvent) => handleWheelRef.current(e)
+    svg.addEventListener('wheel', handler, { passive: false })
+    return () => svg.removeEventListener('wheel', handler)
+  }, [])
 
   // Render node
   const renderNode = (node: FlowNode) => {
@@ -763,6 +757,7 @@ export default function Canvas() {
       isConnectSource ? 'connect-source' : '',
       isExecuting ? 'executing' : '',
       isExecuted && !isExecuting ? 'executed' : '',  // Don't show executed while currently executing
+      highlightedNodeId === node.id ? 'highlighted' : '',
     ].filter(Boolean).join(' ')
 
     return (
@@ -822,8 +817,9 @@ export default function Canvas() {
 
         {/* Node label with word wrapping */}
         <text
-          x={node.type === 'start' || node.type === 'end' ? 8 : 0}
+          x={0}
           textAnchor="middle"
+          dominantBaseline="central"
           fontSize="13"
           fill="var(--ink)"
           style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -831,7 +827,7 @@ export default function Canvas() {
           {wrapText(node.label, node.type === 'decision' ? 14 : 18).map((line, i, arr) => (
             <tspan
               key={i}
-              x={node.type === 'start' || node.type === 'end' ? 8 : 0}
+              x={0}
               dy={i === 0 ? `${-((arr.length - 1) * 7)}px` : '14px'}
             >
               {line}
@@ -948,18 +944,35 @@ export default function Canvas() {
           markerEnd="url(#arrowhead)"
         />
         {/* Show label for decision edges, or any edge with a label */}
-        {(edge.label || isDecisionEdge) && (
-          <text
-            x={labelX}
-            y={labelY}
-            textAnchor="middle"
-            fontSize="11"
-            fill={isSelected ? 'var(--accent)' : 'var(--muted)'}
-            fontWeight={isSelected ? 600 : 400}
-          >
-            {edge.label || (isDecisionEdge ? '?' : '')}
-          </text>
-        )}
+        {(edge.label || isDecisionEdge) && (() => {
+          const labelText = edge.label || (isDecisionEdge ? '?' : '')
+          // Approximate text width for background rect (8px per char at font-size 14)
+          const textW = labelText.length * 8 + 10
+          const textH = 20
+          return (
+            <>
+              <rect
+                x={labelX - textW / 2}
+                y={labelY - textH / 2}
+                width={textW}
+                height={textH}
+                rx={4}
+                fill="var(--paper)"
+              />
+              <text
+                x={labelX}
+                y={labelY}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize="14"
+                fill={isSelected ? 'var(--accent)' : 'var(--ink)'}
+                fontWeight={600}
+              >
+                {labelText}
+              </text>
+            </>
+          )
+        })()}
       </g>
     )
   }
@@ -1385,7 +1398,6 @@ export default function Canvas() {
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onWheel={handleWheel}
           style={{
             cursor: isPanning ? 'grabbing' : (canvasMode === 'pan' ? 'grab' : 'default')
           }}

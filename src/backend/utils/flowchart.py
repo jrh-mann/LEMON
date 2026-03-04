@@ -5,81 +5,13 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 
-def _map_node_type(raw_type: str) -> str:
-    """Map subagent/LLM node types to the canonical types expected by the system."""
-    mapped = {
-        "action": "process",
-        "output": "end",
-    }
-    return mapped.get(raw_type, raw_type)
-
-
-def flowchart_from_tree(tree: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
-    if not tree:
-        return {"nodes": [], "edges": []}
-
-    start = tree.get("start")
-    if not isinstance(start, dict):
-        return {"nodes": [], "edges": []}
-
-    nodes: List[Dict[str, Any]] = []
-    edges: List[Dict[str, Any]] = []
-    seen = set()
-    stack = [start]
-
-    while stack:
-        node = stack.pop()
-        node_id = node.get("id")
-        if not node_id or node_id in seen:
-            continue
-        seen.add(node_id)
-
-        raw_type = str(node.get("type") or "process")
-        node_type = _map_node_type(raw_type)
-        node_entry = {
-            "id": node_id,
-            "type": node_type,
-            "label": node.get("label") or node_id,
-            # Top-left coordinates; frontend auto-layout will adjust.
-            "x": 0,
-            "y": 0,
-        }
-        # Propagate structured fields that downstream consumers need
-        # (e.g., WorkflowValidator checks condition on decision nodes).
-        input_ids = node.get("input_ids")
-        if isinstance(input_ids, list):
-            node_entry["input_ids"] = input_ids
-        for key in ("condition", "calculation", "subworkflow_id",
-                     "input_mapping", "output_variable", "output_type",
-                     "output_value", "output_template"):
-            if key in node:
-                node_entry[key] = node[key]
-        nodes.append(node_entry)
-
-        for child in node.get("children") or []:
-            child_id = child.get("id")
-            if not child_id:
-                continue
-            edges.append(
-                {
-                    "id": f"{node_id}->{child_id}",
-                    "from": node_id,
-                    "to": child_id,
-                    "label": child.get("edge_label") or "",
-                }
-            )
-            stack.append(child)
-
-    return {"nodes": nodes, "edges": edges}
-
-
 def tree_from_flowchart(
     nodes: List[Dict[str, Any]],
     edges: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Build a nested tree structure from flat nodes and edges lists.
     
-    This is the inverse of flowchart_from_tree. Takes a flat list of nodes
+    Takes a flat list of nodes
     and edges (as used in the frontend) and builds the nested tree structure
     needed by TreeInterpreter.
     

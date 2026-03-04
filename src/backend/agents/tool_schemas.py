@@ -25,50 +25,17 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "analyze_workflow",
+                "name": "view_image",
                 "description": (
-                    "Analyze the most recently uploaded workflow image. "
-                    "Returns JSON with inputs, outputs, tree, doubts, plus session_id. "
-                    "Use session_id + feedback to refine a prior analysis. "
-                    "If no image has been uploaded, the tool will report that."
+                    "Re-examine an uploaded workflow image. When multiple images are "
+                    "uploaded, pass the filename to select a specific one."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "session_id": {
+                        "filename": {
                             "type": "string",
-                            "description": "Optional session id to continue a prior analysis.",
-                        },
-                        "feedback": {
-                            "type": "string",
-                            "description": "Optional feedback to refine the analysis.",
-                        },
-                        "files": {
-                            "type": "array",
-                            "description": (
-                                "Classifications for uploaded files. Required when multiple files "
-                                "are uploaded. Each entry maps a file id to its purpose."
-                            ),
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {"type": "string", "description": "File id from the upload"},
-                                    "purpose": {
-                                        "type": "string",
-                                        "enum": ["flowchart", "guidance", "mixed"],
-                                        "description": "What this file contains",
-                                    },
-                                },
-                                "required": ["id", "purpose"],
-                            },
-                        },
-                        "relationship": {
-                            "type": "string",
-                            "description": (
-                                "How the files relate to each other and what to extract from each. "
-                                "Includes the user's description of the connection between workflows "
-                                "and any per-file extraction notes."
-                            ),
+                            "description": "Name of the image file to view. If omitted, returns the first image.",
                         },
                     },
                     "required": [],
@@ -78,15 +45,57 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "publish_latest_analysis",
+                "name": "extract_guidance",
                 "description": (
-                    "Load the most recent workflow analysis and return it for rendering "
-                    "on the canvas."
+                    "Extract side information (sticky notes, legends, annotations, linked "
+                    "guidance panels) from an uploaded workflow image. Makes a separate "
+                    "API call and returns structured guidance items. Call this BEFORE "
+                    "building the workflow to discover extra context in the image. "
+                    "When multiple images are uploaded, pass the filename to select one."
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "filename": {
+                            "type": "string",
+                            "description": "Name of the image file. If omitted, uses the first image.",
+                        },
+                    },
                     "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_plan",
+                "description": (
+                    "Update the step-by-step plan shown to the user. Call this to outline "
+                    "what you see in the image and mark items as done as you build the workflow."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "description": "List of plan items to display.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "type": "string",
+                                        "description": "Description of this plan step.",
+                                    },
+                                    "done": {
+                                        "type": "boolean",
+                                        "description": "Whether this step is completed.",
+                                    },
+                                },
+                                "required": ["text", "done"],
+                            },
+                        },
+                    },
+                    "required": ["items"],
                 },
             },
         },
@@ -133,33 +142,40 @@ def tool_descriptions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "add_image_question",
+                "name": "ask_question",
                 "description": (
-                    "Place a question dot on the user's workflow image at specific coordinates. "
-                    "NOTE: The analyze_workflow tool ALREADY automatically places question dots for all doubts it finds! "
-                    "You should ONLY use this tool if you need to ask an ADDITIONAL question that wasn't included in the analysis doubts."
+                    "Ask the user a clarification question. Use this whenever you are "
+                    "UNSURE about any detail — a threshold, label, branch condition, or "
+                    "ambiguous text. Provide options when possible so the user can click "
+                    "instead of typing. Do NOT guess; ask."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "image_name": {
-                            "type": "string",
-                            "description": "The name of the uploaded image file (e.g. diagram.png).",
-                        },
-                        "x": {
-                            "type": "integer",
-                            "description": "The X coordinate on the image where the question applies.",
-                        },
-                        "y": {
-                            "type": "integer",
-                            "description": "The Y coordinate on the image where the question applies.",
-                        },
                         "question": {
                             "type": "string",
-                            "description": "The specific question you want to ask the user.",
+                            "description": "The question to ask the user.",
+                        },
+                        "options": {
+                            "type": "array",
+                            "description": "Optional clickable choices (2-4 recommended).",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Display text for the option.",
+                                    },
+                                    "value": {
+                                        "type": "string",
+                                        "description": "Value sent back when user clicks this option.",
+                                    },
+                                },
+                                "required": ["label", "value"],
+                            },
                         },
                     },
-                    "required": ["image_name", "x", "y", "question"],
+                    "required": ["question"],
                 },
             },
         },
@@ -946,6 +962,31 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                     },
                     "required": ["workflow_id", "name", "type"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "highlight_node",
+                "description": (
+                    "Highlight a node on the canvas to draw the user's attention to it. "
+                    "The node pulses briefly. Use this when referencing a specific node "
+                    "in conversation so the user can see which one you mean."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "ID of the workflow containing the node",
+                        },
+                        "node_id": {
+                            "type": "string",
+                            "description": "ID of the node to highlight",
+                        },
+                    },
+                    "required": ["node_id"],
                 },
             },
         },

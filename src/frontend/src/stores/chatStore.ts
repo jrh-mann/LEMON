@@ -19,9 +19,8 @@ interface ChatState {
   // Live reasoning stream from LLM extended thinking
   thinkingContent: string
 
-  // Agent interaction
-  pendingQuestion: string | null
-  taskId: string | null
+  // Inline question from ask_question tool (rendered as a card with option chips)
+  pendingQuestion: { question: string; options: { label: string; value: string }[] } | null
 
   // Actions
   addMessage: (message: Message) => void
@@ -47,8 +46,8 @@ interface ChatState {
   appendThinkingContent: (content: string) => void
   clearThinkingContent: () => void
 
-  // Agent
-  setPendingQuestion: (question: string | null, taskId?: string | null) => void
+  // Inline question
+  setPendingQuestion: (question: { question: string; options: { label: string; value: string }[] } | null) => void
   clearPendingQuestion: () => void
 
   // User message helper
@@ -86,7 +85,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   processingStatus: null,
   thinkingContent: '',
   pendingQuestion: null,
-  taskId: null,
   // Actions
   addMessage: (message) =>
     set((state) => ({
@@ -181,11 +179,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({ thinkingContent: state.thinkingContent + content })),
   clearThinkingContent: () => set({ thinkingContent: '' }),
 
-  // Agent
-  setPendingQuestion: (question, taskId = null) =>
-    set({ pendingQuestion: question, taskId }),
+  // Inline question
+  setPendingQuestion: (question) => set({ pendingQuestion: question }),
 
-  clearPendingQuestion: () => set({ pendingQuestion: null, taskId: null }),
+  clearPendingQuestion: () => set({ pendingQuestion: null }),
 
   // User message helper
   sendUserMessage: (content) => {
@@ -217,7 +214,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       processingStatus: null,
       thinkingContent: '',
       pendingQuestion: null,
-      taskId: null,
     }),
 
   // Reset
@@ -232,7 +228,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       processingStatus: null,
       thinkingContent: '',
       pendingQuestion: null,
-      taskId: null,
     }),
 }))
 

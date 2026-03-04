@@ -14,6 +14,7 @@ WORKFLOW_EDIT_TOOLS = frozenset(
         "add_connection",
         "delete_connection",
         "batch_edit_workflow",
+        "highlight_node",
     }
 )
 

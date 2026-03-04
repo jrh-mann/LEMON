@@ -7,8 +7,8 @@ from typing import Dict, List
 
 
 TOOL_STATUS_MESSAGES = {
-    "analyze_workflow": "Subagent analyzed the workflow.",
-    "publish_latest_analysis": "Analysis published to the canvas.",
+    "view_image": "Loaded uploaded image.",
+    "update_plan": "Updated extraction plan.",
     "get_current_workflow": "Loaded current workflow state.",
     "add_node": "Added a workflow node.",
     "modify_node": "Updated a workflow node.",
@@ -19,8 +19,8 @@ TOOL_STATUS_MESSAGES = {
 }
 
 TOOL_FAILURE_MESSAGES = {
-    "analyze_workflow": "Workflow analysis failed.",
-    "publish_latest_analysis": "Publishing analysis failed.",
+    "view_image": "Failed to load uploaded image.",
+    "update_plan": "Failed to update extraction plan.",
     "get_current_workflow": "Failed to load workflow state.",
     "add_node": "Failed to add a workflow node.",
     "modify_node": "Failed to update a workflow node.",

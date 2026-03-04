@@ -5,6 +5,7 @@
 import type { Socket } from 'socket.io-client'
 import { useChatStore, addAssistantMessage } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useWorkflowStore } from '../../stores/workflowStore'
 import type { SocketChatResponse } from '../../types'
 
 /** Register all chat-related socket event handlers */
@@ -26,11 +27,6 @@ export function registerChatHandlers(socket: Socket): void {
       if (!chatStore.currentTaskId && data.event === 'start') {
         chatStore.setCurrentTaskId(taskId)
       }
-    }
-
-    if (data.tool === 'analyze_workflow' && !data.status) {
-      chatStore.setProcessingStatus('Analysing workflow...')
-      return
     }
 
     if (data.status) {
@@ -73,6 +69,8 @@ export function registerChatHandlers(socket: Socket): void {
     chatStore.setStreaming(false)
     chatStore.setProcessingStatus(null)
     chatStore.clearCurrentTaskId()
+    // Clear the plan checklist so it doesn't persist into the next message
+    useWorkflowStore.getState().setPlan([])
 
     if (data.conversation_id) {
       chatStore.setConversationId(data.conversation_id)
@@ -128,5 +126,6 @@ export function registerChatHandlers(socket: Socket): void {
     chatStore.setStreaming(false)
     chatStore.setProcessingStatus(null)
     chatStore.clearCurrentTaskId()
+    useWorkflowStore.getState().setPlan([])
   })
 }

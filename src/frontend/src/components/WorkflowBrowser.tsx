@@ -233,12 +233,10 @@ export default function WorkflowBrowser() {
       setFlowchart(flowchart)
 
       // Set analysis data if available
-      if (workflowData.variables || workflowData.outputs || workflowData.tree || workflowData.doubts) {
+      if (workflowData.variables || workflowData.outputs) {
         const analysis: WorkflowAnalysis = {
           variables: workflowData.variables || [],
           outputs: workflowData.outputs || [],
-          tree: workflowData.tree || {},
-          doubts: workflowData.doubts || [],
         }
         setAnalysis(analysis)
       }

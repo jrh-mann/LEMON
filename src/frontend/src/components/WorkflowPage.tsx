@@ -148,8 +148,6 @@ export default function WorkflowPage() {
                 const analysis: WorkflowAnalysis = {
                     variables: workflowData.variables || [],
                     outputs: workflowData.outputs || [],
-                    tree: workflowData.tree || {},
-                    doubts: workflowData.doubts || [],
                 }
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId

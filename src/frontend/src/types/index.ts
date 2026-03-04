@@ -275,8 +275,6 @@ export interface WorkflowDetailResponse {
   edges: FlowEdge[]
   variables: WorkflowVariable[]
   outputs: WorkflowOutput[]
-  tree: Record<string, unknown>
-  doubts: string[]
 }
 
 export interface WorkflowSummary {
@@ -348,8 +346,6 @@ export interface WorkflowOutput {
 export interface WorkflowAnalysis {
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
   outputs: WorkflowOutput[]           // Outputs with required type
-  tree: Record<string, unknown>
-  doubts: string[]
 }
 
 // ============ Flowchart Models (for canvas rendering) ============
@@ -630,8 +626,6 @@ export interface CreateWorkflowRequest {
   edges: FlowEdge[]
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
   outputs: WorkflowOutput[]           // Outputs with required type
-  tree: Record<string, unknown>
-  doubts: string[]
   validation_score?: number
   validation_count?: number
   is_validated?: boolean
