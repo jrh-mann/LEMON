@@ -178,10 +178,14 @@ class SocketChatTask:
         args: Dict[str, Any],
         result: Optional[Dict[str, Any]],
     ) -> None:
-        if self.is_cancelled():
-            return
+        cancelled = self.is_cancelled()
+
         if event == "tool_start":
-            self.executed_tools.append({"tool": tool, "arguments": args})
+            entry: Dict[str, Any] = {"tool": tool, "arguments": args}
+            if cancelled:
+                # Tool started after user hit stop — mark as interrupted
+                entry["interrupted"] = True
+            self.executed_tools.append(entry)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -195,9 +199,15 @@ class SocketChatTask:
                 if executed.get("tool") == tool and "result" not in executed:
                     executed["result"] = result
                     executed["success"] = success
+                    if cancelled:
+                        executed["interrupted"] = True
                     break
         if event == "tool_batch_complete":
             self.flush_tool_summary()
+
+        # Skip socket emissions when cancelled — no need to push live UI updates
+        if cancelled:
+            return
 
         # Emit plan_updated when update_plan completes — carries checklist items to frontend
         if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
@@ -397,23 +407,23 @@ class SocketChatTask:
         self.convo.update_workflow_state(self.convo.orchestrator.current_workflow)
         self.convo.update_workflow_analysis(self.convo.orchestrator.workflow_analysis)
 
-    def _emit_response(self, response_text: str) -> None:
+    def _emit_response(self, response_text: str, cancelled: bool = False) -> None:
         tool_calls = extract_tool_calls(response_text, include_result=False)
         if not tool_calls and self.executed_tools:
             tool_calls = self.executed_tools
         summary = summarize_response(response_text) if tool_calls else ""
         if self.convo:
             self.convo.updated_at = utc_now()
-        self.socketio.emit(
-            "chat_response",
-            {
-                "response": summary if tool_calls else ("" if self.did_stream else response_text),
-                "conversation_id": self.convo.id if self.convo else "",
-                "tool_calls": tool_calls,
-                "task_id": self.task_id,
-            },
-            to=self.sid,
-        )
+        payload: Dict[str, Any] = {
+            "response": summary if tool_calls else ("" if self.did_stream else response_text),
+            "conversation_id": self.convo.id if self.convo else "",
+            "tool_calls": tool_calls,
+            "task_id": self.task_id,
+        }
+        if cancelled:
+            payload["cancelled"] = True
+            payload["system_message"] = "Generation interrupted — showing progress up to cancellation."
+        self.socketio.emit("chat_response", payload, to=self.sid)
 
     def run(self) -> None:
         self.emit_progress("start", "Thinking...")
@@ -438,7 +448,7 @@ class SocketChatTask:
             if self.is_cancelled():
                 # Still send the partial response so the frontend keeps whatever
                 # the orchestrator produced before the cancel was detected.
-                self._emit_response(response_text)
+                self._emit_response(response_text, cancelled=True)
                 self.emit_cancelled()
                 return
             self._emit_response(response_text)

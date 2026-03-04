@@ -53,7 +53,8 @@ export function registerChatHandlers(socket: Socket): void {
     const taskId = data.task_id
 
     if (taskId) {
-      if (chatStore.isTaskCancelled(taskId)) {
+      // Accept cancelled responses when the backend explicitly sends partial results
+      if (chatStore.isTaskCancelled(taskId) && !data.cancelled) {
         console.log('[Socket] Ignoring cancelled chat_response:', taskId)
         return
       }
@@ -65,6 +66,9 @@ export function registerChatHandlers(socket: Socket): void {
     console.log('[Socket] chat_response tool_calls:', data.tool_calls?.length || 0)
     console.log('[Socket] chat_response response_length:', data.response?.length || 0)
     console.log('[Socket] chat_response streaming_length:', chatStore.streamingContent.length)
+    if (data.cancelled) {
+      console.log('[Socket] chat_response is partial (user cancelled)')
+    }
 
     chatStore.setStreaming(false)
     chatStore.setProcessingStatus(null)
@@ -82,6 +86,11 @@ export function registerChatHandlers(socket: Socket): void {
       chatStore.clearStreamContent()
     } else {
       addAssistantMessage(data.response, data.tool_calls)
+    }
+
+    // Show system message when generation was interrupted
+    if (data.system_message) {
+      addAssistantMessage(data.system_message)
     }
   })
 
