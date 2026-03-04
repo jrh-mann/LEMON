@@ -58,9 +58,11 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
     Returns:
         Error message if invalid, None if valid.
     """
-    # Resolve variable name → input_id if the LLM used the name-based key
+    # Extract condition fields
     var_name = condition.get("variable")
     input_id = condition.get("input_id")
+    comparator = condition.get("comparator")
+    value = condition.get("value")
 
     if var_name:
         # Name-based lookup (case-insensitive)
