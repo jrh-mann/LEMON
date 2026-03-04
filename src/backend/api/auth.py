@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional, Tuple
 from uuid import uuid4
 
-from flask import Response, request
+from starlette.responses import JSONResponse, Response
 
 from ..storage.auth import AuthSession, AuthStore, AuthUser
 
@@ -107,7 +107,7 @@ def _get_cookie_secure() -> bool:
     value = os.getenv("LEMON_SECURE_COOKIES")
     if value is not None:
         return value.lower() in {"1", "true", "yes"}
-    env = os.getenv("LEMON_ENV", "").lower() or os.getenv("FLASK_ENV", "").lower()
+    env = os.getenv("LEMON_ENV", "").lower()
     return env == "production"
 
 
@@ -234,8 +234,16 @@ def issue_session(
     return token, expires_at
 
 
-def get_session_from_request(auth_store: AuthStore) -> Optional[Tuple[AuthSession, AuthUser]]:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+def get_session_from_cookies(
+    auth_store: AuthStore, cookies: dict[str, str]
+) -> Optional[Tuple[AuthSession, AuthUser]]:
+    """Validate a session from a cookies dict (framework-agnostic).
+
+    Args:
+        auth_store: Auth store for session lookups.
+        cookies: Dict of cookie name → value (e.g. from request.cookies).
+    """
+    token = cookies.get(SESSION_COOKIE_NAME)
     if not token:
         return None
     token_hash = hash_session_token(token)
@@ -251,6 +259,7 @@ def get_session_from_request(auth_store: AuthStore) -> Optional[Tuple[AuthSessio
 
 
 def set_session_cookie(response: Response, token: str, expires_at: str, *, config: AuthConfig) -> None:
+    """Set the session cookie on a Starlette/FastAPI Response."""
     expires_dt = _parse_datetime(expires_at)
     max_age = None
     if expires_dt:
@@ -259,7 +268,6 @@ def set_session_cookie(response: Response, token: str, expires_at: str, *, confi
         SESSION_COOKIE_NAME,
         token,
         max_age=max_age,
-        expires=expires_dt,
         httponly=True,
         secure=config.cookie_secure,
         samesite=config.cookie_samesite,
@@ -268,6 +276,7 @@ def set_session_cookie(response: Response, token: str, expires_at: str, *, confi
 
 
 def clear_session_cookie(response: Response, *, config: AuthConfig) -> None:
+    """Remove the session cookie from a Starlette/FastAPI Response."""
     response.delete_cookie(
         SESSION_COOKIE_NAME,
         path="/",
@@ -276,17 +285,16 @@ def clear_session_cookie(response: Response, *, config: AuthConfig) -> None:
     )
 
 
-def apply_login_rate_limit(identifier: str) -> Optional[Response]:
+def apply_login_rate_limit(identifier: str) -> Optional[JSONResponse]:
+    """Check login rate limit; returns a 429 JSONResponse if blocked, else None."""
     allowed, retry_after = login_rate_limiter.is_allowed(identifier)
     if allowed:
         return None
-    response = Response(
-        response='{"error":"Too many attempts. Try again later."}',
-        status=429,
-        mimetype="application/json",
+    return JSONResponse(
+        {"error": "Too many attempts. Try again later."},
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
     )
-    response.headers["Retry-After"] = str(retry_after)
-    return response
 
 
 def note_login_failure(identifier: str) -> None:
