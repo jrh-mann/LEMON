@@ -69,7 +69,10 @@ publishprofile.xml
 
 .mcp.json
 .cursor/
-.claude/settings.local.json
+.claude/
+.dev-pids
+REVIEW.md
+agent_demands.md
 status.md
 
 # Local tool outputs
