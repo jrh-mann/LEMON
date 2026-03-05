@@ -409,6 +409,28 @@ class WorkflowStore:
         self._logger.warning("Failed to update workflow id=%s user=%s (not found or unauthorized)", workflow_id, user_id)
         return False
 
+    def try_set_building(self, workflow_id: str, user_id: str) -> bool:
+        """Atomically set building=True only if currently building=False.
+
+        Uses a single SQL UPDATE with a WHERE guard so that concurrent callers
+        cannot both succeed — only one wins the race (rowcount == 1).
+
+        Returns True if the flag was set (caller won), False if already building.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE workflows SET building = 1, updated_at = ? "
+                "WHERE id = ? AND user_id = ? AND building = 0",
+                (now, workflow_id, user_id),
+            )
+            won = cursor.rowcount == 1
+        if won:
+            self._logger.info("Atomically set building=True for workflow %s", workflow_id)
+        else:
+            self._logger.info("Workflow %s already building — atomic set failed", workflow_id)
+        return won
+
     def delete_workflow(self, workflow_id: str, user_id: str) -> bool:
         """Delete a workflow.
 

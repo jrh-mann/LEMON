@@ -23,7 +23,7 @@ class TestImagePathResolution:
 
     def test_save_uploaded_files_produces_absolute_paths(self, tmp_path: Path):
         """After _save_uploaded_files, each saved path must be absolute."""
-        from src.backend.api.socket_chat import SocketChatTask
+        from src.backend.api.ws_chat import WsChatTask
         from src.backend.storage.workflows import WorkflowStore
 
         # Create a minimal 1x1 white PNG as a data URL
@@ -38,18 +38,18 @@ class TestImagePathResolution:
         )
         data_url = "data:image/png;base64," + base64.b64encode(png_bytes).decode()
 
-        # Build a SocketChatTask with repo_root set to tmp_path
-        socketio_mock = MagicMock()
+        # Build a WsChatTask with repo_root set to tmp_path
+        registry_mock = MagicMock()
         conv_store_mock = MagicMock()
         wf_store = WorkflowStore(tmp_path / ".lemon" / "workflows.sqlite")
 
-        task = SocketChatTask(
-            socketio=socketio_mock,
+        task = WsChatTask(
+            registry=registry_mock,
             conversation_store=conv_store_mock,
             repo_root=tmp_path,
             workflow_store=wf_store,
             user_id="test-user",
-            sid="test-sid",
+            conn_id="test-conn",
             task_id="test-task",
             message="hello",
             conversation_id=None,
@@ -124,16 +124,16 @@ class TestReasoningWiring:
         )
         assert captured_kwargs["thinking_budget"] == 8000
 
-    def test_socket_chat_passes_thinking_budget(self):
-        """SocketChatTask.run must pass thinking_budget to orchestrator.respond()."""
+    def test_ws_chat_passes_thinking_budget(self):
+        """WsChatTask.run must pass thinking_budget to orchestrator.respond()."""
         # Instead of running the full socket flow, verify the source code
         # contains thinking_budget in the respond() call
         import ast
-        from src.backend.api import socket_chat
+        from src.backend.api import ws_chat
 
-        source = inspect.getsource(socket_chat.SocketChatTask.run)
+        source = inspect.getsource(ws_chat.WsChatTask.run)
         assert "thinking_budget" in source, (
-            "SocketChatTask.run does not pass thinking_budget to orchestrator.respond()"
+            "WsChatTask.run does not pass thinking_budget to orchestrator.respond()"
         )
 
     def test_on_thinking_forwarded_to_llm(self):
@@ -157,16 +157,16 @@ class TestReasoningWiring:
         assert captured_kwargs.get("on_thinking") is my_thinking
 
     def test_stream_thinking_emits_chat_thinking(self):
-        """SocketChatTask.stream_thinking must emit chat_thinking socket event."""
-        from src.backend.api.socket_chat import SocketChatTask
+        """WsChatTask.stream_thinking must emit chat_thinking event."""
+        from src.backend.api.ws_chat import WsChatTask
 
-        task = SocketChatTask(
-            socketio=MagicMock(),
+        task = WsChatTask(
+            registry=MagicMock(),
             conversation_store=MagicMock(),
             repo_root=Path("/tmp"),
             workflow_store=MagicMock(),
             user_id="u1",
-            sid="s1",
+            conn_id="c1",
             task_id="t1",
             message="hi",
             conversation_id=None,
@@ -177,23 +177,23 @@ class TestReasoningWiring:
 
         task.stream_thinking("Analyzing the workflow...")
 
-        task.socketio.emit.assert_called_once_with(
+        task.registry.send_to_sync.assert_called_once_with(
+            "c1",
             "chat_thinking",
             {"chunk": "Analyzing the workflow...", "task_id": "t1"},
-            to="s1",
         )
 
     def test_stream_thinking_skips_empty(self):
         """stream_thinking should not emit for empty chunks."""
-        from src.backend.api.socket_chat import SocketChatTask
+        from src.backend.api.ws_chat import WsChatTask
 
-        task = SocketChatTask(
-            socketio=MagicMock(),
+        task = WsChatTask(
+            registry=MagicMock(),
             conversation_store=MagicMock(),
             repo_root=Path("/tmp"),
             workflow_store=MagicMock(),
             user_id="u1",
-            sid="s1",
+            conn_id="c1",
             task_id="t1",
             message="hi",
             conversation_id=None,
@@ -203,7 +203,7 @@ class TestReasoningWiring:
         )
 
         task.stream_thinking("")
-        task.socketio.emit.assert_not_called()
+        task.registry.send_to_sync.assert_not_called()
 
     def test_thinking_payload_added_when_budget_set(self):
         """call_llm_with_tools must add thinking payload when budget is provided."""

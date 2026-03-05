@@ -28,6 +28,9 @@ from dataclasses import dataclass, field
 from .evaluator import evaluate_condition, is_compound_condition, EvaluationError
 from .operators import execute_operator, OperatorError
 
+# Maximum number of node visits before aborting (prevents infinite loops)
+_MAX_EXECUTION_STEPS = 10_000
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -210,6 +213,12 @@ class TreeInterpreter:
                         logger.warning(f"on_step callback error at node '{node_id}': {e}")
                 
                 step_index += 1
+                if step_index > _MAX_EXECUTION_STEPS:
+                    return ExecutionResult(
+                        success=False,
+                        error=f"Execution exceeded {_MAX_EXECUTION_STEPS} steps — likely an infinite loop",
+                        path=path,
+                    )
                 path.append(node_id)
 
                 if node_type in ('output', 'end'):

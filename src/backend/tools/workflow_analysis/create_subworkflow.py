@@ -102,8 +102,17 @@ def _run_subworkflow_builder(
             workflow_store.update_workflow(
                 workflow_id, user_id, building=False,
             )
-        except Exception:
-            pass
+        except Exception as inner_exc:
+            logger.error(
+                "Failed to clear building flag for %s: %s",
+                workflow_id, inner_exc,
+            )
+        # Notify frontend so it can clear the "Building..." state
+        if ws_registry and conn_id:
+            ws_registry.send_to_sync(conn_id, "build_error", {
+                "workflow_id": workflow_id,
+                "error": str(exc),
+            })
     finally:
         # Always emit chat_response to signal build completion to frontend
         cb.emit_response(response_text)

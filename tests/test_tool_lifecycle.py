@@ -956,3 +956,37 @@ class TestSubworkflowTools:
         # Verify building flag was set again
         wf = workflow_store.get_workflow(wf_id, test_user_id)
         assert wf.building is True
+
+
+class TestInterpreterStepLimit:
+    """Verify TreeInterpreter aborts runaway executions."""
+
+    def test_infinite_loop_aborted(self, workflow_store, test_user_id):
+        """A cyclic workflow must be stopped by the step limit."""
+        from src.backend.execution.interpreter import TreeInterpreter, _MAX_EXECUTION_STEPS
+        from src.backend.utils.flowchart import tree_from_flowchart
+
+        # Build a workflow with a self-loop: start → process → process (cycle)
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "loop", "type": "process", "label": "Loop Forever"},
+        ]
+        edges = [
+            {"from": "start", "to": "loop"},
+            {"from": "loop", "to": "loop"},  # Self-loop
+        ]
+        tree = tree_from_flowchart(nodes, edges)
+
+        interpreter = TreeInterpreter(
+            tree=tree,
+            variables=[],
+            outputs=[],
+            workflow_store=workflow_store,
+            user_id=test_user_id,
+            output_type="string",
+        )
+        result = interpreter.execute({})
+
+        assert result.success is False
+        assert "exceeded" in result.error.lower()
+        assert str(_MAX_EXECUTION_STEPS) in result.error

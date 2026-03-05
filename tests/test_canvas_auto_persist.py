@@ -21,9 +21,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backend.api.conversations import ConversationStore
-from src.backend.api.socket_chat import SocketChatTask
+from src.backend.api.ws_chat import WsChatTask
 from src.backend.storage.workflows import WorkflowStore
-from src.backend.tools.workflow_library.create_workflow import generate_workflow_id
+from uuid import uuid4
 from src.backend.agents.system_prompt import build_system_prompt
 
 
@@ -46,6 +46,11 @@ def user_id():
     return "test_user_canvas"
 
 
+def _generate_workflow_id() -> str:
+    """Generate a unique workflow ID (replaces deleted CreateWorkflowTool helper)."""
+    return f"wf_{uuid4().hex}"
+
+
 def _make_task(
     workflow_store: WorkflowStore,
     convo_store: ConversationStore,
@@ -53,15 +58,15 @@ def _make_task(
     *,
     current_workflow_id: str | None = None,
     conversation_id: str = "conv_test",
-) -> SocketChatTask:
-    """Build a minimal SocketChatTask with real stores but mocked socketio."""
-    task = SocketChatTask(
-        socketio=MagicMock(),
+) -> WsChatTask:
+    """Build a minimal WsChatTask with real stores but mocked registry."""
+    task = WsChatTask(
+        registry=MagicMock(),
         conversation_store=convo_store,
         repo_root=Path("."),
         workflow_store=workflow_store,
         user_id=user_id,
-        sid="test_sid",
+        conn_id="test_conn",
         task_id="task_test",
         message="hello",
         conversation_id=conversation_id,
@@ -82,7 +87,7 @@ class TestCanvasAutoPersist:
         self, workflow_store, convo_store, user_id
     ):
         """When frontend sends a wf_ ID that's NOT in the DB, auto-create it."""
-        canvas_id = generate_workflow_id()
+        canvas_id = _generate_workflow_id()
         task = _make_task(
             workflow_store, convo_store, user_id,
             current_workflow_id=canvas_id,
@@ -104,7 +109,7 @@ class TestCanvasAutoPersist:
         self, workflow_store, convo_store, user_id
     ):
         """When canvas ID already exists in DB, auto-persist should not clobber it."""
-        canvas_id = generate_workflow_id()
+        canvas_id = _generate_workflow_id()
 
         # Pre-create a workflow with custom data
         workflow_store.create_workflow(
@@ -136,7 +141,7 @@ class TestCanvasAutoPersist:
         self, workflow_store, convo_store, user_id
     ):
         """After sync, the orchestrator's current_workflow_id matches the canvas ID."""
-        canvas_id = generate_workflow_id()
+        canvas_id = _generate_workflow_id()
         task = _make_task(
             workflow_store, convo_store, user_id,
             current_workflow_id=canvas_id,
@@ -163,8 +168,8 @@ class TestCanvasAutoPersist:
 class TestSystemPromptCanvasIntegration:
     """System prompt must instruct LLM to use canvas ID directly."""
 
-    def test_prompt_tells_llm_not_to_call_create_workflow(self):
-        """When canvas ID is set, prompt must say 'do NOT call create_workflow'."""
+    def test_prompt_shows_current_workflow_section(self):
+        """When canvas ID is set, prompt must include Current Workflow section."""
         prompt = build_system_prompt(
             last_session_id=None,
             has_files=[],
@@ -172,10 +177,11 @@ class TestSystemPromptCanvasIntegration:
             current_workflow_id="wf_test123",
         )
 
-        assert "Do NOT call create_workflow for this workflow" in prompt
+        assert "### Current Workflow" in prompt
+        assert "wf_test123" in prompt
 
-    def test_prompt_describes_create_workflow_as_subflow_only(self):
-        """The tool action mapping must say create_workflow is for sub-workflows."""
+    def test_prompt_describes_create_subworkflow(self):
+        """The tool action mapping must say create_subworkflow is for sub-workflows."""
         prompt = build_system_prompt(
             last_session_id=None,
             has_files=[],
@@ -187,8 +193,8 @@ class TestSystemPromptCanvasIntegration:
         # Old text should be gone
         assert "CREATE NEW WORKFLOW" not in prompt
 
-    def test_post_analysis_uses_canvas_id(self):
-        """Post-analysis instructions should NOT tell LLM to call create_workflow."""
+    def test_implicit_workflow_binding(self):
+        """Prompt should describe implicit workflow binding (no workflow_id needed)."""
         prompt = build_system_prompt(
             last_session_id=None,
             has_files=[],
@@ -196,7 +202,5 @@ class TestSystemPromptCanvasIntegration:
             current_workflow_id="wf_canvas_abc",
         )
 
-        # The post-analysis section should reference using the existing ID
-        assert "do NOT call create_workflow" in prompt
-        # Old instruction to "Call create_workflow" in post-analysis should be gone
-        assert "Call create_workflow (name, output_type)" not in prompt
+        # Implicit binding: tools auto-target the current workflow
+        assert "automatically target this workflow" in prompt

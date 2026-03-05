@@ -140,22 +140,22 @@ class TestOrchestratorThinkingForwarding:
 # Test: SocketChatTask.on_tool_event emits chat_thinking socket events
 # ---------------------------------------------------------------------------
 
-class TestSocketChatThinkingEmission:
-    """Verify on_tool_event('tool_thinking', ...) emits chat_thinking over socket."""
+class TestWsChatThinkingEmission:
+    """Verify on_tool_event('tool_thinking', ...) emits chat_thinking over WS."""
 
     def _make_task(self) -> Any:
-        """Build a minimal SocketChatTask with mocked socketio."""
-        from src.backend.api.socket_chat import SocketChatTask
+        """Build a minimal WsChatTask with mocked registry."""
+        from src.backend.api.ws_chat import WsChatTask
 
-        mock_socketio = MagicMock()
+        mock_registry = MagicMock()
         mock_convo_store = MagicMock()
-        task = SocketChatTask(
-            socketio=mock_socketio,
+        task = WsChatTask(
+            registry=mock_registry,
             conversation_store=mock_convo_store,
             repo_root=Path("/tmp"),
             workflow_store=MagicMock(),
             user_id="test_user",
-            sid="test_sid",
+            conn_id="test_conn",
             task_id="task_123",
             message="test",
             conversation_id="conv_1",
@@ -173,5 +173,5 @@ class TestSocketChatThinkingEmission:
         with patch.object(task, "is_cancelled", return_value=True):
             task.on_tool_event("tool_complete", "add_node", {}, {"success": True})
 
-        task.socketio.emit.assert_not_called()
+        task.registry.send_to_sync.assert_not_called()
 

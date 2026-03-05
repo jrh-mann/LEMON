@@ -260,6 +260,12 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
   // Subworkflow build complete — refresh library badge.
   // Build events are already buffered unconditionally by chatHandlers,
   // so we only need to clean up the buffer if the user isn't viewing it.
+  // Subworkflow build failed — refresh library to clear "Building..." badge
+  handlers['build_error'] = (data: { workflow_id: string; error: string }) => {
+    console.error('[WS] build_error:', data.workflow_id, data.error)
+    useWorkflowStore.getState().incrementLibraryRefresh()
+  }
+
   handlers['subworkflow_ready'] = (data: { workflow_id: string }) => {
     console.log('[WS] subworkflow_ready:', data.workflow_id)
     const ws = useWorkflowStore.getState()
