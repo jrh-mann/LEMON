@@ -230,9 +230,12 @@ export default function WorkflowPage() {
                 })
                 setFlowchart(fc)
 
-                // Load complete build_history into chatStore conversation
+                // Load complete build_history into chatStore conversation,
+                // but only if the conversation doesn't already have messages
+                // from the current session (avoids overwriting live chat).
                 const cs = useChatStore.getState()
-                if (workflowData.build_history?.length) {
+                const existingConv = cs.conversations?.[workflowId]
+                if (workflowData.build_history?.length && !existingConv?.messages?.length) {
                     const historyMessages = workflowData.build_history.map(
                         (msg: { role: string; content: string }) => ({
                             id: `bh_${crypto.randomUUID()}`,

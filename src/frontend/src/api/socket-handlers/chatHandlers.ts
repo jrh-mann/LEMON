@@ -102,12 +102,20 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     // Clear the plan checklist so it doesn't persist into the next message
     useWorkflowStore.getState().setPlan([])
 
-    // Dispatch event so WorkflowPage can re-fetch complete build state from DB.
-    // This applies to both builder responses and normal responses.
+    // Dispatch event so WorkflowPage can re-fetch flowchart state from DB.
+    // Only fire for background builder responses — i.e. when the event's
+    // workflow_id differs from the active workflow (the user is on the parent
+    // workflow while a subworkflow builds in the background), OR when the
+    // conversation is marked as streaming (builder in progress).
     if (data.workflow_id) {
-      window.dispatchEvent(new CustomEvent('subworkflow-build-complete', {
-        detail: { workflowId: data.workflow_id },
-      }))
+      const activeId = chatStore.activeWorkflowId
+      const conv = chatStore.conversations[data.workflow_id]
+      const isBuilderResponse = data.workflow_id !== activeId || conv?.streaming
+      if (isBuilderResponse) {
+        window.dispatchEvent(new CustomEvent('subworkflow-build-complete', {
+          detail: { workflowId: data.workflow_id },
+        }))
+      }
     }
   }
 
