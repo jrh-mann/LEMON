@@ -31,18 +31,19 @@ export function sendChatMessage(
   const chatStore = useChatStore.getState()
   const workflowStore = useWorkflowStore.getState()
 
+  // Include current workflow ID so orchestrator knows what to edit
+  const currentWorkflowId = workflowStore.currentWorkflow?.id || chatStore.activeWorkflowId
+
   // Ensure conversation ID exists (generates UUID if first message)
-  chatStore.ensureConversationId()
+  const ensuredConversationId = currentWorkflowId
+    ? chatStore.ensureConversationId(currentWorkflowId)
+    : conversationId || undefined
 
   const taskId = crypto.randomUUID()
-  chatStore.setCurrentTaskId(taskId)
-  chatStore.setStreaming(true)
-
-  // Include current workflow ID so orchestrator knows what to edit
-  const currentWorkflowId = workflowStore.currentWorkflow?.id
-
-  // Get the ensured conversation ID
-  const ensuredConversationId = chatStore.conversationId
+  if (currentWorkflowId) {
+    chatStore.setCurrentTaskId(currentWorkflowId, taskId)
+    chatStore.setStreaming(currentWorkflowId, true)
+  }
 
   // Collect info about the active unsaved workflow
   const openTabs: any[] = []
@@ -112,9 +113,11 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
   const chatStore = useChatStore.getState()
   const workflowStore = useWorkflowStore.getState()
 
-  // Ensure conversationId exists
-  chatStore.ensureConversationId()
-  const conversationIdVal = chatStore.conversationId
+  // Ensure conversationId exists for the active workflow
+  const activeWfId = workflowStore.currentWorkflow?.id || chatStore.activeWorkflowId
+  const conversationIdVal = activeWfId
+    ? chatStore.ensureConversationId(activeWfId)
+    : null
 
   if (!conversationIdVal) {
     console.error('[WS] Failed to generate conversation ID')

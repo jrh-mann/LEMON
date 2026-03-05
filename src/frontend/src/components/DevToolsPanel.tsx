@@ -43,6 +43,9 @@ export default function DevToolsPanel() {
 
     const workflowStore = useWorkflowStore()
     const chatStore = useChatStore()
+    // Read messages from the active workflow's conversation
+    const activeWfId = chatStore.activeWorkflowId
+    const chatMessages = activeWfId ? (chatStore.conversations[activeWfId]?.messages ?? []) : []
 
     // Load tools when Tools tab is selected
     useEffect(() => {
@@ -160,10 +163,10 @@ export default function DevToolsPanel() {
 
                 {activeSection === 'messages' && (
                     <div className="message-inspector">
-                        {chatStore.messages.length === 0 ? (
+                        {chatMessages.length === 0 ? (
                             <p className="empty-state">No messages yet</p>
                         ) : (
-                            chatStore.messages.map((msg, idx) => (
+                            chatMessages.map((msg, idx) => (
                                 <div key={msg.id} className="message-item">
                                     <div className="message-meta">
                                         <span className={`role-badge role-${msg.role}`}>{msg.role}</span>

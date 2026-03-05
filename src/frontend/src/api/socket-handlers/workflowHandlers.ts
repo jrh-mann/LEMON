@@ -3,7 +3,7 @@
  * Handles: workflow_update, analysis_updated, workflow_created,
  *          workflow_saved, pending_question, plan_updated,
  *          subworkflow_created, subworkflow_building,
- *          subworkflow_stream, subworkflow_ready
+ *          build_error, subworkflow_ready
  */
 import { useChatStore } from '../../stores/chatStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
@@ -151,8 +151,11 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
         console.log('[WS] Ignoring cancelled analysis_updated:', taskId)
         return
       }
-      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
-        console.log('[WS] Ignoring stale analysis_updated:', taskId, 'current:', chatStore.currentTaskId)
+      // Check currentTaskId from the active workflow's conversation
+      const activeWfId = chatStore.activeWorkflowId
+      const conv = activeWfId ? chatStore.conversations[activeWfId] : undefined
+      if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
+        console.log('[WS] Ignoring stale analysis_updated:', taskId, 'current:', conv.currentTaskId)
         return
       }
     }
@@ -249,8 +252,9 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
   }
 
   // ===== Background Subworkflow Build Events =====
-  // These events handle live streaming and library auto-refresh for
-  // subworkflows being built by background orchestrators.
+  // These events handle library auto-refresh for subworkflows being built
+  // by background orchestrators. Chat streaming events (chat_stream, chat_thinking,
+  // chat_response, build_user_message) are handled by chatHandlers.
 
   // New subworkflow created — trigger library refresh so it appears
   // with a "Building..." badge without manual page reload
@@ -265,29 +269,16 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
     useWorkflowStore.getState().incrementLibraryRefresh()
   }
 
-  // NOTE: subworkflow_stream is no longer needed — background builders now emit
-  // chat_stream with workflow_id, which is handled by chatHandlers routing.
-
-  // Subworkflow build complete — refresh library badge.
-  // Build events are already buffered unconditionally by chatHandlers,
-  // so we only need to clean up the buffer if the user isn't viewing it.
   // Subworkflow build failed — refresh library to clear "Building..." badge
   handlers['build_error'] = (data: { workflow_id: string; error: string }) => {
     console.error('[WS] build_error:', data.workflow_id, data.error)
     useWorkflowStore.getState().incrementLibraryRefresh()
   }
 
+  // Subworkflow build complete — refresh library badge.
+  // Chat conversation state is managed by chatStore, no cleanup needed here.
   handlers['subworkflow_ready'] = (data: { workflow_id: string }) => {
     console.log('[WS] subworkflow_ready:', data.workflow_id)
-    const ws = useWorkflowStore.getState()
-
-    // Refresh library so "Building..." badge clears
-    ws.incrementLibraryRefresh()
-
-    // Clean up buffer if user isn't viewing this workflow —
-    // the complete build state is persisted in DB anyway.
-    if (!ws.currentWorkflow?.id || ws.currentWorkflow.id !== data.workflow_id) {
-      ws.removeBuildBuffer(data.workflow_id)
-    }
+    useWorkflowStore.getState().incrementLibraryRefresh()
   }
 }

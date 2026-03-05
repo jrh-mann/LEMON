@@ -49,7 +49,7 @@ def _run_subworkflow_builder(
     from ...api.builder_callbacks import BackgroundBuilderCallbacks
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
-    # tagged with workflow_id so frontend routes them to workflowStore
+    # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
     cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id)
     response_text = ""
 
@@ -74,6 +74,8 @@ def _run_subworkflow_builder(
                 workflow_id, brief[:100],
             )
 
+            # Emit the brief as a user message so the frontend shows it during streaming
+            cb.emit_user_message(brief)
             cb.emit_progress("Building workflow...", event="start")
 
             # Run the orchestrator with the brief — it will use its tools to build

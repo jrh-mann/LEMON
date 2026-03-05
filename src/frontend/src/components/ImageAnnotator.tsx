@@ -383,9 +383,11 @@ export default function ImageAnnotator({ imageSrc, annotations, onChange }: Prop
                     const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
 
                     chatStore.sendUserMessage(combinedMessage)
+                    const activeWfId = chatStore.activeWorkflowId
+                    const convId = activeWfId ? chatStore.conversations[activeWfId]?.conversationId : null
                     sendChatMessage(
                         combinedMessage,
-                        chatStore.conversationId,
+                        convId,
                         filesToSend,
                         updated
                     )

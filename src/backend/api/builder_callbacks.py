@@ -1,9 +1,9 @@
 """Reusable callback class for background subworkflow builders.
 
 Emits the same chat_* events as WsChatTask, but tags each event with
-`workflow_id` instead of `task_id`. The frontend routes events by
-checking for workflow_id — if present and matching the currently viewed
-workflow, they go to workflowStore; otherwise they go to chatStore.
+`workflow_id`. The frontend routes ALL events to chatStore.conversations[workflow_id]
+— both normal orchestrator chats and background builder chats use the same
+per-workflow conversation map. No separate build buffer system.
 
 Uses ConnectionRegistry + conn_id instead of SocketIO + sid. All emit
 calls go through registry.send_to_sync() for thread-safe async bridging.
@@ -15,6 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from ..tools.constants import WORKFLOW_EDIT_TOOLS
+from .tool_summaries import ToolSummaryTracker
 from .ws_registry import ConnectionRegistry
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,9 @@ class BackgroundBuilderCallbacks:
         self.workflow_id = workflow_id
         self.cancelled = False
         self.executed_tools: List[Dict[str, Any]] = []
+        # ToolSummaryTracker injects inline markdown summaries (e.g. "> Added a workflow node.")
+        # between tool rounds — matches WsChatTask behavior for visual structure in the stream.
+        self.tool_summary = ToolSummaryTracker()
 
     def _emit(self, event: str, payload: dict) -> None:
         """Emit via registry (sync, from background thread)."""
@@ -58,6 +62,13 @@ class BackgroundBuilderCallbacks:
             "workflow_id": self.workflow_id,
         })
 
+    def emit_user_message(self, content: str) -> None:
+        """Emit the initial user prompt so the frontend shows it during streaming."""
+        self._emit("build_user_message", {
+            "content": content,
+            "workflow_id": self.workflow_id,
+        })
+
     def emit_progress(self, status: str, event: str = "update") -> None:
         """Emit chat_progress with workflow_id tag."""
         self._emit("chat_progress", {
@@ -74,6 +85,12 @@ class BackgroundBuilderCallbacks:
         """Mark this build as cancelled."""
         self.cancelled = True
 
+    def flush_tool_summary(self) -> None:
+        """Flush accumulated tool summaries into the stream as inline markdown."""
+        summary = self.tool_summary.flush()
+        if summary:
+            self.stream_chunk(summary)
+
     def on_tool_event(
         self,
         event: str,
@@ -83,8 +100,9 @@ class BackgroundBuilderCallbacks:
     ) -> None:
         """Handle tool lifecycle events — mirrors WsChatTask.on_tool_event.
 
-        Tracks tool calls and emits workflow_update for edit tools so nodes
-        appear on the canvas live during the build.
+        Tracks tool calls, injects inline tool summaries via ToolSummaryTracker,
+        and emits workflow_update for edit tools so nodes appear on the canvas
+        live during the build.
         """
         if event == "tool_start":
             self.executed_tools.append({
@@ -93,10 +111,17 @@ class BackgroundBuilderCallbacks:
                 "status": "running",
             })
         elif event == "tool_complete" and isinstance(result, dict):
+            if result.get("skipped"):
+                return
+            success = True
+            if "success" in result:
+                success = bool(result.get("success"))
+            # Track in ToolSummaryTracker for inline summaries
+            self.tool_summary.note(tool, success=success)
             for entry in reversed(self.executed_tools):
                 if entry.get("tool") == tool and "result" not in entry:
                     entry["result"] = result
-                    entry["success"] = bool(result.get("success"))
+                    entry["success"] = success
                     entry["status"] = "complete"
                     break
 
@@ -106,9 +131,18 @@ class BackgroundBuilderCallbacks:
                     "action": action,
                     "data": result,
                 })
+        elif event == "tool_batch_complete":
+            # Flush accumulated summaries into the stream between tool rounds
+            self.flush_tool_summary()
+
+        # Skip further socket emissions when cancelled
+        if self.cancelled:
+            return
 
     def emit_response(self, response_text: str) -> None:
         """Emit chat_response with workflow_id tag — signals build complete."""
+        # Flush any remaining tool summaries before the final response
+        self.flush_tool_summary()
         self._emit("chat_response", {
             "response": response_text,
             "workflow_id": self.workflow_id,

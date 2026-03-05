@@ -134,7 +134,13 @@ class WsChatTask:
         return _is_task_cancelled(self.conn_id, self.task_id)
 
     def _emit(self, event: str, payload: dict) -> None:
-        """Emit a JSON message via the registry (sync, from background thread)."""
+        """Emit a JSON message via the registry (sync, from background thread).
+
+        Automatically includes workflow_id so the frontend can route events
+        to the correct per-workflow conversation.
+        """
+        if self.current_workflow_id and "workflow_id" not in payload:
+            payload["workflow_id"] = self.current_workflow_id
         self.registry.send_to_sync(self.conn_id, event, payload)
 
     def emit_progress(self, event: str, status: str, *, tool: Optional[str] = None) -> None:

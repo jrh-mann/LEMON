@@ -76,6 +76,9 @@ export default function WorkflowPage() {
             loadedWorkflowIdRef.current = id
         }
 
+        // Set activeWorkflowId early so sendUserMessage routes to the right conversation
+        useChatStore.getState().setActiveWorkflowId(id)
+
         // 1. Play Home Exit animation
         setHomeExited(true)
 
@@ -152,36 +155,31 @@ export default function WorkflowPage() {
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId
 
-                // Load build state into workflowStore (NOT chatStore).
-                // chatStore is the user's orchestrator conversation — never modify it here.
-                const ws = useWorkflowStore.getState()
+                // Set active workflow in chatStore so Chat.tsx reads this workflow's conversation.
+                // All events (normal chat and builder) route to conversations[workflowId].
+                const cs = useChatStore.getState()
+                cs.setActiveWorkflowId(workflowId)
 
+                // Load build_history into chatStore, but only if no streaming events
+                // have already populated the conversation (e.g. user navigated after
+                // the builder started emitting events).
                 if (workflowData.build_history?.length) {
-                    // Completed subworkflow build — show builder conversation (read-only)
-                    const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
-                        id: `bh_${crypto.randomUUID()}`,
-                        role: msg.role as 'user' | 'assistant',
-                        content: msg.content,
-                        timestamp: new Date().toISOString(),
-                        tool_calls: [],
-                    }))
-                    ws.setBuildHistory(workflowId, historyMessages)
-                } else if (workflowData.building) {
-                    // Still building — show building indicator and enable streaming.
-                    // Builder events are already being buffered by chatHandlers,
-                    // so we just mark the buffer as having a history entry to trigger
-                    // build mode in Chat.tsx.
-                    ws.setBuildHistory(workflowId, [{
-                        id: `bh_building_${crypto.randomUUID()}`,
-                        role: 'system' as const,
-                        content: 'This workflow is currently being built by a background agent. Live progress will appear below.',
-                        timestamp: new Date().toISOString(),
-                        tool_calls: [],
-                    }])
-                    ws.setBuildStreaming(workflowId, true)
-                } else {
-                    // Normal editing workflow — no build buffer needed
-                    ws.removeBuildBuffer(workflowId)
+                    const existingConv = cs.conversations?.[workflowId]
+                    if (!existingConv?.messages?.length) {
+                        const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
+                            id: `bh_${crypto.randomUUID()}`,
+                            role: msg.role as 'user' | 'assistant',
+                            content: msg.content,
+                            timestamp: new Date().toISOString(),
+                            tool_calls: [],
+                        }))
+                        cs.setMessages(workflowId, historyMessages)
+                    }
+                }
+                // Separate from build_history: if an update is in progress,
+                // mark as streaming so Chat.tsx shows the streaming overlay.
+                if (workflowData.building) {
+                    cs.setStreaming(workflowId, true)
                 }
 
                 // After state is set, trigger the staggered reveal if we are still hidden
@@ -199,6 +197,7 @@ export default function WorkflowPage() {
                 // 404 = new workflow (not in DB yet) — sync URL ID to store
                 if (err instanceof ApiError && err.status === 404) {
                     setCurrentWorkflowId(workflowId)
+                    useChatStore.getState().setActiveWorkflowId(workflowId)
                     loadedWorkflowIdRef.current = workflowId
                     return
                 }
@@ -231,8 +230,8 @@ export default function WorkflowPage() {
                 })
                 setFlowchart(fc)
 
-                // Load complete build_history into workflowStore buffer (not chatStore)
-                const ws = useWorkflowStore.getState()
+                // Load complete build_history into chatStore conversation
+                const cs = useChatStore.getState()
                 if (workflowData.build_history?.length) {
                     const historyMessages = workflowData.build_history.map(
                         (msg: { role: string; content: string }) => ({
@@ -243,7 +242,7 @@ export default function WorkflowPage() {
                             tool_calls: [],
                         })
                     )
-                    ws.setBuildHistory(workflowId, historyMessages)
+                    cs.setMessages(workflowId, historyMessages)
                 }
             } catch (err) {
                 console.error('[WorkflowPage] Failed to re-fetch after build complete:', err)
@@ -254,14 +253,9 @@ export default function WorkflowPage() {
         return () => window.removeEventListener('subworkflow-build-complete', handleBuildComplete)
     }, [workflowId, setFlowchart])
 
-    // Clear build state when leaving this page.
-    // Chat state is NOT cleared — the socket stays connected across navigations,
-    // so in-flight orchestrator tasks continue receiving events normally.
-    useEffect(() => {
-        return () => {
-            useWorkflowStore.getState().clearBuildState()
-        }
-    }, [])
+    // No cleanup needed on unmount — conversation state persists in chatStore
+    // across navigations. The socket stays connected so in-flight tasks
+    // continue receiving events normally.
 
     // Error toast auto-dismiss
     useEffect(() => {

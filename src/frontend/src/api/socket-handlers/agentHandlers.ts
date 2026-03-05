@@ -15,32 +15,37 @@ import type { HandlerMap } from './index'
 
 /** Register all agent-related event handlers into the handler map */
 export function registerAgentHandlers(handlers: HandlerMap): void {
-  // Agent error
+  // Agent error — route to the appropriate workflow conversation
   handlers['agent_error'] = (data: SocketAgentError) => {
     console.error('[WS] agent_error:', data)
     const chatStore = useChatStore.getState()
     const uiStore = useUIStore.getState()
     const taskId = data.task_id
+    const workflowId = (data as { workflow_id?: string }).workflow_id || chatStore.activeWorkflowId
 
     if (taskId) {
       if (chatStore.isTaskCancelled(taskId)) {
         console.log('[WS] Ignoring cancelled agent_error:', taskId)
         return
       }
-      if (chatStore.currentTaskId && taskId !== chatStore.currentTaskId) {
-        console.log('[WS] Ignoring stale agent_error:', taskId)
-        return
+      if (workflowId) {
+        const conv = chatStore.conversations[workflowId]
+        if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
+          console.log('[WS] Ignoring stale agent_error:', taskId)
+          return
+        }
       }
     }
 
-    chatStore.setStreaming(false)
+    if (workflowId) {
+      chatStore.setStreaming(workflowId, false)
+      chatStore.setProcessingStatus(workflowId, null)
+      chatStore.setCurrentTaskId(workflowId, null)
+    }
     chatStore.clearPendingQuestion()
-    chatStore.setProcessingStatus(null)
-    chatStore.clearStreamContent()
-    chatStore.clearCurrentTaskId()
     useWorkflowStore.getState().setPlan([])
 
-    addAssistantMessage(`Error: ${data.error}`)
+    addAssistantMessage(`Error: ${data.error}`, [], workflowId || undefined)
     uiStore.setError(data.error)
   }
 }

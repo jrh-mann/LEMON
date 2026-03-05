@@ -19,21 +19,21 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const isUserScrolledUp = useRef(false)
   const isProgrammaticScroll = useRef(false)
 
-  const {
-    messages,
-    conversationId,
-    isStreaming,
-    streamingContent,
-    processingStatus,
-    thinkingContent,
-    currentTaskId,
-    pendingQuestions,
-    clearPendingQuestion,
-    sendUserMessage,
-    finalizeStreamingMessage,
-    markTaskCancelled,
-    clearCurrentTaskId,
-  } = useChatStore()
+  // Read from the active workflow's conversation — no dual-mode, same path for all workflows
+  const activeWorkflowId = useChatStore(s => s.activeWorkflowId)
+  const conv = useChatStore(s => activeWorkflowId ? s.conversations[activeWorkflowId] : undefined)
+  const messages = conv?.messages ?? []
+  const isStreaming = conv?.isStreaming ?? false
+  const streamingContent = conv?.streamingContent ?? ''
+  const processingStatus = conv?.processingStatus ?? null
+  const thinkingContent = conv?.thinkingContent ?? ''
+  const currentTaskId = conv?.currentTaskId ?? null
+
+  // Global state (not per-workflow)
+  const pendingQuestions = useChatStore(s => s.pendingQuestions)
+  const clearPendingQuestion = useChatStore(s => s.clearPendingQuestion)
+  const sendUserMessage = useChatStore(s => s.sendUserMessage)
+  const markTaskCancelled = useChatStore(s => s.markTaskCancelled)
 
   const {
     pendingFiles,
@@ -45,43 +45,16 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     setPlan,
   } = useWorkflowStore()
 
+  const conversationId = conv?.conversationId ?? null
+
   // Current question is the front of the queue (null if empty)
   const pendingQuestion = pendingQuestions[0] ?? null
 
-  // Read build buffer keyed by the currently viewed workflow.
-  // Events are always buffered by workflow_id, so if the user navigates
-  // to a subworkflow mid-build, the buffer already has the streamed content.
-  const currentWorkflowId = useWorkflowStore(s => s.currentWorkflow?.id)
-  const buildBuffer = useWorkflowStore(s => currentWorkflowId ? s.buildBuffers[currentWorkflowId] : undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Dual-source rendering: build mode (viewing library subworkflow)
-  // vs normal chat mode (user's orchestrator conversation).
-  // A buffer with non-null history means WorkflowPage loaded a build from DB;
-  // active streaming also indicates a live build in progress.
-  const isViewingBuild = (buildBuffer?.history ?? null) !== null || (buildBuffer?.streaming ?? false)
-  const displayMessages = isViewingBuild && buildBuffer?.history ? buildBuffer.history : (isViewingBuild ? [] : messages)
-  const displayStreaming = isViewingBuild ? (buildBuffer?.streaming ?? false) : isStreaming
-  const displayStreamContent = isViewingBuild ? (buildBuffer?.streamContent ?? '') : streamingContent
 
   const { chatHeight, setChatHeight } = useUIStore()
 
-  // Finalize build streams on unmount so partial content doesn't persist
-  useEffect(() => {
-    return () => {
-      const wfId = useWorkflowStore.getState().currentWorkflow?.id
-      if (wfId) {
-        const buf = useWorkflowStore.getState().buildBuffers[wfId]
-        if (buf?.streaming) {
-          useWorkflowStore.getState().finalizeBuildStream(wfId)
-        }
-      }
-    }
-  }, [])
-
   // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
-  // Tracks whether the user has scrolled up inside the thinking container so we
-  // stop snapping to the bottom while they're reading earlier reasoning.
   const thinkingRef = useRef<HTMLDivElement>(null)
   const isThinkingScrolledUp = useRef(false)
 
@@ -96,12 +69,10 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     toggleListening: rawToggleListening,
   } = useVoiceInput({
     onTranscript: (text) => {
-      // Final transcript - commit to base text
       baseTextRef.current = baseTextRef.current ? `${baseTextRef.current} ${text}` : text
       setInputValue(baseTextRef.current)
     },
     onInterimTranscript: (text) => {
-      // Show interim results in real-time
       setInputValue(baseTextRef.current ? `${baseTextRef.current} ${text}` : text)
     },
   })
@@ -109,7 +80,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   // Wrap toggle to capture base text when starting
   const toggleListening = useCallback(() => {
     if (!isListening) {
-      // Starting - capture current input as base
       baseTextRef.current = inputValue
     }
     rawToggleListening()
@@ -132,18 +102,14 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       })
     }
     reader.readAsDataURL(file)
-    // Reset input so the same file can be re-selected
     e.target.value = ''
   }, [addPendingFile])
 
   // Track if user has scrolled up manually (ignore programmatic scrolls)
   const handleScroll = useCallback(() => {
-    // Ignore scroll events caused by our own scrollIntoView calls
     if (isProgrammaticScroll.current) return
-
     const container = messagesContainerRef.current
     if (!container) return
-    // Consider "at bottom" if within 100px of the bottom
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
     isUserScrolledUp.current = !atBottom
   }, [])
@@ -152,37 +118,34 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const scrollToBottom = useCallback(() => {
     isProgrammaticScroll.current = true
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    // Reset flag after scroll animation completes
     setTimeout(() => {
       isProgrammaticScroll.current = false
     }, 100)
   }, [])
 
   // Auto-scroll to bottom when new messages are added
-  // But only if user hasn't scrolled up manually
   useEffect(() => {
     if (!isUserScrolledUp.current) {
       scrollToBottom()
     }
-  }, [displayMessages, scrollToBottom])
+  }, [messages, scrollToBottom])
 
   // Reset scroll tracking and scroll to bottom when streaming starts
   useEffect(() => {
-    if (displayStreaming) {
+    if (isStreaming) {
       isUserScrolledUp.current = false
       scrollToBottom()
     }
-  }, [displayStreaming, scrollToBottom])
+  }, [isStreaming, scrollToBottom])
 
-  // Auto-scroll the thinking stream container to bottom when new chunks arrive,
-  // but only if the user hasn't scrolled up to read earlier reasoning.
+  // Auto-scroll the thinking stream container
   useEffect(() => {
     if (thinkingRef.current && !isThinkingScrolledUp.current) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
     }
   }, [thinkingContent])
 
-  // Reset the scroll-up flag when thinking content is cleared (analysis finished)
+  // Reset the scroll-up flag when thinking content is cleared
   useEffect(() => {
     if (!thinkingContent) {
       isThinkingScrolledUp.current = false
@@ -211,10 +174,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     const trimmed = inputValue.trim()
     if (!trimmed || isStreaming) return
 
-    // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - only include files on first send (not every follow-up message)
+    // Send via socket — only include files on first send
     const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
     sendChatMessage(
       trimmed,
@@ -222,32 +184,24 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       filesToSend,
     )
 
-    // Mark files as sent so they aren't re-sent on every subsequent message.
-    // Files stay in pendingFiles for the Source Image tab display.
     if (filesToSend) {
       markFilesSent()
     }
 
-    // Clear input, pending question, and reset voice base text
     clearPendingQuestion()
     setInputValue('')
     baseTextRef.current = ''
   }
 
-  // Handle clicking an option chip on a question card.
-  // For multi-question batches, answers are collected locally and only
-  // sent to the backend after the last question is answered.
+  // Handle clicking an option chip on a question card
   const handleAnswerQuestion = (optionLabel: string) => {
     const questionText = pendingQuestion?.question || ''
     const answer = questionText
       ? `${questionText}: ${optionLabel}`
       : optionLabel
 
-    // Show the clicked label in chat
     sendUserMessage(optionLabel)
-    // Collect the answer
     collectedAnswers.current.push(answer)
-    // Pop the current question from the queue
     clearPendingQuestion()
     setShowCustomAnswer(false)
     setCustomAnswer('')
@@ -255,7 +209,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     baseTextRef.current = ''
 
     // If no more questions remain, send all collected answers to the backend
-    const remaining = pendingQuestions.length - 1  // -1 because clearPendingQuestion hasn't re-rendered yet
+    const remaining = pendingQuestions.length - 1
     if (remaining <= 0) {
       const fullMessage = collectedAnswers.current.join('\n')
       sendChatMessage(fullMessage, conversationId)
@@ -268,9 +222,10 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       cancelChatTask(currentTaskId)
       markTaskCancelled(currentTaskId)
     }
-    finalizeStreamingMessage()
-    setPlan([])  // Clear checklist on manual stop
-    clearCurrentTaskId()
+    if (activeWorkflowId) {
+      useChatStore.getState().finalizeStream(activeWorkflowId)
+    }
+    setPlan([])
     textareaRef.current?.focus()
   }
 
@@ -295,13 +250,11 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const startY = useRef(0)
   const startHeight = useRef(0)
 
-  // Handle resize drag
   const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()  // Prevent text selection
+    e.preventDefault()
     isDragging.current = true
     startY.current = e.clientY
     startHeight.current = chatHeight
-    // Disable text selection and set cursor during drag
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'ns-resize'
     document.addEventListener('mousemove', handleMouseMove)
@@ -311,14 +264,12 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging.current) return
     const delta = startY.current - e.clientY
-    // Min 0, max 60% of viewport to leave room for workspace
     const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
     setChatHeight(newHeight)
   }
 
   const handleMouseUp = () => {
     isDragging.current = false
-    // Restore text selection and cursor
     document.body.style.userSelect = ''
     document.body.style.cursor = ''
     document.removeEventListener('mousemove', handleMouseMove)
@@ -333,38 +284,34 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       </div>
 
       <div className="chat-messages" id="chatThread" ref={messagesContainerRef} onScroll={handleScroll}>
-        {displayMessages.length === 0 ? (
+        {messages.length === 0 && !isStreaming ? (
           <div className="chat-empty">
             <p className="muted">
-              {isViewingBuild
-                ? 'No build history available for this workflow.'
-                : 'Start by describing your workflow or uploading a flowchart image.'}
+              Start by describing your workflow or uploading a flowchart image.
             </p>
-            {!isViewingBuild && (
-              <div className="chat-suggestions">
-                <button
-                  className="suggestion-chip"
-                  onClick={() => setInputValue('Show me nephrology workflows')}
-                >
-                  Browse nephrology workflows
-                </button>
-                <button
-                  className="suggestion-chip"
-                  onClick={() => setInputValue('Create a workflow for blood pressure classification')}
-                >
-                  Create BP classification
-                </button>
-              </div>
-            )}
+            <div className="chat-suggestions">
+              <button
+                className="suggestion-chip"
+                onClick={() => setInputValue('Show me nephrology workflows')}
+              >
+                Browse nephrology workflows
+              </button>
+              <button
+                className="suggestion-chip"
+                onClick={() => setInputValue('Create a workflow for blood pressure classification')}
+              >
+                Create BP classification
+              </button>
+            </div>
           </div>
         ) : (
-          displayMessages.map((message) => (
+          messages.map((message) => (
             <MessageBubble key={message.id} message={message} renderMarkdown={renderMarkdown} />
           ))
         )}
 
 
-        {displayStreaming && (() => {
+        {isStreaming && (() => {
           // Rolling plan window: show ~8 items centered around current progress
           const maxVisible = 8
           const firstPending = plan.findIndex(item => !item.done)
@@ -372,11 +319,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           const windowStart = Math.max(0, anchor - 3)
           const visiblePlan = plan.slice(windowStart, windowStart + maxVisible)
 
-          // Reusable plan checklist rendered below the processing status
           const planChecklist = visiblePlan.length > 0 && (
             <div className="plan-checklist">
               {visiblePlan.map((item, i) => {
-                // First non-done item is the "current" one (orange)
                 const isActive = !item.done && (i === 0 || visiblePlan[i - 1]?.done)
                 return (
                   <div key={windowStart + i} className={`plan-item ${item.done ? 'done' : ''} ${isActive ? 'active' : ''}`}>
@@ -388,17 +333,12 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             </div>
           )
 
-          // Use build-specific thinking/processing when viewing a build,
-          // otherwise use chatStore's (main orchestrator) values.
-          const showThinking = isViewingBuild ? (buildBuffer?.thinkingContent ?? '') : thinkingContent
-          const showProcessing = isViewingBuild ? (buildBuffer?.processingStatus ?? null) : processingStatus
-
           return (
             <div className="message assistant streaming">
               <div className="message-content">
-                {displayStreamContent ? (
+                {streamingContent ? (
                   <>
-                    {showThinking && (
+                    {thinkingContent && (
                       <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
                         <span className="thinking-label">Reasoning</span>
                         <div className="thinking-text">{thinkingContent}</div>
@@ -406,20 +346,20 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                     )}
                     <div
                       dangerouslySetInnerHTML={{
-                        __html: renderMarkdown(displayStreamContent),
+                        __html: renderMarkdown(streamingContent),
                       }}
                     />
-                    {showProcessing && (
+                    {processingStatus && (
                       <span className="processing-status">
                         <span className="status-dot"></span>
-                        {showProcessing}
+                        {processingStatus}
                       </span>
                     )}
-                    {!isViewingBuild && planChecklist}
+                    {planChecklist}
                   </>
-                ) : showProcessing ? (
+                ) : processingStatus ? (
                   <>
-                    {showThinking && (
+                    {thinkingContent && (
                       <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
                         <span className="thinking-label">Reasoning</span>
                         <div className="thinking-text">{thinkingContent}</div>
@@ -427,9 +367,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                     )}
                     <span className="processing-status">
                       <span className="status-dot"></span>
-                      {showProcessing}
+                      {processingStatus}
                     </span>
-                    {!isViewingBuild && planChecklist}
+                    {planChecklist}
                   </>
                 ) : (
                   <span className="typing-indicator">
@@ -523,12 +463,12 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           <textarea
             ref={textareaRef}
             id="chatInput"
-            placeholder={isViewingBuild ? 'Viewing build history...' : 'Describe your workflow...'}
+            placeholder={isStreaming ? 'Agent is working...' : 'Describe your workflow...'}
             rows={1}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={displayStreaming || isViewingBuild}
+            disabled={isStreaming}
           />
           {/* Hidden file input for image/PDF upload */}
           <input
@@ -542,7 +482,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             className="voice-btn"
             title="Upload image or PDF"
             onClick={() => fileInputRef.current?.click()}
-            disabled={displayStreaming || isViewingBuild}
+            disabled={isStreaming}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -555,7 +495,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             id="voiceBtn"
             title={isVoiceSupported ? (isListening ? 'Stop recording' : 'Voice input') : 'Voice not supported'}
             onClick={toggleListening}
-            disabled={!isVoiceSupported || displayStreaming || isViewingBuild}
+            disabled={!isVoiceSupported || isStreaming}
             style={isListening ? {
               '--volume': volume,
               transform: `scale(${1 + volume * 0.3})`,
@@ -568,7 +508,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
           </button>
-          {isStreaming && !isViewingBuild ? (
+          {isStreaming ? (
             <button
               className="ghost"
               id="stopBtn"
@@ -576,7 +516,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             >
               Stop
             </button>
-          ) : !isViewingBuild ? (
+          ) : (
             <button
               className="primary"
               id="sendBtn"
@@ -585,7 +525,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             >
               Send
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
