@@ -18,11 +18,12 @@ class TestBuildSystemPrompt:
         assert len(prompt) > 100
 
     def test_image_analysis_section_present(self):
-        """The Image Analysis section should be in the prompt."""
+        """The Image-to-Workflow Conversion section should be in the prompt."""
         from src.backend.agents.system_prompt import build_system_prompt
 
         prompt = build_system_prompt()
-        assert "## Image Analysis" in prompt
+        assert "## Image-to-Workflow Conversion" in prompt
+        assert "extract_guidance" in prompt
         assert "update_plan" in prompt
         assert "view_image" in prompt
         assert "ask_question" in prompt
