@@ -97,6 +97,11 @@ def _update_summary(entry: Dict[str, Any]) -> None:
     _write_json(summary_path, summary)
 
 
+# Cap the token usage log to prevent unbounded growth.
+# Oldest entries are dropped when the limit is exceeded.
+_MAX_LOG_ENTRIES = 10_000
+
+
 def record_token_usage(entry: Dict[str, Any]) -> None:
     entry = dict(entry)
     entry.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
@@ -106,5 +111,8 @@ def record_token_usage(entry: Dict[str, Any]) -> None:
     with _LOCK:
         log_entries = _load_json_list(log_path)
         log_entries.append(entry)
+        # Drop oldest entries to prevent the log file from growing forever
+        if len(log_entries) > _MAX_LOG_ENTRIES:
+            log_entries = log_entries[-_MAX_LOG_ENTRIES:]
         _write_json(log_path, log_entries)
         _update_summary(entry)

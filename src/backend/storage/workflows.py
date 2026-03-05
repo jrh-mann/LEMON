@@ -431,6 +431,28 @@ class WorkflowStore:
             self._logger.info("Workflow %s already building — atomic set failed", workflow_id)
         return won
 
+    def clear_stale_building_flags(self) -> int:
+        """Reset building=True flags left by dead threads after server restart.
+
+        Called once at startup. Any workflow still marked building=True has a
+        dead builder thread (daemon threads don't survive restarts).
+
+        Returns:
+            Number of workflows whose building flag was cleared.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE workflows SET building = 0, updated_at = ? WHERE building = 1",
+                (now,),
+            )
+            count = cursor.rowcount
+        if count:
+            self._logger.warning(
+                "Cleared stale building flag on %d workflow(s) from previous server run", count,
+            )
+        return count
+
     def delete_workflow(self, workflow_id: str, user_id: str) -> bool:
         """Delete a workflow.
 

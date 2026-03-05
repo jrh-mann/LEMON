@@ -60,7 +60,7 @@ def register_ws_endpoint(
         # --- Accept and register connection ---
         await ws.accept()
         conn_id = uuid4().hex
-        ws_registry.register(conn_id, ws)
+        ws_registry.register(conn_id, ws, user.id)
         await ws.send_json({"type": "connected", "payload": {"conn_id": conn_id}})
         logger.info("WS connected user_id=%s conn_id=%s", user.id, conn_id)
 
@@ -80,6 +80,16 @@ def register_ws_endpoint(
                 if msg_type == "reconnect":
                     old_conn_id = payload.get("conn_id")
                     if old_conn_id and ws_registry.has(old_conn_id):
+                        # Verify ownership — prevent session hijacking by
+                        # ensuring the reconnecting user owns the old conn_id
+                        old_owner = ws_registry.get_user_id(old_conn_id)
+                        if old_owner != user.id:
+                            logger.warning(
+                                "WS reconnect rejected: user %s tried to claim conn_id owned by %s",
+                                user.id, old_owner,
+                            )
+                            await ws.send_json({"type": "error", "payload": {"message": "Not your connection"}})
+                            continue
                         # Reuse the old conn_id — rebind it to the new WebSocket.
                         # The background thread still holds old_conn_id, so its
                         # send_to_sync() calls immediately reach the new socket.

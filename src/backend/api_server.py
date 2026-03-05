@@ -30,8 +30,10 @@ workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI lifespan — sets the event loop on the registry."""
+    """FastAPI lifespan — sets the event loop on the registry and cleans up stale state."""
     ws_registry.set_loop(asyncio.get_running_loop())
+    # Clear building=True flags left by daemon threads that died on last shutdown
+    workflow_store.clear_stale_building_flags()
     yield
 
 

@@ -59,8 +59,14 @@ def register_workflow_routes(
         The current canvas workflow (if unsaved) is not included - use the
         LLM's list_workflows_in_library tool to see that.
         """
-        limit = min(int(request.query_params.get("limit", 100)), 500)
-        offset = max(int(request.query_params.get("offset", 0)), 0)
+        try:
+            limit = min(int(request.query_params.get("limit", 100)), 500)
+        except (ValueError, TypeError):
+            limit = 100
+        try:
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
 
         workflows, total_count = workflow_store.list_workflows(
             user.id,

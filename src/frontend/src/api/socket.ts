@@ -74,10 +74,9 @@ export function connectSocket(): void {
     reconnectAttempts = 0
     useUIStore.getState().clearError()
 
-    // Reconnection handshake: if we have a saved conn_id and an active task,
-    // ask the server to rebind the old conn_id to this new WebSocket.
-    const chatStore = useChatStore.getState()
-    if (savedConnId && chatStore.currentTaskId) {
+    // Reconnection handshake: always try to rebind if we have a saved conn_id.
+    // This ensures background builder events still reach us even when idle.
+    if (savedConnId) {
       sendMessage('reconnect', { conn_id: savedConnId })
     }
   }

@@ -41,8 +41,14 @@ def register_peer_review_routes(
             offset: pagination offset
         """
         review_status = request.query_params.get("review_status")
-        limit = min(int(request.query_params.get("limit", 100)), 500)
-        offset = max(int(request.query_params.get("offset", 0)), 0)
+        try:
+            limit = min(int(request.query_params.get("limit", 100)), 500)
+        except (ValueError, TypeError):
+            limit = 100
+        try:
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
 
         # Validate review_status if provided
         if review_status and review_status not in ("unreviewed", "reviewed"):

@@ -521,7 +521,9 @@ def call_llm_stream(
             return stream.get_final_message()
 
     def _notify_retry_stream(attempt: int, msg: str) -> None:
-        on_delta(f"\n\n*Retrying ({attempt}/{_MAX_RETRIES})...*\n\n")
+        # Log retry but do NOT inject into the response stream via on_delta —
+        # that would pollute the orchestrator's streamed_chunks and history.
+        logger.warning("Retrying streaming request (%d/%d): %s", attempt, _MAX_RETRIES, msg)
 
     start = time.perf_counter()
     request_id = uuid.uuid4().hex

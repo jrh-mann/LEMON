@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -81,24 +82,31 @@ class ConversationStore:
     def __init__(self, repo_root: Path) -> None:
         self._repo_root = repo_root
         self._conversations: Dict[str, Conversation] = {}
+        # Lock protects _conversations from concurrent WS thread access
+        self._lock = threading.Lock()
 
     def get_or_create(self, conversation_id: Optional[str]) -> Conversation:
-        if conversation_id and conversation_id in self._conversations:
-            convo = self._conversations[conversation_id]
-            convo.updated_at = utc_now()
+        with self._lock:
+            if conversation_id and conversation_id in self._conversations:
+                convo = self._conversations[conversation_id]
+                convo.updated_at = utc_now()
+                return convo
+            # Evict oldest conversations when at capacity
+            self._evict_if_full()
+            new_id = conversation_id or f"conv_{uuid4().hex}"
+            convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root))
+            self._conversations[new_id] = convo
             return convo
-        # Evict oldest conversations when at capacity
-        self._evict_if_full()
-        new_id = conversation_id or f"conv_{uuid4().hex}"
-        convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root))
-        self._conversations[new_id] = convo
-        return convo
 
     def get(self, conversation_id: str) -> Optional[Conversation]:
-        return self._conversations.get(conversation_id)
+        with self._lock:
+            return self._conversations.get(conversation_id)
 
     def _evict_if_full(self) -> None:
-        """Remove oldest conversations when store exceeds max capacity."""
+        """Remove oldest conversations when store exceeds max capacity.
+
+        Must be called while self._lock is held.
+        """
         if len(self._conversations) < _MAX_CONVERSATIONS:
             return
         # Sort by updated_at, evict oldest 10%

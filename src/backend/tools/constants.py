@@ -84,3 +84,14 @@ USER_TYPE_TO_INTERNAL = {
 VALID_WORKFLOW_OUTPUT_TYPES = frozenset({"string", "number", "bool", "json"})
 
 
+# --- Background Builder Concurrency ---
+# Caps the number of concurrent background builder threads (create + update)
+# to prevent runaway thread spawning if the LLM calls create_subworkflow in a loop.
+import threading as _threading  # noqa: E402
+
+_MAX_CONCURRENT_BUILDERS = 5
+builder_semaphore = _threading.Semaphore(_MAX_CONCURRENT_BUILDERS)
+
+# Maximum build_history messages to persist in DB per workflow.
+# Prevents unbounded blob growth from long builder conversations.
+MAX_BUILD_HISTORY_MESSAGES = 100

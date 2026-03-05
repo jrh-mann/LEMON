@@ -16,6 +16,8 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 def resolve_node_id(
     identifier: str,
     nodes: List[Dict[str, Any]],
@@ -289,6 +291,7 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
             })
         return result
     except Exception:
+        logger.exception("Failed to list workflows for subprocess node dropdown")
         return []
 
 

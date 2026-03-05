@@ -513,11 +513,11 @@ class Orchestrator:
             guidance=self._guidance if self._guidance else None,
         )
 
-        # Limit history to last 20 messages (10 exchanges) to prevent context overflow
-        limited_history = self.history[-20:] if len(self.history) > 20 else self.history
-        if len(self.history) > 20:
+        # Limit history to last 100 messages (50 exchanges) to prevent context overflow
+        limited_history = self.history[-100:] if len(self.history) > 100 else self.history
+        if len(self.history) > 100:
             self._logger.warning(
-                "History truncated from %d to 20 messages to fit context window",
+                "History truncated from %d to 100 messages to fit context window",
                 len(self.history)
             )
 
@@ -808,6 +808,17 @@ class Orchestrator:
                     ),
                 }
             )
+            # Trim messages if they've grown too large during the tool loop.
+            # Keep the system prompt (first message) + most recent messages.
+            _MAX_TOOL_MESSAGES = 200
+            if len(messages) > _MAX_TOOL_MESSAGES:
+                original_len = len(messages)
+                messages = [messages[0]] + messages[-(_MAX_TOOL_MESSAGES - 1):]
+                self._logger.warning(
+                    "Tool loop messages trimmed from %d to %d to prevent context overflow",
+                    original_len, len(messages),
+                )
+
             raw, tool_calls = call_llm_with_tools(
                 messages,
                 tools=tool_desc,

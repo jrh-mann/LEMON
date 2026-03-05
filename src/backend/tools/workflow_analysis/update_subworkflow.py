@@ -16,6 +16,7 @@ import threading
 from typing import Any, Dict
 
 from ..core import Tool, ToolParameter, extract_session_deps
+from ..constants import builder_semaphore, MAX_BUILD_HISTORY_MESSAGES
 
 logger = logging.getLogger(__name__)
 
@@ -51,78 +52,84 @@ def _run_subworkflow_updater(
     cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id)
     response_text = ""
 
-    try:
-        from ...agents.orchestrator_factory import build_orchestrator
-
-        orchestrator = build_orchestrator(repo_root)
-        orchestrator.workflow_store = workflow_store
-        orchestrator.user_id = user_id
-        orchestrator.current_workflow_id = workflow_id
-        orchestrator.repo_root = repo_root
-        orchestrator.ws_registry = ws_registry
-        orchestrator.conn_id = conn_id
-
-        # Pre-load the previous builder's conversation so the LLM has
-        # full context of how the workflow was originally built
-        orchestrator.history = list(build_history)
-
-        logger.info(
-            "Background updater started for subworkflow %s (history=%d messages): %s",
-            workflow_id, len(build_history), instructions[:100],
-        )
-
-        cb.emit_progress("Updating workflow...", event="start")
-
-        # Run the orchestrator with the update instructions
-        # Uses the same callback pattern as SocketChatTask.run()
-        response_text = orchestrator.respond(
-            instructions, allow_tools=True,
-            stream=cb.stream_chunk,
-            on_tool_event=cb.on_tool_event,
-            should_cancel=cb.is_cancelled,
-            thinking_budget=30_000,
-            on_thinking=cb.stream_thinking,
-        )
-
-        # Persist the updated conversation history and clear building flag
-        workflow_store.update_workflow(
-            workflow_id, user_id,
-            building=False,
-            build_history=orchestrator.history,
-        )
-
-        logger.info("Background updater finished for subworkflow %s", workflow_id)
-
-    except Exception as exc:
-        logger.error(
-            "Background updater FAILED for subworkflow %s: %s",
-            workflow_id, exc, exc_info=True,
-        )
-        # Clear building flag even on failure so the workflow isn't stuck
+    # Acquire semaphore to limit concurrent builder threads
+    with builder_semaphore:
         try:
+            from ...agents.orchestrator_factory import build_orchestrator
+
+            orchestrator = build_orchestrator(repo_root)
+            orchestrator.workflow_store = workflow_store
+            orchestrator.user_id = user_id
+            orchestrator.current_workflow_id = workflow_id
+            orchestrator.repo_root = repo_root
+            orchestrator.ws_registry = ws_registry
+            orchestrator.conn_id = conn_id
+
+            # Pre-load the previous builder's conversation so the LLM has
+            # full context of how the workflow was originally built
+            orchestrator.history = list(build_history)
+
+            logger.info(
+                "Background updater started for subworkflow %s (history=%d messages): %s",
+                workflow_id, len(build_history), instructions[:100],
+            )
+
+            cb.emit_progress("Updating workflow...", event="start")
+
+            # Run the orchestrator with the update instructions
+            # Uses the same callback pattern as SocketChatTask.run()
+            response_text = orchestrator.respond(
+                instructions, allow_tools=True,
+                stream=cb.stream_chunk,
+                on_tool_event=cb.on_tool_event,
+                should_cancel=cb.is_cancelled,
+                thinking_budget=30_000,
+                on_thinking=cb.stream_thinking,
+            )
+
+            # Persist the updated conversation history and clear building flag.
+            # Cap history to prevent unbounded DB blob growth.
+            build_hist = orchestrator.history
+            if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
+                build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
             workflow_store.update_workflow(
-                workflow_id, user_id, building=False,
+                workflow_id, user_id,
+                building=False,
+                build_history=build_hist,
             )
-        except Exception as inner_exc:
+
+            logger.info("Background updater finished for subworkflow %s", workflow_id)
+
+        except Exception as exc:
             logger.error(
-                "Failed to clear building flag for %s: %s",
-                workflow_id, inner_exc,
+                "Background updater FAILED for subworkflow %s: %s",
+                workflow_id, exc, exc_info=True,
             )
-        # Notify frontend so it can clear the "Building..." state
-        if ws_registry and conn_id:
-            ws_registry.send_to_sync(conn_id, "build_error", {
-                "workflow_id": workflow_id,
-                "error": str(exc),
-            })
-    finally:
-        # Always emit chat_response to signal build completion to frontend
-        cb.emit_response(response_text)
-        # Notify frontend for library badge refresh
-        if ws_registry and conn_id:
-            ws_registry.send_to_sync(
-                conn_id, "subworkflow_ready",
-                {"workflow_id": workflow_id},
-            )
+            # Clear building flag even on failure so the workflow isn't stuck
+            try:
+                workflow_store.update_workflow(
+                    workflow_id, user_id, building=False,
+                )
+            except Exception as inner_exc:
+                logger.error(
+                    "Failed to clear building flag for %s: %s",
+                    workflow_id, inner_exc,
+                )
+            # Notify frontend so it can clear the "Building..." state
+            if ws_registry and conn_id:
+                ws_registry.send_to_sync(conn_id, "build_error", {
+                    "workflow_id": workflow_id,
+                    "error": str(exc),
+                })
+        finally:
+            # Always emit chat_response to signal build completion to frontend
+            cb.emit_response(response_text)
+            # Notify frontend for library badge refresh
+            if ws_registry and conn_id:
+                ws_registry.send_to_sync(
+                    conn_id, "subworkflow_ready",
+                    {"workflow_id": workflow_id},
+                )
 
 
 class UpdateSubworkflowTool(Tool):

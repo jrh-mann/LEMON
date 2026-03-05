@@ -40,8 +40,14 @@ def register_search_routes(
         query = request.query_params.get("q")
         domain = request.query_params.get("domain")
         validated = request.query_params.get("validated")
-        limit = min(int(request.query_params.get("limit", 100)), 500)
-        offset = max(int(request.query_params.get("offset", 0)), 0)
+        try:
+            limit = min(int(request.query_params.get("limit", 100)), 500)
+        except (ValueError, TypeError):
+            limit = 100
+        try:
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
 
         # Convert validated string to bool if provided
         validated_bool = None

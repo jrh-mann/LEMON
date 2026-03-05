@@ -115,6 +115,7 @@ interface WorkflowState {
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
+  setFlowchartSilent: (flowchart: Flowchart) => void  // Set flowchart without pushing undo history (for WS events)
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
   setConversationId: (conversationId: string | null) => void
   setInputValues: (values: Record<string, unknown>) => void
@@ -353,6 +354,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     state.pushHistory()
     set({ flowchart })
   },
+
+  // Set flowchart without pushing undo history — used for server-driven updates
+  // (WS events like batch_edit) that shouldn't pollute the user's undo stack
+  setFlowchartSilent: (flowchart) => set({ flowchart }),
 
   setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
   setConversationId: (conversationId) => set({ conversationId }),

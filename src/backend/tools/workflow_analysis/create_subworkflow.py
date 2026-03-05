@@ -15,7 +15,12 @@ import threading
 from typing import Any, Dict, List
 
 from ..core import Tool, ToolParameter, extract_session_deps
-from ..constants import generate_workflow_id, VALID_WORKFLOW_OUTPUT_TYPES
+from ..constants import (
+    generate_workflow_id,
+    VALID_WORKFLOW_OUTPUT_TYPES,
+    builder_semaphore,
+    MAX_BUILD_HISTORY_MESSAGES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,80 +53,86 @@ def _run_subworkflow_builder(
     cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id)
     response_text = ""
 
-    try:
-        # Import here to avoid circular imports
-        from ...agents.orchestrator_factory import build_orchestrator
-
-        orchestrator = build_orchestrator(repo_root)
-        orchestrator.workflow_store = workflow_store
-        orchestrator.user_id = user_id
-        orchestrator.current_workflow_id = workflow_id
-        # Pass full context so the background builder can emit progress events
-        # and spawn nested subworkflows (which need repo_root to build_orchestrator)
-        orchestrator.repo_root = repo_root
-        orchestrator.ws_registry = ws_registry
-        orchestrator.conn_id = conn_id
-
-        logger.info(
-            "Background builder started for subworkflow %s: %s",
-            workflow_id, brief[:100],
-        )
-
-        cb.emit_progress("Building workflow...", event="start")
-
-        # Run the orchestrator with the brief — it will use its tools to build
-        # the subworkflow autonomously (add_node, add_connection, etc.)
-        # Uses the same callback pattern as SocketChatTask.run()
-        response_text = orchestrator.respond(
-            brief, allow_tools=True,
-            stream=cb.stream_chunk,
-            on_tool_event=cb.on_tool_event,
-            should_cancel=cb.is_cancelled,
-            thinking_budget=30_000,
-            on_thinking=cb.stream_thinking,
-        )
-
-        # Save the workflow to library and persist the builder's conversation
-        # history so the user can see how it was built and resume later
-        workflow_store.update_workflow(
-            workflow_id, user_id,
-            is_draft=False,
-            building=False,
-            build_history=orchestrator.history,
-        )
-
-        logger.info("Background builder finished for subworkflow %s", workflow_id)
-
-    except Exception as exc:
-        logger.error(
-            "Background builder FAILED for subworkflow %s: %s",
-            workflow_id, exc, exc_info=True,
-        )
-        # Clear building flag even on failure so the workflow isn't stuck
+    # Acquire semaphore to limit concurrent builder threads
+    with builder_semaphore:
         try:
+            # Import here to avoid circular imports
+            from ...agents.orchestrator_factory import build_orchestrator
+
+            orchestrator = build_orchestrator(repo_root)
+            orchestrator.workflow_store = workflow_store
+            orchestrator.user_id = user_id
+            orchestrator.current_workflow_id = workflow_id
+            # Pass full context so the background builder can emit progress events
+            # and spawn nested subworkflows (which need repo_root to build_orchestrator)
+            orchestrator.repo_root = repo_root
+            orchestrator.ws_registry = ws_registry
+            orchestrator.conn_id = conn_id
+
+            logger.info(
+                "Background builder started for subworkflow %s: %s",
+                workflow_id, brief[:100],
+            )
+
+            cb.emit_progress("Building workflow...", event="start")
+
+            # Run the orchestrator with the brief — it will use its tools to build
+            # the subworkflow autonomously (add_node, add_connection, etc.)
+            # Uses the same callback pattern as SocketChatTask.run()
+            response_text = orchestrator.respond(
+                brief, allow_tools=True,
+                stream=cb.stream_chunk,
+                on_tool_event=cb.on_tool_event,
+                should_cancel=cb.is_cancelled,
+                thinking_budget=30_000,
+                on_thinking=cb.stream_thinking,
+            )
+
+            # Save the workflow to library and persist the builder's conversation
+            # history so the user can see how it was built and resume later.
+            # Cap history to prevent unbounded DB blob growth.
+            build_hist = orchestrator.history
+            if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
+                build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
             workflow_store.update_workflow(
-                workflow_id, user_id, building=False,
+                workflow_id, user_id,
+                is_draft=False,
+                building=False,
+                build_history=build_hist,
             )
-        except Exception as inner_exc:
+
+            logger.info("Background builder finished for subworkflow %s", workflow_id)
+
+        except Exception as exc:
             logger.error(
-                "Failed to clear building flag for %s: %s",
-                workflow_id, inner_exc,
+                "Background builder FAILED for subworkflow %s: %s",
+                workflow_id, exc, exc_info=True,
             )
-        # Notify frontend so it can clear the "Building..." state
-        if ws_registry and conn_id:
-            ws_registry.send_to_sync(conn_id, "build_error", {
-                "workflow_id": workflow_id,
-                "error": str(exc),
-            })
-    finally:
-        # Always emit chat_response to signal build completion to frontend
-        cb.emit_response(response_text)
-        # Notify frontend for library badge refresh
-        if ws_registry and conn_id:
-            ws_registry.send_to_sync(
-                conn_id, "subworkflow_ready",
-                {"workflow_id": workflow_id},
-            )
+            # Clear building flag even on failure so the workflow isn't stuck
+            try:
+                workflow_store.update_workflow(
+                    workflow_id, user_id, building=False,
+                )
+            except Exception as inner_exc:
+                logger.error(
+                    "Failed to clear building flag for %s: %s",
+                    workflow_id, inner_exc,
+                )
+            # Notify frontend so it can clear the "Building..." state
+            if ws_registry and conn_id:
+                ws_registry.send_to_sync(conn_id, "build_error", {
+                    "workflow_id": workflow_id,
+                    "error": str(exc),
+                })
+        finally:
+            # Always emit chat_response to signal build completion to frontend
+            cb.emit_response(response_text)
+            # Notify frontend for library badge refresh
+            if ws_registry and conn_id:
+                ws_registry.send_to_sync(
+                    conn_id, "subworkflow_ready",
+                    {"workflow_id": workflow_id},
+                )
 
 
 class CreateSubworkflowTool(Tool):
