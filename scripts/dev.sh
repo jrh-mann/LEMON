@@ -4,7 +4,7 @@
 #        ./dev.sh restart   (kill existing, then start all)
 #        ./dev.sh stop      (kill all)
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PIDFILE="$REPO_ROOT/.dev-pids"
 
 stop_all() {
