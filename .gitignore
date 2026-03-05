@@ -70,6 +70,7 @@ publishprofile.xml
 .mcp.json
 .cursor/
 .claude/
+.claude-co.json
 .dev-pids
 REVIEW.md
 agent_demands.md
