@@ -15,4 +15,7 @@ fi
 python run_mcp.py &
 
 # uvicorn ASGI server for FastAPI + native WebSocket
-exec uvicorn src.backend.api_server:app --host=0.0.0.0 --port="${PORT}" --timeout-keep-alive=600
+# Use "python -m uvicorn" instead of bare "uvicorn" because Azure Oryx
+# creates a venv with --copies whose shebang points to a temp build dir
+# that doesn't exist at runtime (causes "bad interpreter" exit code 127).
+exec python -m uvicorn src.backend.api_server:app --host=0.0.0.0 --port="${PORT}" --timeout-keep-alive=600
