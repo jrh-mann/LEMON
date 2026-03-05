@@ -166,39 +166,24 @@ class TestCanvasAutoPersist:
 
 
 class TestSystemPromptCanvasIntegration:
-    """System prompt must instruct LLM to use canvas ID directly."""
+    """System prompt must instruct LLM about workflow context."""
 
-    def test_prompt_shows_current_workflow_section(self):
-        """When canvas ID is set, prompt must include the active workflow."""
+    def test_prompt_shows_workflow_name(self):
+        """When workflow name is set, prompt must include it."""
         prompt = build_system_prompt(
-            last_session_id=None,
             has_files=[],
             allow_tools=True,
-            current_workflow_id="wf_test123",
+            current_workflow_name="Test Workflow",
         )
 
         assert "Active workflow" in prompt
-        assert "wf_test123" in prompt
+        assert "Test Workflow" in prompt
 
     def test_prompt_describes_create_subworkflow(self):
-        """The tool action mapping must mention create_subworkflow."""
+        """The subprocess section must mention create_subworkflow."""
         prompt = build_system_prompt(
-            last_session_id=None,
             has_files=[],
             allow_tools=True,
-            current_workflow_id="wf_test123",
         )
 
         assert "create_subworkflow" in prompt
-
-    def test_implicit_workflow_binding(self):
-        """Prompt should describe implicit workflow binding (no workflow_id needed)."""
-        prompt = build_system_prompt(
-            last_session_id=None,
-            has_files=[],
-            allow_tools=True,
-            current_workflow_id="wf_canvas_abc",
-        )
-
-        # Implicit binding: tools auto-target the active workflow
-        assert "operate on the active workflow automatically" in prompt

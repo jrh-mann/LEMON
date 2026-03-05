@@ -27,16 +27,16 @@ class TestBuildSystemPrompt:
         assert "view_image" in prompt
         assert "ask_question" in prompt
 
-    def test_current_workflow_id_injected(self):
-        """When current_workflow_id is given, it appears in the prompt."""
+    def test_current_workflow_name_injected(self):
+        """When current_workflow_name is given, it appears in the prompt."""
         from src.backend.agents.system_prompt import build_system_prompt
 
-        prompt = build_system_prompt(current_workflow_id="wf_test123")
-        assert "wf_test123" in prompt
+        prompt = build_system_prompt(current_workflow_name="BMI Calculator")
+        assert "BMI Calculator" in prompt
         assert "Active workflow" in prompt
 
-    def test_current_workflow_id_absent(self):
-        """When no current_workflow_id, the active workflow line is omitted."""
+    def test_current_workflow_name_absent(self):
+        """When no current_workflow_name, the active workflow line is omitted."""
         from src.backend.agents.system_prompt import build_system_prompt
 
         prompt = build_system_prompt()
@@ -102,8 +102,8 @@ class TestBuildSystemPrompt:
         assert "## Calculation Nodes" in prompt
         # Subprocess nodes
         assert "## Subprocess Nodes" in prompt
-        # Tool selection
-        assert "## Tool Selection" in prompt
+        # Rules
+        assert "## Rules" in prompt
         # Batch edit
         assert "## Batch Edit" in prompt
         # Tree structure

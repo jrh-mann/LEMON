@@ -17,22 +17,15 @@ from typing import Any, Dict, List, Optional
 
 
 def _role_and_context(
-    current_workflow_id: Optional[str],
     current_workflow_name: Optional[str],
 ) -> str:
     """Core identity and active workflow context."""
     s = (
         "You are a workflow-building assistant. You help users create and edit "
-        "executable decision-tree workflows by calling tools. Act immediately — "
-        "do not ask for confirmation unless the request is genuinely ambiguous.\n\n"
-        "All workflow tools operate on the active workflow automatically. "
-        "You never need to pass a workflow_id.\n"
+        "executable decision-tree workflows by calling tools.\n"
     )
-    if current_workflow_id:
-        name = current_workflow_name or "Untitled"
-        s += (
-            f"\n**Active workflow:** '{name}' (`{current_workflow_id}`)\n"
-        )
+    if current_workflow_name:
+        s += f"\n**Active workflow:** '{current_workflow_name}'\n"
     return s
 
 
@@ -43,9 +36,8 @@ def _data_model() -> str:
         "### Variables\n"
         "Workflows have two kinds of variables:\n"
         "- **Input variables** — user-provided values. Register with `add_workflow_variable` BEFORE creating nodes that reference them.\n"
-        "- **Derived variables** — auto-created by calculation and subprocess nodes. Do NOT register these manually.\n\n"
-        "Variable IDs follow the pattern `var_{slug}_{type}` (e.g. `var_patient_age_number`). "
-        "Derived variables use `var_calc_{slug}_number` or `var_sub_{slug}_{type}`.\n\n"
+        "- **Derived variables** — auto-created by calculation and subprocess nodes. Do NOT register these manually. "
+        "They are read-only — to change one, modify the producing node. Deleting the node removes the variable.\n\n"
         "### Node Types\n"
         "| Type | Children | Purpose |\n"
         "|------|----------|---------|\n"
@@ -62,31 +54,12 @@ def _data_model() -> str:
     )
 
 
-def _action_patterns() -> str:
-    """When to use which tool — organised by user intent."""
+def _rules() -> str:
+    """Non-obvious rules for tool usage."""
     return (
-        "## Tool Selection\n\n"
-        "Match user intent to tools:\n"
-        "- **Build/create a workflow** → `list_workflows_in_library` first (check for duplicates), then add variables and nodes\n"
-        "- **Add/create node** → `add_node`\n"
-        "- **Modify/rename/update node** → `modify_node`\n"
-        "- **Delete/remove node** → `delete_node`\n"
-        "- **Connect/link nodes** → `add_connection`\n"
-        "- **Disconnect/remove edge** → `delete_connection`\n"
-        "- **Multiple related changes** → `batch_edit_workflow` (see below)\n"
-        "- **Inspect canvas** → `get_current_workflow`\n"
-        "- **Validate** → `validate_workflow`\n"
-        "- **Execute/test** → `execute_workflow`\n"
-        "- **Save** → `save_workflow_to_library`\n"
-        "- **Set output** → `set_workflow_output`\n"
-        "- **Browse library** → `list_workflows_in_library`\n"
-        "- **Create subworkflow** → `create_subworkflow`\n"
-        "- **Update subworkflow** → `update_subworkflow`\n"
-        "- **Ask user** → `ask_question` (provide 2-4 clickable options)\n"
-        "- **Highlight node** → `highlight_node`\n\n"
-        "Rules:\n"
-        "- One operation = one tool call. Do NOT use `batch_edit_workflow` for single adds/deletes.\n"
+        "## Rules\n\n"
         "- When the user refers to a node by label, call `get_current_workflow` first to find its ID. Never guess IDs.\n"
+        "- Use `ask_question` with 2-4 clickable options when you need user input.\n"
         "- Keep responses short. Confirm what happened in one sentence. Never show raw JSON.\n"
     )
 
@@ -117,7 +90,7 @@ def _calculation_nodes() -> str:
         "- `calculation.operator`: e.g. `divide`, `add`, `sqrt`\n"
         "- `calculation.operands`: list of `{\"kind\": \"variable\", \"ref\": \"var_weight_number\"}` or `{\"kind\": \"literal\", \"value\": 2}`\n\n"
         "Common operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average.\n\n"
-        "Calculation nodes do NOT branch. To decide based on a calculated value, add a decision node after it:\n"
+        "To decide based on a calculated value, add a decision node after it: "
         "`calculation → decision → true/false branches`\n"
     )
 
@@ -131,8 +104,8 @@ def _subprocess_nodes() -> str:
         "2. If not found, create it: `create_subworkflow(name, output_type, brief, inputs)`\n"
         "   - Write a detailed brief: what it computes, step-by-step logic, all inputs with types, output meaning\n"
         "   - Returns immediately; subworkflow builds in the background\n"
-        "3. Add the subprocess node: `add_node(type='subprocess', subworkflow_id='wf_xyz', input_mapping={...}, output_variable='Result')`\n"
-        "4. To modify later: `update_subworkflow(workflow_id, instructions)`\n"
+        "3. Add the subprocess node: `add_node(type='subprocess', subworkflow_id='...', input_mapping={...}, output_variable='Result')`\n"
+        "4. To modify later: `update_subworkflow(subworkflow_id, instructions)`\n"
     )
 
 
@@ -158,17 +131,6 @@ def _batch_edit() -> str:
         "Assign temporary IDs (`\"id\": \"temp_decision\"`) that get mapped to real IDs. "
         "In `add_connection` operations, use `from` and `to` fields (not `from_node_id`/`to_node_id`).\n\n"
         "For single operations, always use individual tools instead.\n"
-    )
-
-
-def _derived_variables() -> str:
-    """Rules for auto-managed derived variables."""
-    return (
-        "## Derived Variables\n\n"
-        "Calculation and subprocess nodes auto-create variables. Do NOT call `add_workflow_variable` for them.\n"
-        "They are read-only — to change one, modify the producing node. "
-        "Deleting the node removes the variable automatically.\n\n"
-        "Only call `add_workflow_variable` for user-input variables.\n"
     )
 
 
@@ -300,16 +262,16 @@ def build_system_prompt(
     """Build the system prompt for the orchestrator LLM.
 
     Assembles composable sections into a single prompt string.
-    Sections are ordered: role → data model → actions → node details →
-    image analysis → guidelines → conditional context.
+    Sections are ordered: role → data model → rules → node details →
+    image analysis → tree structure → conditional context.
 
     Args:
-        last_session_id: Session ID for follow-up calls, if any.
+        last_session_id: Unused, kept for call-site compatibility.
         has_files: List of uploaded file metadata dicts, if any.
         allow_tools: Whether tool calling is enabled for this response.
         reasoning: Analysis reasoning context from prior analysis.
         guidance: Guidance notes extracted from the workflow image.
-        current_workflow_id: ID of the workflow currently on canvas.
+        current_workflow_id: Unused, kept for call-site compatibility.
         current_workflow_name: Human-readable name of the current workflow.
 
     Returns:
@@ -317,15 +279,14 @@ def build_system_prompt(
     """
     # Core sections — always included
     sections = [
-        _role_and_context(current_workflow_id, current_workflow_name),
+        _role_and_context(current_workflow_name),
         _data_model(),
-        _action_patterns(),
+        _rules(),
         _decision_conditions(),
         _calculation_nodes(),
         _output_nodes(),
         _subprocess_nodes(),
         _batch_edit(),
-        _derived_variables(),
         _image_analysis(),
         _tree_structure(),
     ]
