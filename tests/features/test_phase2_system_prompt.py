@@ -18,11 +18,11 @@ class TestBuildSystemPrompt:
         assert len(prompt) > 100
 
     def test_image_analysis_section_present(self):
-        """The Image-to-Workflow Conversion section should be in the prompt."""
+        """The Image-to-Workflow Protocol section should be in the prompt."""
         from src.backend.agents.system_prompt import build_system_prompt
 
         prompt = build_system_prompt()
-        assert "## Image-to-Workflow Conversion" in prompt
+        assert "## Image-to-Workflow Protocol" in prompt
         assert "extract_guidance" in prompt
         assert "update_plan" in prompt
         assert "view_image" in prompt
@@ -107,8 +107,8 @@ class TestBuildSystemPrompt:
         assert "## Rules" in prompt
         # Batch edit
         assert "## Batch Edit" in prompt
-        # Tree structure
-        assert "## Tree Structure" in prompt
+        # Anti-patterns (replaced Tree Structure)
+        assert "## DO NOT" in prompt
 
     def test_tools_disabled_appended(self):
         """When allow_tools=False, the tools-disabled message should appear."""

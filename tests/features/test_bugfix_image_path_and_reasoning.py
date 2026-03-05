@@ -114,7 +114,7 @@ class TestReasoningWiring:
 
         def fake_llm(*args, **kwargs):
             captured_kwargs.update(kwargs)
-            return ("I'm a response", [])
+            return ("I'm a response", [], {})
 
         with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=fake_llm):
             orch.respond("test message", thinking_budget=8000)
@@ -145,7 +145,7 @@ class TestReasoningWiring:
 
         def fake_llm(*args, **kwargs):
             captured_kwargs.update(kwargs)
-            return ("response", [])
+            return ("response", [], {})
 
         thinking_chunks = []
         def my_thinking(chunk: str) -> None:

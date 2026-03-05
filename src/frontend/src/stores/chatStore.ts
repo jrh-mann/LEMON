@@ -15,6 +15,7 @@ export interface ConversationState {
   thinkingContent: string
   processingStatus: string | null
   currentTaskId: string | null
+  contextUsagePct: number  // 0-100, percentage of context window used
 }
 
 // Default empty conversation for new entries
@@ -26,6 +27,7 @@ const emptyConversation: ConversationState = {
   thinkingContent: '',
   processingStatus: null,
   currentTaskId: null,
+  contextUsagePct: 0,
 }
 
 interface ChatState {
@@ -53,6 +55,7 @@ interface ChatState {
   setCurrentTaskId: (workflowId: string, taskId: string | null) => void
   appendThinkingContent: (workflowId: string, content: string) => void
   setProcessingStatus: (workflowId: string, status: string | null) => void
+  setContextUsage: (workflowId: string, pct: number) => void
   // Finalize streaming: convert accumulated streamContent into a Message with tool_calls
   finalizeStream: (workflowId: string, toolCalls?: ToolCall[]) => void
 
@@ -178,6 +181,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ? { processingStatus: null, thinkingContent: '' }
         : { processingStatus: status },
     )),
+
+  setContextUsage: (workflowId, pct) =>
+    set((state) => updateConv(state, workflowId, { contextUsagePct: pct })),
 
   // Finalize streaming: convert streamContent into a Message, clear streaming state
   finalizeStream: (workflowId, toolCalls) => {

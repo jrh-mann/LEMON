@@ -69,6 +69,92 @@ class Orchestrator:
         self.ws_registry: Optional[Any] = None
         self.conn_id: Optional[str] = None
 
+        # Context window tracking — updated after each LLM call with actual token counts
+        self._last_input_tokens: int = 0
+        self._context_limit: int = 200_000  # Claude models have 200k context window
+
+    @property
+    def context_usage_pct(self) -> int:
+        """Percentage of context window used by the last LLM call."""
+        if not self._last_input_tokens:
+            return 0
+        return min(100, int(self._last_input_tokens / self._context_limit * 100))
+
+    # --- Conversation compaction ---
+    # When the context window fills up, summarize older history to free space
+    # while preserving key decisions and context (similar to Claude Code).
+
+    _COMPACTION_THRESHOLD_PCT = 70   # Compact when input tokens > 70% of context
+    _CHARS_PER_TOKEN = 4             # Rough estimate for pre-flight token counting
+
+    def _estimate_history_tokens(self) -> int:
+        """Rough token estimate from history character counts."""
+        total_chars = sum(len(str(m.get("content", ""))) for m in self.history)
+        return total_chars // self._CHARS_PER_TOKEN
+
+    def _needs_compaction(self) -> bool:
+        """Check if history should be compacted before the next LLM call."""
+        # Use actual token count from last API call if available
+        if self._last_input_tokens > 0:
+            return self._last_input_tokens > self._context_limit * self._COMPACTION_THRESHOLD_PCT / 100
+        # Fallback: estimate from history size (only triggers for very long histories)
+        return self._estimate_history_tokens() > self._context_limit * self._COMPACTION_THRESHOLD_PCT / 100
+
+    def _compact_history_if_needed(self) -> None:
+        """Summarize older history messages if context window is filling up."""
+        if not self._needs_compaction():
+            return
+        if len(self.history) < 6:
+            return  # Too few messages to compact
+
+        # Keep the most recent 1/3 of messages (minimum 4)
+        keep_count = max(4, len(self.history) // 3)
+        old_messages = self.history[:-keep_count]
+        recent_messages = self.history[-keep_count:]
+
+        # Build a text representation of old messages for the summarizer
+        summary_parts = []
+        for msg in old_messages:
+            role = msg.get("role", "unknown")
+            content = str(msg.get("content", ""))
+            # Truncate very long individual messages for the summary prompt
+            if len(content) > 500:
+                content = content[:500] + "..."
+            summary_parts.append(f"[{role}]: {content}")
+        conversation_text = "\n".join(summary_parts)
+
+        try:
+            from ..llm.client import call_llm
+            summary = call_llm(
+                [
+                    {"role": "system", "content": (
+                        "Summarize this conversation history concisely. "
+                        "Preserve: key decisions made, workflow changes (nodes/connections added/modified/deleted), "
+                        "errors encountered, current state of the workflow, and any pending user requests. "
+                        "Be brief but complete — this summary replaces the original messages."
+                    )},
+                    {"role": "user", "content": conversation_text},
+                ],
+                max_completion_tokens=2000,
+                caller="orchestrator",
+                request_tag="compaction",
+            )
+            # Replace history with summary + recent messages
+            original_len = len(self.history)
+            self.history = [
+                {"role": "user", "content": f"[Conversation summary — {len(old_messages)} earlier messages]\n{summary}"},
+                {"role": "assistant", "content": "Understood. I have the context from our earlier conversation."},
+                *recent_messages,
+            ]
+            self._logger.info(
+                "Compacted history: %d messages → summary + %d recent = %d total",
+                original_len, len(recent_messages), len(self.history),
+            )
+        except Exception as exc:
+            # Fallback: hard truncation if compaction LLM call fails
+            self._logger.warning("Compaction LLM call failed (%s), falling back to truncation", exc)
+            self.history = self.history[-50:]
+
     @property
     def current_workflow(self) -> Dict[str, Any]:
         """View of workflow structure (nodes/edges only) for session_state."""
@@ -513,13 +599,10 @@ class Orchestrator:
             guidance=self._guidance if self._guidance else None,
         )
 
-        # Limit history to last 100 messages (50 exchanges) to prevent context overflow
-        limited_history = self.history[-100:] if len(self.history) > 100 else self.history
-        if len(self.history) > 100:
-            self._logger.warning(
-                "History truncated from %d to 100 messages to fit context window",
-                len(self.history)
-            )
+        # Compact history if context window is filling up (>70% used).
+        # Uses the actual input_tokens from the last API call when available,
+        # otherwise falls back to a rough character-based estimate.
+        self._compact_history_if_needed()
 
         # Build user message content — inject base64 images and PDFs if uploaded THIS TURN.
         # Only new_files get injected; previously uploaded files are already in history
@@ -579,7 +662,7 @@ class Orchestrator:
 
         messages = [
             {"role": "system", "content": system},
-            *limited_history,
+            *self.history,
             {"role": "user", "content": effective_message},
         ]
         try:
@@ -593,7 +676,7 @@ class Orchestrator:
                     stream(delta)
 
             if allow_tools:
-                raw, tool_calls = call_llm_with_tools(
+                raw, tool_calls, usage = call_llm_with_tools(
                     messages,
                     tools=tool_desc,
                     tool_choice=None,
@@ -618,7 +701,7 @@ class Orchestrator:
                     raw = raw.strip()
                     tool_calls = []
                 else:
-                    raw, tool_calls = call_llm_with_tools(
+                    raw, tool_calls, usage = call_llm_with_tools(
                         messages,
                         tools=None,
                         tool_choice="none",
@@ -628,6 +711,10 @@ class Orchestrator:
                         thinking_budget=thinking_budget,
                         on_thinking=on_thinking,
                     )
+            # Store actual token usage from API response for context tracking.
+            # call_llm_stream doesn't return usage, so only update when available.
+            if 'usage' in dir() and isinstance(usage, dict):
+                self._last_input_tokens = usage.get("input_tokens", 0)
             if is_cancelled():
                 return finalize_cancel()
         except CancellationError:
@@ -819,7 +906,7 @@ class Orchestrator:
                     original_len, len(messages),
                 )
 
-            raw, tool_calls = call_llm_with_tools(
+            raw, tool_calls, usage = call_llm_with_tools(
                 messages,
                 tools=tool_desc,
                 tool_choice=None,
@@ -830,6 +917,7 @@ class Orchestrator:
                 thinking_budget=thinking_budget,
                 on_thinking=on_thinking,
             )
+            self._last_input_tokens = usage.get("input_tokens", 0)
             if is_cancelled():
                 return finalize_cancel()
 
@@ -839,6 +927,19 @@ class Orchestrator:
         if tool_results and not final_text.strip():
             final_text = f"Completed {len(tool_results)} tool operation(s)."
             self._logger.warning("Empty final response after %d tool calls - using fallback", len(tool_results))
+
+        # Ensure we never return a completely empty response — the LLM sometimes
+        # returns only a thinking block with no text and no tool calls, which
+        # sends a blank chat_response to the frontend.
+        if not final_text.strip():
+            self._logger.warning(
+                "LLM returned empty response with no tool calls (history=%d messages)",
+                len(self.history),
+            )
+            final_text = (
+                "I wasn't able to generate a response. "
+                "Could you rephrase or provide more details?"
+            )
 
         if stream and final_text and not did_stream:
             _emit_stream(stream, final_text)

@@ -113,8 +113,8 @@ class TestOrchestratorThinkingForwarding:
         # First LLM call returns a tool call; second returns final text
         with patch("src.backend.agents.orchestrator.call_llm_with_tools") as mock_llm:
             mock_llm.side_effect = [
-                ("", [fake_tool_call]),  # Initial: request tool call
-                ("Analysis complete.", []),  # Post-tool: final text
+                ("", [fake_tool_call], {}),  # Initial: request tool call
+                ("Analysis complete.", [], {}),  # Post-tool: final text
             ]
             orch.respond(
                 "Analyze the workflow",

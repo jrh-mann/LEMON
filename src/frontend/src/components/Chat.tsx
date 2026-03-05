@@ -28,6 +28,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const processingStatus = conv?.processingStatus ?? null
   const thinkingContent = conv?.thinkingContent ?? ''
   const currentTaskId = conv?.currentTaskId ?? null
+  const contextUsagePct = conv?.contextUsagePct ?? 0
 
   // Global state (not per-workflow)
   const pendingQuestions = useChatStore(s => s.pendingQuestions)
@@ -457,6 +458,15 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                 </button>
               </div>
             )}
+          </div>
+        )}
+        {contextUsagePct > 0 && (
+          <div className="context-meter">
+            <div
+              className={`context-bar${contextUsagePct > 80 ? ' warn' : ''}${contextUsagePct > 95 ? ' critical' : ''}`}
+              style={{ width: `${contextUsagePct}%` }}
+            />
+            <span className="context-label">{contextUsagePct}% context</span>
           </div>
         )}
         <div className="chat-input-wrapper">

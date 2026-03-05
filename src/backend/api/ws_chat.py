@@ -381,8 +381,17 @@ class WsChatTask:
         summary = summarize_response(response_text) if tool_calls else ""
         if self.convo:
             self.convo.updated_at = utc_now()
+        # Determine the response field: if streamed, chunks were already sent
+        # so the response field is "". Otherwise use the full text.
+        response_field = summary if tool_calls else ("" if self.did_stream else response_text)
+        # Log empty non-streamed responses as warnings for debugging
+        if not response_field and not self.did_stream and not cancelled:
+            logger.warning(
+                "Emitting empty chat_response (no stream, no text, no tools) "
+                "task=%s conn=%s", self.task_id, self.conn_id,
+            )
         payload: Dict[str, Any] = {
-            "response": summary if tool_calls else ("" if self.did_stream else response_text),
+            "response": response_field,
             "conversation_id": self.convo.id if self.convo else "",
             "tool_calls": tool_calls,
             "task_id": self.task_id,
@@ -409,10 +418,17 @@ class WsChatTask:
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
-                thinking_budget=30_000,
+                thinking_budget=50_000,
                 on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()
+            # Emit context window usage so the frontend can show an indicator
+            orch = self.convo.orchestrator
+            self._emit("context_status", {
+                "usage_pct": orch.context_usage_pct,
+                "input_tokens": orch._last_input_tokens,
+                "message_count": len(orch.history),
+            })
             if self.is_cancelled():
                 self._emit_response(response_text, cancelled=True)
                 self.emit_cancelled()

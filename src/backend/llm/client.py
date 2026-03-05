@@ -259,7 +259,8 @@ def call_llm_with_tools(
     should_cancel: Optional[Callable[[], bool]] = None,
     thinking_budget: Optional[int] = None,
     on_thinking: Optional[Callable[[str], None]] = None,
-) -> Tuple[str, List[Dict[str, Any]]]:
+) -> Tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
+    """Returns (text, tool_calls, usage) where usage contains token counts."""
     load_env()
     if tool_choice is None and tools:
         tool_choice = "auto"
@@ -468,7 +469,18 @@ def call_llm_with_tools(
         tool_names=tool_names,
     )
     text = "".join(chunks) if chunks else parsed_text
-    return text, tool_calls
+    # Log a warning when the LLM returns empty text with no tool calls.
+    # This helps diagnose "blank response" issues (e.g. thinking-only output,
+    # context overflow, or unexpected stop_reason).
+    if not text.strip() and not tool_calls:
+        stop = getattr(message, "stop_reason", None) or "unknown"
+        logger.warning(
+            "call_llm_with_tools returned empty text with no tool calls "
+            "(stop_reason=%s, caller=%s, tag=%s, messages=%d)",
+            stop, caller, request_tag, len(messages),
+        )
+    usage = _extract_usage(message)
+    return text, tool_calls, usage
 
 
 def call_llm_stream(

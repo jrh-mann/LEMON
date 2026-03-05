@@ -161,6 +161,13 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     useWorkflowStore.getState().setPlan([])
   }
 
+  // Context window usage indicator — emitted after each orchestrator response
+  handlers['context_status'] = (data: { usage_pct: number; workflow_id?: string }) => {
+    const workflowId = resolveWorkflowId(data)
+    if (!workflowId) return
+    useChatStore.getState().setContextUsage(workflowId, data.usage_pct ?? 0)
+  }
+
   // Initial user message from background builder — shows the brief/prompt in chat.
   // Moved from workflowHandlers since this is a chat event.
   handlers['build_user_message'] = (data: { workflow_id: string; content: string }) => {

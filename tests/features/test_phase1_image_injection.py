@@ -42,7 +42,7 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", []
+            return "OK", [], {}
 
         with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
             orch.respond("Analyze this workflow", has_files=orch.uploaded_files)
@@ -74,7 +74,7 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", []
+            return "OK", [], {}
 
         with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
             orch.respond("Just a text message", has_files=[])
@@ -100,7 +100,7 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", []
+            return "OK", [], {}
 
         with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
             orch.respond("Check this", has_files=orch.uploaded_files)
@@ -121,7 +121,7 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", []
+            return "OK", [], {}
 
         with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
             orch.respond("Check this", has_files=orch.uploaded_files)

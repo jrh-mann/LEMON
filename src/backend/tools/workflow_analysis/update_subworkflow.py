@@ -85,7 +85,7 @@ def _run_subworkflow_updater(
                 stream=cb.stream_chunk,
                 on_tool_event=cb.on_tool_event,
                 should_cancel=cb.is_cancelled,
-                thinking_budget=30_000,
+                thinking_budget=50_000,
                 on_thinking=cb.stream_thinking,
             )
 
