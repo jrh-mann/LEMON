@@ -2,7 +2,25 @@
 name = "lemon"
 version = "0.0.0"
 description = "Workflow diagram to deterministic Python code pipeline"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+dependencies = [
+    # Core runtime
+    "requests==2.32.3",
+    "anthropic==0.76.0",
+    "python-dotenv==1.0.1",
+    "Pillow==10.4.0",
+    "e2b-code-interpreter",
+    "tqdm==4.66.5",
+    # Core packages
+    "pydantic==2.12.5",
+    "pydantic-settings==2.12.0",
+    "mcp==1.25.0",
+    # Web framework
+    "fastapi==0.115.0",
+    "slowapi==0.1.9",
+    "websockets==13.1",
+    "uvicorn==0.31.1",
+]
 
 [tool.black]
 line-length = 100
