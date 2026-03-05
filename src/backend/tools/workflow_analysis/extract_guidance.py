@@ -19,53 +19,36 @@ from ...llm import call_llm
 
 logger = logging.getLogger(__name__)
 
-# Prompt copied from the original subagent guidance extractor.
+# Prompt for the guidance extraction LLM call.
+# Tells the model what to look for and the exact JSON schema to return.
 _GUIDANCE_PROMPT = (
-    "Examine this image for guidance information. There are TWO types:\n\n"
-    "## Type 1: Standalone Side Notes\n"
-    "Notes, annotations, or clarifications that exist OUTSIDE the main flowchart:\n"
-    "- Sticky notes or post-it notes\n"
-    "- Margin annotations or handwritten text\n"
-    "- Legends or keys explaining symbols\n"
-    "- Definitions of terms or thresholds written near the diagram\n\n"
-    "## Type 2: Referenced Guidance Panels\n"
-    "Detailed guidance panels that are LINKED to specific flowchart nodes via:\n"
-    "- Asterisk (*) or footnote references (e.g., a node says 'Treatment*' and a "
-    "panel elsewhere describes the treatment steps)\n"
-    "- Arrows or lines connecting a panel to a node\n"
-    "- Color-coded boxes that elaborate on a node (e.g., green boxes with treatment "
-    "protocols, blue boxes with assessment criteria)\n"
-    "- Proximity — a detailed panel positioned next to a node it describes\n\n"
-    "CRITICAL RULES:\n"
-    "- ONLY report text that is LITERALLY VISIBLE in the image.\n"
-    "- Do NOT infer, guess, or fabricate any information.\n"
-    "- Do NOT extract simple node labels or short arrow labels.\n"
-    "- DO extract detailed guidance panels even if they look like part of the diagram, "
-    "as long as they contain multi-sentence or multi-step information.\n"
-    "- If there are NO guidance items, return an empty array: []\n"
-    "- It is completely fine to return an empty array.\n\n"
-    'Return ONLY a JSON array. Each item:\n'
-    '- "text": the EXACT text content as written in the image\n'
-    '- "location": brief description of where it appears (e.g., "green box, right side")\n'
-    '- "category": one of "clarification", "definition", "constraint", "note", '
-    '"legend", "treatment_detail", "criteria"\n'
-    '- "linked_to": the exact text of the flowchart node this guidance references, '
-    "or null if standalone\n"
-    '- "link_type": one of "asterisk", "footnote", "arrow", "color_group", '
-    '"proximity", or null if standalone\n'
-    '- "subworkflow_candidate": true if this guidance panel describes a process '
-    "detailed enough to become its own subworkflow (e.g. a side panel with "
-    "multi-step treatment protocols, scoring algorithms, or assessment criteria "
-    "linked to a node via * or footnote), false otherwise\n"
-    '- "subworkflow_brief": if subworkflow_candidate is true, write a detailed '
-    "description of what the subworkflow would do — its inputs, logic, and output. "
-    "null if not a candidate.\n\n"
-    "IMPORTANT: Look specifically for side panels, colour-coded boxes, or footnoted "
-    "sections that expand on a node with enough detail to be their own workflow. "
-    "These are often marked with *, daggers, or arrows pointing to detailed protocol "
-    "boxes. Identify these as subworkflow candidates and describe them thoroughly.\n\n"
-    "If nothing found, return: []\n"
-    "Return JSON only, no extra text."
+    "Extract all information from this flowchart image that sits OUTSIDE the main "
+    "node-and-arrow flow. This includes:\n"
+    "- Legends, keys, or colour explanations\n"
+    "- Margin notes, sticky notes, handwritten annotations\n"
+    "- Colour-coded detail boxes (e.g. green treatment panels, blue criteria boxes)\n"
+    "- Footnoted or asterisked (*) panels that elaborate on a specific node\n"
+    "- Any multi-step protocol, scoring algorithm, or assessment criteria described "
+    "in a side panel\n\n"
+    "Do NOT extract simple node labels or single-line arrow labels — only extract "
+    "text blocks with substantive content (multiple sentences or bullet points).\n\n"
+    "For each item you find, decide if it is a **subworkflow candidate**: a panel "
+    "with enough multi-step logic (treatment escalation, scoring, assessment) to "
+    "become its own standalone workflow. If yes, write a detailed brief describing "
+    "what that subworkflow would compute — its inputs, step-by-step logic, and output.\n\n"
+    "Return a JSON array (empty [] if nothing found). Each item:\n"
+    "```\n"
+    "{\n"
+    '  "text": "exact text as written in the image",\n'
+    '  "location": "where it appears (e.g. green box, right side)",\n'
+    '  "category": "clarification|definition|constraint|note|legend|treatment_detail|criteria",\n'
+    '  "linked_to": "exact label of the node this references, or null",\n'
+    '  "link_type": "asterisk|footnote|arrow|color_group|proximity, or null",\n'
+    '  "subworkflow_candidate": true/false,\n'
+    '  "subworkflow_brief": "detailed description of subworkflow logic, or null"\n'
+    "}\n"
+    "```\n"
+    "Return JSON only, no other text."
 )
 
 
