@@ -51,7 +51,7 @@ from evals.ground_truth.diabetes_ground_truth import (  # noqa: E402
 
 logger = logging.getLogger("convo_test")
 
-IMAGE_PATH = PROJECT_ROOT / "Diabetes Treatment .png"
+IMAGE_PATH = PROJECT_ROOT / "fixtures" / "images" / "Diabetes Treatment .png"
 SESSION_ID = f"convo_test_{int(time.time())}"
 HISTORY_DB = PROJECT_ROOT / ".lemon" / "convo_test_history.sqlite"
 

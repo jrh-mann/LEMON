@@ -40,7 +40,7 @@ logger = logging.getLogger("harness_test")
 # Configuration
 # ---------------------------------------------------------------------------
 
-IMAGE_PATH = PROJECT_ROOT / "Diabetes Treatment .png"
+IMAGE_PATH = PROJECT_ROOT / "fixtures" / "images" / "Diabetes Treatment .png"
 SESSION_ID = f"harness_test_{int(time.time())}"
 HISTORY_DB = PROJECT_ROOT / ".lemon" / "harness_test_history.sqlite"
 
