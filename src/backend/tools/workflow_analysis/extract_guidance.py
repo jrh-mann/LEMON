@@ -52,7 +52,18 @@ _GUIDANCE_PROMPT = (
     '- "linked_to": the exact text of the flowchart node this guidance references, '
     "or null if standalone\n"
     '- "link_type": one of "asterisk", "footnote", "arrow", "color_group", '
-    '"proximity", or null if standalone\n\n'
+    '"proximity", or null if standalone\n'
+    '- "subworkflow_candidate": true if this guidance panel describes a process '
+    "detailed enough to become its own subworkflow (e.g. a side panel with "
+    "multi-step treatment protocols, scoring algorithms, or assessment criteria "
+    "linked to a node via * or footnote), false otherwise\n"
+    '- "subworkflow_brief": if subworkflow_candidate is true, write a detailed '
+    "description of what the subworkflow would do — its inputs, logic, and output. "
+    "null if not a candidate.\n\n"
+    "IMPORTANT: Look specifically for side panels, colour-coded boxes, or footnoted "
+    "sections that expand on a node with enough detail to be their own workflow. "
+    "These are often marked with *, daggers, or arrows pointing to detailed protocol "
+    "boxes. Identify these as subworkflow candidates and describe them thoroughly.\n\n"
     "If nothing found, return: []\n"
     "Return JSON only, no extra text."
 )
