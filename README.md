@@ -1,97 +1,92 @@
 ## LEMON
 
-LEMON converts a **workflow diagram (image)** into **deterministic Python code** by:
-- extracting a structured workflow model (inputs / decision points / outputs)
-- generating comprehensive test cases
-- iteratively generating Python until it passes labeled tests
-- validating on additional edge cases
-
-The core implementation lives in `src/lemon/`.
+LEMON is a full-stack application for building and executing **clinical decision workflows** through a conversational AI interface. Users describe workflows in natural language or upload flowchart images, and an LLM orchestrator builds structured, executable decision trees with a visual canvas editor.
 
 ### Requirements
-- Python 3.9+
-- [`uv`](https://github.com/astral-sh/uv) recommended (works with your `.venv`)
-- Anthropic credentials + E2B sandbox key
+
+- Python 3.10+
+- Node.js 18+
+- [`uv`](https://github.com/astral-sh/uv) for Python dependency management
+- Anthropic API key
 
 ### Setup
 
 1) Create a `.env` in the repo root:
 
 ```
-AZURE_OPENAI_ENDPOINT=https://newlemon.cognitiveservices.azure.com/
-AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-DEPLOYMENT_NAME=gpt-5
-E2B_API_KEY=...
-HAIKU_DEPLOYMENT_NAME=...  # optional (used for test labeling)
+ANTHROPIC_API_KEY=...
+E2B_API_KEY=...          # optional — sandbox execution
 ```
 
 2) Install dependencies:
 
 ```bash
-uv pip install -r requirements.txt
+uv sync
+cd src/frontend && npm install
 ```
 
-### Run the full pipeline (end-to-end)
+### Running
+
+Start all servers (backend, MCP, frontend) with one command:
 
 ```bash
-uv run python refine_workflow_code.py --workflow-image workflow.jpeg --max-iterations 5
+./scripts/dev.sh
 ```
 
-This will (re)create generated artifacts (gitignored):
-- `workflow_analysis.json`
-- `workflow_inputs.json`
-- `workflow_outputs.json`
-- `tests.json`
-- `final_tests.json`
-- `generated_code.py`
+- **Backend API:** http://localhost:5001
+- **MCP Server:** http://localhost:8000
+- **Frontend:** http://localhost:5173
 
-### Validate the generated code against labeled tests
+Or start individually:
 
 ```bash
-uv run python run_tests.py
+python run_api.py      # backend
+python run_mcp.py      # MCP server
+cd src/frontend && npx vite --host   # frontend
 ```
-
-### Analyze workflow only (no refinement loop)
-
-```bash
-uv run python main.py
-```
-
-### Frontend
-
-```bash
-cd src/frontend
-npm install
-npm run dev
-```
-
-Then open `http://localhost:5173`.
 
 ### Repo layout
 
 ```
 LEMON/
-├── src/lemon/                 # core package
-│   ├── analysis/              # workflow image → WorkflowAnalysis
-│   ├── generation/            # WorkflowAnalysis → Python code
-│   ├── testing/               # test-case generation + sandbox harness
-│   ├── core/                  # pipeline orchestration + domain models
-│   └── api/                   # Anthropic + E2B integrations
-├── src/utils/                 # legacy compatibility wrappers
-├── refine_workflow_code.py    # CLI entrypoint → RefinementPipeline
-├── main.py                    # analysis-only CLI
-├── generate_test_cases.py     # test-case generator CLI (from workflow_inputs.json)
-├── run_tests.py               # validates generated_code.py vs tests.json
-├── workflow_prompts.py        # analysis prompt templates (repo-level)
-├── src/frontend/              # React + Vite frontend
-└── tests/                     # pytest unit tests
+├── src/
+│   ├── backend/
+│   │   ├── agents/        # LLM orchestrator and config
+│   │   ├── api/           # FastAPI routes, WebSocket handlers
+│   │   ├── execution/     # Workflow interpreter and evaluator
+│   │   ├── llm/           # Anthropic API wrapper
+│   │   ├── mcp/           # MCP server bridge
+│   │   ├── storage/       # SQLite persistence
+│   │   ├── tools/         # LLM tool implementations
+│   │   ├── utils/         # Logging, validation helpers
+│   │   └── validation/    # Workflow validation rules
+│   └── frontend/          # React + TypeScript + Vite
+├── tests/
+│   ├── validation/        # Input/schema validation tests
+│   ├── tools/             # Tool unit tests
+│   ├── integration/       # Cross-component tests
+│   ├── workflow/          # Workflow structure/logic tests
+│   ├── features/          # Feature-specific and bugfix tests
+│   ├── execution/         # Execution engine tests
+│   └── live/              # Live integration scripts
+├── fixtures/              # Test images, annotations, ground truth
+├── docs/                  # Technical debt, known issues, notes
+├── scripts/               # Dev scripts (dev.sh, etc.)
+├── evals/                 # Evaluation framework and scoring
+├── run_api.py             # Backend entry point
+├── run_mcp.py             # MCP server entry point
+└── pyproject.toml         # Project config and dependencies
+```
+
+### Testing
+
+```bash
+uv run python -m pytest tests/
 ```
 
 ### Development
 
 ```bash
-uv run python -m black .
-uv run python -m isort .
-uv run python -m mypy --explicit-package-bases --namespace-packages src
+./scripts/dev.sh restart   # restart all servers
+./scripts/dev.sh stop      # stop all servers
 ```
