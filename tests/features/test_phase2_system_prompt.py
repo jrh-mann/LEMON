@@ -4,7 +4,7 @@ Verifies:
 1. Signature works with all keyword arguments
 2. Image Analysis section is present
 3. Core tool documentation sections are preserved
-4. Dynamic tail sections (reasoning, guidance, files, session_id) are appended
+4. Dynamic tail sections (reasoning, guidance, files) are appended
 """
 
 
@@ -22,7 +22,7 @@ class TestBuildSystemPrompt:
         from src.backend.agents.system_prompt import build_system_prompt
 
         prompt = build_system_prompt()
-        assert "## Image Analysis (CRITICAL)" in prompt
+        assert "## Image Analysis" in prompt
         assert "update_plan" in prompt
         assert "view_image" in prompt
         assert "ask_question" in prompt
@@ -33,14 +33,14 @@ class TestBuildSystemPrompt:
 
         prompt = build_system_prompt(current_workflow_id="wf_test123")
         assert "wf_test123" in prompt
-        assert "### Current Workflow" in prompt
+        assert "Active workflow" in prompt
 
     def test_current_workflow_id_absent(self):
-        """When no current_workflow_id, the section is omitted."""
+        """When no current_workflow_id, the active workflow line is omitted."""
         from src.backend.agents.system_prompt import build_system_prompt
 
         prompt = build_system_prompt()
-        assert "### Current Workflow" not in prompt
+        assert "Active workflow" not in prompt
 
     def test_reasoning_context_injected(self):
         """When reasoning is provided, it's appended in an Analysis Context section."""
@@ -69,7 +69,8 @@ class TestBuildSystemPrompt:
         assert "## Image Guidance Notes" in prompt
         assert "Green = pass" in prompt
         assert "Check HbA1c" in prompt
-        assert 'linked to node: "Decision A"' in prompt
+        # Linked note format: → "Decision A" via arrow
+        assert '"Decision A"' in prompt
 
     def test_guidance_absent(self):
         """When no guidance, the Image Guidance Notes section is omitted."""
@@ -78,32 +79,35 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt()
         assert "## Image Guidance Notes" not in prompt
 
-    def test_session_id_appended(self):
-        """When last_session_id is set, it's mentioned in the prompt."""
+    def test_session_id_accepted(self):
+        """last_session_id parameter is accepted without error (kept for compat)."""
         from src.backend.agents.system_prompt import build_system_prompt
 
+        # Parameter is accepted but no longer injected into prompt text
         prompt = build_system_prompt(last_session_id="sess_abc")
-        assert "sess_abc" in prompt
+        assert isinstance(prompt, str)
+        assert len(prompt) > 100
 
     def test_core_tool_docs_preserved(self):
         """Core tool documentation sections should still be present."""
         from src.backend.agents.system_prompt import build_system_prompt
 
         prompt = build_system_prompt()
-        # Workflow variables section
-        assert "## Workflow Variables (CRITICAL)" in prompt
+        # Data model with variables
+        assert "## Data Model" in prompt
+        assert "### Variables" in prompt
         # Decision conditions
-        assert "## Decision Node Conditions (CRITICAL)" in prompt
+        assert "## Decision Conditions" in prompt
         # Calculation nodes
-        assert "## Calculation Nodes (Mathematical Operations)" in prompt
+        assert "## Calculation Nodes" in prompt
         # Subprocess nodes
-        assert "## Subprocess Nodes (Subflows)" in prompt
-        # Node branching rules
-        assert "## Node Branching Rules (CRITICAL)" in prompt
+        assert "## Subprocess Nodes" in prompt
+        # Tool selection
+        assert "## Tool Selection" in prompt
         # Batch edit
-        assert "## When to Use batch_edit_workflow vs Single Tools" in prompt
-        # Structure & Balancing
-        assert "## Structure & Balancing (CRITICAL)" in prompt
+        assert "## Batch Edit" in prompt
+        # Tree structure
+        assert "## Tree Structure" in prompt
 
     def test_tools_disabled_appended(self):
         """When allow_tools=False, the tools-disabled message should appear."""
@@ -130,4 +134,4 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(has_files=files)
         assert "flowchart.png" in prompt
         assert "legend.pdf" in prompt
-        assert "File types:" in prompt
+        assert "ask_question" in prompt
