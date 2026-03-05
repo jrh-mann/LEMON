@@ -110,7 +110,7 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     if (data.workflow_id) {
       const activeId = chatStore.activeWorkflowId
       const conv = chatStore.conversations[data.workflow_id]
-      const isBuilderResponse = data.workflow_id !== activeId || conv?.streaming
+      const isBuilderResponse = data.workflow_id !== activeId || conv?.isStreaming
       if (isBuilderResponse) {
         window.dispatchEvent(new CustomEvent('subworkflow-build-complete', {
           detail: { workflowId: data.workflow_id },

@@ -7,7 +7,6 @@
  * Auth is cookie-based (lemon_session cookie sent automatically).
  * Reconnection uses conn_id handshake to rebind background threads.
  */
-import { useChatStore } from '../stores/chatStore'
 import { useUIStore } from '../stores/uiStore'
 import { registerAllHandlers, dispatchEvent } from './socket-handlers'
 
