@@ -138,11 +138,13 @@ def _batch_edit() -> str:
 def _image_analysis() -> str:
     """Process for converting uploaded flowchart images into workflows."""
     return (
+        '**CRITICAL**'
         "## Image-to-Workflow Conversion\n\n"
         "This is your main job. When the user uploads a flowchart image:\n\n"
         "1. Study the image — identify every node, decision, pathway, and annotation\n"
-        "2. Call `extract_guidance` to find side notes, legends, and linked panels. "
-        "Think about what subworkflows you can create from the image.\n"
+        "2. Call extract_guidance to find side notes, legends, and linked panels. IDENTIFY and\n"
+        "LIST all potential subworkflows (look for: treatment protocols in guidance boxes, repeated decision patterns,\n"
+        "complex multi-node clusters, calculations). If you find 2+ candidates, you MUST create subworkflows.\n"
         "3. Call `update_plan` to outline what you see (every step, decision, branch)\n"
         "4. Register ALL input variables before creating nodes\n"
         "5. Create the start node — every workflow begins with a generated start node\n"
