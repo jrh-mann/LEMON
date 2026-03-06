@@ -729,6 +729,7 @@ class Orchestrator:
 
         tool_iterations = 0
         tool_results: List[ToolResult] = []
+        asked_question = False
         while allow_tools and tool_calls:
             if is_cancelled():
                 return finalize_cancel()
@@ -921,10 +922,16 @@ class Orchestrator:
             if is_cancelled():
                 return finalize_cancel()
 
-        final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
+        # When ask_question broke the tool loop, don't dump tool result summaries
+        # to the user — the pending_question event already handles the UX.
+        if asked_question:
+            final_text = raw or ""
+        else:
+            final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
 
         # Ensure we never return empty response when tools were executed
-        if tool_results and not final_text.strip():
+        # (but not when ask_question paused the loop — empty is fine there)
+        if tool_results and not final_text.strip() and not asked_question:
             final_text = f"Completed {len(tool_results)} tool operation(s)."
             self._logger.warning("Empty final response after %d tool calls - using fallback", len(tool_results))
 
