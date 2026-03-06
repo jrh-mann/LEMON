@@ -2335,29 +2335,36 @@ body {
   background: var(--paper);
 }
 
-/* Context window usage meter — thin bar above chat input */
+/* Context window usage meter — thin bar above chat input.
+   Only shown when context > 50%. Uses track/fill pattern so
+   the percentage width actually renders correctly. */
 .context-meter {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-bottom: 6px;
-  height: 14px;
+  gap: 6px;
+  padding-bottom: 4px;
 }
-.context-bar {
+.context-track {
   flex: 1;
-  height: 3px;
-  border-radius: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border, #e0e0e0);
+}
+.context-fill {
+  height: 100%;
+  border-radius: 1px;
   background: var(--teal);
   transition: width 0.3s ease;
-  min-width: 2px;
 }
-.context-bar.warn { background: #f59e0b; }
-.context-bar.critical { background: #ef4444; }
+.context-fill.warn { background: #f59e0b; }
+.context-fill.critical { background: #ef4444; }
 .context-label {
   font-size: 10px;
   color: var(--text-muted, #999);
   white-space: nowrap;
 }
+.context-label.warn { color: #f59e0b; }
+.context-label.critical { color: #ef4444; }
 
 .chat-dock .chat-input-wrapper {
   display: flex;

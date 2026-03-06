@@ -460,13 +460,17 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
             )}
           </div>
         )}
-        {contextUsagePct > 0 && (
+        {contextUsagePct > 50 && (
           <div className="context-meter">
-            <div
-              className={`context-bar${contextUsagePct > 80 ? ' warn' : ''}${contextUsagePct > 95 ? ' critical' : ''}`}
-              style={{ width: `${contextUsagePct}%` }}
-            />
-            <span className="context-label">{contextUsagePct}% context</span>
+            <div className="context-track">
+              <div
+                className={`context-fill${contextUsagePct > 80 ? ' warn' : ''}${contextUsagePct > 95 ? ' critical' : ''}`}
+                style={{ width: `${contextUsagePct}%` }}
+              />
+            </div>
+            <span className={`context-label${contextUsagePct > 80 ? ' warn' : ''}${contextUsagePct > 95 ? ' critical' : ''}`}>
+              {contextUsagePct}%
+            </span>
           </div>
         )}
         <div className="chat-input-wrapper">
