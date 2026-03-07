@@ -97,7 +97,11 @@ def _calculation_nodes() -> str:
         "- `calculation.output`: `{\"name\": \"BMI\"}` — name of the derived variable created\n"
         "- `calculation.operator`: e.g. `divide`, `add`, `sqrt`\n"
         "- `calculation.operands`: list of `{\"kind\": \"variable\", \"ref\": \"var_weight_number\"}` or `{\"kind\": \"literal\", \"value\": 2}`\n\n"
-        "Operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average.\n\n"
+        "Common operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average.\n"
+        "Full list (see tool schema): floor_divide, modulo, square, cube, reciprocal, "
+        "negate, floor, ceil, round, sign, ln, log10, log, exp, sin, cos, tan, asin, "
+        "acos, atan, atan2, degrees, radians, sum, hypot, geometric_mean, harmonic_mean, "
+        "variance, std_dev, range.\n\n"
         "To decide based on a calculated value: calculation → decision → true/false branches.\n"
     )
 
