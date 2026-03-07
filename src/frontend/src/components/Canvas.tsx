@@ -1000,7 +1000,7 @@ export default function Canvas() {
     // Limit to 3 lines max, truncate last line if needed
     if (lines.length > 3) {
       lines.length = 3
-      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + 'â€¦'
+      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + '\u2026'
     }
 
     return lines
