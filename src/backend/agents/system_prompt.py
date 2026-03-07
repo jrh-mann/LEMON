@@ -152,7 +152,7 @@ def _image_analysis_protocol() -> str:
         "## Image-to-Workflow Protocol\n\n"
         "WHEN THE USER UPLOADS A FLOWCHART IMAGE, YOU MUST FOLLOW THIS EXACT SEQUENCE:\n\n"
         "**Step 1:** STUDY the image. Identify every node, decision, branch, and annotation.\n\n"
-        "**Step 2:** Call `extract_guidance` to find side notes, legends, and linked panels.\n"
+        "**Step 2:** IF the user uploaded an image, call `extract_guidance` to find side notes, legends, and linked panels.\n"
         "- NOTE any areas that look like they could become subworkflows (treatment protocols, "
         "repeated patterns, complex clusters) — but do NOT create them yet.\n\n"
         "**Step 3:** Call `update_plan` to create a DFS (depth-first) traversal plan.\n"

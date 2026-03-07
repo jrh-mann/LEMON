@@ -51,6 +51,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                     "guidance panels) from an uploaded workflow image. Makes a separate "
                     "API call and returns structured guidance items. Call this BEFORE "
                     "building the workflow to discover extra context in the image. "
+                    "ONLY call this when the user has uploaded a new image. "
+                    "Do NOT call on text-only messages or edit requests. "
                     "When multiple images are uploaded, pass the filename to select one."
                 ),
                 "parameters": {

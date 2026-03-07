@@ -63,7 +63,8 @@ class ExtractGuidanceTool(Tool):
     description = (
         "Extract side information (sticky notes, legends, annotations, linked "
         "guidance panels) from the uploaded workflow image. Returns a structured "
-        "list of guidance items so you know about extra context before building."
+        "list of guidance items so you know about extra context before building. "
+        "ONLY call when the user has uploaded a new image — not on text-only edits."
     )
     parameters: List[ToolParameter] = [
         ToolParameter(
