@@ -134,11 +134,12 @@ def _batch_edit() -> str:
     """When and how to use batch_edit_workflow."""
     return (
         "## Batch Edit\n\n"
-        "Use `batch_edit_workflow` ONLY when you need to reference newly created nodes "
-        "in the same operation (e.g. decision + its two branches + connections).\n\n"
+        "Use `batch_edit_workflow` for decision nodes: create the decision + its two "
+        "branch nodes + their connections in a single atomic operation. This is more "
+        "reliable than individual tool calls for branching structures.\n\n"
         "Assign temporary IDs (`\"id\": \"temp_decision\"`) that get mapped to real IDs. "
         "In `add_connection` operations, use `from` and `to` fields (not `from_node_id`/`to_node_id`).\n\n"
-        "For single operations, ALWAYS use individual tools instead.\n"
+        "For simple linear operations (single node + single connection), use individual tools.\n"
     )
 
 
