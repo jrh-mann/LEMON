@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,6 +29,11 @@ conversation_store = ConversationStore(_repo_root)
 auth_store = AuthStore(_data_dir / "auth.sqlite")
 workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
 conversation_logger = ConversationLogger(_data_dir / "conversation_log.sqlite")
+
+_startup_logger = logging.getLogger("backend.api")
+_startup_logger.info(
+    "ConversationLogger initialized: %s", _data_dir / "conversation_log.sqlite",
+)
 
 
 @asynccontextmanager

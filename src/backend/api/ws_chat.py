@@ -242,7 +242,7 @@ class WsChatTask:
                             task_id=self.task_id,
                         )
                 except Exception:
-                    logger.debug("Failed to log tool call to audit trail", exc_info=True)
+                    logger.warning("Failed to log tool call to audit trail", exc_info=True)
         if event == "tool_batch_complete":
             self.flush_tool_summary()
 
@@ -443,21 +443,33 @@ class WsChatTask:
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
 
-            # Ensure the conversation exists in the audit log
+            # Ensure the conversation exists in the audit log.
+            # Wrapped in try/except so a logging failure never crashes the chat.
             if self.conversation_logger and self.convo:
-                self.conversation_logger.ensure_conversation(
-                    self.convo.id,
-                    user_id=self.user_id,
-                    workflow_id=self.current_workflow_id,
-                    model="claude-sonnet-4-6",
-                )
-                # Log the user message
-                file_meta = [
-                    {"name": f.get("name"), "file_type": f.get("file_type")}
-                    for f in self.saved_file_paths
-                ] if self.saved_file_paths else None
-                self.conversation_logger.log_user_message(
-                    self.convo.id, self.message, files=file_meta, task_id=self.task_id,
+                try:
+                    self.conversation_logger.ensure_conversation(
+                        self.convo.id,
+                        user_id=self.user_id,
+                        workflow_id=self.current_workflow_id,
+                        model="claude-sonnet-4-6",
+                    )
+                    file_meta = [
+                        {"name": f.get("name"), "file_type": f.get("file_type")}
+                        for f in self.saved_file_paths
+                    ] if self.saved_file_paths else None
+                    self.conversation_logger.log_user_message(
+                        self.convo.id, self.message, files=file_meta, task_id=self.task_id,
+                    )
+                    logger.info(
+                        "Audit log: recorded user message conv=%s task=%s",
+                        self.convo.id, self.task_id,
+                    )
+                except Exception:
+                    logger.warning("Failed to log user message to audit trail", exc_info=True)
+            else:
+                logger.warning(
+                    "Audit log skipped: conversation_logger=%s convo=%s",
+                    self.conversation_logger is not None, self.convo is not None,
                 )
 
             response_text = self.convo.orchestrator.respond(
@@ -474,17 +486,20 @@ class WsChatTask:
 
             # Log the assistant response and any accumulated thinking to the audit trail
             if self.conversation_logger and self.convo:
-                orch = self.convo.orchestrator
-                self.conversation_logger.log_assistant_response(
-                    self.convo.id, response_text,
-                    input_tokens=orch._last_input_tokens or None,
-                    output_tokens=getattr(orch, "_last_output_tokens", None),
-                    task_id=self.task_id,
-                )
-                if self.thinking_chunks:
-                    self.conversation_logger.log_thinking(
-                        self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
+                try:
+                    orch = self.convo.orchestrator
+                    self.conversation_logger.log_assistant_response(
+                        self.convo.id, response_text,
+                        input_tokens=orch._last_input_tokens or None,
+                        output_tokens=getattr(orch, "_last_output_tokens", None),
+                        task_id=self.task_id,
                     )
+                    if self.thinking_chunks:
+                        self.conversation_logger.log_thinking(
+                            self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
+                        )
+                except Exception:
+                    logger.warning("Failed to log assistant response to audit trail", exc_info=True)
 
             # Emit context window usage so the frontend can show an indicator
             orch = self.convo.orchestrator
@@ -507,7 +522,7 @@ class WsChatTask:
                         self.convo.id, exc, task_id=self.task_id,
                     )
                 except Exception:
-                    logger.debug("Failed to log error to audit trail", exc_info=True)
+                    logger.warning("Failed to log error to audit trail", exc_info=True)
             self.emit_error(str(exc))
         finally:
             self.done.set()
