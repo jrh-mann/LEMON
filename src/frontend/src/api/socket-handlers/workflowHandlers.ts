@@ -196,6 +196,13 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
       store.setCurrentWorkflowId(data.workflow_id)
     }
 
+    // Ensure the chatStore tracks this workflow so the Chat component renders
+    // events (thinking, progress, response) that arrive with this workflow_id.
+    const chatStore = useChatStore.getState()
+    if (!chatStore.activeWorkflowId || chatStore.activeWorkflowId !== data.workflow_id) {
+      chatStore.setActiveWorkflowId(data.workflow_id)
+    }
+
     // Apply name and output_type in a single atomic update
     const wf = useWorkflowStore.getState().currentWorkflow
     if (wf) {

@@ -34,6 +34,11 @@ export function sendChatMessage(
   // Include current workflow ID so orchestrator knows what to edit
   const currentWorkflowId = workflowStore.currentWorkflow?.id || chatStore.activeWorkflowId
 
+  // Keep chatStore.activeWorkflowId in sync — the Chat component reads from it
+  if (currentWorkflowId && chatStore.activeWorkflowId !== currentWorkflowId) {
+    chatStore.setActiveWorkflowId(currentWorkflowId)
+  }
+
   // Ensure conversation ID exists (generates UUID if first message)
   const ensuredConversationId = currentWorkflowId
     ? chatStore.ensureConversationId(currentWorkflowId)

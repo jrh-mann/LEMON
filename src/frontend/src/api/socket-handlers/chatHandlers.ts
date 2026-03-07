@@ -89,9 +89,11 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     chatStore.finalizeStream(workflowId, data.tool_calls)
     chatStore.setCurrentTaskId(workflowId, null)
 
-    // No streamed content was finalized — add the response text directly
-    if (!hadStreamContent && data.response) {
-      addAssistantMessage(data.response, data.tool_calls, workflowId)
+    // No streamed content was finalized — add the response text directly.
+    // Also add a message when tool_calls exist but response is empty, so
+    // the user can see which tools ran even without accompanying text.
+    if (!hadStreamContent && (data.response || data.tool_calls?.length)) {
+      addAssistantMessage(data.response || '', data.tool_calls, workflowId)
     }
 
     // Set conversation_id if provided (normal chat responses include this)
