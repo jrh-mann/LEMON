@@ -955,9 +955,11 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "highlight_node",
                 "description": (
-                    "Highlight a node on the canvas to draw the user's attention to it. "
-                    "The node pulses briefly. Use this when referencing a specific node "
-                    "in conversation so the user can see which one you mean."
+                    "Highlight a node on the canvas so the user can see which one you're "
+                    "referring to. The node pulses briefly. Use this when answering "
+                    "questions about specific nodes, when asking the user about a "
+                    "particular node via `ask_question`, or when pointing out an issue "
+                    "found by `validate_workflow`."
                 ),
                 "parameters": {
                     "type": "object",
