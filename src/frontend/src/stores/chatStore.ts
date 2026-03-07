@@ -216,7 +216,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // --- Active-workflow convenience ---
 
   sendUserMessage: (content) => {
-    const workflowId = get().activeWorkflowId
+    // Resolve workflow ID — fall back to workflowStore if activeWorkflowId
+    // isn't set yet (happens on the very first message of a session).
+    const workflowId =
+      get().activeWorkflowId || useWorkflowStore.getState().currentWorkflow?.id || null
     const message: Message = {
       id: generateId(),
       role: 'user',
@@ -225,6 +228,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tool_calls: [],
     }
     if (workflowId) {
+      // Sync activeWorkflowId so subsequent calls don't need the fallback
+      if (!get().activeWorkflowId) {
+        get().setActiveWorkflowId(workflowId)
+      }
       get().addMessage(workflowId, message)
     }
     return message
