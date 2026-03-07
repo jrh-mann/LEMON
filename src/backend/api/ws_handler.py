@@ -20,6 +20,7 @@ from .common import cors_origins
 from .conversations import ConversationStore
 from .ws_registry import ConnectionRegistry
 from ..storage.auth import AuthStore
+from ..storage.conversation_log import ConversationLogger
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -33,6 +34,7 @@ def register_ws_endpoint(
     repo_root: Path,
     auth_store: AuthStore,
     workflow_store: WorkflowStore,
+    conversation_logger: ConversationLogger,
 ) -> None:
     """Register the /ws WebSocket endpoint on the FastAPI app."""
 
@@ -111,6 +113,7 @@ def register_ws_endpoint(
                         workflow_store=workflow_store,
                         user_id=user.id,
                         payload=payload,
+                        conversation_logger=conversation_logger,
                     )
 
                 elif msg_type == "cancel_task":

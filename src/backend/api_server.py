@@ -15,6 +15,7 @@ from .api.routes import register_routes
 from .api.ws_handler import register_ws_endpoint
 from .api.ws_registry import ConnectionRegistry
 from .storage.auth import AuthStore
+from .storage.conversation_log import ConversationLogger
 from .storage.workflows import WorkflowStore
 from .utils.paths import lemon_data_dir
 
@@ -26,6 +27,7 @@ ws_registry = ConnectionRegistry()  # Event loop set lazily in lifespan
 conversation_store = ConversationStore(_repo_root)
 auth_store = AuthStore(_data_dir / "auth.sqlite")
 workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
+conversation_logger = ConversationLogger(_data_dir / "conversation_log.sqlite")
 
 
 @asynccontextmanager
@@ -60,6 +62,7 @@ register_ws_endpoint(
     repo_root=_repo_root,
     auth_store=auth_store,
     workflow_store=workflow_store,
+    conversation_logger=conversation_logger,
 )
 
 # Serve frontend static files (SPA catch-all)

@@ -24,6 +24,7 @@ from .ws_registry import ConnectionRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..utils.uploads import save_uploaded_file, save_annotations
 from ..utils.paths import lemon_data_dir
+from ..storage.conversation_log import ConversationLogger
 from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -127,6 +128,12 @@ class WsChatTask:
     convo: Optional[Conversation] = None
     img_annotations: Optional[list[dict[str, Any]]] = None
     saved_file_paths: list[dict[str, Any]] = field(default_factory=list)
+    # Persistent audit log for the conversation lifecycle
+    conversation_logger: Optional[ConversationLogger] = None
+    # Accumulated thinking chunks — flushed as a single entry after respond()
+    thinking_chunks: list[str] = field(default_factory=list)
+    # Tool start times for duration measurement (keyed by tool name)
+    _tool_start_times: dict[str, float] = field(default_factory=dict)
 
     # --- Helpers ---
 
@@ -173,6 +180,7 @@ class WsChatTask:
         """Stream LLM reasoning/thinking chunks to the frontend."""
         if not chunk or self.is_cancelled():
             return
+        self.thinking_chunks.append(chunk)
         self._emit("chat_thinking", {"chunk": chunk, "task_id": self.task_id})
 
     def heartbeat(self) -> None:
@@ -201,6 +209,8 @@ class WsChatTask:
             if cancelled:
                 entry["interrupted"] = True
             self.executed_tools.append(entry)
+            # Record start time for duration measurement
+            self._tool_start_times[tool] = time.perf_counter()
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -215,6 +225,24 @@ class WsChatTask:
                     if cancelled:
                         executed["interrupted"] = True
                     break
+            # Log tool call to the audit trail
+            if self.conversation_logger and self.convo:
+                start = self._tool_start_times.pop(tool, None)
+                duration_ms = (time.perf_counter() - start) * 1000 if start else 0.0
+                try:
+                    self.conversation_logger.log_tool_call(
+                        self.convo.id, tool, args, result, success, duration_ms,
+                        task_id=self.task_id,
+                    )
+                    # Snapshot workflow after successful edit tool calls
+                    if success and tool in WORKFLOW_EDIT_TOOLS and self.convo:
+                        self.conversation_logger.log_workflow_snapshot(
+                            self.convo.id,
+                            self.convo.orchestrator.current_workflow,
+                            task_id=self.task_id,
+                        )
+                except Exception:
+                    logger.debug("Failed to log tool call to audit trail", exc_info=True)
         if event == "tool_batch_complete":
             self.flush_tool_summary()
 
@@ -367,6 +395,9 @@ class WsChatTask:
                 if record:
                     self.convo.orchestrator.current_workflow_name = record.name
         self.convo.orchestrator.open_tabs = self.open_tabs or []
+        # Inject conversation logger so the orchestrator can log compaction events
+        self.convo.orchestrator._conversation_logger = self.conversation_logger
+        self.convo.orchestrator._conversation_id = self.convo.id
 
     def _sync_convo_from_orchestrator(self) -> None:
         if not self.convo:
@@ -411,6 +442,24 @@ class WsChatTask:
                 return
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
+
+            # Ensure the conversation exists in the audit log
+            if self.conversation_logger and self.convo:
+                self.conversation_logger.ensure_conversation(
+                    self.convo.id,
+                    user_id=self.user_id,
+                    workflow_id=self.current_workflow_id,
+                    model="claude-sonnet-4-6",
+                )
+                # Log the user message
+                file_meta = [
+                    {"name": f.get("name"), "file_type": f.get("file_type")}
+                    for f in self.saved_file_paths
+                ] if self.saved_file_paths else None
+                self.conversation_logger.log_user_message(
+                    self.convo.id, self.message, files=file_meta, task_id=self.task_id,
+                )
+
             response_text = self.convo.orchestrator.respond(
                 self.message,
                 has_files=self.saved_file_paths if self.saved_file_paths else [],
@@ -422,6 +471,21 @@ class WsChatTask:
                 on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()
+
+            # Log the assistant response and any accumulated thinking to the audit trail
+            if self.conversation_logger and self.convo:
+                orch = self.convo.orchestrator
+                self.conversation_logger.log_assistant_response(
+                    self.convo.id, response_text,
+                    input_tokens=orch._last_input_tokens or None,
+                    output_tokens=getattr(orch, "_last_output_tokens", None),
+                    task_id=self.task_id,
+                )
+                if self.thinking_chunks:
+                    self.conversation_logger.log_thinking(
+                        self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
+                    )
+
             # Emit context window usage so the frontend can show an indicator
             orch = self.convo.orchestrator
             self._emit("context_status", {
@@ -436,6 +500,14 @@ class WsChatTask:
             self._emit_response(response_text)
         except Exception as exc:
             logger.exception("WS chat failed")
+            # Log the error to the audit trail
+            if self.conversation_logger and self.convo:
+                try:
+                    self.conversation_logger.log_error(
+                        self.convo.id, exc, task_id=self.task_id,
+                    )
+                except Exception:
+                    logger.debug("Failed to log error to audit trail", exc_info=True)
             self.emit_error(str(exc))
         finally:
             self.done.set()
@@ -453,6 +525,7 @@ def handle_ws_chat(
     workflow_store: Any,
     user_id: str,
     payload: Dict[str, Any],
+    conversation_logger: Optional[ConversationLogger] = None,
 ) -> None:
     """Handle incoming chat message — spawn background task."""
     message = payload.get("message", "")
@@ -490,6 +563,7 @@ def handle_ws_chat(
         current_workflow_id=payload.get("current_workflow_id") or f"wf_{uuid4().hex}",
         open_tabs=payload.get("open_tabs"),
         img_annotations=payload.get("annotations"),
+        conversation_logger=conversation_logger,
     )
     threading.Thread(target=task.run, daemon=True, name=f"ws-chat-{task_id}").start()
 

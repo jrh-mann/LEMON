@@ -73,6 +73,10 @@ class Orchestrator:
         self._last_input_tokens: int = 0
         self._context_limit: int = 200_000  # Claude models have 200k context window
 
+        # Optional conversation logger for audit trail (injected by ws_chat)
+        self._conversation_logger: Optional[Any] = None
+        self._conversation_id: Optional[str] = None
+
     @property
     def context_usage_pct(self) -> int:
         """Percentage of context window used by the last LLM call."""
@@ -111,6 +115,18 @@ class Orchestrator:
         keep_count = max(4, len(self.history) // 3)
         old_messages = self.history[:-keep_count]
         recent_messages = self.history[-keep_count:]
+
+        # Log discarded messages to the audit trail before compaction
+        if self._conversation_logger and self._conversation_id:
+            try:
+                self._conversation_logger.log_compaction(
+                    self._conversation_id,
+                    original_count=len(self.history),
+                    summary="[pending]",
+                    discarded_messages=old_messages,
+                )
+            except Exception:
+                self._logger.debug("Failed to log compaction to audit trail", exc_info=True)
 
         # Build a text representation of old messages for the summarizer
         summary_parts = []
