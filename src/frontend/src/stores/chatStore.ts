@@ -216,10 +216,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // --- Active-workflow convenience ---
 
   sendUserMessage: (content) => {
-    // Resolve workflow ID — fall back to workflowStore if activeWorkflowId
-    // isn't set yet (happens on the very first message of a session).
-    const workflowId =
-      get().activeWorkflowId || useWorkflowStore.getState().currentWorkflow?.id || null
+    // Resolve workflow ID using the SAME logic as sendChatMessage in
+    // socketActions.ts: prefer workflowStore (the canonical canvas ID)
+    // over chatStore.activeWorkflowId. This ensures the user message is
+    // stored under the same ID that the backend will use for responses.
+    const wfStoreId = useWorkflowStore.getState().currentWorkflow?.id || null
+    const workflowId = wfStoreId || get().activeWorkflowId
     const message: Message = {
       id: generateId(),
       role: 'user',
@@ -228,8 +230,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tool_calls: [],
     }
     if (workflowId) {
-      // Sync activeWorkflowId so subsequent calls don't need the fallback
-      if (!get().activeWorkflowId) {
+      // Sync activeWorkflowId so Chat.tsx reads the right conversation
+      if (get().activeWorkflowId !== workflowId) {
         get().setActiveWorkflowId(workflowId)
       }
       get().addMessage(workflowId, message)

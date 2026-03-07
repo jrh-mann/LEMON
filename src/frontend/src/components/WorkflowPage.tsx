@@ -275,11 +275,12 @@ export default function WorkflowPage() {
 
         setIsHomeSending(true)
 
+        // Orchestrate exit sequence — sets activeWorkflowId BEFORE adding
+        // the user message so sendUserMessage can route to the right conversation.
+        await startWorkflowSession()
+
         // Add user message to store locally so it appears in chat history right away
         sendUserMessage(text)
-
-        // Orchestrate exit sequence
-        await startWorkflowSession()
 
         // Small delay to let transition begin and socket initialize
         setTimeout(() => {
