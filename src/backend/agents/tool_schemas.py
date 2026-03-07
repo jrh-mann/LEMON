@@ -70,8 +70,10 @@ def tool_descriptions() -> List[Dict[str, Any]]:
             "function": {
                 "name": "update_plan",
                 "description": (
-                    "Update the step-by-step plan shown to the user. Call this to outline "
-                    "what you see in the image and mark items as done as you build the workflow."
+                    "Update the step-by-step plan shown to the user. "
+                    "Call this TWICE: once at the start to outline your DFS plan (Step 3), "
+                    "and once at the end to mark all items done (Step 8). "
+                    "Do NOT call after every tool — it interrupts your building flow."
                 ),
                 "parameters": {
                     "type": "object",
