@@ -138,6 +138,7 @@ export {
   sendChatMessage,
   cancelChatTask,
   syncWorkflow,
+  resumeTask,
   startWorkflowExecution,
   pauseWorkflowExecution,
   resumeWorkflowExecution,

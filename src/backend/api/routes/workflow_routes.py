@@ -9,17 +9,19 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Request
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
 from .helpers import _calculate_confidence, _infer_outputs_from_nodes
 from ...storage.workflows import WorkflowStore
 from ...utils.flowchart import tree_from_flowchart
+from ...utils.paths import lemon_data_dir
 from ...validation.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger("backend.api")
@@ -39,12 +41,14 @@ def register_workflow_routes(
     app: FastAPI,
     *,
     workflow_store: WorkflowStore,
+    repo_root: Optional[Path] = None,
 ) -> None:
     """Register workflow CRUD endpoints on the FastAPI app.
 
     Args:
         app: FastAPI application instance.
         workflow_store: Workflow storage backend.
+        repo_root: Repository root for resolving upload paths.
     """
     router = APIRouter()
 
@@ -236,6 +240,8 @@ def register_workflow_routes(
             "doubts": workflow.doubts,
             "build_history": workflow.build_history,
             "building": workflow.building,
+            "conversation_id": workflow.conversation_id,
+            "uploaded_files": workflow.uploaded_files,
         }
         return JSONResponse(response)
 
@@ -437,5 +443,24 @@ def register_workflow_routes(
             "message": "Workflow updated successfully.",
         }
         return JSONResponse(response)
+
+    @router.get("/api/uploads/{file_path:path}")
+    async def serve_upload(
+        file_path: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> FileResponse:
+        """Serve an uploaded file from the data directory.
+
+        Only serves files under the uploads/ subdirectory to prevent
+        path traversal attacks.
+        """
+        data_dir = lemon_data_dir(repo_root)
+        resolved = (data_dir / file_path).resolve()
+        # Guard: must be inside the data directory
+        if not str(resolved).startswith(str(data_dir.resolve())):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if not resolved.is_file():
+            return JSONResponse({"error": "file not found"}, status_code=404)
+        return FileResponse(resolved)
 
     app.include_router(router)

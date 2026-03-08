@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { Message, ToolCall } from '../types'
 import { useWorkflowStore } from './workflowStore'
 
@@ -105,7 +106,7 @@ const updateConv = (
   },
 })
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>()(persist((set, get) => ({
   // Initial state
   conversations: {},
   activeWorkflowId: null,
@@ -282,6 +283,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
       cancelledTaskIds: {},
       pendingQuestions: [],
     }),
+}), {
+  name: 'lemon-chat',
+  // Only persist durable state — skip transient streaming/processing fields
+  partialize: (state) => ({
+    activeWorkflowId: state.activeWorkflowId,
+    conversations: Object.fromEntries(
+      Object.entries(state.conversations).map(([wfId, conv]) => [
+        wfId,
+        {
+          messages: conv.messages,
+          conversationId: conv.conversationId,
+          // Reset transient fields so they don't leak across sessions
+          isStreaming: false,
+          streamingContent: '',
+          thinkingContent: '',
+          processingStatus: null,
+          currentTaskId: null,
+          contextUsagePct: conv.contextUsagePct,
+        } satisfies ConversationState,
+      ]),
+    ),
+  }),
 }))
 
 // Helper to add an assistant message to a specific workflow's conversation.

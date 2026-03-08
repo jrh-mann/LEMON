@@ -18,6 +18,7 @@ from ..conversations import ConversationStore
 from ..deps import require_auth
 from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ...storage.auth import AuthUser
+from ...storage.conversation_log import ConversationLogger
 from ...utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.api")
@@ -28,6 +29,7 @@ def register_chat_routes(
     *,
     conversation_store: ConversationStore,
     repo_root: Path,
+    conversation_logger: Optional[ConversationLogger] = None,
 ) -> None:
     """Register chat endpoints on the FastAPI app.
 
@@ -35,6 +37,7 @@ def register_chat_routes(
         app: FastAPI application instance.
         conversation_store: In-memory conversation manager.
         repo_root: Repository root path for image uploads.
+        conversation_logger: SQLite audit log for persistent chat history.
     """
     router = APIRouter()
 
@@ -102,30 +105,64 @@ def register_chat_routes(
         conversation_id: str,
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
+        """Retrieve conversation history.
+
+        Tries the in-memory ConversationStore first (has full orchestrator
+        history). Falls back to the ConversationLogger SQLite DB which
+        persists across server restarts.
+        """
+        # Try in-memory store first (richest data)
         convo = conversation_store.get(conversation_id)
-        if not convo:
-            return JSONResponse({"error": "conversation not found"}, status_code=404)
-        messages = []
-        for idx, msg in enumerate(convo.orchestrator.history):
-            role = msg.get("role", "assistant")
-            content = msg.get("content", "")
-            messages.append(
+        if convo:
+            messages = []
+            for idx, msg in enumerate(convo.orchestrator.history):
+                role = msg.get("role", "assistant")
+                content = msg.get("content", "")
+                messages.append(
+                    {
+                        "id": f"{conversation_id}_{idx}",
+                        "role": role,
+                        "content": content,
+                        "timestamp": utc_now(),
+                        "tool_calls": extract_tool_calls(content),
+                    }
+                )
+            return JSONResponse(
                 {
-                    "id": f"{conversation_id}_{idx}",
-                    "role": role,
-                    "content": content,
-                    "timestamp": utc_now(),
-                    "tool_calls": extract_tool_calls(content),
+                    "id": convo.id,
+                    "messages": messages,
+                    "working": {},
+                    "created_at": convo.created_at,
+                    "updated_at": convo.updated_at,
                 }
             )
-        return JSONResponse(
-            {
-                "id": convo.id,
-                "messages": messages,
-                "working": {},
-                "created_at": convo.created_at,
-                "updated_at": convo.updated_at,
-            }
-        )
+
+        # Fall back to persistent ConversationLogger SQLite DB
+        if conversation_logger:
+            entries = conversation_logger.get_conversation_timeline(
+                conversation_id,
+                entry_types=["user_message", "assistant_response"],
+            )
+            if entries:
+                messages = []
+                for entry in entries:
+                    messages.append(
+                        {
+                            "id": f"{conversation_id}_{entry['seq']}",
+                            "role": "user" if entry["entry_type"] == "user_message" else "assistant",
+                            "content": entry.get("content", ""),
+                            "timestamp": entry.get("timestamp", utc_now()),
+                            "tool_calls": [],
+                        }
+                    )
+                return JSONResponse(
+                    {
+                        "id": conversation_id,
+                        "messages": messages,
+                        "working": {},
+                    }
+                )
+
+        return JSONResponse({"error": "conversation not found"}, status_code=404)
 
     app.include_router(router)

@@ -131,6 +131,16 @@ def register_ws_endpoint(
                         payload=payload,
                     )
 
+                elif msg_type == "resume_task":
+                    from .ws_chat import handle_resume_task
+                    await asyncio.to_thread(
+                        handle_resume_task,
+                        ws_registry,
+                        conn_id=conn_id,
+                        user_id=user.id,
+                        payload=payload,
+                    )
+
                 elif msg_type == "execute_workflow":
                     from .ws_execution import handle_execute_workflow
                     await asyncio.to_thread(

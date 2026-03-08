@@ -8,9 +8,9 @@ import Modals from './Modals'
 import SubflowExecutionModal from './SubflowExecutionModal'
 import ToolInspectorModal from './ToolInspectorModal'
 import { ExecutionLogModal } from './ExecutionLogModal'
-import { ApiError } from '../api/client'
+import { ApiError, API_BASE, getSessionId } from '../api/client'
 import { getCurrentUser } from '../api/auth'
-import { getWorkflow } from '../api/workflows'
+import { getWorkflow, getConversationHistory } from '../api/workflows'
 import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
@@ -160,26 +160,131 @@ export default function WorkflowPage() {
                 const cs = useChatStore.getState()
                 cs.setActiveWorkflowId(workflowId)
 
-                // Load build_history into chatStore, but only if no streaming events
-                // have already populated the conversation (e.g. user navigated after
-                // the builder started emitting events).
-                if (workflowData.build_history?.length) {
-                    const existingConv = cs.conversations?.[workflowId]
-                    if (!existingConv?.messages?.length) {
-                        const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
-                            id: `bh_${crypto.randomUUID()}`,
-                            role: msg.role as 'user' | 'assistant',
-                            content: msg.content,
-                            timestamp: new Date().toISOString(),
-                            tool_calls: [],
-                        }))
-                        cs.setMessages(workflowId, historyMessages)
-                    }
+                // Restore conversation_id so new messages continue the same thread
+                if (workflowData.conversation_id) {
+                    cs.setConversationId(workflowId, workflowData.conversation_id)
                 }
-                // Separate from build_history: if an update is in progress,
-                // mark as streaming so Chat.tsx shows the streaming overlay.
+
+                // Chat messages are persisted to localStorage via zustand persist,
+                // so they survive page refreshes. But we also check the backend
+                // for any responses that arrived while the page was closed
+                // (e.g. the LLM finished responding after refresh).
+                const localMessages = cs.conversations?.[workflowId]?.messages ?? []
+                if (workflowData.conversation_id) {
+                    const history = await getConversationHistory(workflowData.conversation_id)
+                    if (history?.messages?.length) {
+                        const backendMessages = history.messages
+                            .filter(m => m.role === 'user' || m.role === 'assistant')
+                            .map(m => ({
+                                id: m.id,
+                                role: m.role as 'user' | 'assistant',
+                                content: m.content,
+                                timestamp: m.timestamp,
+                                tool_calls: m.tool_calls || [],
+                            }))
+                        // Use backend if it has more messages (caught responses we missed)
+                        if (backendMessages.length > localMessages.length) {
+                            cs.setMessages(workflowId, backendMessages)
+                        }
+                    }
+                } else if (!localMessages.length && workflowData.build_history?.length) {
+                    // No conversation_id and no local messages — use build_history as last resort
+                    const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
+                        id: `bh_${crypto.randomUUID()}`,
+                        role: msg.role as 'user' | 'assistant',
+                        content: msg.content,
+                        timestamp: new Date().toISOString(),
+                        tool_calls: [],
+                    }))
+                    cs.setMessages(workflowId, historyMessages)
+                }
+                // If a backend task is still running, reconnect to receive
+                // live events and poll until it completes to fetch the final response.
                 if (workflowData.building) {
                     cs.setStreaming(workflowId, true)
+                    cs.setProcessingStatus(workflowId, 'Reconnecting...')
+
+                    // Try to reconnect to live events (streaming, tool calls)
+                    setTimeout(() => {
+                        import('../api/socket').then(({ resumeTask }) => {
+                            resumeTask(workflowId)
+                        })
+                    }, 500)
+
+                    // Poll until the task completes, then fetch the final response.
+                    // The backend sets building=false when the task finishes.
+                    const pollInterval = setInterval(async () => {
+                        try {
+                            const fresh = await getWorkflow(workflowId)
+                            if (!fresh.building) {
+                                clearInterval(pollInterval)
+                                // Task finished — fetch the final conversation
+                                const chatStore = useChatStore.getState()
+                                chatStore.setStreaming(workflowId, false)
+                                chatStore.setProcessingStatus(workflowId, null)
+                                chatStore.setCurrentTaskId(workflowId, null)
+                                const convId = fresh.conversation_id || workflowData.conversation_id
+                                if (convId) {
+                                    const history = await getConversationHistory(convId)
+                                    if (history?.messages?.length) {
+                                        const backendMsgs = history.messages
+                                            .filter(m => m.role === 'user' || m.role === 'assistant')
+                                            .map(m => ({
+                                                id: m.id,
+                                                role: m.role as 'user' | 'assistant',
+                                                content: m.content,
+                                                timestamp: m.timestamp,
+                                                tool_calls: m.tool_calls || [],
+                                            }))
+                                        chatStore.setMessages(workflowId, backendMsgs)
+                                    }
+                                }
+                                // Also refresh the flowchart in case it was updated
+                                const fc = transformFlowchartFromBackend({
+                                    nodes: fresh.nodes || [],
+                                    edges: fresh.edges || [],
+                                })
+                                setFlowchart(fc)
+                                const freshAnalysis: WorkflowAnalysis = {
+                                    variables: fresh.variables || [],
+                                    outputs: fresh.outputs || [],
+                                }
+                                setAnalysis(freshAnalysis)
+                            }
+                        } catch {
+                            clearInterval(pollInterval)
+                        }
+                    }, 2000) // Check every 2 seconds
+                }
+
+                // Restore uploaded files (images/PDFs) so they reappear after refresh.
+                // Fetches each file from the backend uploads endpoint and converts
+                // to a data URL for the image viewer.
+                if (workflowData.uploaded_files?.length) {
+                    for (const uf of workflowData.uploaded_files) {
+                        try {
+                            const resp = await fetch(`${API_BASE}/api/uploads/${uf.rel_path}`, {
+                                credentials: 'include',
+                                headers: { 'X-Session-Id': getSessionId() },
+                            })
+                            if (!resp.ok) continue
+                            const blob = await resp.blob()
+                            const dataUrl = await new Promise<string>((resolve) => {
+                                const reader = new FileReader()
+                                reader.onloadend = () => resolve(reader.result as string)
+                                reader.readAsDataURL(blob)
+                            })
+                            addPendingFile({
+                                id: `restored_${uf.rel_path}`,
+                                name: uf.name,
+                                dataUrl,
+                                type: uf.file_type === 'pdf' ? 'pdf' : 'image',
+                                purpose: (uf.purpose as 'flowchart' | 'guidance' | 'mixed' | 'unclassified') || 'unclassified',
+                            })
+                        } catch {
+                            // Non-critical — skip files that can't be restored
+                        }
+                    }
                 }
 
                 // After state is set, trigger the staggered reveal if we are still hidden

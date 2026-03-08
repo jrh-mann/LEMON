@@ -58,6 +58,7 @@ register_routes(
     repo_root=_repo_root,
     auth_store=auth_store,
     workflow_store=workflow_store,
+    conversation_logger=conversation_logger,
 )
 
 # Register WebSocket endpoint at /ws

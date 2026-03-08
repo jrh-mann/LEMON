@@ -118,6 +118,30 @@ export async function validateWorkflow(payload: {
   return api.post<ValidationResponse>('/api/validate', payload)
 }
 
+// Fetch conversation history from the backend's in-memory ConversationStore.
+// Returns messages if the conversation is still alive in memory, 404 otherwise.
+export interface ConversationHistoryResponse {
+  id: string
+  messages: Array<{
+    id: string
+    role: 'user' | 'assistant'
+    content: string
+    timestamp: string
+    tool_calls: any[]
+  }>
+}
+
+export async function getConversationHistory(
+  conversationId: string
+): Promise<ConversationHistoryResponse | null> {
+  try {
+    return await api.get<ConversationHistoryResponse>(`/api/chat/${conversationId}`)
+  } catch {
+    // 404 = conversation evicted or server restarted — not an error
+    return null
+  }
+}
+
 // Compile workflow to Python code
 export interface CompilePythonResponse {
   success: boolean

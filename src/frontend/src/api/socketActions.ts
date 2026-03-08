@@ -152,6 +152,19 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
   })
 }
 
+/**
+ * Resume a running backend task after a page refresh.
+ * Tells the backend to re-route events to the new WebSocket connection.
+ */
+export function resumeTask(workflowId: string): void {
+  if (!isConnected()) {
+    console.warn('[WS] Cannot resume task: not connected')
+    return
+  }
+  console.log('[WS] Resuming task for workflow:', workflowId)
+  sendMessage('resume_task', { workflow_id: workflowId })
+}
+
 // ===== Execution Control Functions =====
 // These functions send WebSocket messages to control workflow execution on the backend
 

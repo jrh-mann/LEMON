@@ -45,6 +45,8 @@ class WorkflowRecord:
     published_at: Optional[str] = None  # When workflow was published
     building: bool = False  # True while a background orchestrator is building this workflow
     build_history: List[Dict[str, str]] = field(default_factory=list)  # Conversation history from the background builder
+    conversation_id: Optional[str] = None  # Links to the in-memory ConversationStore for chat history restore
+    uploaded_files: List[Dict[str, str]] = field(default_factory=list)  # [{name, rel_path, file_type, purpose}]
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,18 @@ class WorkflowStore:
                 conn.execute("SELECT build_history FROM workflows LIMIT 1")
             except sqlite3.OperationalError:
                 conn.execute("ALTER TABLE workflows ADD COLUMN build_history TEXT NOT NULL DEFAULT '[]'")
+
+            # Add conversation_id column — links to in-memory ConversationStore for chat restore
+            try:
+                conn.execute("SELECT conversation_id FROM workflows LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE workflows ADD COLUMN conversation_id TEXT")
+
+            # Add uploaded_files column — stores file metadata for restore after refresh
+            try:
+                conn.execute("SELECT uploaded_files FROM workflows LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE workflows ADD COLUMN uploaded_files TEXT NOT NULL DEFAULT '[]'")
 
             # Create indexes for peer review queries
             conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_published ON workflows(is_published)")
@@ -241,16 +255,16 @@ class WorkflowStore:
                     nodes, edges, inputs, outputs, tree, doubts,
                     validation_score, validation_count, is_validated,
                     output_type, is_draft, is_published, review_status, net_votes, published_at,
-                    building, build_history, created_at, updated_at
+                    building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id, user_id, name, description, domain, tags_json,
                     nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
                     validation_score, validation_count, is_validated,
                     output_type or "string", is_draft, is_published, "unreviewed", 0, published_at,
-                    building, build_history_json, now, now
+                    building, build_history_json, None, "[]", now, now
                 ),
             )
         self._logger.info("Created workflow id=%s user=%s name=%s is_published=%s", workflow_id, user_id, name, is_published)
@@ -272,7 +286,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, build_history, created_at, updated_at
+                       building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND user_id = ?
                 """,
@@ -306,6 +320,8 @@ class WorkflowStore:
         net_votes: Optional[int] = None,
         building: Optional[bool] = None,
         build_history: Optional[List[Dict[str, str]]] = None,
+        conversation_id: Optional[str] = None,
+        uploaded_files: Optional[List[Dict[str, str]]] = None,
     ) -> bool:
         """Update an existing workflow.
 
@@ -385,6 +401,12 @@ class WorkflowStore:
         if build_history is not None:
             updates.append("build_history = ?")
             params.append(json.dumps(build_history))
+        if conversation_id is not None:
+            updates.append("conversation_id = ?")
+            params.append(conversation_id)
+        if uploaded_files is not None:
+            updates.append("uploaded_files = ?")
+            params.append(json.dumps(uploaded_files))
 
         if not updates:
             return True  # No updates requested
@@ -511,7 +533,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, build_history, created_at, updated_at
+                       building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 FROM workflows
                 WHERE user_id = ?
                 ORDER BY updated_at DESC
@@ -581,7 +603,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, build_history, created_at, updated_at
+                       building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY updated_at DESC
@@ -653,6 +675,8 @@ class WorkflowStore:
                 published_at=row["published_at"],
                 building=bool(row["building"]) if row["building"] is not None else False,
                 build_history=json.loads(row["build_history"]) if row["build_history"] else [],
+                conversation_id=row["conversation_id"] if "conversation_id" in row.keys() else None,
+                uploaded_files=json.loads(row["uploaded_files"]) if "uploaded_files" in row.keys() and row["uploaded_files"] else [],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
@@ -710,7 +734,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, build_history, created_at, updated_at
+                       building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 FROM workflows
                 WHERE {where_sql}
                 ORDER BY {order_by}
@@ -738,7 +762,7 @@ class WorkflowStore:
                        nodes, edges, inputs, outputs, tree, doubts,
                        validation_score, validation_count, is_validated,
                        output_type, is_draft, is_published, review_status, net_votes, published_at,
-                       building, build_history, created_at, updated_at
+                       building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 FROM workflows
                 WHERE id = ? AND is_published = 1
                 """,

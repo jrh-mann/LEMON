@@ -277,6 +277,8 @@ export interface WorkflowDetailResponse {
   outputs: WorkflowOutput[]
   build_history?: Array<{ role: string; content: string }>
   building?: boolean  // True while a background orchestrator is building this workflow
+  conversation_id?: string  // Links to backend ConversationStore for chat history restore
+  uploaded_files?: Array<{ name: string; rel_path: string; file_type: string; purpose: string }>
 }
 
 export interface WorkflowSummary {

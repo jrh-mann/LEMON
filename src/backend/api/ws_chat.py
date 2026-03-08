@@ -29,6 +29,12 @@ from ..storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
 
+# ---------- Active task registry ----------
+# Maps (user_id, workflow_id) → WsChatTask for in-progress tasks.
+# Used by resume_task to reconnect a refreshed frontend to a running backend task.
+_ACTIVE_TASKS: Dict[tuple[str, str], "WsChatTask"] = {}
+_ACTIVE_TASKS_LOCK = Lock()
+
 # ---------- Task cancellation state ----------
 
 _TASK_STATE: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -436,12 +442,55 @@ class WsChatTask:
     def run(self) -> None:
         self.emit_progress("start", "Thinking...")
         threading.Thread(target=self.heartbeat, daemon=True).start()
+
+        # Register as active task so resume_task can reconnect after refresh
+        task_key = (self.user_id, self.current_workflow_id) if self.current_workflow_id else None
+        if task_key:
+            with _ACTIVE_TASKS_LOCK:
+                _ACTIVE_TASKS[task_key] = self
+            # Mark workflow as building so frontend knows a task is in progress
+            if self.workflow_store:
+                try:
+                    self.workflow_store.update_workflow(
+                        self.current_workflow_id, self.user_id, building=True,
+                    )
+                except Exception:
+                    logger.debug("Failed to set building=True", exc_info=True)
+
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
             if not self._save_uploaded_files():
                 return
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
+
+            # Persist conversation_id (and uploaded file metadata) on the workflow
+            # so they survive page reloads.
+            if self.current_workflow_id and self.workflow_store and self.convo:
+                try:
+                    update_kwargs: Dict[str, Any] = {"conversation_id": self.convo.id}
+                    # Store uploaded file metadata so images reappear after refresh
+                    if self.saved_file_paths:
+                        data_dir = lemon_data_dir(self.repo_root)
+                        uploaded_files = []
+                        for fp in self.saved_file_paths:
+                            abs_p = Path(fp["path"])
+                            try:
+                                rel = str(abs_p.relative_to(data_dir))
+                            except ValueError:
+                                rel = fp["path"]
+                            uploaded_files.append({
+                                "name": fp.get("name", ""),
+                                "rel_path": rel,
+                                "file_type": fp.get("file_type", "image"),
+                                "purpose": fp.get("purpose", "unclassified"),
+                            })
+                        update_kwargs["uploaded_files"] = uploaded_files
+                    self.workflow_store.update_workflow(
+                        self.current_workflow_id, self.user_id, **update_kwargs,
+                    )
+                except Exception:
+                    logger.debug("Failed to persist conversation_id/files on workflow", exc_info=True)
 
             # Ensure the conversation exists in the audit log.
             # Wrapped in try/except so a logging failure never crashes the chat.
@@ -527,6 +576,17 @@ class WsChatTask:
         finally:
             self.done.set()
             _clear_task(self.conn_id, self.task_id)
+            # Unregister from active tasks and clear building flag
+            if task_key:
+                with _ACTIVE_TASKS_LOCK:
+                    _ACTIVE_TASKS.pop(task_key, None)
+                if self.workflow_store:
+                    try:
+                        self.workflow_store.update_workflow(
+                            self.current_workflow_id, self.user_id, building=False,
+                        )
+                    except Exception:
+                        logger.debug("Failed to set building=False", exc_info=True)
 
 
 # ---------- Handler functions (called from ws_handler.py dispatch loop) ----------
@@ -629,3 +689,47 @@ def handle_sync_workflow(
         len(workflow.get("nodes", [])),
         len(workflow.get("edges", [])),
     )
+
+
+def handle_resume_task(
+    registry: ConnectionRegistry,
+    *,
+    conn_id: str,
+    user_id: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Reconnect a refreshed frontend to a still-running backend task.
+
+    The frontend sends this after loading a workflow with building=true.
+    We look up the active task and update its conn_id so future events
+    (streaming, tool calls, workflow updates) reach the new WebSocket.
+    """
+    workflow_id = payload.get("workflow_id")
+    if not workflow_id:
+        return
+
+    task_key = (user_id, workflow_id)
+    with _ACTIVE_TASKS_LOCK:
+        task = _ACTIVE_TASKS.get(task_key)
+
+    if task and not task.done.is_set():
+        old_conn_id = task.conn_id
+        task.conn_id = conn_id
+        logger.info(
+            "resume_task: reconnected workflow=%s old_conn=%s new_conn=%s",
+            workflow_id, old_conn_id, conn_id,
+        )
+        # Send an immediate progress event so the frontend knows it's connected
+        registry.send_to_sync(conn_id, "chat_progress", {
+            "event": "resumed",
+            "status": "Processing...",
+            "task_id": task.task_id,
+            "workflow_id": workflow_id,
+        })
+    else:
+        # Task already finished — tell the frontend to clear streaming state
+        # and re-fetch conversation history for the final response.
+        logger.info("resume_task: no active task for workflow=%s, sending task_finished", workflow_id)
+        registry.send_to_sync(conn_id, "task_finished", {
+            "workflow_id": workflow_id,
+        })

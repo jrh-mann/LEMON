@@ -10,7 +10,100 @@ import {
   getDecisionPath,
   generateNodeId,
 } from '../utils/canvas'
-import type { FlowNode, FlowNodeType } from '../types'
+import { patchWorkflow } from '../api/workflows'
+import type { FlowNode, FlowNodeType, SimpleCondition, WorkflowVariable } from '../types'
+import { isCompoundCondition } from '../types'
+
+// ---------------------------------------------------------------------------
+// Decision edge label resolver
+// Converts "true"/"false" edge labels into human-readable descriptions
+// based on the decision node's structured condition and workflow variables.
+// ---------------------------------------------------------------------------
+
+/** Comparator symbols for concise edge labels */
+const COMPARATOR_SYMBOL: Record<string, { true: string; false: string }> = {
+  // Numeric
+  eq:    { true: '=',  false: '≠' },
+  neq:   { true: '≠',  false: '=' },
+  lt:    { true: '<',  false: '≥' },
+  lte:   { true: '≤',  false: '>' },
+  gt:    { true: '>',  false: '≤' },
+  gte:   { true: '≥',  false: '<' },
+  // Boolean
+  is_true:  { true: '= Yes', false: '= No' },
+  is_false: { true: '= No',  false: '= Yes' },
+  // String
+  str_eq:          { true: '=',  false: '≠' },
+  str_neq:         { true: '≠',  false: '=' },
+  str_contains:    { true: 'contains',      false: '!contains' },
+  str_starts_with: { true: 'starts with',   false: '!starts with' },
+  str_ends_with:   { true: 'ends with',     false: '!ends with' },
+  // Enum
+  enum_eq:  { true: '=',  false: '≠' },
+  enum_neq: { true: '≠',  false: '=' },
+  // Date
+  date_eq:      { true: '=',      false: '≠' },
+  date_before:  { true: 'before', false: 'on/after' },
+  date_after:   { true: 'after',  false: 'on/before' },
+  date_between: { true: 'in',     false: 'outside' },
+}
+
+/** Build a label string for one simple condition on a given branch. */
+function formatSimpleCondition(
+  cond: SimpleCondition,
+  branch: 'true' | 'false',
+  variables: WorkflowVariable[],
+): string {
+  const variable = variables.find(v => v.id === cond.input_id)
+  const varName = variable?.name ?? cond.input_id
+  const symbols = COMPARATOR_SYMBOL[cond.comparator]
+  if (!symbols) return branch === 'true' ? 'Yes' : 'No'
+  const sym = symbols[branch]
+
+  // Range comparators show both bounds
+  if (cond.comparator === 'within_range' || cond.comparator === 'date_between') {
+    const lo = cond.value ?? '?'
+    const hi = cond.value2 ?? '?'
+    return branch === 'true'
+      ? `${varName} ${lo}–${hi}`
+      : `${varName} outside ${lo}–${hi}`
+  }
+
+  // Boolean comparators don't need a value
+  if (cond.comparator === 'is_true' || cond.comparator === 'is_false') {
+    return `${varName} ${sym}`
+  }
+
+  const val = cond.value ?? '?'
+  return `${varName} ${sym} ${val}`
+}
+
+/** Resolve a decision edge label from its condition. Returns null to keep
+ *  the original label when no condition is available. */
+function resolveDecisionEdgeLabel(
+  node: FlowNode,
+  edgeLabel: string,
+  variables: WorkflowVariable[],
+): string | null {
+  if (!node.condition) return null
+  const lower = edgeLabel.toLowerCase()
+  // Map yes/no and true/false to the canonical branch names
+  const branch: 'true' | 'false' | null =
+    lower === 'true' || lower === 'yes' ? 'true' :
+    lower === 'false' || lower === 'no' ? 'false' : null
+  if (!branch) return null
+
+  if (isCompoundCondition(node.condition)) {
+    // Compound: join sub-conditions with AND/OR
+    const parts = node.condition.conditions.map(c =>
+      formatSimpleCondition(c, branch, variables),
+    )
+    const joiner = ` ${node.condition.operator} `
+    return parts.join(joiner)
+  }
+
+  return formatSimpleCondition(node.condition, branch, variables)
+}
 
 // Default labels for each node type
 const DEFAULT_LABELS: Record<FlowNodeType, string> = {
@@ -81,6 +174,7 @@ export default function Canvas() {
     clearPendingFiles,
     execution,  // Execution state for visual highlighting
     highlightedNodeId,  // Node pulsing from highlight_node tool
+    currentAnalysis,
   } = useWorkflowStore()
 
   const {
@@ -945,7 +1039,12 @@ export default function Canvas() {
         />
         {/* Show label for decision edges, or any edge with a label */}
         {(edge.label || isDecisionEdge) && (() => {
-          const labelText = edge.label || (isDecisionEdge ? '?' : '')
+          // Resolve "true"/"false" into human-readable condition labels
+          const variables = currentAnalysis?.variables ?? []
+          const resolved = isDecisionEdge
+            ? resolveDecisionEdgeLabel(fromNode, edge.label, variables)
+            : null
+          const labelText = resolved ?? (edge.label || (isDecisionEdge ? '?' : ''))
           // Approximate text width for background rect (8px per char at font-size 14)
           const textW = labelText.length * 8 + 10
           const textH = 20
@@ -1296,6 +1395,12 @@ export default function Canvas() {
 
     setFlowchart({ nodes: newNodes, edges: newEdges })
     pushHistory()
+
+    // Sync new positions to the backend so the agent sees them too
+    const workflowId = useWorkflowStore.getState().currentWorkflow?.id
+    if (workflowId) {
+      patchWorkflow(workflowId, { nodes: newNodes, edges: newEdges }).catch(() => {})
+    }
   }, [flowchart, setFlowchart, pushHistory])
 
   return (

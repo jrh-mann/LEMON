@@ -16,8 +16,11 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from typing import Optional
+
 from ..conversations import ConversationStore
 from ...storage.auth import AuthStore
+from ...storage.conversation_log import ConversationLogger
 from ...storage.workflows import WorkflowStore
 
 # Re-export for test file that imports this helper directly
@@ -45,6 +48,7 @@ def register_routes(
     repo_root: Path,
     auth_store: AuthStore,
     workflow_store: WorkflowStore,
+    conversation_logger: Optional[ConversationLogger] = None,
 ) -> None:
     """Register all HTTP routes on the FastAPI app.
 
@@ -72,10 +76,11 @@ def register_routes(
         app,
         conversation_store=conversation_store,
         repo_root=repo_root,
+        conversation_logger=conversation_logger,
     )
 
     # Workflow CRUD (list, create, get, delete, patch, update)
-    register_workflow_routes(app, workflow_store=workflow_store)
+    register_workflow_routes(app, workflow_store=workflow_store, repo_root=repo_root)
 
     # Search and domain listing
     register_search_routes(app, workflow_store=workflow_store)
