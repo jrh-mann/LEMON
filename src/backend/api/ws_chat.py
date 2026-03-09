@@ -18,7 +18,6 @@ from uuid import uuid4
 
 from .common import utc_now
 from .conversations import Conversation, ConversationStore
-from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from .ws_registry import ConnectionRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
@@ -138,6 +137,8 @@ class WsChatTask:
     conversation_logger: Optional[ConversationLogger] = None
     # Accumulated thinking chunks — flushed as a single entry after respond()
     thinking_chunks: list[str] = field(default_factory=list)
+    # Accumulated stream text — replayed on resume_task so refresh doesn't lose content
+    stream_buffer: str = ""
     # Tool start times for duration measurement (keyed by tool name)
     _tool_start_times: dict[str, float] = field(default_factory=dict)
 
@@ -176,6 +177,7 @@ class WsChatTask:
         if self.is_cancelled():
             return
         self.did_stream = True
+        self.stream_buffer += chunk  # Accumulate for resume replay
         for char in chunk:
             if self.is_cancelled():
                 return
@@ -412,15 +414,13 @@ class WsChatTask:
         self.convo.update_workflow_analysis(self.convo.orchestrator.workflow_analysis)
 
     def _emit_response(self, response_text: str, cancelled: bool = False) -> None:
-        tool_calls = extract_tool_calls(response_text, include_result=False)
-        if not tool_calls and self.executed_tools:
-            tool_calls = self.executed_tools
-        summary = summarize_response(response_text) if tool_calls else ""
+        tool_calls = self.executed_tools
         if self.convo:
             self.convo.updated_at = utc_now()
-        # Determine the response field: if streamed, chunks were already sent
-        # so the response field is "". Otherwise use the full text.
-        response_field = summary if tool_calls else ("" if self.did_stream else response_text)
+        # If content was already streamed to the client, the response field is
+        # empty (unless tools were called, in which case include the full text).
+        # For non-streamed responses, always include the full text.
+        response_field = "" if self.did_stream and not tool_calls else response_text
         # Log empty non-streamed responses as warnings for debugging
         if not response_field and not self.did_stream and not cancelled:
             logger.warning(
@@ -448,14 +448,6 @@ class WsChatTask:
         if task_key:
             with _ACTIVE_TASKS_LOCK:
                 _ACTIVE_TASKS[task_key] = self
-            # Mark workflow as building so frontend knows a task is in progress
-            if self.workflow_store:
-                try:
-                    self.workflow_store.update_workflow(
-                        self.current_workflow_id, self.user_id, building=True,
-                    )
-                except Exception:
-                    logger.debug("Failed to set building=True", exc_info=True)
 
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
@@ -464,11 +456,16 @@ class WsChatTask:
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
 
-            # Persist conversation_id (and uploaded file metadata) on the workflow
-            # so they survive page reloads.
+            # Persist conversation_id, building flag, and uploaded file metadata
+            # on the workflow so they survive page reloads.
+            # NOTE: building=True must be set AFTER _sync_orchestrator_from_convo()
+            # which auto-creates the workflow row if it doesn't exist yet.
             if self.current_workflow_id and self.workflow_store and self.convo:
                 try:
-                    update_kwargs: Dict[str, Any] = {"conversation_id": self.convo.id}
+                    update_kwargs: Dict[str, Any] = {
+                        "conversation_id": self.convo.id,
+                        "building": True,
+                    }
                     # Store uploaded file metadata so images reappear after refresh
                     if self.saved_file_paths:
                         data_dir = lemon_data_dir(self.repo_root)
@@ -714,10 +711,17 @@ def handle_resume_task(
 
     if task and not task.done.is_set():
         old_conn_id = task.conn_id
+        # Snapshot accumulated content before switching conn_id so we
+        # capture everything streamed up to this point.
+        replay_thinking = "".join(task.thinking_chunks)
+        replay_stream = task.stream_buffer
+        # Re-route future events to the new WebSocket connection
         task.conn_id = conn_id
         logger.info(
-            "resume_task: reconnected workflow=%s old_conn=%s new_conn=%s",
+            "resume_task: reconnected workflow=%s old_conn=%s new_conn=%s "
+            "replay_thinking=%d replay_stream=%d",
             workflow_id, old_conn_id, conn_id,
+            len(replay_thinking), len(replay_stream),
         )
         # Send an immediate progress event so the frontend knows it's connected
         registry.send_to_sync(conn_id, "chat_progress", {
@@ -726,6 +730,20 @@ def handle_resume_task(
             "task_id": task.task_id,
             "workflow_id": workflow_id,
         })
+        # Replay accumulated thinking and stream content so the frontend
+        # restores everything that was displayed before the refresh.
+        if replay_thinking:
+            registry.send_to_sync(conn_id, "chat_thinking", {
+                "chunk": replay_thinking,
+                "task_id": task.task_id,
+                "workflow_id": workflow_id,
+            })
+        if replay_stream:
+            registry.send_to_sync(conn_id, "chat_stream", {
+                "chunk": replay_stream,
+                "task_id": task.task_id,
+                "workflow_id": workflow_id,
+            })
     else:
         # Task already finished — tell the frontend to clear streaming state
         # and re-fetch conversation history for the final response.
