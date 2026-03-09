@@ -6,6 +6,7 @@ import base64
 from dataclasses import dataclass
 import os
 import json
+import copy
 import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -196,6 +197,7 @@ class Orchestrator:
         return {
             "variables": self.workflow.get("variables", []),
             "outputs": self.workflow.get("outputs", []),
+            "output_type": self.workflow.get("output_type", "string"),
         }
 
     @workflow_analysis.setter
@@ -205,10 +207,13 @@ class Orchestrator:
             return
         variables = value.get("variables", [])
         outputs = value.get("outputs", [])
+        output_type = value.get("output_type")
         if isinstance(variables, list):
             self.workflow["variables"] = variables
         if isinstance(outputs, list):
             self.workflow["outputs"] = outputs
+        if isinstance(output_type, str) and output_type:
+            self.workflow["output_type"] = output_type
 
     def sync_workflow(
         self,
@@ -229,8 +234,7 @@ class Orchestrator:
         try:
             workflow_data = workflow_provider()
         except Exception as exc:
-            self._logger.error("Failed to sync workflow: %s", exc)
-            return
+            raise RuntimeError(f"Failed to sync workflow: {exc}") from exc
 
         if not isinstance(workflow_data, dict):
             return
@@ -264,8 +268,7 @@ class Orchestrator:
         try:
             analysis_data = analysis_provider()
         except Exception as exc:
-            self._logger.error("Failed to sync workflow analysis: %s", exc)
-            return
+            raise RuntimeError(f"Failed to sync workflow analysis: {exc}") from exc
 
         if not isinstance(analysis_data, dict):
             return
@@ -309,23 +312,23 @@ class Orchestrator:
             mcp_args = {
                 **args,
                 "session_state": {
-                    "current_workflow": self.current_workflow,
-                    "workflow_analysis": self.workflow_analysis,
+                    "current_workflow": copy.deepcopy(self.current_workflow),
+                    "workflow_analysis": copy.deepcopy(self.workflow_analysis),
                     "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
                     "user_id": self.user_id,  # Serialize user_id (string)
-                    "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
-                    "uploaded_files": getattr(self, "uploaded_files", []),
+                    "open_tabs": copy.deepcopy(self.open_tabs),  # All open tabs for list_workflows_in_library
+                    "uploaded_files": copy.deepcopy(getattr(self, "uploaded_files", [])),
                 },
             }
             data = call_mcp_tool(tool_name, mcp_args)
         else:
             # Direct mode: Pass workflow_store object reference
             session_state = {
-                "current_workflow": self.current_workflow,
-                "workflow_analysis": self.workflow_analysis,
+                "current_workflow": copy.deepcopy(self.current_workflow),
+                "workflow_analysis": copy.deepcopy(self.workflow_analysis),
                 "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
-                "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
-                "uploaded_files": getattr(self, "uploaded_files", []),
+                "open_tabs": copy.deepcopy(self.open_tabs),  # All open tabs for list_workflows_in_library
+                "uploaded_files": copy.deepcopy(getattr(self, "uploaded_files", [])),
             }
             # Add workflow_store and user_id if available
             if self.workflow_store is not None:
@@ -533,6 +536,8 @@ class Orchestrator:
                         self.workflow["variables"] = returned_analysis["variables"]
                     if "outputs" in returned_analysis:
                         self.workflow["outputs"] = returned_analysis["outputs"]
+                    if "output_type" in returned_analysis and isinstance(returned_analysis["output_type"], str):
+                        self.workflow["output_type"] = returned_analysis["output_type"]
                     self._logger.debug(
                         "Synced workflow_analysis from tool result: %d variables, %d outputs",
                         len(self.workflow.get("variables", [])),
@@ -581,7 +586,16 @@ class Orchestrator:
         # vs which files exist from previous turns (for tool access via session_state).
         new_files = has_files or []
         if new_files:
-            self.uploaded_files = new_files
+            existing_by_path = {
+                f.get("path") or f.get("rel_path") or f.get("name"): f
+                for f in self.uploaded_files
+                if isinstance(f, dict)
+            }
+            for file_info in new_files:
+                key = file_info.get("path") or file_info.get("rel_path") or file_info.get("name")
+                if key:
+                    existing_by_path[key] = file_info
+            self.uploaded_files = list(existing_by_path.values())
         self._logger.info("uploaded_files count=%d files=%s", len(self.uploaded_files), [f.get("name") for f in self.uploaded_files])
 
         def is_cancelled() -> bool:

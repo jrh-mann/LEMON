@@ -16,6 +16,8 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+from ...workflow_persistence import merge_workflow_record_with_updates
+
 logger = logging.getLogger(__name__)
 
 def resolve_node_id(
@@ -727,12 +729,6 @@ def _rederive_subprocess_variable_types(
             existing_var.get("type"), current_type, subworkflow_id,
         )
 
-    # Persist updated variables to DB so the fix sticks across loads
-    if dirty:
-        save_workflow_changes(
-            workflow_id, session_state, variables=variables,
-        )
-
     return variables
 
 
@@ -766,7 +762,10 @@ def load_workflow_for_tool(
     """
     # Validate workflow_id is provided - fall back to current_workflow_id from session
     if not workflow_id:
-        workflow_id = session_state.get("current_workflow_id")
+        fallback_workflow_id = session_state.get("current_workflow_id")
+        workflow_id = ""
+        if isinstance(fallback_workflow_id, str):
+            workflow_id = fallback_workflow_id
         _load_logger.info(
             "load_workflow_for_tool: no workflow_id in args, fell back to current_workflow_id=%s",
             workflow_id,
@@ -902,24 +901,38 @@ def save_workflow_changes(
             "message": "Unable to save workflow - user not authenticated.",
         }
     
-    # Build update kwargs - only include provided fields
-    update_kwargs: Dict[str, Any] = {}
-    if nodes is not None:
-        update_kwargs["nodes"] = nodes
-    if edges is not None:
-        update_kwargs["edges"] = edges
-    if variables is not None:
-        update_kwargs["inputs"] = variables  # Store as 'inputs' in database
-    if outputs is not None:
-        update_kwargs["outputs"] = outputs
-    
-    # If nothing to update, return success
-    if not update_kwargs:
+    if all(value is None for value in (nodes, edges, variables, outputs)):
         return None
+
+    try:
+        record = workflow_store.get_workflow(workflow_id, user_id)
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Database error: {e}",
+            "error_code": "DB_ERROR",
+            "message": f"Failed to load workflow before save: {e}",
+        }
+
+    if record is None:
+        return {
+            "success": False,
+            "error": f"Workflow '{workflow_id}' not found",
+            "error_code": "WORKFLOW_NOT_FOUND",
+            "message": f"Workflow '{workflow_id}' not found or unauthorized.",
+        }
+
+    persisted = merge_workflow_record_with_updates(
+        record,
+        nodes=nodes,
+        edges=edges,
+        variables=variables,
+        outputs=outputs,
+    )
     
     # Save to database
     try:
-        success = workflow_store.update_workflow(workflow_id, user_id, **update_kwargs)
+        success = workflow_store.update_workflow(workflow_id, user_id, **persisted)
         if not success:
             return {
                 "success": False,

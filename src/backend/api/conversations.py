@@ -32,6 +32,7 @@ class Conversation:
         "edges": [],
         "variables": [],
         "outputs": [],
+        "output_type": "string",
     })
 
     @property
@@ -48,6 +49,7 @@ class Conversation:
         return {
             "variables": self.workflow.get("variables", []),
             "outputs": self.workflow.get("outputs", []),
+            "output_type": self.workflow.get("output_type", "string"),
         }
 
     def update_workflow_state(self, workflow: Dict[str, Any]) -> None:
@@ -75,6 +77,7 @@ class Conversation:
 
         self.workflow["variables"] = analysis.get("variables", [])
         self.workflow["outputs"] = analysis.get("outputs", [])
+        self.workflow["output_type"] = analysis.get("output_type", self.workflow.get("output_type", "string"))
         self.updated_at = utc_now()
 
 

@@ -105,6 +105,39 @@ class TestCanvasAutoPersist:
         assert record.name == "New Workflow"
         assert record.is_draft is True
 
+    def test_persists_live_canvas_snapshot_instead_of_empty_placeholder(
+        self, workflow_store, convo_store, user_id
+    ):
+        """Auto-persist should write the current canvas snapshot, not an empty shell."""
+        canvas_id = _generate_workflow_id()
+        task = _make_task(
+            workflow_store, convo_store, user_id,
+            current_workflow_id=canvas_id,
+        )
+        task.convo.update_workflow_state({
+            "nodes": [
+                {"id": "start_1", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "end_1", "type": "end", "label": "Done", "x": 200, "y": 0, "output_value": "42"},
+            ],
+            "edges": [{"id": "e1", "from": "start_1", "to": "end_1", "label": ""}],
+        })
+        task.convo.update_workflow_analysis({
+            "variables": [{"id": "var_age_number", "name": "age", "type": "number"}],
+            "outputs": [{"name": "Done", "type": "number"}],
+            "output_type": "number",
+        })
+
+        task._sync_orchestrator_from_convo()
+
+        record = workflow_store.get_workflow(canvas_id, user_id)
+        assert record is not None
+        assert len(record.nodes) == 2
+        assert len(record.edges) == 1
+        assert record.inputs == [{"id": "var_age_number", "name": "age", "type": "number"}]
+        assert record.outputs == [{"name": "Done", "type": "number"}]
+        assert record.output_type == "number"
+        assert record.tree["start"]["id"] == "start_1"
+
     def test_does_not_overwrite_existing_record(
         self, workflow_store, convo_store, user_id
     ):
