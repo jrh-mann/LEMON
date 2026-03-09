@@ -2,7 +2,6 @@
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import ImageAnnotator from './ImageAnnotator'
-import { beautifyNodes } from '../utils/beautifyNodes'
 import {
   getNodeSize,
   getNodeColor,
@@ -10,8 +9,6 @@ import {
   calculateViewBox,
   getDecisionPath,
   generateNodeId,
-  getNodeFillColor,
-  getNodeStrokeColor,
 } from '../utils/canvas'
 import { patchWorkflow } from '../api/workflows'
 import type { FlowNode, FlowNodeType, SimpleCondition, WorkflowVariable } from '../types'
@@ -33,8 +30,8 @@ const COMPARATOR_SYMBOL: Record<string, { true: string; false: string }> = {
   gt:    { true: '>',  false: '≤' },
   gte:   { true: '≥',  false: '<' },
   // Boolean
-  is_true:  { true: 'True',  false: 'False' },
-  is_false: { true: 'False', false: 'True' },
+  is_true:  { true: '= Yes', false: '= No' },
+  is_false: { true: '= No',  false: '= Yes' },
   // String
   str_eq:          { true: '=',  false: '≠' },
   str_neq:         { true: '≠',  false: '=' },
@@ -72,20 +69,9 @@ function formatSimpleCondition(
       : `${varName} outside ${lo}–${hi}`
   }
 
-  // Boolean comparators — just show True / False
+  // Boolean comparators don't need a value
   if (cond.comparator === 'is_true' || cond.comparator === 'is_false') {
-    return sym
-  }
-
-  // Enum comparators — show the matching value on the match branch,
-  // and the other enum value(s) on the non-match branch.
-  if (cond.comparator === 'enum_eq' || cond.comparator === 'enum_neq') {
-    const val = cond.value ?? '?'
-    const isMatch = (cond.comparator === 'enum_eq') === (branch === 'true')
-    if (isMatch) return String(val)
-    // Show the other enum value(s) instead of "Not {val}"
-    const others = (variable?.enum_values ?? []).filter(v => v !== val)
-    return others.length ? others.join(' | ') : `Not ${val}`
+    return `${varName} ${sym}`
   }
 
   const val = cond.value ?? '?'
@@ -108,13 +94,11 @@ function resolveDecisionEdgeLabel(
   if (!branch) return null
 
   if (isCompoundCondition(node.condition)) {
-    // Compound: true branch shows concise conditions joined with & / |,
-    // false branch just shows "Else" since negating a compound is confusing.
-    if (branch === 'false') return 'Else'
+    // Compound: join sub-conditions with AND/OR
     const parts = node.condition.conditions.map(c =>
       formatSimpleCondition(c, branch, variables),
     )
-    const joiner = node.condition.operator === 'AND' ? ' & ' : ' | '
+    const joiner = ` ${node.condition.operator} `
     return parts.join(joiner)
   }
 
@@ -131,6 +115,32 @@ const DEFAULT_LABELS: Record<FlowNodeType, string> = {
   calculation: 'Calculate',
 }
 
+// Get fill color based on node type
+const getNodeFillColor = (type: FlowNodeType): string => {
+  switch (type) {
+    case 'start': return 'var(--teal-light)'
+    case 'decision': return 'var(--amber-light)'
+    case 'end': return 'var(--green-light)'
+    case 'subprocess': return 'var(--rose-light)'
+    case 'calculation': return 'var(--purple-light)'
+    case 'process': return 'var(--paper)'
+    default: return 'var(--paper)'
+  }
+}
+
+// Get stroke color based on node type
+const getNodeStrokeColor = (type: FlowNodeType): string => {
+  switch (type) {
+    case 'start': return 'var(--teal)'
+    case 'decision': return 'var(--amber)'
+    case 'end': return 'var(--green)'
+    case 'subprocess': return 'var(--rose)'
+    case 'calculation': return 'var(--purple)'
+    case 'process': return 'var(--edge)'
+    default: return 'var(--edge)'
+  }
+}
+
 export default function Canvas() {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -138,6 +148,7 @@ export default function Canvas() {
   const {
     flowchart,
     setFlowchart,
+    selectedNodeId: _selectedNodeId,
     selectedNodeIds,
     selectedEdge,
     connectMode,
@@ -147,6 +158,7 @@ export default function Canvas() {
     selectEdge,
     clearSelection,
     moveNode,
+    moveNodes,
     addNode,
     addEdge,
     startConnect,
@@ -523,7 +535,7 @@ export default function Canvas() {
         moveNode(dragNodeId, newPos.x, newPos.y)
       }
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, checkCollision, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, moveNodes, dragConnection, checkCollision, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
   )
 
   // Handle pointer up
@@ -1093,11 +1105,295 @@ export default function Canvas() {
     return lines
   }
 
-  // Beautify/auto-layout the flowchart using the shared utility
+  // Beautify/auto-layout the flowchart - hierarchical tree with node duplication
   const beautifyFlowchart = useCallback(() => {
     if (flowchart.nodes.length === 0) return
-    const result = beautifyNodes(flowchart.nodes, flowchart.edges)
-    setFlowchart(result)
+
+    // De-dupe nodes/edges to keep layout stable across repeated runs.
+    const nodeById = new Map(flowchart.nodes.map((node) => [node.id, node]))
+    const nodes = Array.from(nodeById.values())
+    const edgeKeys = new Set<string>()
+    const edges = flowchart.edges.filter((edge) => {
+      const key = `${edge.from}->${edge.to}:${edge.label || ''}`
+      if (edgeKeys.has(key)) return false
+      edgeKeys.add(key)
+      return nodeById.has(edge.from) && nodeById.has(edge.to)
+    })
+
+    // Build adjacency list for outgoing edges with labels
+    const outgoing = new Map<string, { to: string; label: string }[]>()
+    const incoming = new Map<string, string[]>()
+    nodes.forEach(n => {
+      outgoing.set(n.id, [])
+      incoming.set(n.id, [])
+    })
+    edges.forEach(e => {
+      outgoing.get(e.from)?.push({ to: e.to, label: e.label })
+      incoming.get(e.to)?.push(e.from)
+    })
+
+    // Remove orphan nodes (no connections at all) - they don't belong in the flowchart
+    const orphanNodeIds = new Set(
+      flowchart.nodes
+        .filter(n => (incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) === 0)
+        .map(n => n.id)
+    )
+
+    // Start nodes: no incoming edges but have outgoing, or type 'start'
+    let startNodes = nodes.filter(n =>
+      !orphanNodeIds.has(n.id) &&
+      (((incoming.get(n.id)?.length ?? 0) === 0 && (outgoing.get(n.id)?.length ?? 0) > 0) ||
+        n.type === 'start')
+    )
+
+    // If no start nodes found, use first connected node
+    if (startNodes.length === 0) {
+      const connectedNodes = nodes.filter(n => !orphanNodeIds.has(n.id))
+      if (connectedNodes.length > 0) {
+        startNodes = [connectedNodes[0]]
+      } else {
+        // All nodes are orphans - nothing to beautify
+        return
+      }
+    }
+
+    // Tree traversal with duplication for shared nodes
+    interface TreeNode {
+      id: string           // new unique id (may have _dup suffix)
+      originalId: string   // original node id
+      layer: number
+      children: TreeNode[]
+      parentId: string | null
+      edgeLabel: string
+    }
+
+    const newNodes: FlowNode[] = []
+    const newEdges: { from: string; to: string; label: string }[] = []
+    const visited = new Set<string>()
+    let dupCounter = 0
+
+    // Layout constants - increased spacing
+    const layerSpacing = 160
+    const nodeSpacing = 220
+    const startY = 100
+
+    // Skip orphan placement - they're removed
+    orphanNodeIds.forEach(id => {
+      visited.add(id) // Mark as visited so they won't be added later
+    })
+
+    // Start tree at top (no orphan row)
+    const treeStartY = startY
+
+    // Build tree structure via BFS
+    const roots: TreeNode[] = []
+    const queue: TreeNode[] = []
+
+    // Use actual start nodes as roots (no synthetic entry point).
+    startNodes.forEach(node => {
+      if (visited.has(node.id)) return
+      const treeNode: TreeNode = {
+        id: node.id,
+        originalId: node.id,
+        layer: 0,
+        children: [],
+        parentId: null,
+        edgeLabel: ''
+      }
+      roots.push(treeNode)
+      queue.push(treeNode)
+      visited.add(node.id)
+    })
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      const children = outgoing.get(current.originalId) || []
+
+      children.forEach(({ to, label }) => {
+        let childId: string
+        if (visited.has(to)) {
+          // Already visited - duplicate this node
+          dupCounter++
+          childId = `${to}_dup${dupCounter}`
+        } else {
+          childId = to
+          visited.add(to)
+        }
+
+        const childTreeNode: TreeNode = {
+          id: childId,
+          originalId: to,
+          layer: current.layer + 1,
+          children: [],
+          parentId: current.id,
+          edgeLabel: label
+        }
+        current.children.push(childTreeNode)
+        queue.push(childTreeNode)
+      })
+    }
+
+    // Handle any remaining disconnected nodes (connected to each other but not to start)
+    nodes.forEach(n => {
+      if (!visited.has(n.id)) {
+        const treeNode: TreeNode = {
+          id: n.id,
+          originalId: n.id,
+          layer: 0,
+          children: [],
+          parentId: null,
+          edgeLabel: ''
+        }
+        roots.push(treeNode)
+        visited.add(n.id)
+      }
+    })
+
+    // Calculate subtree width - ensures minimum spacing for each node
+    const getSubtreeWidth = (node: TreeNode): number => {
+      if (node.children.length === 0) return 1
+      // Sum of children's widths, but ensure at least 1 per child for spacing
+      const childrenWidth = node.children.reduce((sum, child) => sum + getSubtreeWidth(child), 0)
+      // Ensure minimum width accounts for number of direct children
+      return Math.max(childrenWidth, node.children.length)
+    }
+
+    // Count total descendants in a subtree
+    const getDescendantCount = (node: TreeNode): number => {
+      if (node.children.length === 0) return 0
+      return node.children.reduce((sum, child) => sum + 1 + getDescendantCount(child), 0)
+    }
+
+    // Order node children: most descendants in center (straight down)
+    // Uses consistent descendant-based ordering for all multi-child nodes
+    const orderNodeChildren = (node: TreeNode) => {
+      if (node.children.length >= 2) {
+        // Calculate descendant count for all children
+        const childrenWithCounts = node.children.map(child => ({
+          child,
+          descendants: getDescendantCount(child)
+        }))
+
+        // Sort by descendant count descending (most descendants first)
+        childrenWithCounts.sort((a, b) => b.descendants - a.descendants)
+
+        if (node.children.length === 2) {
+          // Two children: keep larger on right (tends to look better with downward flow)
+          // Smaller on left, larger on right
+          const [larger, smaller] = childrenWithCounts.map(c => c.child)
+          node.children = [smaller, larger]
+        } else if (node.children.length === 3) {
+          // Three children: most descendants in middle
+          const [largest, second, third] = childrenWithCounts.map(c => c.child)
+          node.children = [second, largest, third]
+        } else {
+          // More than 3: most descendants in middle, distribute others around
+          const sorted = childrenWithCounts.map(c => c.child)
+          const middle = sorted[0] // most descendants
+          const others = sorted.slice(1)
+          const left = others.filter((_, i) => i % 2 === 0)
+          const right = others.filter((_, i) => i % 2 === 1)
+          node.children = [...left, middle, ...right]
+        }
+      }
+
+      // Recursively apply to all children
+      node.children.forEach(orderNodeChildren)
+    }
+
+    // Apply node ordering
+    roots.forEach(orderNodeChildren)
+
+    // Assign positions recursively - children evenly spaced under parent
+    const siblingGap = 40 // extra gap between siblings
+    const assignPositions = (node: TreeNode, leftX: number): number => {
+      const subtreeWidth = getSubtreeWidth(node)
+      // Width includes sibling gaps for nodes with children
+      const numGaps = node.children.length > 1 ? node.children.length - 1 : 0
+      const myWidth = subtreeWidth * nodeSpacing + numGaps * siblingGap
+
+      if (node.children.length === 0) {
+        // Leaf node - place in center of allocated space
+        const nodeX = leftX + myWidth / 2
+
+        const originalNode = nodes.find(n => n.id === node.originalId)!
+        newNodes.push({
+          ...originalNode,
+          id: node.id,
+          x: nodeX,
+          y: treeStartY + node.layer * layerSpacing
+        })
+
+        if (node.parentId) {
+          newEdges.push({ from: node.parentId, to: node.id, label: node.edgeLabel })
+        }
+
+        return myWidth
+      }
+
+      // Position children first, evenly distributed with sibling gap
+      let childX = leftX
+      node.children.forEach((child, idx) => {
+        const childWidth = assignPositions(child, childX)
+        childX += childWidth
+        // Add sibling gap between children (not after last)
+        if (idx < node.children.length - 1) {
+          childX += siblingGap
+        }
+      })
+
+      // Position this node centered over its children
+      const firstChild = newNodes.find(n => n.id === node.children[0].id)!
+      const lastChild = newNodes.find(n => n.id === node.children[node.children.length - 1].id)!
+      const nodeX = (firstChild.x + lastChild.x) / 2
+
+      const originalNode = nodes.find(n => n.id === node.originalId)
+      if (originalNode) {
+        newNodes.push({
+          ...originalNode,
+          id: node.id,
+          x: nodeX,
+          y: treeStartY + node.layer * layerSpacing
+        })
+      }
+
+      if (node.parentId) {
+        newEdges.push({ from: node.parentId, to: node.id, label: node.edgeLabel })
+      }
+
+      return myWidth
+    }
+
+    // Assign positions for all tree roots
+    let currentX = 0
+    roots.forEach(root => {
+      const width = assignPositions(root, currentX)
+      currentX += width + nodeSpacing // gap between trees
+    })
+
+    // Center the entire layout around x=400
+    if (newNodes.length > 0) {
+      const minX = Math.min(...newNodes.map(n => n.x))
+      const maxX = Math.max(...newNodes.map(n => n.x))
+      const centerOffset = 400 - (minX + maxX) / 2
+
+      newNodes.forEach(n => {
+        n.x += centerOffset
+      })
+    }
+
+    // Auto-assign Yes/No labels to decision node outputs that don't have labels
+    const decisionNodes = newNodes.filter(n => n.type === 'decision')
+    decisionNodes.forEach(decNode => {
+      const outEdges = newEdges.filter(e => e.from === decNode.id)
+      if (outEdges.length >= 2) {
+        // Assign Yes/No to first two edges if they don't have labels
+        if (!outEdges[0].label) outEdges[0].label = 'Yes'
+        if (!outEdges[1].label) outEdges[1].label = 'No'
+      }
+    })
+
+    setFlowchart({ nodes: newNodes, edges: newEdges })
     pushHistory()
 
     // Sync new positions to the backend so the agent sees them too

@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..core import WorkflowTool, ToolParameter
-from ..constants import VALID_WORKFLOW_OUTPUT_TYPES
+from ..constants import VALID_VARIABLE_TYPES
 from ..workflow_edit.helpers import save_workflow_changes
 
 
@@ -36,7 +36,7 @@ class SetWorkflowOutputTool(WorkflowTool):
     description = (
         "Declare the workflow's output with a name, type, and optional description. "
         "The output type is REQUIRED and determines the type of the derived variable "
-        "when this workflow is called as a subprocess. Valid types: string, number, bool, json."
+        "when this workflow is called as a subprocess. Common types: string, int, float, bool."
     )
     parameters = [
         ToolParameter(
@@ -48,7 +48,7 @@ class SetWorkflowOutputTool(WorkflowTool):
         ToolParameter(
             "type",
             "string",
-            "Output type: 'string', 'number', 'bool', or 'json'. This is REQUIRED.",
+            "Output type: 'string', 'number', 'bool', 'enum', or 'date'. This is REQUIRED.",
             required=True,
         ),
         ToolParameter(
@@ -84,13 +84,13 @@ class SetWorkflowOutputTool(WorkflowTool):
         if not output_type:
             return {
                 "success": False,
-                "error": f"Output 'type' is required. Valid types: {', '.join(sorted(VALID_WORKFLOW_OUTPUT_TYPES))}"
+                "error": "Output 'type' is required. Valid types: string, int, float, bool, enum, date"
             }
-
-        if output_type not in VALID_WORKFLOW_OUTPUT_TYPES:
+        
+        if output_type not in VALID_VARIABLE_TYPES:
             return {
                 "success": False,
-                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_WORKFLOW_OUTPUT_TYPES))}"
+                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_VARIABLE_TYPES))}"
             }
 
         # Create output definition with required type

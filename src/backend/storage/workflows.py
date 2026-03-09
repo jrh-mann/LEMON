@@ -36,7 +36,7 @@ class WorkflowRecord:
     is_validated: bool
     created_at: str
     updated_at: str
-    output_type: Optional[str] = None  # Type of value workflow returns: string, number, bool, json
+    output_type: Optional[str] = None  # Type of value workflow returns: string, int, float, bool, json
     is_draft: bool = True  # True = unsaved draft, False = saved to library
     # Peer review fields
     is_published: bool = False  # True = published to community library

@@ -2,11 +2,55 @@ import { useMemo, useEffect, useState, useRef } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import type { SubflowExecutionState } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { getNodeSize, calculateEdgePath, getDecisionPath, getNodeFillColor, getNodeStrokeColor, wrapText } from '../utils/canvas'
-import type { FlowNode } from '../types'
+import { getNodeSize, calculateEdgePath, getDecisionPath } from '../utils/canvas'
+import type { FlowNode, FlowNodeType } from '../types'
 
 // Stacked subflow visualization modals
 // Each level in the stack renders as a progressively smaller overlay
+
+// Get fill color based on node type
+const getNodeFillColor = (type: FlowNodeType): string => {
+    switch (type) {
+        case 'start': return 'var(--teal-light)'
+        case 'decision': return 'var(--amber-light)'
+        case 'end': return 'var(--green-light)'
+        case 'subprocess': return 'var(--rose-light)'
+        case 'calculation': return 'var(--purple-light)'
+        case 'process': return 'var(--paper)'
+        default: return 'var(--paper)'
+    }
+}
+
+// Get stroke color based on node type
+const getNodeStrokeColor = (type: FlowNodeType): string => {
+    switch (type) {
+        case 'start': return 'var(--teal)'
+        case 'decision': return 'var(--amber)'
+        case 'end': return 'var(--green)'
+        case 'subprocess': return 'var(--rose)'
+        case 'calculation': return 'var(--purple)'
+        case 'process': return 'var(--edge)'
+        default: return 'var(--edge)'
+    }
+}
+
+// Word wrap helper
+function wrapText(text: string, maxChars: number): string[] {
+    if (!text || text.length <= maxChars) return [text || '']
+    const words = text.split(' ')
+    const lines: string[] = []
+    let currentLine = ''
+    for (const word of words) {
+        if ((currentLine + ' ' + word).trim().length <= maxChars) {
+            currentLine = (currentLine + ' ' + word).trim()
+        } else {
+            if (currentLine) lines.push(currentLine)
+            currentLine = word
+        }
+    }
+    if (currentLine) lines.push(currentLine)
+    return lines.length > 0 ? lines : ['']
+}
 
 // Calculate viewBox centered on a node (for tracking)
 function calculateTrackedViewBox(

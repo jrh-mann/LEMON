@@ -288,7 +288,6 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   // Only persist durable state — skip transient streaming/processing fields
   partialize: (state) => ({
     activeWorkflowId: state.activeWorkflowId,
-    pendingQuestions: state.pendingQuestions,
     conversations: Object.fromEntries(
       Object.entries(state.conversations).map(([wfId, conv]) => [
         wfId,

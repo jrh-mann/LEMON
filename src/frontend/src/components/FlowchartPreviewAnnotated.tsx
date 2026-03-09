@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { beautifyNodes } from '../utils/beautifyNodes'
-import { getNodeSize, getDecisionPath, calculateViewBox, calculateEdgePath, getNodeFillColor, getNodeStrokeColor, wrapText } from '../utils/canvas'
-import type { FlowNode, FlowEdge, WorkflowVariable, WorkflowOutput } from '../types'
+import { getNodeSize, getDecisionPath, calculateViewBox, calculateEdgePath } from '../utils/canvas'
+import type { FlowNode, FlowEdge, FlowNodeType, WorkflowVariable, WorkflowOutput } from '../types'
 
 /**
  * Hidden off-screen SVG renderer for "Annotated PNG" export.
@@ -22,6 +22,49 @@ const ACCENT_WIDTH = 3
 const PANEL_PADDING_TOP = 36  // space for "INPUTS"/"OUTPUTS" eyebrow
 const PANEL_PADDING_BOTTOM = 12
 
+// --- Node colour helpers (same as FlowchartPreview.tsx) ---
+
+const getNodeFillColor = (type: FlowNodeType): string => {
+    switch (type) {
+        case 'start': return 'var(--teal-light)'
+        case 'decision': return 'var(--amber-light)'
+        case 'end': return 'var(--green-light)'
+        case 'subprocess': return 'var(--rose-light)'
+        case 'calculation': return 'var(--purple-light)'
+        case 'process': return 'var(--paper)'
+        default: return 'var(--paper)'
+    }
+}
+
+const getNodeStrokeColor = (type: FlowNodeType): string => {
+    switch (type) {
+        case 'start': return 'var(--teal)'
+        case 'decision': return 'var(--amber)'
+        case 'end': return 'var(--green)'
+        case 'subprocess': return 'var(--rose)'
+        case 'calculation': return 'var(--purple)'
+        case 'process': return 'var(--edge)'
+        default: return 'var(--edge)'
+    }
+}
+
+// Word-wrap helper (same as FlowchartPreview.tsx)
+function wrapText(text: string, maxChars: number): string[] {
+    if (!text || text.length <= maxChars) return [text || '']
+    const words = text.split(' ')
+    const lines: string[] = []
+    let currentLine = ''
+    for (const word of words) {
+        if ((currentLine + ' ' + word).trim().length <= maxChars) {
+            currentLine = (currentLine + ' ' + word).trim()
+        } else {
+            if (currentLine) lines.push(currentLine)
+            currentLine = word
+        }
+    }
+    if (currentLine) lines.push(currentLine)
+    return lines.length > 0 ? lines : ['']
+}
 
 /**
  * Build a short subtitle string for a variable card.

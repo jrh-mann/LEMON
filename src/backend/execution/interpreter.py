@@ -923,9 +923,10 @@ Args:
                 # Return raw value, cast to declared output_type
                 return self._cast_output_value(raw_value, output_type)
             else:
+                # Variable not found - return error
                 available_vars = list(friendly_context.keys())
-                raise InterpreterError(
-                    f"Variable '{var_ref}' not found in workflow context. "
+                return (
+                    f"Error: Variable '{var_ref}' not found in workflow context. "
                     f"Available variables: {available_vars}"
                 )
         
@@ -954,12 +955,12 @@ Args:
             except KeyError as e:
                 missing_var = str(e).strip("'")
                 available_vars = list(friendly_context.keys())
-                raise InterpreterError(
-                    f"Variable '{missing_var}' not found in workflow inputs. "
+                return (
+                    f"Error: Variable '{missing_var}' not found in workflow inputs. "
                     f"Available variables: {available_vars}"
                 )
             except Exception as e:
-                raise InterpreterError(f"Error formatting output: {str(e)}") from e
+                return f"Error formatting output: {str(e)}"
 
         # 4. Fallback to label (legacy support)
         label = node.get('label', '')
@@ -969,12 +970,12 @@ Args:
             except KeyError as e:
                 missing_var = str(e).strip("'")
                 available_vars = list(friendly_context.keys())
-                raise InterpreterError(
-                    f"Variable '{missing_var}' not found in workflow inputs. "
+                return (
+                    f"Error: Variable '{missing_var}' not found in workflow inputs. "
                     f"Available variables: {available_vars}"
                 )
-            except Exception as e:
-                raise InterpreterError(f"Error formatting output label: {str(e)}") from e
+            except Exception:
+                return label
         return label
 
     def _cast_output_value(self, value: Any, output_type: str) -> Any:
@@ -1019,7 +1020,8 @@ Args:
                 # Default: string
                 return str(value) if value is not None else ''
         except (ValueError, TypeError, json.JSONDecodeError) as e:
-            raise InterpreterError(f"Error casting to {output_type}: {str(e)}") from e
+            # If casting fails, return original value with error context
+            return f"Error casting to {output_type}: {str(e)}"
 
     def _validate_inputs(self, input_values: Dict[str, Any]) -> None:
         """Validate input values against variable schema.

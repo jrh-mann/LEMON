@@ -18,16 +18,23 @@ from starlette.responses import FileResponse, JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
-from .helpers import _calculate_confidence, serialize_workflow_summary
+from .helpers import _calculate_confidence, _infer_outputs_from_nodes
 from ...storage.workflows import WorkflowStore
+from ...utils.flowchart import tree_from_flowchart
 from ...utils.paths import lemon_data_dir
 from ...validation.workflow_validator import WorkflowValidator
-from ...workflow_persistence import build_persisted_workflow_fields, merge_workflow_record_with_updates
 
 logger = logging.getLogger("backend.api")
 
 # Workflow validator instance for save/update validation
 _workflow_validator = WorkflowValidator()
+
+
+def _serialize_workflow_summary(wf: Any) -> Dict[str, Any]:
+    """Convert a WorkflowRecord to WorkflowSummary format for list endpoints."""
+    from .helpers import serialize_workflow_summary
+
+    return serialize_workflow_summary(wf)
 
 
 def register_workflow_routes(
@@ -71,7 +78,7 @@ def register_workflow_routes(
             offset=offset,
         )
 
-        summaries = [serialize_workflow_summary(wf) for wf in workflows]
+        summaries = [_serialize_workflow_summary(wf) for wf in workflows]
         return JSONResponse({"workflows": summaries, "count": total_count})
 
     @router.post("/api/workflows")
@@ -99,13 +106,13 @@ def register_workflow_routes(
         variables = payload.get("variables") or []
         doubts = payload.get("doubts") or []
 
-        persisted = build_persisted_workflow_fields(
-            nodes=nodes,
-            edges=edges,
-            variables=variables,
-            outputs=payload.get("outputs") or [],
-            output_type=output_type,
-        )
+        # ALWAYS compute tree from nodes/edges - don't rely on frontend
+        tree = tree_from_flowchart(nodes, edges)
+
+        # Infer outputs from end nodes if not explicitly provided
+        outputs = payload.get("outputs") or []
+        if not outputs:
+            outputs = _infer_outputs_from_nodes(nodes, output_type)
 
         # Extract validation metadata
         validation_score = payload.get("validation_score") or 0
@@ -149,8 +156,8 @@ def register_workflow_routes(
                 nodes=nodes,
                 edges=edges,
                 inputs=variables,  # Storage layer uses 'inputs' parameter name
-                outputs=persisted["outputs"],
-                tree=persisted["tree"],
+                outputs=outputs,
+                tree=tree,
                 doubts=doubts,
                 validation_score=validation_score,
                 validation_count=validation_count,
@@ -170,8 +177,8 @@ def register_workflow_routes(
                 nodes=nodes,
                 edges=edges,
                 inputs=variables,  # Storage layer uses 'inputs' parameter name
-                outputs=persisted["outputs"],
-                tree=persisted["tree"],
+                outputs=outputs,
+                tree=tree,
                 doubts=doubts,
                 validation_score=validation_score,
                 validation_count=validation_count,
@@ -281,21 +288,21 @@ def register_workflow_routes(
         # Build update kwargs - only include provided fields
         update_kwargs: Dict[str, Any] = {}
 
-        if any(key in payload for key in ("nodes", "edges", "variables", "outputs", "output_type")):
-            update_kwargs.update(
-                merge_workflow_record_with_updates(
-                    existing,
-                    nodes=payload.get("nodes") if "nodes" in payload else None,
-                    edges=payload.get("edges") if "edges" in payload else None,
-                    variables=payload.get("variables") if "variables" in payload else None,
-                    outputs=payload.get("outputs") if "outputs" in payload else None,
-                    output_type=payload.get("output_type") if "output_type" in payload else None,
-                )
-            )
+        if "nodes" in payload:
+            update_kwargs["nodes"] = payload["nodes"]
+        if "edges" in payload:
+            update_kwargs["edges"] = payload["edges"]
+        if "variables" in payload:
+            update_kwargs["inputs"] = payload["variables"]
 
         # If nothing to update, return success immediately
         if not update_kwargs:
             return JSONResponse({"message": "No changes to apply"})
+
+        # Recompute tree if nodes/edges changed
+        nodes = update_kwargs.get("nodes") or existing.nodes
+        edges = update_kwargs.get("edges") or existing.edges
+        update_kwargs["tree"] = tree_from_flowchart(nodes, edges)
 
         # Attempt the update (preserves is_draft by not passing it)
         try:
@@ -356,13 +363,13 @@ def register_workflow_routes(
         variables = payload.get("variables") or existing.inputs
         doubts = payload.get("doubts") or existing.doubts
 
-        persisted = build_persisted_workflow_fields(
-            nodes=nodes,
-            edges=edges,
-            variables=variables,
-            outputs=payload.get("outputs") or existing.outputs,
-            output_type=output_type,
-        )
+        # ALWAYS compute tree from nodes/edges
+        tree = tree_from_flowchart(nodes, edges)
+
+        # Infer outputs from end nodes using workflow-level output_type
+        outputs = payload.get("outputs") or []
+        if not outputs:
+            outputs = _infer_outputs_from_nodes(nodes, output_type)
 
         # Extract validation metadata (preserve existing if not provided)
         validation_score = payload.get(
@@ -410,8 +417,8 @@ def register_workflow_routes(
             nodes=nodes,
             edges=edges,
             inputs=variables,
-            outputs=persisted["outputs"],
-            tree=persisted["tree"],
+            outputs=outputs,
+            tree=tree,
             doubts=doubts,
             validation_score=validation_score,
             validation_count=validation_count,

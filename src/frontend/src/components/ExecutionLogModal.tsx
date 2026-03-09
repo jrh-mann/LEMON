@@ -249,6 +249,8 @@ export function ExecutionLogModal() {
         }
 
         return result;
+
+        return content
     }
 
     return (

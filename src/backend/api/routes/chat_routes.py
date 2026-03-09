@@ -16,11 +16,10 @@ from starlette.responses import JSONResponse
 from ..common import utc_now
 from ..conversations import ConversationStore
 from ..deps import require_auth
-
+from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
-from ...utils.uploads import save_uploaded_file
-from ...utils.paths import lemon_data_dir
+from ...utils.uploads import save_uploaded_image
 
 logger = logging.getLogger("backend.api")
 
@@ -60,17 +59,9 @@ def register_chat_routes(
             return JSONResponse({"error": "message is required"}, status_code=400)
 
         convo = conversation_store.get_or_create(conversation_id)
-        saved_files: list[dict[str, Any]] = []
         if isinstance(image_data, str) and image_data.strip():
             try:
-                rel_path, file_type = save_uploaded_file(image_data, repo_root=repo_root)
-                abs_path = str(lemon_data_dir(repo_root) / rel_path)
-                saved_files.append({
-                    "name": f"uploaded.{rel_path.rsplit('.', 1)[-1]}",
-                    "path": abs_path,
-                    "file_type": file_type,
-                    "purpose": "unclassified",
-                })
+                save_uploaded_image(image_data, repo_root=repo_root)
             except Exception as exc:
                 logger.exception("Failed to save uploaded image")
                 return JSONResponse(
@@ -90,17 +81,22 @@ def register_chat_routes(
 
         response_text = convo.orchestrator.respond(
             message,
-            has_files=saved_files,
+            has_files=[],  # REST endpoint doesn't support multi-file yet
             allow_tools=True,
             on_tool_event=on_tool_event,
         )
-        tool_calls = executed_tools
+        tool_calls = extract_tool_calls(response_text, include_result=False)
+        if not tool_calls and executed_tools:
+            tool_calls = executed_tools
+        response_summary = summarize_response(response_text)
+        flowchart = extract_flowchart(response_text)
         convo.updated_at = utc_now()
         return JSONResponse(
             {
                 "conversation_id": convo.id,
-                "response": response_text,
+                "response": response_summary,
                 "tool_calls": tool_calls,
+                "flowchart": flowchart,
             }
         )
 
@@ -128,7 +124,7 @@ def register_chat_routes(
                         "role": role,
                         "content": content,
                         "timestamp": utc_now(),
-                        "tool_calls": [],
+                        "tool_calls": extract_tool_calls(content),
                     }
                 )
             return JSONResponse(
@@ -143,43 +139,22 @@ def register_chat_routes(
 
         # Fall back to persistent ConversationLogger SQLite DB
         if conversation_logger:
-            # Fetch messages AND tool calls so we can attach tool_calls to
-            # the assistant response they belong to.
             entries = conversation_logger.get_conversation_timeline(
                 conversation_id,
-                entry_types=["user_message", "assistant_response", "tool_call"],
+                entry_types=["user_message", "assistant_response"],
             )
             if entries:
                 messages = []
-                # Collect tool calls between each user message and the next
-                # assistant response, then attach them to that response.
-                pending_tool_calls: list[dict] = []
                 for entry in entries:
-                    etype = entry["entry_type"]
-                    if etype == "tool_call":
-                        pending_tool_calls.append({
-                            "tool": entry.get("tool_name", ""),
-                            "arguments": {},
-                            "success": bool(entry.get("tool_success", 1)),
-                        })
-                    elif etype == "user_message":
-                        pending_tool_calls = []
-                        messages.append({
+                    messages.append(
+                        {
                             "id": f"{conversation_id}_{entry['seq']}",
-                            "role": "user",
+                            "role": "user" if entry["entry_type"] == "user_message" else "assistant",
                             "content": entry.get("content", ""),
                             "timestamp": entry.get("timestamp", utc_now()),
                             "tool_calls": [],
-                        })
-                    elif etype == "assistant_response":
-                        messages.append({
-                            "id": f"{conversation_id}_{entry['seq']}",
-                            "role": "assistant",
-                            "content": entry.get("content", ""),
-                            "timestamp": entry.get("timestamp", utc_now()),
-                            "tool_calls": pending_tool_calls,
-                        })
-                        pending_tool_calls = []
+                        }
+                    )
                 return JSONResponse(
                     {
                         "id": conversation_id,

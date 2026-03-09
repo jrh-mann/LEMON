@@ -39,6 +39,7 @@ class TestRemainingModulesImport:
         "src.backend.agents.tool_schemas",
         "src.backend.api.conversations",
         "src.backend.api.ws_chat",
+        "src.backend.api.response_utils",
         "src.backend.api.tool_summaries",
         "src.backend.mcp_bridge.server",
         "src.backend.tools",

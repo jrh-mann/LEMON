@@ -23,6 +23,3 @@ export { transformFlowchartFromBackend, transformNodeFromBackend } from './trans
 
 // Layout - auto-layout algorithm
 export { autoLayoutFlowchart } from './layout'
-
-// Node colors and text wrapping - shared across canvas components
-export { getNodeFillColor, getNodeStrokeColor, wrapText } from './nodeColors'

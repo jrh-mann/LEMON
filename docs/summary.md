@@ -29,16 +29,18 @@
 ```
 LEMON/
 ├── src/
-│   ├── backend/                    # Python FastAPI + WebSocket (uvicorn)
+│   ├── backend/                    # Python Flask + Socket.IO
 │   │   ├── agents/                 # LLM orchestrator
 │   │   │   ├── orchestrator.py     # Core agent logic
-│   │   │   ├── tool_schemas.py     # Tool schema definitions for LLM
-│   │   │   ├── system_prompt.py    # System prompt builder
-│   │   │   └── orchestrator_factory.py # Factory function
+│   │   │   ├── orchestrator_config.py  # System prompt + tool schemas (1123 lines)
+│   │   │   ├── orchestrator_factory.py # Factory function
+│   │   │   └── subagent.py         # Image analysis agent
 │   │   ├── api/                    # HTTP + WebSocket server
-│   │   │   ├── app.py              # FastAPI app factory
-│   │   │   ├── routes/             # REST endpoint modules
-│   │   │   ├── ws_chat.py          # WebSocket chat processing
+│   │   │   ├── app.py              # Flask app factory
+│   │   │   ├── routes.py           # REST endpoints
+│   │   │   ├── socket_handlers.py  # Socket.IO event registration
+│   │   │   ├── socket_chat.py      # Chat message processing
+│   │   │   ├── socket_execution.py # Workflow execution events
 │   │   │   ├── auth.py             # Authentication middleware
 │   │   │   ├── conversations.py    # Session state management
 │   │   │   └── tool_summaries.py   # Tool call aggregation for UI
@@ -86,14 +88,14 @@ LEMON/
 └── tests/                          # pytest test suites
     ├── conftest.py                 # Test fixtures
     ├── execution/                  # Execution engine tests (12 files)
-    └── [50+ test files]            # Tool, validation, integration, feature tests
+    └── [24 test files]             # Tool, validation, integration tests
 ```
 
 ### Technology Stack
 
 **Backend:**
 - Python 3.12+
-- FastAPI + uvicorn (ASGI with native WebSocket)
+- Flask + python-socketio (real-time communication)
 - Anthropic Claude API (claude-sonnet-4-20250514)
 - SQLite (auth + workflow storage)
 - MCP (Model Context Protocol) for tool interoperability
@@ -141,8 +143,8 @@ The orchestrator has access to **20 tools** organized in 7 categories:
 ### Analysis & Validation
 | Tool | Purpose |
 |------|---------|
-| `view_image` | Re-examine an uploaded workflow image |
-| `extract_guidance` | Extract guidance from uploaded image for workflow building |
+| `analyze_workflow` | Extract workflow from uploaded image |
+| `publish_latest_analysis` | Render analyzed workflow to canvas |
 | `validate_workflow` | Check structural correctness |
 
 ### Execution & Export
@@ -150,6 +152,12 @@ The orchestrator has access to **20 tools** organized in 7 categories:
 |------|---------|
 | `execute_workflow` | Run a workflow by ID with input values |
 | `compile_python` | Generate executable Python code from workflow |
+
+### Tool Aliases (Backwards Compatibility)
+The following aliases exist for renamed tools:
+- `add_workflow_input` → `add_workflow_variable`
+- `modify_workflow_input` → `modify_workflow_variable`
+- `remove_workflow_input` → `remove_workflow_variable`
 
 ---
 
@@ -447,6 +455,26 @@ The `WorkflowValidator` enforces (strict mode for saves/execution):
 - Tracks both successes and failures
 
 ---
+
+## Backwards Compatibility Patterns
+
+Despite the project's "no backwards compatibility" policy (see CLAUDE.md), certain intentional exceptions exist for database and API stability:
+
+### Intentional Exceptions
+
+1. **Database column naming**: Workflows store variables under `inputs` column. The API layer translates to/from `variables` key.
+
+2. **Tool aliases**: Renamed tools maintain aliases (`add_workflow_input` → `add_workflow_variable`) to avoid breaking LLM tool calls.
+
+3. **Interpreter flexibility**: Accepts both `variables` and `inputs` keys in workflow payloads.
+
+4. **Legacy variable ID format**: Supports both `var_age_int` (new) and `input_age_int` (legacy) formats.
+
+5. **API route flexibility**: Save/update endpoints accept both `variables` and `inputs` in request payload.
+
+### Migration Helpers
+
+The `ensure_workflow_analysis()` helper in `tools/workflow_input/helpers.py` automatically migrates legacy `inputs` data to `variables` format when encountered.
 
 ---
 
