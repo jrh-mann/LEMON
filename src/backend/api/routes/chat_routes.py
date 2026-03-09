@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse
 from ..common import utc_now
 from ..conversations import ConversationStore
 from ..deps import require_auth
-from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
+
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
 from ...utils.uploads import save_uploaded_file
@@ -94,18 +94,13 @@ def register_chat_routes(
             allow_tools=True,
             on_tool_event=on_tool_event,
         )
-        tool_calls = extract_tool_calls(response_text, include_result=False)
-        if not tool_calls and executed_tools:
-            tool_calls = executed_tools
-        response_summary = summarize_response(response_text)
-        flowchart = extract_flowchart(response_text)
+        tool_calls = executed_tools
         convo.updated_at = utc_now()
         return JSONResponse(
             {
                 "conversation_id": convo.id,
-                "response": response_summary,
+                "response": response_text,
                 "tool_calls": tool_calls,
-                "flowchart": flowchart,
             }
         )
 
@@ -133,7 +128,7 @@ def register_chat_routes(
                         "role": role,
                         "content": content,
                         "timestamp": utc_now(),
-                        "tool_calls": extract_tool_calls(content),
+                        "tool_calls": [],
                     }
                 )
             return JSONResponse(

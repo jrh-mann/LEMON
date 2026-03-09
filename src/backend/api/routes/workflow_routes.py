@@ -18,7 +18,7 @@ from starlette.responses import FileResponse, JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
-from .helpers import _calculate_confidence, _infer_outputs_from_nodes
+from .helpers import _calculate_confidence, _infer_outputs_from_nodes, serialize_workflow_summary
 from ...storage.workflows import WorkflowStore
 from ...utils.flowchart import tree_from_flowchart
 from ...utils.paths import lemon_data_dir
@@ -28,13 +28,6 @@ logger = logging.getLogger("backend.api")
 
 # Workflow validator instance for save/update validation
 _workflow_validator = WorkflowValidator()
-
-
-def _serialize_workflow_summary(wf: Any) -> Dict[str, Any]:
-    """Convert a WorkflowRecord to WorkflowSummary format for list endpoints."""
-    from .helpers import serialize_workflow_summary
-
-    return serialize_workflow_summary(wf)
 
 
 def register_workflow_routes(
@@ -78,7 +71,7 @@ def register_workflow_routes(
             offset=offset,
         )
 
-        summaries = [_serialize_workflow_summary(wf) for wf in workflows]
+        summaries = [serialize_workflow_summary(wf) for wf in workflows]
         return JSONResponse({"workflows": summaries, "count": total_count})
 
     @router.post("/api/workflows")

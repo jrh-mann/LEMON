@@ -18,7 +18,6 @@ from uuid import uuid4
 
 from .common import utc_now
 from .conversations import Conversation, ConversationStore
-from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from .ws_registry import ConnectionRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
@@ -415,15 +414,13 @@ class WsChatTask:
         self.convo.update_workflow_analysis(self.convo.orchestrator.workflow_analysis)
 
     def _emit_response(self, response_text: str, cancelled: bool = False) -> None:
-        tool_calls = extract_tool_calls(response_text, include_result=False)
-        if not tool_calls and self.executed_tools:
-            tool_calls = self.executed_tools
-        summary = summarize_response(response_text) if tool_calls else ""
+        tool_calls = self.executed_tools
         if self.convo:
             self.convo.updated_at = utc_now()
-        # Determine the response field: if streamed, chunks were already sent
-        # so the response field is "". Otherwise use the full text.
-        response_field = summary if tool_calls else ("" if self.did_stream else response_text)
+        # If content was already streamed to the client, the response field is
+        # empty (unless tools were called, in which case include the full text).
+        # For non-streamed responses, always include the full text.
+        response_field = "" if self.did_stream and not tool_calls else response_text
         # Log empty non-streamed responses as warnings for debugging
         if not response_field and not self.did_stream and not cancelled:
             logger.warning(
