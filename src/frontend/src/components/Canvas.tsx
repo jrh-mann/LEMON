@@ -74,12 +74,15 @@ function formatSimpleCondition(
     return sym
   }
 
-  // Enum comparators — show just the value on the true branch,
-  // "Not {value}" on the false branch (e.g. "Primary" / "Not Primary")
+  // Enum comparators — show the matching value on the match branch,
+  // and the other enum value(s) on the non-match branch.
   if (cond.comparator === 'enum_eq' || cond.comparator === 'enum_neq') {
     const val = cond.value ?? '?'
     const isMatch = (cond.comparator === 'enum_eq') === (branch === 'true')
-    return isMatch ? String(val) : `Not ${val}`
+    if (isMatch) return String(val)
+    // Show the other enum value(s) instead of "Not {val}"
+    const others = (variable?.enum_values ?? []).filter(v => v !== val)
+    return others.length ? others.join(' | ') : `Not ${val}`
   }
 
   const val = cond.value ?? '?'
