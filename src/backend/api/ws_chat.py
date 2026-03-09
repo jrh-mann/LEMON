@@ -26,6 +26,7 @@ from ..utils.uploads import save_uploaded_file, save_annotations
 from ..utils.paths import lemon_data_dir
 from ..storage.conversation_log import ConversationLogger
 from ..storage.workflows import WorkflowStore
+from ..workflow_persistence import persist_workflow_snapshot
 
 logger = logging.getLogger("backend.api")
 
@@ -371,40 +372,41 @@ class WsChatTask:
         # Pass ws_registry + conn_id for background subworkflow builders
         self.convo.orchestrator.ws_registry = self.registry
         self.convo.orchestrator.conn_id = self.conn_id
-        # Ensure the canvas workflow exists in the database
+        # Ensure the canvas workflow snapshot exists in the database
         if self.current_workflow_id and self.workflow_store:
-            existing = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
-            if not existing:
-                try:
-                    self.workflow_store.create_workflow(
-                        workflow_id=self.current_workflow_id,
-                        user_id=self.user_id,
-                        name="New Workflow",
-                        description="",
-                        nodes=[],
-                        edges=[],
-                        inputs=[],
-                        outputs=[],
-                        tree={},
-                        doubts=[],
-                        output_type="string",
-                        is_draft=True,
-                    )
-                    logger.info(
-                        "Auto-persisted canvas workflow %s for user %s",
-                        self.current_workflow_id, self.user_id,
-                    )
-                    # Notify the frontend so it can sync its store/URL
-                    self._emit("workflow_created", {
-                        "workflow_id": self.current_workflow_id,
-                        "name": "New Workflow",
-                        "is_draft": True,
-                    })
-                except Exception:
-                    logger.exception(
-                        "Failed to auto-persist canvas workflow %s",
-                        self.current_workflow_id,
-                    )
+            workflow = self.convo.workflow
+            try:
+                created, persisted = persist_workflow_snapshot(
+                    self.workflow_store,
+                    workflow_id=self.current_workflow_id,
+                    user_id=self.user_id,
+                    name="New Workflow",
+                    description="",
+                    nodes=workflow.get("nodes", []),
+                    edges=workflow.get("edges", []),
+                    variables=workflow.get("variables", []),
+                    outputs=workflow.get("outputs", []),
+                    output_type=workflow.get("output_type", "string"),
+                    is_draft=True,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to persist canvas workflow {self.current_workflow_id}: {exc}"
+                ) from exc
+
+            self.convo.workflow["outputs"] = persisted["outputs"]
+            self.convo.workflow["output_type"] = persisted["output_type"]
+            logger.info(
+                "Persisted canvas workflow snapshot %s for user %s",
+                self.current_workflow_id, self.user_id,
+            )
+            if created:
+                self._emit("workflow_created", {
+                    "workflow_id": self.current_workflow_id,
+                    "name": "New Workflow",
+                    "output_type": persisted["output_type"],
+                    "is_draft": True,
+                })
             self.convo.orchestrator.current_workflow_id = self.current_workflow_id
             # Look up workflow name from DB for system prompt display
             if self.workflow_store:
