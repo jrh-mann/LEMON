@@ -139,22 +139,43 @@ def register_chat_routes(
 
         # Fall back to persistent ConversationLogger SQLite DB
         if conversation_logger:
+            # Fetch messages AND tool calls so we can attach tool_calls to
+            # the assistant response they belong to.
             entries = conversation_logger.get_conversation_timeline(
                 conversation_id,
-                entry_types=["user_message", "assistant_response"],
+                entry_types=["user_message", "assistant_response", "tool_call"],
             )
             if entries:
                 messages = []
+                # Collect tool calls between each user message and the next
+                # assistant response, then attach them to that response.
+                pending_tool_calls: list[dict] = []
                 for entry in entries:
-                    messages.append(
-                        {
+                    etype = entry["entry_type"]
+                    if etype == "tool_call":
+                        pending_tool_calls.append({
+                            "tool": entry.get("tool_name", ""),
+                            "arguments": {},
+                            "success": bool(entry.get("tool_success", 1)),
+                        })
+                    elif etype == "user_message":
+                        pending_tool_calls = []
+                        messages.append({
                             "id": f"{conversation_id}_{entry['seq']}",
-                            "role": "user" if entry["entry_type"] == "user_message" else "assistant",
+                            "role": "user",
                             "content": entry.get("content", ""),
                             "timestamp": entry.get("timestamp", utc_now()),
                             "tool_calls": [],
-                        }
-                    )
+                        })
+                    elif etype == "assistant_response":
+                        messages.append({
+                            "id": f"{conversation_id}_{entry['seq']}",
+                            "role": "assistant",
+                            "content": entry.get("content", ""),
+                            "timestamp": entry.get("timestamp", utc_now()),
+                            "tool_calls": pending_tool_calls,
+                        })
+                        pending_tool_calls = []
                 return JSONResponse(
                     {
                         "id": conversation_id,
