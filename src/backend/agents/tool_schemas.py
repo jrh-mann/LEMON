@@ -938,8 +938,8 @@ def tool_descriptions() -> List[Dict[str, Any]]:
                         },
                         "type": {
                             "type": "string",
-                            "enum": ["string", "number", "bool", "enum", "date"],
-                            "description": "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values.",
+                            "enum": ["string", "number", "bool", "json"],
+                            "description": "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values, 'json' for structured data.",
                         },
                         "description": {
                             "type": "string",
