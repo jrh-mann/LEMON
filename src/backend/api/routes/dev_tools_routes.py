@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import anyio
 from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse
 
@@ -46,7 +47,7 @@ def register_dev_tools_routes(
         from ...mcp_bridge.client import list_mcp_tools
 
         try:
-            tools = list_mcp_tools()
+            tools = await anyio.to_thread.run_sync(list_mcp_tools)
             return JSONResponse({"tools": tools})
         except Exception as e:
             logger.exception("Failed to list MCP tools: %s", e)

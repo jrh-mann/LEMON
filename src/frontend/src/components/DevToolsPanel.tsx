@@ -62,7 +62,8 @@ export default function DevToolsPanel() {
             setTools(toolList)
         } catch (err) {
             console.error('Failed to load tools:', err)
-            setToolsError('Failed to load tools')
+            const message = err instanceof Error ? err.message : 'Failed to load tools'
+            setToolsError(message)
         } finally {
             setLoadingTools(false)
         }
