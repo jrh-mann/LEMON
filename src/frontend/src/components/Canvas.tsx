@@ -161,7 +161,6 @@ export default function Canvas() {
   const {
     flowchart,
     setFlowchart,
-    selectedNodeId: _selectedNodeId,
     selectedNodeIds,
     selectedEdge,
     connectMode,
@@ -171,7 +170,6 @@ export default function Canvas() {
     selectEdge,
     clearSelection,
     moveNode,
-    moveNodes,
     addNode,
     addEdge,
     startConnect,
@@ -548,7 +546,7 @@ export default function Canvas() {
         moveNode(dragNodeId, newPos.x, newPos.y)
       }
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, moveNodes, dragConnection, checkCollision, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, checkCollision, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
   )
 
   // Handle pointer up
