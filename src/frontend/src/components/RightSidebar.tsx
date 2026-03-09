@@ -414,7 +414,7 @@ export default function RightSidebar() {
                   + Add Variable
                 </button>
               </div>
-            ) : null}
+            )}
           </>
         )}
       </aside>
