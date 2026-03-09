@@ -102,11 +102,13 @@ function resolveDecisionEdgeLabel(
   if (!branch) return null
 
   if (isCompoundCondition(node.condition)) {
-    // Compound: join sub-conditions with AND/OR
+    // Compound: true branch shows concise conditions joined with & / |,
+    // false branch just shows "Else" since negating a compound is confusing.
+    if (branch === 'false') return 'Else'
     const parts = node.condition.conditions.map(c =>
       formatSimpleCondition(c, branch, variables),
     )
-    const joiner = ` ${node.condition.operator} `
+    const joiner = node.condition.operator === 'AND' ? ' & ' : ' | '
     return parts.join(joiner)
   }
 
