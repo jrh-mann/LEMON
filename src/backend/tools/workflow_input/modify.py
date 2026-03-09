@@ -19,6 +19,7 @@ from ..constants import USER_TYPE_TO_INTERNAL
 from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
 from .add import generate_variable_id
+from .reference_updates import rewrite_variable_references
 
 
 class ModifyWorkflowVariableTool(WorkflowTool):
@@ -96,6 +97,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         session_state = kwargs.get("session_state", {})
 
         # Extract variables from loaded workflow
+        nodes = list(workflow_data["nodes"])
         variables = list(workflow_data["variables"])
 
         name = args.get("name")
@@ -238,18 +240,21 @@ class ModifyWorkflowVariableTool(WorkflowTool):
                 "variable": target_var,
             }
 
+        rewritten_reference_count = 0
+        if old_id != target_var["id"]:
+            nodes, rewritten_reference_count = rewrite_variable_references(
+                nodes,
+                old_variable_id=old_id,
+                new_variable_id=target_var["id"],
+            )
+
         # Auto-save changes to database
-        save_error = save_workflow_changes(workflow_id, session_state, variables=variables)
+        save_kwargs = {"variables": variables}
+        if rewritten_reference_count:
+            save_kwargs["nodes"] = nodes
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:
             return save_error
-
-        # Build warning about ID change if applicable
-        warning = None
-        if old_id != target_var["id"]:
-            warning = (
-                f"Variable ID changed from '{old_id}' to '{target_var['id']}'. "
-                f"Any decision nodes using condition.input_id='{old_id}' must be updated."
-            )
 
         result = {
             "success": True,
@@ -258,9 +263,10 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             "variable": target_var,
             "old_id": old_id,
             "new_id": target_var["id"],
+            "workflow_analysis": {"variables": variables},
         }
-        
-        if warning:
-            result["warning"] = warning
+        if rewritten_reference_count:
+            result["current_workflow"] = {"nodes": nodes}
+            result["message"] += f"; updated {rewritten_reference_count} node reference(s)"
 
         return result

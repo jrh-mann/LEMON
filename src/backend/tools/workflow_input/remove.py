@@ -13,6 +13,7 @@ from typing import Any, Dict
 from ..core import WorkflowTool, ToolParameter
 from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
+from .reference_updates import find_variable_references
 
 
 class RemoveWorkflowVariableTool(WorkflowTool):
@@ -88,28 +89,14 @@ class RemoveWorkflowVariableTool(WorkflowTool):
                 "error": f"Input variable '{name}' not found"
             }
 
-        # Check for nodes that reference this input in their condition
-        # Handles both simple conditions and compound (AND/OR) conditions
-        referencing_nodes = []
         var_id = found_var.get("id")
-        for node in nodes:
-            condition = node.get("condition")
-            if not condition:
-                continue
-            if "operator" in condition:
-                # Compound condition — check each sub-condition
-                for sub in condition.get("conditions", []):
-                    if isinstance(sub, dict) and sub.get("input_id") == var_id:
-                        referencing_nodes.append(node)
-                        break  # Only add node once
-            elif condition.get("input_id") == var_id:
-                referencing_nodes.append(node)
+        referencing_nodes = find_variable_references(nodes, str(var_id))
 
         # If references exist and force is not enabled, reject deletion
         if referencing_nodes and not force:
             node_labels = [
-                node.get("label", node.get("id", "unknown"))
-                for node in referencing_nodes[:3]  # Show first 3
+                ref["node_label"]
+                for ref in referencing_nodes[:3]
             ]
             more_count = len(referencing_nodes) - 3
 
@@ -124,7 +111,7 @@ class RemoveWorkflowVariableTool(WorkflowTool):
             return {
                 "success": False,
                 "error": error_msg,
-                "referencing_nodes": [node.get("id") for node in referencing_nodes],
+                "referencing_nodes": [ref["node_id"] for ref in referencing_nodes],
             }
 
         # If force=true, clear condition from all referencing nodes.
