@@ -136,6 +136,7 @@ export default function WorkflowPage() {
 
                 const workflow: Workflow = {
                     id: workflowData.id,
+                    output_type: workflowData.output_type,
                     metadata: workflowData.metadata,
                     blocks: [],
                     connections: [],

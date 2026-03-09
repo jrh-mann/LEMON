@@ -214,10 +214,13 @@ export default function RightSidebar() {
   const handleNodeUpdate = useCallback(
     (updates: Partial<FlowNode>) => {
       if (selectedNode) {
-        updateNode(selectedNode.id, updates)
+        const nextUpdates = selectedNode.type === 'end' && !('output_type' in updates)
+          ? { ...updates, output_type: currentWorkflow?.output_type || 'string' }
+          : updates
+        updateNode(selectedNode.id, nextUpdates)
       }
     },
-    [selectedNode, updateNode],
+    [selectedNode, updateNode, currentWorkflow?.output_type],
   )
 
   /* ── Render ───────────────────────────────────────────── */

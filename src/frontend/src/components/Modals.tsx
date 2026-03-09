@@ -316,9 +316,9 @@ function SaveWorkflowForm() {
       setDescription(currentWorkflow.metadata.description || '')
       setDomain(currentWorkflow.metadata.domain || '')
       setTags((currentWorkflow.metadata.tags || []).join(', '))
-      setOutputType(currentWorkflow.output_type || 'string')
-      // Note: isPublished stays false on edit - republishing is a deliberate choice
     }
+    setOutputType(currentWorkflow?.output_type || 'string')
+    // Note: isPublished stays false on edit - republishing is a deliberate choice
   }, [currentWorkflow])
 
   const handleSave = useCallback(async (skipValidation = false) => {
