@@ -129,6 +129,11 @@ export default function RightSidebar() {
 
   /* ── Derived state ────────────────────────────────────── */
   const analysisInputs: WorkflowVariable[] = currentAnalysis?.variables || []
+  const effectiveAnalysis: WorkflowAnalysis = currentAnalysis ?? {
+    variables: [],
+    outputs: [],
+    output_type: currentWorkflow?.output_type || 'string',
+  }
   const isCollapsed = sidebarWidth === 0
 
   const selectedNode: FlowNode | undefined = selectedNodeId
@@ -176,8 +181,6 @@ export default function RightSidebar() {
 
   /** Save a variable from the modal (create or update) */
   const handleModalSave = useCallback((variable: WorkflowVariable) => {
-    if (!currentAnalysis) return
-
     let newVars: WorkflowVariable[]
     if (editingIndex === -1) {
       // Creating a new variable — append to list
@@ -189,38 +192,34 @@ export default function RightSidebar() {
     }
 
     const updated: WorkflowAnalysis = {
-      ...currentAnalysis,
+      ...effectiveAnalysis,
       variables: newVars,
     }
     setAnalysis(updated)
     handleModalClose()
-  }, [currentAnalysis, analysisInputs, editingIndex, setAnalysis, handleModalClose])
+  }, [effectiveAnalysis, analysisInputs, editingIndex, setAnalysis, handleModalClose])
 
   /** Delete a variable by index */
   const handleVariableDelete = useCallback(
     (index: number) => {
-      if (!currentAnalysis) return
       const newVars = analysisInputs.filter((_, i) => i !== index)
       const updated: WorkflowAnalysis = {
-        ...currentAnalysis,
+        ...effectiveAnalysis,
         variables: newVars,
       }
       setAnalysis(updated)
     },
-    [currentAnalysis, analysisInputs, setAnalysis],
+    [effectiveAnalysis, analysisInputs, setAnalysis],
   )
 
   /* ── Node update passthrough ──────────────────────────── */
   const handleNodeUpdate = useCallback(
     (updates: Partial<FlowNode>) => {
       if (selectedNode) {
-        const nextUpdates = selectedNode.type === 'end' && !('output_type' in updates)
-          ? { ...updates, output_type: currentWorkflow?.output_type || 'string' }
-          : updates
-        updateNode(selectedNode.id, nextUpdates)
+        updateNode(selectedNode.id, updates)
       }
     },
-    [selectedNode, updateNode, currentWorkflow?.output_type],
+    [selectedNode, updateNode],
   )
 
   /* ── Render ───────────────────────────────────────────── */
@@ -337,7 +336,7 @@ export default function RightSidebar() {
                   />
                 )}
               </div>
-            ) : currentAnalysis ? (
+            ) : (
               /* ── Variables (default when nothing selected) ── */
               <div className="sidebar-section">
                 <p className="eyebrow">VARIABLES</p>
