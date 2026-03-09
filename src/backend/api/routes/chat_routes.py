@@ -19,7 +19,8 @@ from ..deps import require_auth
 from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
-from ...utils.uploads import save_uploaded_image
+from ...utils.uploads import save_uploaded_file
+from ...utils.paths import lemon_data_dir
 
 logger = logging.getLogger("backend.api")
 
@@ -59,9 +60,17 @@ def register_chat_routes(
             return JSONResponse({"error": "message is required"}, status_code=400)
 
         convo = conversation_store.get_or_create(conversation_id)
+        saved_files: list[dict[str, Any]] = []
         if isinstance(image_data, str) and image_data.strip():
             try:
-                save_uploaded_image(image_data, repo_root=repo_root)
+                rel_path, file_type = save_uploaded_file(image_data, repo_root=repo_root)
+                abs_path = str(lemon_data_dir(repo_root) / rel_path)
+                saved_files.append({
+                    "name": f"uploaded.{rel_path.rsplit('.', 1)[-1]}",
+                    "path": abs_path,
+                    "file_type": file_type,
+                    "purpose": "unclassified",
+                })
             except Exception as exc:
                 logger.exception("Failed to save uploaded image")
                 return JSONResponse(
@@ -81,7 +90,7 @@ def register_chat_routes(
 
         response_text = convo.orchestrator.respond(
             message,
-            has_files=[],  # REST endpoint doesn't support multi-file yet
+            has_files=saved_files,
             allow_tools=True,
             on_tool_event=on_tool_event,
         )
