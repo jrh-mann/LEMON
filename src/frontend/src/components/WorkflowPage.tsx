@@ -15,6 +15,7 @@ import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { transformFlowchartFromBackend } from '../utils/canvas'
+import { hydrateWorkflowDetail } from '../utils/workflowHydration'
 import { sendChatMessage } from '../api/socket'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
@@ -134,25 +135,9 @@ export default function WorkflowPage() {
                 const workflowData = await getWorkflow(workflowId)
                 if (!isActive) return
 
-                const workflow: Workflow = {
-                    id: workflowData.id,
-                    output_type: workflowData.output_type,
-                    metadata: workflowData.metadata,
-                    blocks: [],
-                    connections: [],
-                }
+                const { workflow, flowchart, analysis } = hydrateWorkflowDetail(workflowData)
                 setCurrentWorkflow(workflow)
-
-                const fc = transformFlowchartFromBackend({
-                    nodes: workflowData.nodes || [],
-                    edges: workflowData.edges || [],
-                })
-                setFlowchart(fc)
-
-                const analysis: WorkflowAnalysis = {
-                    variables: workflowData.variables || [],
-                    outputs: workflowData.outputs || [],
-                }
+                setFlowchart(flowchart)
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId
 
@@ -173,19 +158,20 @@ export default function WorkflowPage() {
                 const localMessages = cs.conversations?.[workflowId]?.messages ?? []
                 if (workflowData.conversation_id) {
                     const history = await getConversationHistory(workflowData.conversation_id)
-                    const backendMessages = (history?.messages || [])
-                        .filter(m => m.role === 'user' || m.role === 'assistant')
-                        .map(m => ({
-                            id: m.id,
-                            role: m.role as 'user' | 'assistant',
-                            content: m.content,
-                            timestamp: m.timestamp,
-                            tool_calls: m.tool_calls || [],
-                        }))
-                    // Always prefer backend when it has at least as many messages —
-                    // it's the source of truth and may have responses we missed.
-                    if (backendMessages.length >= localMessages.length) {
-                        cs.setMessages(workflowId, backendMessages)
+                    if (history?.messages?.length) {
+                        const backendMessages = history.messages
+                            .filter(m => m.role === 'user' || m.role === 'assistant')
+                            .map(m => ({
+                                id: m.id,
+                                role: m.role as 'user' | 'assistant',
+                                content: m.content,
+                                timestamp: m.timestamp,
+                                tool_calls: m.tool_calls || [],
+                            }))
+                        // Use backend if it has more messages (caught responses we missed)
+                        if (backendMessages.length > localMessages.length) {
+                            cs.setMessages(workflowId, backendMessages)
+                        }
                     }
                 } else if (!localMessages.length && workflowData.build_history?.length) {
                     // No conversation_id and no local messages — use build_history as last resort
@@ -240,16 +226,9 @@ export default function WorkflowPage() {
                                     }
                                 }
                                 // Also refresh the flowchart in case it was updated
-                                const fc = transformFlowchartFromBackend({
-                                    nodes: fresh.nodes || [],
-                                    edges: fresh.edges || [],
-                                })
-                                setFlowchart(fc)
-                                const freshAnalysis: WorkflowAnalysis = {
-                                    variables: fresh.variables || [],
-                                    outputs: fresh.outputs || [],
-                                }
-                                setAnalysis(freshAnalysis)
+                                const hydrated = hydrateWorkflowDetail(fresh)
+                                setFlowchart(hydrated.flowchart)
+                                setAnalysis(hydrated.analysis)
                             }
                         } catch {
                             clearInterval(pollInterval)

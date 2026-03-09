@@ -42,6 +42,8 @@ export interface PatchWorkflowRequest {
   nodes?: any[]
   edges?: any[]
   variables?: any[]
+  outputs?: any[]
+  output_type?: string
 }
 
 export interface PatchWorkflowResponse {

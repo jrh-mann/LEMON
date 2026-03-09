@@ -80,6 +80,7 @@ interface WorkflowState {
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
   setFlowchartSilent: (flowchart: Flowchart) => void  // Set flowchart without pushing undo history (for WS events)
+  persistFlowchart: () => Promise<void>
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
   setConversationId: (conversationId: string | null) => void
   setInputValues: (values: Record<string, unknown>) => void
@@ -168,16 +169,23 @@ const initialExecutionState: ExecutionState = {
   logIndentationStack: [],
 }
 
-// Helper to sync edges to backend (fire-and-forget, logs errors)
-// This persists UI-triggered edge changes without blocking the UI
-const syncEdgesToBackend = async (workflowId: string | undefined, edges: FlowEdge[]) => {
+const persistWorkflowGraph = async (
+  workflowId: string | undefined,
+  flowchart: Flowchart,
+  analysis: WorkflowAnalysis | null,
+) => {
   if (!workflowId) return
   try {
-    await patchWorkflow(workflowId, { edges })
-    console.log('[WorkflowStore] Synced edges to backend')
+    await patchWorkflow(workflowId, {
+      nodes: flowchart.nodes,
+      edges: flowchart.edges,
+      variables: analysis?.variables,
+      outputs: analysis?.outputs,
+      output_type: analysis?.output_type,
+    })
+    console.log('[WorkflowStore] Synced workflow graph to backend')
   } catch (error) {
-    // Log but don't throw - UI updates should not be blocked by backend issues
-    console.error('[WorkflowStore] Failed to sync edges to backend:', error)
+    console.error('[WorkflowStore] Failed to sync workflow graph to backend:', error)
   }
 }
 
@@ -246,6 +254,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Set flowchart without pushing undo history — used for server-driven updates
   // (WS events like batch_edit) that shouldn't pollute the user's undo stack
   setFlowchartSilent: (flowchart) => set({ flowchart }),
+  persistFlowchart: async () => {
+    const state = get()
+    await persistWorkflowGraph(state.currentWorkflow?.id, state.flowchart, state.currentAnalysis)
+  },
 
   setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
   setConversationId: (conversationId) => set({ conversationId }),
@@ -411,9 +423,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
     })
 
-    // Sync to backend asynchronously (fire-and-forget)
-    const workflowId = state.currentWorkflow?.id
-    syncEdgesToBackend(workflowId, newEdges)
+    void persistWorkflowGraph(state.currentWorkflow?.id, {
+      ...state.flowchart,
+      edges: newEdges,
+    }, state.currentAnalysis)
   },
 
   // Swap edge labels for decision nodes (used for batch operations)

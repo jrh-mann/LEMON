@@ -4,7 +4,7 @@ import { autoLayoutFlowchart } from './layout'
 
 // Sanitize labels - remove JSON artifacts, clean up text
 function sanitizeLabel(label: string | undefined | null): string {
-  if (!label) return 'Node'
+  if (label === undefined || label === null) return ''
 
   let clean = String(label)
 
@@ -15,7 +15,7 @@ function sanitizeLabel(label: string | undefined | null): string {
 
   // Trim and fallback
   clean = clean.trim()
-  return clean || 'Node'
+  return clean
 }
 
 // Transform a single node from backend format to frontend format

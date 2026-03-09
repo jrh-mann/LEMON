@@ -73,7 +73,7 @@ function Modal({
 
 // Validation flow component
 function ValidationFlow() {
-  const { currentWorkflow } = useWorkflowStore()
+  const { currentWorkflow, currentAnalysis } = useWorkflowStore()
   const {
     sessionId,
     currentCase,
@@ -91,9 +91,9 @@ function ValidationFlow() {
   const [error, setError] = useState<string | null>(null)
 
   // Get possible outputs from workflow
-  const possibleOutputs = currentWorkflow?.blocks
-    .filter((b) => b.type === 'output')
-    .map((b) => (b as { value: string }).value) || []
+  const possibleOutputs = currentAnalysis?.outputs
+    ?.map((output) => output.value || output.name)
+    .filter((value): value is string => Boolean(value)) || []
 
   // Start validation session
   const handleStart = useCallback(async () => {
@@ -290,7 +290,7 @@ function ValidationFlow() {
 // Handles both creating new workflows and updating existing ones
 function SaveWorkflowForm() {
   const { closeModal } = useUIStore()
-  const { flowchart, currentAnalysis, currentWorkflow, setCurrentWorkflow, setFlowchartSilent } = useWorkflowStore()
+  const { flowchart, currentAnalysis, currentWorkflow } = useWorkflowStore()
 
   // Check if this is an existing workflow (has ID from LLM creation or previous load)
   const existingWorkflowId = currentWorkflow?.id
@@ -316,9 +316,9 @@ function SaveWorkflowForm() {
       setDescription(currentWorkflow.metadata.description || '')
       setDomain(currentWorkflow.metadata.domain || '')
       setTags((currentWorkflow.metadata.tags || []).join(', '))
+      setOutputType(currentWorkflow.output_type || 'string')
+      // Note: isPublished stays false on edit - republishing is a deliberate choice
     }
-    setOutputType(currentWorkflow?.output_type || 'string')
-    // Note: isPublished stays false on edit - republishing is a deliberate choice
   }, [currentWorkflow])
 
   const handleSave = useCallback(async (skipValidation = false) => {
@@ -382,53 +382,7 @@ function SaveWorkflowForm() {
       const payloadWithId = existingWorkflowId
         ? { ...payload, id: existingWorkflowId }
         : payload
-      const response = await createWorkflow(payloadWithId)
-
-      const savedWorkflowId = response.workflow_id || existingWorkflowId || currentWorkflow?.id
-      if (savedWorkflowId) {
-        setCurrentWorkflow({
-          ...(currentWorkflow || {
-            id: savedWorkflowId,
-            metadata: {
-              name: '',
-              description: '',
-              tags: [],
-              created_at: '',
-              updated_at: '',
-              validation_score: 0,
-              validation_count: 0,
-              confidence: 'none',
-              is_validated: false,
-            },
-            blocks: [],
-            connections: [],
-          }),
-          id: savedWorkflowId,
-          output_type: outputType,
-          metadata: {
-            ...(currentWorkflow?.metadata || {
-              created_at: '',
-              updated_at: '',
-              validation_score: 0,
-              validation_count: 0,
-              confidence: 'none',
-              is_validated: false,
-              tags: [],
-            }),
-            name: name.trim(),
-            description: description.trim(),
-            domain: domain.trim() || undefined,
-            tags: tagArray,
-          },
-        })
-      }
-
-      setFlowchartSilent({
-        ...flowchart,
-        nodes: flowchart.nodes.map((node) =>
-          node.type === 'end' ? { ...node, output_type: outputType } : node
-        ),
-      })
+      await createWorkflow(payloadWithId)
 
       setSaveSuccess(true)
       setShowValidationWarning(false)
@@ -449,7 +403,7 @@ function SaveWorkflowForm() {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished, currentWorkflow, setCurrentWorkflow, setFlowchartSilent])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
 
   if (flowchart.nodes.length === 0) {
     return (

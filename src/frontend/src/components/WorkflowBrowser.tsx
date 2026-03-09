@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { listWorkflows, getWorkflow, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
-import { autoLayoutFlowchart } from '../utils/canvas'
-import type { WorkflowSummary, Flowchart, WorkflowAnalysis, Workflow } from '../types'
+import { hydrateWorkflowDetail } from '../utils/workflowHydration'
+import type { WorkflowSummary } from '../types'
 
 // Tab options for the workflow browser
 type BrowserTab = 'my-workflows' | 'peer-review' | 'published'
@@ -203,43 +203,10 @@ export default function WorkflowBrowser() {
         new Promise(resolve => setTimeout(resolve, 100))
       ])
 
-      // Transform backend response to flowchart format
-      let flowchart: Flowchart = {
-        nodes: workflowData.nodes || [],
-        edges: workflowData.edges || [],
-      }
-
-      // Check if positions are all at (0,0) or overlapping - apply auto-layout
-      const needsLayout = flowchart.nodes.length > 1 &&
-        (flowchart.nodes.every((n) => n.x === 0 && n.y === 0) ||
-          new Set(flowchart.nodes.map((n) => `${n.x},${n.y}`)).size < flowchart.nodes.length / 2)
-
-      if (needsLayout) {
-        flowchart = autoLayoutFlowchart(flowchart)
-      }
-
-      // Open workflow in a new tab
-      // Create a proper Workflow object with empty blocks/connections
-      // (we only need the flowchart for rendering)
-      const workflow: Workflow = {
-        id: workflowData.id,
-        output_type: workflowData.output_type,
-        metadata: workflowData.metadata,
-        blocks: [],
-        connections: [],
-      }
-
+      const { workflow, flowchart, analysis } = hydrateWorkflowDetail(workflowData)
       setCurrentWorkflow(workflow)
       setFlowchart(flowchart)
-
-      // Set analysis data if available
-      if (workflowData.variables || workflowData.outputs) {
-        const analysis: WorkflowAnalysis = {
-          variables: workflowData.variables || [],
-          outputs: workflowData.outputs || [],
-        }
-        setAnalysis(analysis)
-      }
+      setAnalysis(analysis)
 
       closeModal()
 
