@@ -1,2 +1,0 @@
-"""Tests for eval harness."""
-
