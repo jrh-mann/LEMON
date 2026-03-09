@@ -13,11 +13,9 @@ from typing import Any, Dict
 from ..core import WorkflowTool, ToolParameter
 from .helpers import (
     resolve_node_id,
-    validate_subprocess_node,
     save_workflow_changes,
-    derive_variables_for_node,
+    build_modified_node,
 )
-from .add_node import validate_decision_condition, validate_calculation
 
 
 class ModifyNodeTool(WorkflowTool):
@@ -142,63 +140,26 @@ class ModifyNodeTool(WorkflowTool):
                 "error_code": "NODE_NOT_FOUND",
             }
 
-        # Snapshot old node before mutation for derived-variable comparison
-        old_node = dict(nodes[node_idx])
-
-        # Create new workflow state with updates
         new_nodes = [dict(n) for n in nodes]
-        new_nodes[node_idx].update(updates)
+        updated_node, added_variables, removed_variable_ids, build_error = build_modified_node(
+            new_nodes[node_idx],
+            updates,
+            variables,
+            session_state,
+        )
+        if build_error:
+            return {
+                "success": False,
+                "error": build_error,
+                "error_code": "INVALID_NODE_UPDATE",
+            }
+        new_nodes[node_idx] = updated_node
         
         new_workflow = {
             "nodes": new_nodes,
             "edges": edges,
             "variables": variables,
         }
-
-        # Validate subprocess configuration if node is/becomes a subprocess
-        updated_node = new_nodes[node_idx]
-        
-        # Validate condition for decision nodes
-        if updated_node.get("type") == "decision":
-            condition = updated_node.get("condition")
-            if condition:
-                condition_error = validate_decision_condition(condition, variables)
-                if condition_error:
-                    return {
-                        "success": False,
-                        "error": condition_error,
-                        "error_code": "INVALID_CONDITION",
-                    }
-        
-        # Validate calculation for calculation nodes
-        if updated_node.get("type") == "calculation":
-            calculation = updated_node.get("calculation")
-            if calculation:
-                calculation_error = validate_calculation(calculation, variables)
-                if calculation_error:
-                    return {
-                        "success": False,
-                        "error": calculation_error,
-                        "error_code": "INVALID_CALCULATION",
-                    }
-        
-        if updated_node.get("type") == "subprocess":
-            # Build mock session for validation
-            mock_session = {
-                **session_state,
-                "workflow_analysis": {"variables": variables},
-            }
-            subprocess_errors = validate_subprocess_node(
-                updated_node,
-                mock_session,
-                check_workflow_exists=True,
-            )
-            if subprocess_errors:
-                return {
-                    "success": False,
-                    "error": "\n".join(subprocess_errors),
-                    "error_code": "SUBPROCESS_VALIDATION_FAILED",
-                }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
@@ -208,28 +169,14 @@ class ModifyNodeTool(WorkflowTool):
                 "error_code": "VALIDATION_FAILED",
             }
 
-        # ---------------------------------------------------------------
-        # Derived variable lifecycle: compare old vs new derived vars
-        # ---------------------------------------------------------------
-        old_derived = derive_variables_for_node(old_node, variables, session_state)
-        new_derived = derive_variables_for_node(updated_node, variables, session_state)
-
-        old_derived_ids = {v["id"] for v in old_derived}
-        new_derived_ids = {v["id"] for v in new_derived}
-
-        # IDs to remove (were derived from old config, no longer apply)
-        removed_variable_ids = list(old_derived_ids - new_derived_ids)
-        # Variables to add (derived from new config, didn't exist before)
-        added_variables = [v for v in new_derived if v["id"] not in old_derived_ids]
-
-        # Apply to variables list: remove old, add new
+        removed_variable_id_set = set(removed_variable_ids)
         new_variables = [
-            v for v in variables if v.get("id") not in old_derived_ids
-        ] + new_derived
+            v for v in variables if v.get("id") not in removed_variable_id_set
+        ] + added_variables
 
         # Auto-save changes to database (include variables if they changed)
         save_kwargs = {"nodes": new_nodes}
-        if old_derived_ids != new_derived_ids:
+        if removed_variable_ids or added_variables:
             save_kwargs["variables"] = new_variables
         save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:

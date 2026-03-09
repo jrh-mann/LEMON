@@ -16,8 +16,6 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from ...workflow_persistence import merge_workflow_record_with_updates
-
 logger = logging.getLogger(__name__)
 
 def resolve_node_id(
@@ -638,6 +636,46 @@ def build_new_node(
     return new_node, new_variables, None
 
 
+def build_modified_node(
+    current_node: Dict[str, Any],
+    updates: Dict[str, Any],
+    variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[str], Optional[str]]:
+    """Apply updates through the canonical node builder.
+
+    Reuses ``build_new_node`` so add and modify paths produce the same node
+    schema and derived-variable behavior.
+    """
+    merged = dict(current_node)
+    merged.update(updates)
+    if not merged.get("type"):
+        return {}, [], [], "Modified node is missing type"
+    if not merged.get("label"):
+        return {}, [], [], "Modified node is missing label"
+
+    rebuilt_node, rebuilt_variables, error = build_new_node(
+        merged,
+        variables,
+        session_state,
+        node_id=current_node.get("id"),
+    )
+    if error:
+        return {}, [], [], error
+
+    old_derived = derive_variables_for_node(current_node, variables, session_state)
+    old_derived_ids = {
+        v.get("id")
+        for v in variables
+        if v.get("source_node_id") == current_node.get("id") and v.get("id")
+    }
+    old_derived_ids.update(v["id"] for v in old_derived)
+    new_derived_ids = {v["id"] for v in rebuilt_variables}
+    removed_variable_ids = sorted(old_derived_ids - new_derived_ids)
+    added_variables = [v for v in rebuilt_variables if v["id"] not in old_derived_ids]
+    return rebuilt_node, added_variables, removed_variable_ids, None
+
+
 # ============================================================================
 # Workflow Load/Save Helpers for Multi-Workflow ID-Centric Architecture
 # ============================================================================
@@ -729,6 +767,12 @@ def _rederive_subprocess_variable_types(
             existing_var.get("type"), current_type, subworkflow_id,
         )
 
+    # Persist updated variables to DB so the fix sticks across loads
+    if dirty:
+        save_workflow_changes(
+            workflow_id, session_state, variables=variables,
+        )
+
     return variables
 
 
@@ -762,10 +806,7 @@ def load_workflow_for_tool(
     """
     # Validate workflow_id is provided - fall back to current_workflow_id from session
     if not workflow_id:
-        fallback_workflow_id = session_state.get("current_workflow_id")
-        workflow_id = ""
-        if isinstance(fallback_workflow_id, str):
-            workflow_id = fallback_workflow_id
+        workflow_id = session_state.get("current_workflow_id")
         _load_logger.info(
             "load_workflow_for_tool: no workflow_id in args, fell back to current_workflow_id=%s",
             workflow_id,
@@ -901,38 +942,24 @@ def save_workflow_changes(
             "message": "Unable to save workflow - user not authenticated.",
         }
     
-    if all(value is None for value in (nodes, edges, variables, outputs)):
+    # Build update kwargs - only include provided fields
+    update_kwargs: Dict[str, Any] = {}
+    if nodes is not None:
+        update_kwargs["nodes"] = nodes
+    if edges is not None:
+        update_kwargs["edges"] = edges
+    if variables is not None:
+        update_kwargs["inputs"] = variables  # Store as 'inputs' in database
+    if outputs is not None:
+        update_kwargs["outputs"] = outputs
+    
+    # If nothing to update, return success
+    if not update_kwargs:
         return None
-
-    try:
-        record = workflow_store.get_workflow(workflow_id, user_id)
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Database error: {e}",
-            "error_code": "DB_ERROR",
-            "message": f"Failed to load workflow before save: {e}",
-        }
-
-    if record is None:
-        return {
-            "success": False,
-            "error": f"Workflow '{workflow_id}' not found",
-            "error_code": "WORKFLOW_NOT_FOUND",
-            "message": f"Workflow '{workflow_id}' not found or unauthorized.",
-        }
-
-    persisted = merge_workflow_record_with_updates(
-        record,
-        nodes=nodes,
-        edges=edges,
-        variables=variables,
-        outputs=outputs,
-    )
     
     # Save to database
     try:
-        success = workflow_store.update_workflow(workflow_id, user_id, **persisted)
+        success = workflow_store.update_workflow(workflow_id, user_id, **update_kwargs)
         if not success:
             return {
                 "success": False,

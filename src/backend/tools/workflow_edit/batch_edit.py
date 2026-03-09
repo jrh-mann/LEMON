@@ -13,10 +13,28 @@ from typing import Any, Dict, List
 from ..core import WorkflowTool, ToolParameter
 from .helpers import (
     build_new_node,
+    build_modified_node,
     resolve_node_id,
     save_workflow_changes,
 )
-from .add_node import validate_decision_condition
+
+
+ALLOWED_MODIFY_NODE_FIELDS = {
+    "label",
+    "type",
+    "x",
+    "y",
+    "condition",
+    "calculation",
+    "output_type",
+    "output",
+    "output_template",
+    "output_variable",
+    "output_value",
+    "subworkflow_id",
+    "input_mapping",
+    "color",
+}
 
 
 class BatchEditWorkflowTool(WorkflowTool):
@@ -151,25 +169,30 @@ class BatchEditWorkflowTool(WorkflowTool):
                         raise ValueError(f"Node not found: {node_id}")
 
                     updates = {k: v for k, v in op.items() if k not in ["op", "node_id"]}
-                    nodes[node_idx].update(updates)
-                    
-                    # Validate condition if node is/becomes decision type
-                    updated_node = nodes[node_idx]
-                    if updated_node.get("type") == "decision":
-                        condition = updated_node.get("condition")
-                        if condition:
-                            condition_error = validate_decision_condition(condition, variables)
-                            if condition_error:
-                                raise ValueError(f"Invalid condition for decision node: {condition_error}")
-
-                    # Validate calculation if node is/becomes calculation type
-                    if updated_node.get("type") == "calculation":
-                        calculation = updated_node.get("calculation")
-                        if calculation:
-                            from .add_node import validate_calculation
-                            calculation_error = validate_calculation(calculation, variables)
-                            if calculation_error:
-                                raise ValueError(f"Invalid calculation for node: {calculation_error}")
+                    unknown_fields = sorted(set(updates) - ALLOWED_MODIFY_NODE_FIELDS)
+                    if unknown_fields:
+                        raise ValueError(
+                            f"modify_node does not allow fields: {', '.join(unknown_fields)}"
+                        )
+                    updated_node, added_variables, removed_variable_ids, build_error = build_modified_node(
+                        nodes[node_idx],
+                        updates,
+                        variables,
+                        session_state,
+                    )
+                    if build_error:
+                        raise ValueError(build_error)
+                    nodes[node_idx] = updated_node
+                    if removed_variable_ids:
+                        removed_variable_id_set = set(removed_variable_ids)
+                        variables = [
+                            var for var in variables
+                            if var.get("id") not in removed_variable_id_set
+                        ]
+                        variables_modified = True
+                    if added_variables:
+                        variables.extend(added_variables)
+                        variables_modified = True
                     
                     applied_operations.append(
                         {"op": "modify_node", "node_id": node_id, "updates": updates}
