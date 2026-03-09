@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..execution.interpreter import TreeInterpreter
-from ..utils.flowchart import tree_from_flowchart
+from ..execution.preparation import prepare_workflow_execution
 from .core import WorkflowTool, ToolParameter
 
 
@@ -55,30 +55,22 @@ class ExecuteWorkflowTool(WorkflowTool):
                 "error": "Workflow has no nodes. Build the workflow first.",
             }
 
-        # Validate before executing
-        workflow_for_validation = {
-            "nodes": nodes,
-            "edges": edges,
-            "variables": variables,
-        }
-        is_valid, errors = self.validator.validate(
-            workflow_for_validation, strict=True,
+        tree, preparation_error, validation_errors = prepare_workflow_execution(
+            nodes=nodes,
+            edges=edges,
+            variables=variables,
         )
-        if not is_valid:
+        if preparation_error:
             return {
                 "success": False,
                 "error": (
                     "Workflow validation failed — fix these before executing:\n"
-                    + self.validator.format_errors(errors)
+                    + preparation_error
                 ),
-            }
-
-        # Build execution tree from nodes/edges
-        tree = tree_from_flowchart(nodes, edges)
-        if not tree or "start" not in tree:
-            return {
-                "success": False,
-                "error": "Workflow has no start node.",
+                "validation_errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors or []
+                ],
             }
 
         # Resolve input values: accept variable names or IDs

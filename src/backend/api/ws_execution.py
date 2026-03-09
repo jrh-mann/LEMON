@@ -27,6 +27,7 @@ from .ws_registry import ConnectionRegistry
 from ..execution.interpreter import TreeInterpreter
 from ..utils.flowchart import tree_from_flowchart
 from ..storage.workflows import WorkflowStore
+from ..execution.preparation import prepare_workflow_execution
 from ..validation.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger("backend.api")
@@ -371,9 +372,13 @@ class SteppedExecutionTask:
                 self.emit_error("Workflow has no nodes")
                 return
 
-            tree = tree_from_flowchart(nodes, edges)
-            if not tree or "start" not in tree:
-                self.emit_error("Workflow has no start node")
+            tree, preparation_error, _ = prepare_workflow_execution(
+                nodes=nodes,
+                edges=edges,
+                variables=self.workflow.get("variables", []),
+            )
+            if preparation_error or tree is None:
+                self.emit_error(preparation_error or "Workflow has no start node")
                 return
 
             workflow_variables = self.workflow.get("variables", [])
@@ -435,16 +440,21 @@ def handle_execute_workflow(
         })
         return
 
-    # Run comprehensive validation before execution
-    is_valid, validation_errors = _workflow_validator.validate(workflow, strict=True)
-    if not is_valid:
-        error_message = _workflow_validator.format_errors(validation_errors)
+    tree, preparation_error, validation_errors = prepare_workflow_execution(
+        nodes=workflow.get("nodes", []),
+        edges=workflow.get("edges", []),
+        variables=workflow.get("variables", []),
+    )
+    if preparation_error:
         registry.send_to_sync(conn_id, "execution_error", {
             "execution_id": execution_id,
-            "error": f"Workflow validation failed:\n{error_message}",
+            "error": (
+                f"Workflow validation failed:\n{preparation_error}"
+                if validation_errors else preparation_error
+            ),
             "validation_errors": [
                 {"code": e.code, "message": e.message, "node_id": e.node_id}
-                for e in validation_errors
+                for e in validation_errors or []
             ],
         })
         return

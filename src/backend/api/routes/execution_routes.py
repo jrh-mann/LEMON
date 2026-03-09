@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
+from ...execution.preparation import prepare_record_execution
 from ...storage.workflows import WorkflowStore
 
 logger = logging.getLogger("backend.api")
@@ -65,20 +66,20 @@ def register_execution_routes(
                 status_code=404,
             )
 
-        # Validate workflow has tree structure
-        if not workflow.tree or "start" not in workflow.tree:
-            return JSONResponse(
-                {
-                    "success": False,
-                    "error": (
-                        "Workflow has no execution tree. "
-                        "Build the workflow tree first."
-                    ),
-                    "path": [],
-                    "context": {},
-                },
-                status_code=400,
-            )
+        tree, preparation_error, validation_errors = prepare_record_execution(workflow)
+        if preparation_error:
+            response = {
+                "success": False,
+                "error": preparation_error,
+                "path": [],
+                "context": {},
+            }
+            if validation_errors:
+                response["validation_errors"] = [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors
+                ]
+            return JSONResponse(response, status_code=400)
 
         # Get input values from request
         try:
@@ -101,7 +102,7 @@ def register_execution_routes(
 
         # Create interpreter with workflow_store for subflow support
         interpreter = TreeInterpreter(
-            tree=workflow.tree,
+            tree=tree,
             variables=workflow.inputs,  # Storage field is 'inputs', maps to variables param
             outputs=workflow.outputs,
             workflow_id=workflow_id,
