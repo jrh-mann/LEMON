@@ -28,10 +28,17 @@ class BackgroundBuilderCallbacks:
     rich event stream as the main orchestrator's WsChatTask.
     """
 
-    def __init__(self, ws_registry: ConnectionRegistry, conn_id: str, workflow_id: str) -> None:
+    def __init__(
+        self,
+        ws_registry: ConnectionRegistry,
+        conn_id: str,
+        workflow_id: str,
+        orchestrator: Any | None = None,
+    ) -> None:
         self.ws_registry = ws_registry
         self.conn_id = conn_id
         self.workflow_id = workflow_id
+        self.orchestrator = orchestrator
         self.cancelled = False
         self.executed_tools: List[Dict[str, Any]] = []
         # ToolSummaryTracker injects inline markdown summaries (e.g. "> Added a workflow node.")
@@ -131,11 +138,12 @@ class BackgroundBuilderCallbacks:
                     "action": action,
                     "data": result,
                 })
-                self._emit("workflow_state_updated", {
-                    "workflow_id": self.workflow_id,
-                    "workflow": self.orchestrator.current_workflow,
-                    "analysis": self.orchestrator.workflow_analysis,
-                })
+                if self.orchestrator is not None:
+                    self._emit("workflow_state_updated", {
+                        "workflow_id": self.workflow_id,
+                        "workflow": self.orchestrator.current_workflow,
+                        "analysis": self.orchestrator.workflow_analysis,
+                    })
         elif event == "tool_batch_complete":
             # Flush accumulated summaries into the stream between tool rounds
             self.flush_tool_summary()

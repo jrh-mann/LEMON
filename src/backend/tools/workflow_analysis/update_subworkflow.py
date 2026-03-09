@@ -64,6 +64,7 @@ def _run_subworkflow_updater(
             orchestrator.repo_root = repo_root
             orchestrator.ws_registry = ws_registry
             orchestrator.conn_id = conn_id
+            cb.orchestrator = orchestrator
 
             # Pre-load the previous builder's conversation so the LLM has
             # full context of how the workflow was originally built
