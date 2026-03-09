@@ -290,7 +290,7 @@ function ValidationFlow() {
 // Handles both creating new workflows and updating existing ones
 function SaveWorkflowForm() {
   const { closeModal } = useUIStore()
-  const { flowchart, currentAnalysis, currentWorkflow } = useWorkflowStore()
+  const { flowchart, currentAnalysis, currentWorkflow, setCurrentWorkflow, setFlowchartSilent } = useWorkflowStore()
 
   // Check if this is an existing workflow (has ID from LLM creation or previous load)
   const existingWorkflowId = currentWorkflow?.id
@@ -382,7 +382,53 @@ function SaveWorkflowForm() {
       const payloadWithId = existingWorkflowId
         ? { ...payload, id: existingWorkflowId }
         : payload
-      await createWorkflow(payloadWithId)
+      const response = await createWorkflow(payloadWithId)
+
+      const savedWorkflowId = response.workflow_id || existingWorkflowId || currentWorkflow?.id
+      if (savedWorkflowId) {
+        setCurrentWorkflow({
+          ...(currentWorkflow || {
+            id: savedWorkflowId,
+            metadata: {
+              name: '',
+              description: '',
+              tags: [],
+              created_at: '',
+              updated_at: '',
+              validation_score: 0,
+              validation_count: 0,
+              confidence: 'none',
+              is_validated: false,
+            },
+            blocks: [],
+            connections: [],
+          }),
+          id: savedWorkflowId,
+          output_type: outputType,
+          metadata: {
+            ...(currentWorkflow?.metadata || {
+              created_at: '',
+              updated_at: '',
+              validation_score: 0,
+              validation_count: 0,
+              confidence: 'none',
+              is_validated: false,
+              tags: [],
+            }),
+            name: name.trim(),
+            description: description.trim(),
+            domain: domain.trim() || undefined,
+            tags: tagArray,
+          },
+        })
+      }
+
+      setFlowchartSilent({
+        ...flowchart,
+        nodes: flowchart.nodes.map((node) =>
+          node.type === 'end' ? { ...node, output_type: outputType } : node
+        ),
+      })
 
       setSaveSuccess(true)
       setShowValidationWarning(false)
@@ -403,7 +449,7 @@ function SaveWorkflowForm() {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished, currentWorkflow, setCurrentWorkflow, setFlowchartSilent])
 
   if (flowchart.nodes.length === 0) {
     return (
