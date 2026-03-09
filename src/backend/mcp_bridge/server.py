@@ -491,11 +491,14 @@ def build_mcp_server(host: str | None = None, port: int | None = None) -> FastMC
     def update_subworkflow(
         workflow_id: str,
         instructions: str,
+        user_id: str | None = None,
         session_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Update an existing subworkflow by resuming its builder."""
         state = dict(session_state or {})
         state.setdefault("workflow_store", _workflow_store)
+        state.setdefault("user_id", user_id or "mcp_user")
+        state.setdefault("repo_root", _repo_root())
         return update_subworkflow_tool.execute(
             {"workflow_id": workflow_id, "instructions": instructions},
             session_state=state,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from datetime import timedelta
 from typing import Any, Iterable
 
@@ -16,6 +17,8 @@ from mcp.client.streamable_http import streamable_http_client
 logger = logging.getLogger("backend.mcp_client")
 
 DEFAULT_MCP_URL = "http://127.0.0.1:8000/mcp"
+_MCP_TOOLS_CACHE: dict[str, list[dict[str, Any]]] = {}
+_MCP_TOOLS_CACHE_LOCK = threading.Lock()
 
 
 def _get_mcp_url() -> str:
@@ -72,9 +75,18 @@ def list_mcp_tools() -> list[dict[str, Any]]:
 
         return await run_session()
 
+    with _MCP_TOOLS_CACHE_LOCK:
+        cached = _MCP_TOOLS_CACHE.get(url)
+        if cached is not None:
+            logger.info("Using cached MCP tools url=%s", url)
+            return cached
+
     logger.info("Listing MCP tools url=%s", url)
     try:
-        return anyio.run(_list)
+        tools = anyio.run(_list)
+        with _MCP_TOOLS_CACHE_LOCK:
+            _MCP_TOOLS_CACHE[url] = tools
+        return tools
     except Exception as exc:
         logger.exception("MCP list_tools failed: %s", exc)
         raise
@@ -103,15 +115,27 @@ def call_mcp_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                             f"MCP initialize timed out after {timeout_s:.1f}s"
                         ) from exc
                     logger.info("MCP initialize complete")
-                    logger.info("MCP list_tools start")
-                    try:
-                        with anyio.fail_after(timeout_s):
-                            await session.list_tools()
-                    except TimeoutError as exc:
-                        raise RuntimeError(
-                            f"MCP list_tools timed out after {timeout_s:.1f}s"
-                        ) from exc
-                    logger.info("MCP list_tools complete")
+                    with _MCP_TOOLS_CACHE_LOCK:
+                        tools_cached = url in _MCP_TOOLS_CACHE
+                    if not tools_cached:
+                        logger.info("MCP list_tools start")
+                        try:
+                            with anyio.fail_after(timeout_s):
+                                result = await session.list_tools()
+                        except TimeoutError as exc:
+                            raise RuntimeError(
+                                f"MCP list_tools timed out after {timeout_s:.1f}s"
+                            ) from exc
+                        logger.info("MCP list_tools complete")
+                        with _MCP_TOOLS_CACHE_LOCK:
+                            _MCP_TOOLS_CACHE[url] = [
+                                {
+                                    "name": tool.name,
+                                    "description": tool.description or "",
+                                    "inputSchema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
+                                }
+                                for tool in result.tools
+                            ]
                     logger.info("MCP call_tool start name=%s timeout_s=%.1f", name, timeout_s)
                     try:
                         with anyio.fail_after(timeout_s):
