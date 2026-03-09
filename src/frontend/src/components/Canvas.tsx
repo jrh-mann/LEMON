@@ -30,8 +30,8 @@ const COMPARATOR_SYMBOL: Record<string, { true: string; false: string }> = {
   gt:    { true: '>',  false: '≤' },
   gte:   { true: '≥',  false: '<' },
   // Boolean
-  is_true:  { true: '= Yes', false: '= No' },
-  is_false: { true: '= No',  false: '= Yes' },
+  is_true:  { true: 'True',  false: 'False' },
+  is_false: { true: 'False', false: 'True' },
   // String
   str_eq:          { true: '=',  false: '≠' },
   str_neq:         { true: '≠',  false: '=' },
@@ -69,9 +69,17 @@ function formatSimpleCondition(
       : `${varName} outside ${lo}–${hi}`
   }
 
-  // Boolean comparators don't need a value
+  // Boolean comparators — just show True / False
   if (cond.comparator === 'is_true' || cond.comparator === 'is_false') {
-    return `${varName} ${sym}`
+    return sym
+  }
+
+  // Enum comparators — show just the value on the true branch,
+  // "Not {value}" on the false branch (e.g. "Primary" / "Not Primary")
+  if (cond.comparator === 'enum_eq' || cond.comparator === 'enum_neq') {
+    const val = cond.value ?? '?'
+    const isMatch = (cond.comparator === 'enum_eq') === (branch === 'true')
+    return isMatch ? String(val) : `Not ${val}`
   }
 
   const val = cond.value ?? '?'
