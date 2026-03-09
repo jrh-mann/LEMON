@@ -131,6 +131,11 @@ class BackgroundBuilderCallbacks:
                     "action": action,
                     "data": result,
                 })
+                self._emit("workflow_state_updated", {
+                    "workflow_id": self.workflow_id,
+                    "workflow": self.orchestrator.current_workflow,
+                    "analysis": self.orchestrator.workflow_analysis,
+                })
         elif event == "tool_batch_complete":
             # Flush accumulated summaries into the stream between tool rounds
             self.flush_tool_summary()

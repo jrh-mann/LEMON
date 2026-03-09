@@ -12,6 +12,40 @@ import { transformFlowchartFromBackend, transformNodeFromBackend } from '../../u
 import type { WorkflowAnalysis } from '../../types'
 import type { HandlerMap } from './index'
 
+
+type WorkflowStateUpdate = {
+  workflow_id?: string
+  workflow?: { nodes?: unknown[]; edges?: unknown[] }
+  analysis?: { variables?: unknown[]; outputs?: unknown[]; output_type?: string }
+  task_id?: string
+}
+
+
+function applyWorkflowStateUpdate(data: WorkflowStateUpdate): void {
+  const workflowStore = useWorkflowStore.getState()
+  const eventWorkflowId = data.workflow_id
+  const currentWorkflowId = workflowStore.currentWorkflow?.id
+  if (eventWorkflowId && currentWorkflowId && eventWorkflowId !== currentWorkflowId) {
+    return
+  }
+
+  if (data.workflow) {
+    const flowchart = transformFlowchartFromBackend(data.workflow)
+    workflowStore.setFlowchartSilent(flowchart)
+  }
+
+  if (data.analysis) {
+    const currentAnalysis = workflowStore.currentAnalysis ?? { variables: [], outputs: [] }
+    const updatedAnalysis: WorkflowAnalysis = {
+      ...currentAnalysis,
+      variables: (data.analysis.variables ?? currentAnalysis.variables) as WorkflowAnalysis['variables'],
+      outputs: (data.analysis.outputs ?? currentAnalysis.outputs) as WorkflowAnalysis['outputs'],
+      ...(data.analysis.output_type ? { output_type: data.analysis.output_type } : {}),
+    }
+    workflowStore.setAnalysis(updatedAnalysis)
+  }
+}
+
 /** Register all workflow-related event handlers into the handler map */
 export function registerWorkflowHandlers(handlers: HandlerMap): void {
   // Workflow update events (from orchestrator manipulation tools)
@@ -174,6 +208,23 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
 
     workflowStore.setAnalysis(updatedAnalysis)
     console.log('[WS] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
+  }
+
+  handlers['workflow_state_updated'] = (data: WorkflowStateUpdate) => {
+    console.log('[WS] workflow_state_updated:', data)
+    const chatStore = useChatStore.getState()
+    const taskId = data.task_id
+    if (taskId) {
+      if (chatStore.isTaskCancelled(taskId)) {
+        return
+      }
+      const activeWfId = chatStore.activeWorkflowId
+      const conv = activeWfId ? chatStore.conversations[activeWfId] : undefined
+      if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
+        return
+      }
+    }
+    applyWorkflowStateUpdate(data)
   }
 
   // ===== Workflow Library Events =====
