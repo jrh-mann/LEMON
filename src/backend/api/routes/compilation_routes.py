@@ -106,6 +106,7 @@ def register_compilation_routes(
                 "success": True,
                 "code": result.code,
                 "warnings": result.warnings,
+                "partial_failure": result.partial_failure,
             })
         else:
             return JSONResponse(
@@ -114,6 +115,7 @@ def register_compilation_routes(
                     "error": result.error,
                     "code": None,
                     "warnings": result.warnings,
+                    "partial_failure": result.partial_failure,
                 },
                 status_code=400,
             )

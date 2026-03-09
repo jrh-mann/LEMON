@@ -371,9 +371,11 @@ class TestPythonCodeGenerator:
         result = generator.compile()
 
         assert result.success
+        assert result.partial_failure is True
         assert len(result.warnings) > 0
-        assert any("subprocess" in w.lower() for w in result.warnings)
+        assert any("left as a comment" in w.lower() for w in result.warnings)
         assert "# Subprocess: Credit Check" in result.code
+        assert "# TODO: Implement call to subworkflow 'wf_credit'" in result.code
 
 
 # --- compile_workflow_to_python Convenience Function Tests ---

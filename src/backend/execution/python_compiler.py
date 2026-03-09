@@ -31,6 +31,7 @@ class CompilationResult:
     code: Optional[str] = None
     error: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
+    partial_failure: bool = False
 
 
 class CompilationError(Exception):
@@ -393,7 +394,10 @@ class PythonCodeGenerator:
                                 subflow_code_blocks.append(sub_result.code)
                             self._warnings.extend(["Subflow: " + w for w in sub_result.warnings])
                         else:
-                            self._warnings.append(f"Warning: Could not fetch subworkflow '{sub_id}'. Generated call will fail.")
+                            self._warnings.append(
+                                f"Subworkflow '{sub_id}' could not be compiled because it could not be fetched. "
+                                "Generated code contains a placeholder comment instead."
+                            )
             
             # --- Compile Root Workflow ---
             # Generate imports
@@ -445,20 +449,23 @@ class PythonCodeGenerator:
             return CompilationResult(
                 success=True,
                 code=combined_code,
-                warnings=self._warnings
+                warnings=self._warnings,
+                partial_failure=bool(self._warnings),
             )
             
         except CompilationError as e:
             return CompilationResult(
                 success=False,
                 error=str(e),
-                warnings=self._warnings
+                warnings=self._warnings,
+                partial_failure=bool(self._warnings),
             )
         except Exception as e:
             return CompilationResult(
                 success=False,
                 error=f"Unexpected error: {str(e)}",
-                warnings=self._warnings
+                warnings=self._warnings,
+                partial_failure=bool(self._warnings),
             )
 
     def _to_function_name(self, name: str) -> str:
@@ -791,8 +798,8 @@ class PythonCodeGenerator:
             self._add_line(f"# TODO: Implement call to subworkflow '{subworkflow_id}'")
             self._add_line(f"{python_var} = None  # Placeholder for subprocess output")
             self._warnings.append(
-                f"Subprocess '{node_label}' requires manual implementation. "
-                f"Subworkflow ID: {subworkflow_id}"
+                f"Subprocess '{node_label}' could not be compiled and was left as a comment. "
+                f"Reason: subworkflow '{subworkflow_id}' was unavailable during export."
             )
 
         # Continue to children

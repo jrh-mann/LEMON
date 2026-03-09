@@ -150,6 +150,7 @@ export interface CompilePythonResponse {
   code: string | null
   error?: string
   warnings: string[]
+  partial_failure?: boolean
 }
 
 export interface CompilePythonRequest {
