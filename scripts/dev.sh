@@ -15,7 +15,7 @@ stop_all() {
         rm -f "$PIDFILE"
     fi
     # Also kill by port as fallback
-    for port in 5001 5173 8000; do
+    for port in 5000 5173 8000; do
         lsof -ti:"$port" 2>/dev/null | xargs kill 2>/dev/null
     done
     sleep 1
@@ -39,7 +39,7 @@ start_all() {
     echo $! >> "$PIDFILE"
 
     sleep 2
-    echo "Backend:  $(lsof -ti:5001 >/dev/null 2>&1 && echo 'UP on :5001' || echo 'FAILED')"
+    echo "Backend:  $(lsof -ti:5000 >/dev/null 2>&1 && echo 'UP on :5000' || echo 'FAILED')"
     echo "MCP:      $(lsof -ti:8000 >/dev/null 2>&1 && echo 'UP on :8000' || echo 'FAILED')"
     echo "Frontend: $(lsof -ti:5173 >/dev/null 2>&1 && echo 'UP on :5173' || echo 'FAILED')"
 }

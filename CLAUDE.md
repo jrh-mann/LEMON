@@ -36,12 +36,12 @@ When adding new tools for the LLM to use, you MUST update ALL of these locations
    - Import the tool
    - Call `registry.register(YourTool())` in `build_orchestrator()`
 
-4. **MCP Server** (`src/backend/mcp_bridge/server.py`)
+4. **MCP Server** (`src/backend/mcp/server.py`)
    - Import the tool
    - Initialize tool instance in `build_mcp_server()`
    - Add `@server.tool()` decorated function that calls `your_tool.execute()`
 
-5. **Orchestrator Config** (`src/backend/agents/tool_schemas.py`)
+5. **Orchestrator Config** (`src/backend/agents/orchestrator_config.py`)
    - Add tool schema to `tool_descriptions()` array
    - Follow Anthropic tool calling format with full parameter schemas
    - **CRITICAL**: Update system prompt to tell model WHEN to use the tool
@@ -51,7 +51,7 @@ When adding new tools for the LLM to use, you MUST update ALL of these locations
    - Update transformation functions to preserve new fields
 
 7. **Socket Events** (if needed)
-   - Emit events in `src/backend/api/ws_chat.py` when tool completes
+   - Emit events in `src/backend/api/socket_chat.py` when tool completes
    - Add event listeners in `src/frontend/src/api/socket.ts`
 
 ## System Prompt Updates
