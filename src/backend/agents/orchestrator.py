@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 from ..tools import ToolRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_BOUND_TOOLS
 from ..llm import call_llm_stream, call_llm_with_tools
+from .conversation_manager import ConversationManager
 from .system_prompt import build_system_prompt
 from ..tools.schema_gen import generate_all_schemas
 from ..utils.cancellation import CancellationError
@@ -41,7 +42,8 @@ class Orchestrator:
             "outputs": [],
         }
 
-        self.history: List[Dict[str, str]] = []
+        # Conversation history management (storage, compaction, message building)
+        self.conversation = ConversationManager(context_limit=200_000)
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
 
@@ -65,107 +67,52 @@ class Orchestrator:
         self.ws_registry: Optional[Any] = None
         self.conn_id: Optional[str] = None
 
-        # Context window tracking — updated after each LLM call with actual token counts
-        self._last_input_tokens: int = 0
-        self._context_limit: int = 200_000  # Claude models have 200k context window
+    # ------------------------------------------------------------------
+    # Delegated conversation properties — external code (ws_chat, tests,
+    # subworkflow tools) accesses these on the orchestrator directly.
+    # ------------------------------------------------------------------
 
-        # Optional conversation logger for audit trail (injected by ws_chat)
-        self._conversation_logger: Optional[Any] = None
-        self._conversation_id: Optional[str] = None
+    @property
+    def history(self) -> List[Dict[str, Any]]:
+        """Conversation history (delegates to ConversationManager)."""
+        return self.conversation.history
+
+    @history.setter
+    def history(self, value: List[Dict[str, Any]]) -> None:
+        """Allow direct assignment (used by subworkflow builders)."""
+        self.conversation.history = value
 
     @property
     def context_usage_pct(self) -> int:
         """Percentage of context window used by the last LLM call."""
-        if not self._last_input_tokens:
-            return 0
-        return min(100, int(self._last_input_tokens / self._context_limit * 100))
+        return self.conversation.context_usage_pct
 
-    # --- Conversation compaction ---
-    # When the context window fills up, summarize older history to free space
-    # while preserving key decisions and context (similar to Claude Code).
+    @property
+    def _last_input_tokens(self) -> int:
+        """Delegated token count for external readers (ws_chat)."""
+        return self.conversation._last_input_tokens
 
-    _COMPACTION_THRESHOLD_PCT = 70   # Compact when input tokens > 70% of context
-    _CHARS_PER_TOKEN = 4             # Rough estimate for pre-flight token counting
+    @_last_input_tokens.setter
+    def _last_input_tokens(self, value: int) -> None:
+        self.conversation._last_input_tokens = value
 
-    def _estimate_history_tokens(self) -> int:
-        """Rough token estimate from history character counts."""
-        total_chars = sum(len(str(m.get("content", ""))) for m in self.history)
-        return total_chars // self._CHARS_PER_TOKEN
+    @property
+    def _conversation_logger(self) -> Any:
+        """Delegated conversation logger (injected by ws_chat)."""
+        return self.conversation._conversation_logger
 
-    def _needs_compaction(self) -> bool:
-        """Check if history should be compacted before the next LLM call."""
-        # Use actual token count from last API call if available
-        if self._last_input_tokens > 0:
-            return self._last_input_tokens > self._context_limit * self._COMPACTION_THRESHOLD_PCT / 100
-        # Fallback: estimate from history size (only triggers for very long histories)
-        return self._estimate_history_tokens() > self._context_limit * self._COMPACTION_THRESHOLD_PCT / 100
+    @_conversation_logger.setter
+    def _conversation_logger(self, value: Any) -> None:
+        self.conversation._conversation_logger = value
 
-    def _compact_history_if_needed(self) -> None:
-        """Summarize older history messages if context window is filling up."""
-        if not self._needs_compaction():
-            return
-        if len(self.history) < 6:
-            return  # Too few messages to compact
+    @property
+    def _conversation_id(self) -> Any:
+        """Delegated conversation id (injected by ws_chat)."""
+        return self.conversation._conversation_id
 
-        # Keep the most recent 1/3 of messages (minimum 4)
-        keep_count = max(4, len(self.history) // 3)
-        old_messages = self.history[:-keep_count]
-        recent_messages = self.history[-keep_count:]
-
-        # Log discarded messages to the audit trail before compaction
-        if self._conversation_logger and self._conversation_id:
-            try:
-                self._conversation_logger.log_compaction(
-                    self._conversation_id,
-                    original_count=len(self.history),
-                    summary="[pending]",
-                    discarded_messages=old_messages,
-                )
-            except Exception:
-                self._logger.debug("Failed to log compaction to audit trail", exc_info=True)
-
-        # Build a text representation of old messages for the summarizer
-        summary_parts = []
-        for msg in old_messages:
-            role = msg.get("role", "unknown")
-            content = str(msg.get("content", ""))
-            # Truncate very long individual messages for the summary prompt
-            if len(content) > 500:
-                content = content[:500] + "..."
-            summary_parts.append(f"[{role}]: {content}")
-        conversation_text = "\n".join(summary_parts)
-
-        try:
-            from ..llm.client import call_llm
-            summary = call_llm(
-                [
-                    {"role": "system", "content": (
-                        "Summarize this conversation history concisely. "
-                        "Preserve: key decisions made, workflow changes (nodes/connections added/modified/deleted), "
-                        "errors encountered, current state of the workflow, and any pending user requests. "
-                        "Be brief but complete — this summary replaces the original messages."
-                    )},
-                    {"role": "user", "content": conversation_text},
-                ],
-                max_completion_tokens=2000,
-                caller="orchestrator",
-                request_tag="compaction",
-            )
-            # Replace history with summary + recent messages
-            original_len = len(self.history)
-            self.history = [
-                {"role": "user", "content": f"[Conversation summary — {len(old_messages)} earlier messages]\n{summary}"},
-                {"role": "assistant", "content": "Understood. I have the context from our earlier conversation."},
-                *recent_messages,
-            ]
-            self._logger.info(
-                "Compacted history: %d messages → summary + %d recent = %d total",
-                original_len, len(recent_messages), len(self.history),
-            )
-        except Exception as exc:
-            # Fallback: hard truncation if compaction LLM call fails
-            self._logger.warning("Compaction LLM call failed (%s), falling back to truncation", exc)
-            self.history = self.history[-50:]
+    @_conversation_id.setter
+    def _conversation_id(self, value: Any) -> None:
+        self.conversation._conversation_id = value
 
     @property
     def current_workflow(self) -> Dict[str, Any]:
@@ -485,57 +432,7 @@ class Orchestrator:
         did_stream = False
         streamed_chunks: List[str] = []
         def finalize_cancel() -> str:
-            partial = "".join(streamed_chunks)
-            # Save all tool calls/results from this turn before cancellation.
-            # messages[0] is system prompt, messages[1:len(self.history)+1] is
-            # prior history — everything after that is this turn's work.
-            turn_start = 1 + len(self.history)
-            turn_messages = messages[turn_start:]
-            if partial:
-                turn_messages.append({"role": "assistant", "content": partial})
-            elif not turn_messages:
-                turn_messages.append({"role": "user", "content": user_message})
-
-            # Fix dangling tool_use blocks: the API requires every tool_use to
-            # have a matching tool_result. When we cancel mid-loop, the last
-            # assistant message may have tool_use IDs without results.
-            # Collect all tool_use IDs and all tool_result IDs, then fill gaps.
-            tool_use_ids: set = set()
-            tool_result_ids: set = set()
-            for msg in turn_messages:
-                if msg.get("role") == "assistant":
-                    for tc in msg.get("tool_calls") or []:
-                        tc_id = tc.get("id", "")
-                        if tc_id:
-                            tool_use_ids.add(tc_id)
-                elif msg.get("role") == "tool":
-                    tc_id = msg.get("tool_call_id", "")
-                    if tc_id:
-                        tool_result_ids.add(tc_id)
-            missing = tool_use_ids - tool_result_ids
-            if missing:
-                # Insert cancelled tool results right after the last tool result
-                # (or at the end if there are none)
-                for tc_id in missing:
-                    turn_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc_id,
-                        "content": json.dumps({"cancelled": True, "error": "Tool call cancelled by user"}),
-                    })
-
-            # Tell the LLM its generation was interrupted so it can pick up
-            # where it left off on the next turn
-            turn_messages.append({
-                "role": "user",
-                "content": (
-                    "[SYSTEM] Your previous response was interrupted by the user. "
-                    "Any tool calls in progress may not have completed. "
-                    "When the user sends their next message, continue from where you left off."
-                ),
-            })
-            turn_messages.append({"role": "assistant", "content": "Understood."})
-            self.history.extend(turn_messages)
-            return partial
+            return self.conversation.finalize_cancel(user_message, streamed_chunks)
         tool_desc = generate_all_schemas(self.tools)
 
         system = build_system_prompt(
@@ -549,7 +446,7 @@ class Orchestrator:
         # Compact history if context window is filling up (>70% used).
         # Uses the actual input_tokens from the last API call when available,
         # otherwise falls back to a rough character-based estimate.
-        self._compact_history_if_needed()
+        self.conversation.compact_if_needed()
 
         # Build user message content — inject base64 images and PDFs if uploaded THIS TURN.
         # Only new_files get injected; previously uploaded files are already in history
@@ -607,11 +504,7 @@ class Orchestrator:
                 content_blocks.append({"type": "text", "text": user_message})
                 effective_message = content_blocks
 
-        messages = [
-            {"role": "system", "content": system},
-            *self.history,
-            {"role": "user", "content": effective_message},
-        ]
+        messages = self.conversation.build_messages(system, effective_message)
         try:
             def on_delta(delta: str) -> None:
                 nonlocal did_stream
@@ -661,7 +554,7 @@ class Orchestrator:
             # Store actual token usage from API response for context tracking.
             # call_llm_stream doesn't return usage, so only update when available.
             if 'usage' in dir() and isinstance(usage, dict):
-                self._last_input_tokens = usage.get("input_tokens", 0)
+                self.conversation.update_token_estimate(usage.get("input_tokens", 0))
             if is_cancelled():
                 return finalize_cancel()
         except CancellationError:
@@ -669,9 +562,7 @@ class Orchestrator:
         except Exception as exc:
             self._logger.exception("LLM error while responding")
             error_msg = f"LLM error: {exc}"
-            # Save to history before returning error
-            self.history.append({"role": "user", "content": user_message})
-            self.history.append({"role": "assistant", "content": error_msg})
+            self.conversation.save_error(user_message, error_msg)
             return error_msg
 
         tool_iterations = 0
@@ -690,9 +581,7 @@ class Orchestrator:
                     "Reached maximum tool iterations (50). "
                     f"Executed {len(tool_results)} tools successfully before stopping."
                 )
-                # Save to history before returning error
-                self.history.append({"role": "user", "content": user_message})
-                self.history.append({"role": "assistant", "content": error_msg})
+                self.conversation.save_error(user_message, error_msg)
                 return error_msg
 
             self._logger.info("Tool iteration %d, calling %d tools", tool_iterations, len(tool_calls))
@@ -780,9 +669,7 @@ class Orchestrator:
                         exc_info=True,
                     )
                     error_msg = f"Tool error ({tool_name}): {exc}"
-                    # Save to history before returning error
-                    self.history.append({"role": "user", "content": user_message})
-                    self.history.append({"role": "assistant", "content": error_msg})
+                    self.conversation.save_error(user_message, error_msg)
                     return error_msg
 
             if tool_failure and skipped_calls:
@@ -848,7 +735,7 @@ class Orchestrator:
                 thinking_budget=thinking_budget,
                 on_thinking=on_thinking,
             )
-            self._last_input_tokens = usage.get("input_tokens", 0)
+            self.conversation.update_token_estimate(usage.get("input_tokens", 0))
             if is_cancelled():
                 return finalize_cancel()
 
@@ -881,22 +768,7 @@ class Orchestrator:
         if stream and final_text and not did_stream:
             _emit_stream(stream, final_text)
 
-        # Save the full turn to history: user message, all tool calls/results,
-        # and the final assistant response. messages[0] is the system prompt,
-        # messages[1:len(self.history)+1] is prior history — skip both.
-        turn_start = 1 + len(self.history)
-        turn_messages = messages[turn_start:]
-        # Append the final assistant response (may not be in messages yet)
-        if turn_messages and turn_messages[-1].get("role") != "assistant":
-            turn_messages.append({"role": "assistant", "content": final_text})
-        elif not turn_messages:
-            turn_messages = [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": final_text},
-            ]
-
-        self.history.extend(turn_messages)
-        self._logger.debug("History now has %d messages (%d from this turn)", len(self.history), len(turn_messages))
+        self.conversation.save_turn(user_message, final_text)
         return final_text
 
 
