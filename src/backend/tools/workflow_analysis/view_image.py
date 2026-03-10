@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, tool_error
 
 
 class ViewImageTool(Tool):
@@ -43,7 +43,7 @@ class ViewImageTool(Tool):
         # Collect all uploaded images
         images = [f for f in uploaded_files if f.get("file_type") == "image"]
         if not images:
-            return {"success": False, "error": "No uploaded image found in session."}
+            return tool_error("No uploaded image found in session.", "NO_IMAGE")
 
         # If a filename is specified, find that specific image
         if requested_name:
@@ -53,10 +53,10 @@ class ViewImageTool(Tool):
             )
             if not image_file:
                 available = [f.get("name", "?") for f in images]
-                return {
-                    "success": False,
-                    "error": f"Image '{requested_name}' not found. Available images: {available}",
-                }
+                return tool_error(
+                    f"Image '{requested_name}' not found. Available images: {available}",
+                    "IMAGE_NOT_FOUND",
+                )
         else:
             image_file = images[0]
 
@@ -68,7 +68,7 @@ class ViewImageTool(Tool):
                 image_path = Path(repo_root) / image_path
 
         if not image_path.exists():
-            return {"success": False, "error": f"Image file not found: {image_path}"}
+            return tool_error(f"Image file not found: {image_path}", "FILE_NOT_FOUND")
 
         # Read and encode the image
         raw = image_path.read_bytes()

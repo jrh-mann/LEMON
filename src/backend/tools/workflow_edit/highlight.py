@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, tool_error
 
 
 class HighlightNodeTool(Tool):
@@ -28,7 +28,7 @@ class HighlightNodeTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         node_id = args.get("node_id")
         if not node_id:
-            return {"success": False, "error": "node_id is required"}
+            return tool_error("node_id is required", "MISSING_NODE_ID")
 
         return {
             "success": True,

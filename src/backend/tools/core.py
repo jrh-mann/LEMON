@@ -11,6 +11,24 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 
+def tool_error(error: str, error_code: str = "TOOL_ERROR") -> Dict[str, Any]:
+    """Create a standardized tool error response.
+
+    All tool error responses should use this helper to ensure a consistent
+    format across the codebase.  The canonical shape is:
+        {"success": False, "error": "<human-readable>", "error_code": "<MACHINE_CODE>"}
+
+    Args:
+        error: Human-readable error description.
+        error_code: Machine-readable code for programmatic handling.
+    """
+    return {
+        "success": False,
+        "error": error,
+        "error_code": error_code,
+    }
+
+
 @dataclass
 class ToolParameter:
     """Describes a single parameter for an LLM-callable tool.

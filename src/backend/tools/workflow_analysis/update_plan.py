@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, tool_error
 
 
 class UpdatePlanTool(Tool):
@@ -51,7 +51,7 @@ class UpdatePlanTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         items = args.get("items", [])
         if not isinstance(items, list):
-            return {"success": False, "error": "items must be a list"}
+            return tool_error("items must be a list", "INVALID_ITEMS")
 
         self._logger.info("UpdatePlanTool: %d items", len(items))
         return {
