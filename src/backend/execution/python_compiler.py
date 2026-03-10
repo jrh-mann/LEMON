@@ -357,6 +357,7 @@ class PythonCodeGenerator:
             self._indent_level = 0
             self._lines = []
             self._warnings = []
+            self._has_partial_failure = False  # True only when parts of compilation are broken (e.g. missing subworkflows)
 
             # Create resolver
             # Filter to only input-source variables for function parameters
@@ -394,6 +395,7 @@ class PythonCodeGenerator:
                                 subflow_code_blocks.append(sub_result.code)
                             self._warnings.extend(["Subflow: " + w for w in sub_result.warnings])
                         else:
+                            self._has_partial_failure = True
                             self._warnings.append(
                                 f"Subworkflow '{sub_id}' could not be compiled because it could not be fetched. "
                                 "Generated code contains a placeholder comment instead."
@@ -450,7 +452,7 @@ class PythonCodeGenerator:
                 success=True,
                 code=combined_code,
                 warnings=self._warnings,
-                partial_failure=bool(self._warnings),
+                partial_failure=self._has_partial_failure,
             )
             
         except CompilationError as e:
@@ -458,14 +460,14 @@ class PythonCodeGenerator:
                 success=False,
                 error=str(e),
                 warnings=self._warnings,
-                partial_failure=bool(self._warnings),
+                partial_failure=self._has_partial_failure,
             )
         except Exception as e:
             return CompilationResult(
                 success=False,
                 error=f"Unexpected error: {str(e)}",
                 warnings=self._warnings,
-                partial_failure=bool(self._warnings),
+                partial_failure=self._has_partial_failure,
             )
 
     def _to_function_name(self, name: str) -> str:
@@ -797,6 +799,7 @@ class PythonCodeGenerator:
         else:
             self._add_line(f"# TODO: Implement call to subworkflow '{subworkflow_id}'")
             self._add_line(f"{python_var} = None  # Placeholder for subprocess output")
+            self._has_partial_failure = True
             self._warnings.append(
                 f"Subprocess '{node_label}' could not be compiled and was left as a comment. "
                 f"Reason: subworkflow '{subworkflow_id}' was unavailable during export."

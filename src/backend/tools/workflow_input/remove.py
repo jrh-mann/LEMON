@@ -114,26 +114,49 @@ class RemoveWorkflowVariableTool(WorkflowTool):
                 "referencing_nodes": [ref["node_id"] for ref in referencing_nodes],
             }
 
-        # If force=true, clear condition from all referencing nodes.
+        # If force=true, clear all references (condition, calculation, output_variable)
+        # from nodes that use this variable.
         # For compound conditions referencing the variable in any sub-condition,
         # we clear the entire condition (partial removal would break the compound).
         nodes_modified = False
         affected_node_labels = []
         if referencing_nodes:
             for node in nodes:
+                node_touched = False
+
+                # Clear condition references
                 condition = node.get("condition")
-                if not condition:
-                    continue
-                should_clear = False
-                if "operator" in condition:
-                    for sub in condition.get("conditions", []):
-                        if isinstance(sub, dict) and sub.get("input_id") == var_id:
-                            should_clear = True
-                            break
-                elif condition.get("input_id") == var_id:
-                    should_clear = True
-                if should_clear:
-                    del node["condition"]
+                if condition:
+                    should_clear = False
+                    if "operator" in condition:
+                        for sub in condition.get("conditions", []):
+                            if isinstance(sub, dict) and sub.get("input_id") == var_id:
+                                should_clear = True
+                                break
+                    elif condition.get("input_id") == var_id:
+                        should_clear = True
+                    if should_clear:
+                        del node["condition"]
+                        node_touched = True
+
+                # Clear calculation operand references
+                calculation = node.get("calculation")
+                if isinstance(calculation, dict):
+                    operands = calculation.get("operands", [])
+                    new_operands = [
+                        op for op in operands
+                        if not (isinstance(op, dict) and op.get("kind") == "variable" and op.get("ref") == var_id)
+                    ]
+                    if len(new_operands) != len(operands):
+                        calculation["operands"] = new_operands
+                        node_touched = True
+
+                # Clear output_variable references
+                if node.get("output_variable") == var_id:
+                    del node["output_variable"]
+                    node_touched = True
+
+                if node_touched:
                     affected_node_labels.append(node.get("label", node.get("id", "unknown")))
                     nodes_modified = True
 

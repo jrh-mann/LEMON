@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import timedelta
 from typing import Any, Iterable
 
@@ -17,8 +18,10 @@ from mcp.client.streamable_http import streamable_http_client
 logger = logging.getLogger("backend.mcp_client")
 
 DEFAULT_MCP_URL = "http://127.0.0.1:8000/mcp"
-_MCP_TOOLS_CACHE: dict[str, list[dict[str, Any]]] = {}
+# Cache with TTL: stores (tools_list, timestamp) tuples
+_MCP_TOOLS_CACHE: dict[str, tuple[list[dict[str, Any]], float]] = {}
 _MCP_TOOLS_CACHE_LOCK = threading.Lock()
+_MCP_TOOLS_CACHE_TTL = 300  # 5 minutes
 
 
 def _get_mcp_url() -> str:
@@ -78,14 +81,18 @@ def list_mcp_tools() -> list[dict[str, Any]]:
     with _MCP_TOOLS_CACHE_LOCK:
         cached = _MCP_TOOLS_CACHE.get(url)
         if cached is not None:
-            logger.info("Using cached MCP tools url=%s", url)
-            return cached
+            tools_list, cached_at = cached
+            if time.monotonic() - cached_at < _MCP_TOOLS_CACHE_TTL:
+                logger.info("Using cached MCP tools url=%s", url)
+                return tools_list
+            # TTL expired — remove stale entry
+            del _MCP_TOOLS_CACHE[url]
 
     logger.info("Listing MCP tools url=%s", url)
     try:
         tools = anyio.run(_list)
         with _MCP_TOOLS_CACHE_LOCK:
-            _MCP_TOOLS_CACHE[url] = tools
+            _MCP_TOOLS_CACHE[url] = (tools, time.monotonic())
         return tools
     except Exception as exc:
         logger.exception("MCP list_tools failed: %s", exc)
@@ -116,7 +123,8 @@ def call_mcp_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                         ) from exc
                     logger.info("MCP initialize complete")
                     with _MCP_TOOLS_CACHE_LOCK:
-                        tools_cached = url in _MCP_TOOLS_CACHE
+                        cached_entry = _MCP_TOOLS_CACHE.get(url)
+                        tools_cached = cached_entry is not None and (time.monotonic() - cached_entry[1] < _MCP_TOOLS_CACHE_TTL)
                     if not tools_cached:
                         logger.info("MCP list_tools start")
                         try:
@@ -128,14 +136,14 @@ def call_mcp_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                             ) from exc
                         logger.info("MCP list_tools complete")
                         with _MCP_TOOLS_CACHE_LOCK:
-                            _MCP_TOOLS_CACHE[url] = [
+                            _MCP_TOOLS_CACHE[url] = ([
                                 {
                                     "name": tool.name,
                                     "description": tool.description or "",
                                     "inputSchema": tool.inputSchema if hasattr(tool, "inputSchema") else {},
                                 }
                                 for tool in result.tools
-                            ]
+                            ], time.monotonic())
                     logger.info("MCP call_tool start name=%s timeout_s=%.1f", name, timeout_s)
                     try:
                         with anyio.fail_after(timeout_s):

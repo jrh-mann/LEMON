@@ -271,15 +271,17 @@ class WsChatTask:
                     "options": q.get("options", []),
                 })
 
-        if event == "tool_complete" and isinstance(result, dict) and result.get("success") and self.convo:
-            workflow_state_payload = {
-                "workflow_id": self.convo.orchestrator.current_workflow_id,
-                "workflow": self.convo.orchestrator.current_workflow,
-                "analysis": self.convo.orchestrator.workflow_analysis,
-                "task_id": self.task_id,
-            }
-
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+            # Build state payload once (only when convo is available)
+            workflow_state_payload = None
+            if self.convo:
+                workflow_state_payload = {
+                    "workflow_id": self.convo.orchestrator.current_workflow_id,
+                    "workflow": self.convo.orchestrator.current_workflow,
+                    "analysis": self.convo.orchestrator.workflow_analysis,
+                    "task_id": self.task_id,
+                }
+
             if tool in WORKFLOW_EDIT_TOOLS:
                 action = result.get("action")
                 logger.info(
@@ -287,7 +289,7 @@ class WsChatTask:
                     action, tool, result.get("workflow_id"),
                 )
                 self._emit("workflow_update", {"action": action, "data": result})
-                if self.convo:
+                if workflow_state_payload:
                     self._emit("workflow_state_updated", workflow_state_payload)
 
                 has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
@@ -299,7 +301,7 @@ class WsChatTask:
                         "task_id": self.task_id,
                     })
 
-            if tool in WORKFLOW_INPUT_TOOLS and self.convo:
+            if tool in WORKFLOW_INPUT_TOOLS and workflow_state_payload:
                 self._emit("workflow_state_updated", workflow_state_payload)
                 self._emit("analysis_updated", {
                     "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
@@ -471,7 +473,7 @@ class WsChatTask:
                         self.current_workflow_id, self.user_id, building=True,
                     )
                 except Exception:
-                    logger.debug("Failed to set building=True", exc_info=True)
+                    logger.warning("Failed to set building=True for workflow %s", self.current_workflow_id, exc_info=True)
 
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)

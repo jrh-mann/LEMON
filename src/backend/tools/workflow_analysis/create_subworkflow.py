@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import Any, Dict, List
+from uuid import uuid4
 
 from ..core import Tool, ToolParameter, extract_session_deps
 from ..constants import (
@@ -50,7 +51,8 @@ def _run_subworkflow_builder(
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
     # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
-    cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id)
+    bg_task_id = f"bg_{uuid4().hex[:8]}"
+    cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id, task_id=bg_task_id)
     response_text = ""
 
     # Acquire semaphore to limit concurrent builder threads

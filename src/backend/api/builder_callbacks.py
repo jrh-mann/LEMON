@@ -34,11 +34,13 @@ class BackgroundBuilderCallbacks:
         conn_id: str,
         workflow_id: str,
         orchestrator: Any | None = None,
+        task_id: str | None = None,
     ) -> None:
         self.ws_registry = ws_registry
         self.conn_id = conn_id
         self.workflow_id = workflow_id
         self.orchestrator = orchestrator
+        self.task_id = task_id
         self.cancelled = False
         self.executed_tools: List[Dict[str, Any]] = []
         # ToolSummaryTracker injects inline markdown summaries (e.g. "> Added a workflow node.")
@@ -139,11 +141,14 @@ class BackgroundBuilderCallbacks:
                     "data": result,
                 })
                 if self.orchestrator is not None:
-                    self._emit("workflow_state_updated", {
+                    payload = {
                         "workflow_id": self.workflow_id,
                         "workflow": self.orchestrator.current_workflow,
                         "analysis": self.orchestrator.workflow_analysis,
-                    })
+                    }
+                    if self.task_id:
+                        payload["task_id"] = self.task_id
+                    self._emit("workflow_state_updated", payload)
         elif event == "tool_batch_complete":
             # Flush accumulated summaries into the stream between tool rounds
             self.flush_tool_summary()
