@@ -600,13 +600,6 @@ class Orchestrator:
             elif not turn_messages:
                 turn_messages.append({"role": "user", "content": user_message})
 
-            # Strip ephemeral system messages injected during the tool loop
-            # (e.g., "Tool execution succeeded..."). These break the
-            # tool_use → tool_result pairing required by the Anthropic API.
-            turn_messages = [
-                m for m in turn_messages if m.get("role") != "system"
-            ]
-
             # Fix dangling tool_use blocks: the API requires every tool_use to
             # have a matching tool_result. When we cancel mid-loop, the last
             # assistant message may have tool_use IDs without results.
@@ -937,23 +930,6 @@ class Orchestrator:
             if is_cancelled():
                 return finalize_cancel()
 
-            messages.append(
-                {
-                    "role": "system",
-                    "content": (
-                        "A tool call failed. The tool result and error details are provided above. "
-                        "Explain the failure clearly to the user and suggest next steps. "
-                        "If you can recover with additional tool calls, you may call them. "
-                        "Otherwise respond in plain text."
-                        if tool_failure
-                        else "Tool execution succeeded. The tool results are provided above. "
-                        "If additional tool calls are required to complete the user's request, "
-                        "you may call them (including multiple tool calls). Otherwise respond in "
-                        "plain text only, summarizing "
-                        "inputs, outputs, and doubts."
-                    ),
-                }
-            )
             # Trim messages if they've grown too large during the tool loop.
             # Keep the system prompt (first message) + most recent messages.
             _MAX_TOOL_MESSAGES = 200
@@ -1022,14 +998,6 @@ class Orchestrator:
                 {"role": "user", "content": user_message},
                 {"role": "assistant", "content": final_text},
             ]
-
-        # Strip ephemeral system messages injected during the tool loop
-        # (e.g., "Tool execution succeeded..."). These break the
-        # tool_use → tool_result pairing required by the Anthropic API
-        # when replayed as history on the next turn.
-        turn_messages = [
-            m for m in turn_messages if m.get("role") != "system"
-        ]
 
         self.history.extend(turn_messages)
         self._logger.debug("History now has %d messages (%d from this turn)", len(self.history), len(turn_messages))
