@@ -69,8 +69,16 @@ class WorkflowStore:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """Initialize database schema for workflows."""
+        """Initialize database schema and apply pending migrations.
+
+        Creates the base ``workflows`` table (version 0) then delegates
+        incremental column additions and index creation to the version-based
+        migration runner in ``storage.migrations``.
+        """
         with self._conn() as conn:
+            # Base table — version 0 of the schema.
+            # NOTE: output_type, is_draft, and all later columns are added
+            # by the migration runner so they are NOT included here.
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS workflows (
@@ -89,8 +97,6 @@ class WorkflowStore:
                     validation_score INTEGER NOT NULL DEFAULT 0,
                     validation_count INTEGER NOT NULL DEFAULT 0,
                     is_validated BOOLEAN NOT NULL DEFAULT 0,
-                    output_type TEXT DEFAULT 'string',
-                    is_draft BOOLEAN NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -105,74 +111,12 @@ class WorkflowStore:
                     ON workflows(created_at DESC);
                 """
             )
-            # Add output_type column if it doesn't exist (migration for existing DBs)
-            try:
-                conn.execute("SELECT output_type FROM workflows LIMIT 1")
-            except sqlite3.OperationalError:
-                conn.execute("ALTER TABLE workflows ADD COLUMN output_type TEXT DEFAULT 'string'")
-            # Add is_draft column if it doesn't exist (migration for existing DBs)
-            try:
-                conn.execute("SELECT is_draft FROM workflows LIMIT 1")
-            except sqlite3.OperationalError:
-                # Default existing workflows to is_draft=0 (saved) since they were manually saved
-                conn.execute("ALTER TABLE workflows ADD COLUMN is_draft BOOLEAN NOT NULL DEFAULT 0")
-            # Create is_draft index after migration ensures column exists
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_draft ON workflows(is_draft)")
+            # Apply incremental migrations (columns, indexes, auxiliary tables)
+            from .migrations import run_migrations
 
-            # Add peer review columns if they don't exist (migration for existing DBs)
-            for col, default in [
-                ("is_published", "0"),
-                ("review_status", "'unreviewed'"),
-                ("net_votes", "0"),
-                ("published_at", "NULL"),
-            ]:
-                try:
-                    conn.execute(f"SELECT {col} FROM workflows LIMIT 1")
-                except sqlite3.OperationalError:
-                    conn.execute(f"ALTER TABLE workflows ADD COLUMN {col} DEFAULT {default}")
-
-            # Add building column if it doesn't exist (migration for existing DBs)
-            try:
-                conn.execute("SELECT building FROM workflows LIMIT 1")
-            except sqlite3.OperationalError:
-                conn.execute("ALTER TABLE workflows ADD COLUMN building BOOLEAN NOT NULL DEFAULT 0")
-
-            # Add build_history column — stores the background builder's conversation history
-            try:
-                conn.execute("SELECT build_history FROM workflows LIMIT 1")
-            except sqlite3.OperationalError:
-                conn.execute("ALTER TABLE workflows ADD COLUMN build_history TEXT NOT NULL DEFAULT '[]'")
-
-            # Add conversation_id column — links to in-memory ConversationStore for chat restore
-            try:
-                conn.execute("SELECT conversation_id FROM workflows LIMIT 1")
-            except sqlite3.OperationalError:
-                conn.execute("ALTER TABLE workflows ADD COLUMN conversation_id TEXT")
-
-            # Add uploaded_files column — stores file metadata for restore after refresh
-            try:
-                conn.execute("SELECT uploaded_files FROM workflows LIMIT 1")
-            except sqlite3.OperationalError:
-                conn.execute("ALTER TABLE workflows ADD COLUMN uploaded_files TEXT NOT NULL DEFAULT '[]'")
-
-            # Create indexes for peer review queries
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_is_published ON workflows(is_published)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_review_status ON workflows(review_status)")
-
-            # Create votes table for peer review
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS workflow_votes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workflow_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    vote INTEGER NOT NULL CHECK (vote IN (-1, 1)),
-                    created_at TEXT NOT NULL,
-                    UNIQUE(workflow_id, user_id),
-                    FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_workflow ON workflow_votes(workflow_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_user ON workflow_votes(user_id)")
+            applied = run_migrations(conn)
+            if applied:
+                self._logger.info("Applied %d schema migration(s)", applied)
 
     @contextmanager
     def _conn(self) -> Iterable[sqlite3.Connection]:
