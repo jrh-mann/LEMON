@@ -64,7 +64,7 @@ class RemoveWorkflowVariableTool(WorkflowTool):
 
         name = args.get("name")
 
-        # Explicitly convert force to boolean (handles string "true"/"false" from MCP)
+        # Explicitly convert force to boolean (handles string "true"/"false" from JSON)
         force_raw = args.get("force", False)
         if isinstance(force_raw, str):
             force = force_raw.lower() in ("true", "1", "yes")

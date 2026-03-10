@@ -88,7 +88,7 @@ def register_routes(
     # Peer review (public workflows, voting)
     register_peer_review_routes(app, workflow_store=workflow_store)
 
-    # Dev tools (list/execute MCP tools)
+    # Dev tools (list/execute tools)
     register_dev_tools_routes(
         app, repo_root=repo_root, workflow_store=workflow_store
     )

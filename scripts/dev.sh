@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dev server runner — starts backend, MCP, and frontend together.
+# Dev server runner — starts backend and frontend together.
 # Usage: ./dev.sh          (start all)
 #        ./dev.sh restart   (kill existing, then start all)
 #        ./dev.sh stop      (kill all)
@@ -15,7 +15,7 @@ stop_all() {
         rm -f "$PIDFILE"
     fi
     # Also kill by port as fallback
-    for port in 5000 5173 8000; do
+    for port in 5000 5173; do
         lsof -ti:"$port" 2>/dev/null | xargs kill 2>/dev/null
     done
     sleep 1
@@ -29,10 +29,6 @@ start_all() {
     python run_api.py > /tmp/lemon-backend.log 2>&1 &
     echo $! >> "$PIDFILE"
 
-    # MCP server
-    python run_mcp.py > /tmp/lemon-mcp.log 2>&1 &
-    echo $! >> "$PIDFILE"
-
     # Frontend (from src/frontend)
     cd "$REPO_ROOT/src/frontend"
     npx vite --host > /tmp/lemon-frontend.log 2>&1 &
@@ -40,7 +36,6 @@ start_all() {
 
     sleep 2
     echo "Backend:  $(lsof -ti:5000 >/dev/null 2>&1 && echo 'UP on :5000' || echo 'FAILED')"
-    echo "MCP:      $(lsof -ti:8000 >/dev/null 2>&1 && echo 'UP on :8000' || echo 'FAILED')"
     echo "Frontend: $(lsof -ti:5173 >/dev/null 2>&1 && echo 'UP on :5173' || echo 'FAILED')"
 }
 

@@ -36,7 +36,6 @@ ZIP_INCLUDES = [
     "src/backend",
     "src/frontend/dist",
     "scripts",
-    "run_mcp.py",
     "run_api.py",
     "pyproject.toml",
     "uv.lock",

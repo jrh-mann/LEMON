@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useChatStore } from '../stores/chatStore'
-import { listMCPTools, executeMCPTool } from '../api/tools'
+import { listTools, executeTool } from '../api/tools'
 import type { ToolDefinition } from '../api/tools'
 
 /**
@@ -30,7 +30,7 @@ function ExecutionLogButton({ logCount }: { logCount: number }) {
  * Provides tools for debugging and testing:
  * - State Inspector: View current workflow/analysis state
  * - Message Log: View all chat messages with tool calls
- * - Tools: Browse and execute available MCP tools
+ * - Tools: Browse and execute available tools
  */
 export default function DevToolsPanel() {
     const { devMode } = useUIStore()
@@ -58,7 +58,7 @@ export default function DevToolsPanel() {
         setLoadingTools(true)
         setToolsError(null)
         try {
-            const toolList = await listMCPTools()
+            const toolList = await listTools()
             setTools(toolList)
         } catch (err) {
             console.error('Failed to load tools:', err)
@@ -260,7 +260,7 @@ function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: (
                 }
             }
 
-            const response = await executeMCPTool(tool.name, parsedArgs)
+            const response = await executeTool(tool.name, parsedArgs)
             if (response.success) {
                 setResult(response.result)
             } else {

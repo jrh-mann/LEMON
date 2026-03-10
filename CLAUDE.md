@@ -36,12 +36,7 @@ When adding new tools for the LLM to use, you MUST update ALL of these locations
    - Import the tool
    - Call `registry.register(YourTool())` in `build_orchestrator()`
 
-4. **MCP Server** (`src/backend/mcp/server.py`)
-   - Import the tool
-   - Initialize tool instance in `build_mcp_server()`
-   - Add `@server.tool()` decorated function that calls `your_tool.execute()`
-
-5. **Orchestrator Config** (`src/backend/agents/orchestrator_config.py`)
+4. **Orchestrator Config** (`src/backend/agents/orchestrator_config.py`)
    - Add tool schema to `tool_descriptions()` array
    - Follow Anthropic tool calling format with full parameter schemas
    - **CRITICAL**: Update system prompt to tell model WHEN to use the tool
@@ -76,38 +71,6 @@ self.workflow_analysis["inputs"].append(input_obj)  # Duplicate append!
 ```
 
 Solution: Since `session_state["workflow_analysis"]` IS `self.workflow_analysis`, the tool already modified it. Don't append again.
-
-**MCP Pass-by-Value Bug**: When orchestrator uses MCP mode, `session_state` is passed **by value** (over HTTP) to the MCP server, not by reference. Tool modifications to `session_state` stay in MCP server memory and never sync back to orchestrator.
-
-Example of the bug:
-```python
-# In orchestrator.run_tool() (MCP mode)
-mcp_args = {
-    **args,
-    "session_state": {
-        "workflow_analysis": self.workflow_analysis,  # Passed by value over HTTP!
-    }
-}
-data = call_mcp_tool(tool_name, mcp_args)  # Tool modifies the copy, not original
-
-# self.workflow_analysis is NEVER updated - changes lost!
-```
-
-Solution: Tools must return the modified state in their response, and orchestrator must sync it back:
-```python
-# In tool.execute()
-workflow_analysis["inputs"].append(input_obj)
-return {
-    "success": True,
-    "workflow_analysis": workflow_analysis,  # Return modified state
-}
-
-# In orchestrator._update_analysis_from_tool_result()
-if "workflow_analysis" in result:
-    self.workflow_analysis["inputs"] = result["workflow_analysis"]["inputs"]
-```
-
-This ensures state persists correctly in both direct and MCP modes.
 
 ## Testing Strategy
 

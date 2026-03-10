@@ -123,7 +123,7 @@ class SetWorkflowOutputTool(WorkflowTool):
             return save_error
 
         # Return workflow_analysis so the orchestrator can sync its in-memory
-        # outputs list (required for both direct and MCP modes).
+        # outputs list.
         action = "Updated" if found else "Set"
         return {
             "success": True,

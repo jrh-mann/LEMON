@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-import os
 import json
 import logging
 from pathlib import Path
@@ -12,7 +11,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..tools import ToolRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_BOUND_TOOLS
-from ..mcp_bridge.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .system_prompt import build_system_prompt
 from .tool_schemas import tool_descriptions
@@ -46,8 +44,6 @@ class Orchestrator:
         self.history: List[Dict[str, str]] = []
         self._logger = logging.getLogger(__name__)
         self._tool_logger = logging.getLogger("backend.tool_calls")
-        # MCP mode is opt-in (must explicitly enable it)
-        self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() in {"1", "true", "yes", "on"}
 
         # Session context for tools (workflow_store, user_id)
         self.workflow_store: Optional[Any] = None
@@ -303,52 +299,36 @@ class Orchestrator:
             json.dumps(args, ensure_ascii=True),
         )
 
-        if self._use_mcp:
-            # MCP mode: Only pass serializable data (workflow_store can't be serialized)
-            # The MCP server should have its own workflow_store instance
-            mcp_args = {
-                **args,
-                "session_state": {
-                    "current_workflow": self.current_workflow,
-                    "workflow_analysis": self.workflow_analysis,
-                    "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
-                    "user_id": self.user_id,  # Serialize user_id (string)
-                    "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
-                    "uploaded_files": getattr(self, "uploaded_files", []),
-                },
-            }
-            data = call_mcp_tool(tool_name, mcp_args)
-        else:
-            # Direct mode: Pass workflow_store object reference
-            session_state = {
-                "current_workflow": self.current_workflow,
-                "workflow_analysis": self.workflow_analysis,
-                "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
-                "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
-                "uploaded_files": getattr(self, "uploaded_files", []),
-            }
-            # Add workflow_store and user_id if available
-            if self.workflow_store is not None:
-                session_state["workflow_store"] = self.workflow_store
-            if self.user_id is not None:
-                session_state["user_id"] = self.user_id
-            # Pass repo_root, ws_registry, conn_id for background subworkflow builders
-            if self.repo_root is not None:
-                session_state["repo_root"] = self.repo_root
-            if self.ws_registry is not None:
-                session_state["ws_registry"] = self.ws_registry
-            if self.conn_id is not None:
-                session_state["conn_id"] = self.conn_id
+        # Direct in-process tool execution
+        session_state = {
+            "current_workflow": self.current_workflow,
+            "workflow_analysis": self.workflow_analysis,
+            "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
+            "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
+            "uploaded_files": getattr(self, "uploaded_files", []),
+        }
+        # Add workflow_store and user_id if available
+        if self.workflow_store is not None:
+            session_state["workflow_store"] = self.workflow_store
+        if self.user_id is not None:
+            session_state["user_id"] = self.user_id
+        # Pass repo_root, ws_registry, conn_id for background subworkflow builders
+        if self.repo_root is not None:
+            session_state["repo_root"] = self.repo_root
+        if self.ws_registry is not None:
+            session_state["ws_registry"] = self.ws_registry
+        if self.conn_id is not None:
+            session_state["conn_id"] = self.conn_id
 
-            data = self.tools.execute(
-                tool_name,
-                args,
-                stream=stream,
-                should_cancel=should_cancel,
-                on_progress=on_progress,
-                on_thinking=on_thinking,
-                session_state=session_state,
-            )
+        data = self.tools.execute(
+            tool_name,
+            args,
+            stream=stream,
+            should_cancel=should_cancel,
+            on_progress=on_progress,
+            on_thinking=on_thinking,
+            session_state=session_state,
+        )
         result = self._normalize_tool_result(tool_name, data)
         self._tool_logger.info(
             "tool_response name=%s data=%s",
@@ -521,11 +501,11 @@ class Orchestrator:
     def _update_analysis_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
         """Update workflow metadata based on successful input tool execution.
 
-        For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
-        For MCP calls: Tools return workflow_analysis in response, we must sync it back.
+        Tools modify session_state["workflow_analysis"] directly (by reference).
+        Tools also return workflow_analysis in their response for explicit sync.
         """
         if tool_name in WORKFLOW_INPUT_TOOLS:
-            # MCP mode: Extract workflow_analysis from response and sync
+            # Extract workflow_analysis from response and sync
             if "workflow_analysis" in result:
                 returned_analysis = result["workflow_analysis"]
                 if isinstance(returned_analysis, dict):
