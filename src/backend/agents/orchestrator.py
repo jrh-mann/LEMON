@@ -590,12 +590,53 @@ class Orchestrator:
         streamed_chunks: List[str] = []
         def finalize_cancel() -> str:
             partial = "".join(streamed_chunks)
-            self.history.append({"role": "user", "content": user_message})
+            # Save all tool calls/results from this turn before cancellation.
+            # messages[0] is system prompt, messages[1:len(self.history)+1] is
+            # prior history — everything after that is this turn's work.
+            turn_start = 1 + len(self.history)
+            turn_messages = messages[turn_start:]
             if partial:
-                self.history.append({"role": "assistant", "content": partial})
+                turn_messages.append({"role": "assistant", "content": partial})
+            elif not turn_messages:
+                turn_messages.append({"role": "user", "content": user_message})
+
+            # Strip ephemeral system messages injected during the tool loop
+            # (e.g., "Tool execution succeeded..."). These break the
+            # tool_use → tool_result pairing required by the Anthropic API.
+            turn_messages = [
+                m for m in turn_messages if m.get("role") != "system"
+            ]
+
+            # Fix dangling tool_use blocks: the API requires every tool_use to
+            # have a matching tool_result. When we cancel mid-loop, the last
+            # assistant message may have tool_use IDs without results.
+            # Collect all tool_use IDs and all tool_result IDs, then fill gaps.
+            tool_use_ids: set = set()
+            tool_result_ids: set = set()
+            for msg in turn_messages:
+                if msg.get("role") == "assistant":
+                    for tc in msg.get("tool_calls") or []:
+                        tc_id = tc.get("id", "")
+                        if tc_id:
+                            tool_use_ids.add(tc_id)
+                elif msg.get("role") == "tool":
+                    tc_id = msg.get("tool_call_id", "")
+                    if tc_id:
+                        tool_result_ids.add(tc_id)
+            missing = tool_use_ids - tool_result_ids
+            if missing:
+                # Insert cancelled tool results right after the last tool result
+                # (or at the end if there are none)
+                for tc_id in missing:
+                    turn_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps({"cancelled": True, "error": "Tool call cancelled by user"}),
+                    })
+
             # Tell the LLM its generation was interrupted so it can pick up
             # where it left off on the next turn
-            self.history.append({
+            turn_messages.append({
                 "role": "user",
                 "content": (
                     "[SYSTEM] Your previous response was interrupted by the user. "
@@ -603,7 +644,8 @@ class Orchestrator:
                     "When the user sends their next message, continue from where you left off."
                 ),
             })
-            self.history.append({"role": "assistant", "content": "Understood."})
+            turn_messages.append({"role": "assistant", "content": "Understood."})
+            self.history.extend(turn_messages)
             return partial
         tool_desc = tool_descriptions()
 
@@ -967,9 +1009,30 @@ class Orchestrator:
         if stream and final_text and not did_stream:
             _emit_stream(stream, final_text)
 
-        self.history.append({"role": "user", "content": user_message})
-        self.history.append({"role": "assistant", "content": final_text})
-        self._logger.debug("History now has %d messages", len(self.history))
+        # Save the full turn to history: user message, all tool calls/results,
+        # and the final assistant response. messages[0] is the system prompt,
+        # messages[1:len(self.history)+1] is prior history — skip both.
+        turn_start = 1 + len(self.history)
+        turn_messages = messages[turn_start:]
+        # Append the final assistant response (may not be in messages yet)
+        if turn_messages and turn_messages[-1].get("role") != "assistant":
+            turn_messages.append({"role": "assistant", "content": final_text})
+        elif not turn_messages:
+            turn_messages = [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": final_text},
+            ]
+
+        # Strip ephemeral system messages injected during the tool loop
+        # (e.g., "Tool execution succeeded..."). These break the
+        # tool_use → tool_result pairing required by the Anthropic API
+        # when replayed as history on the next turn.
+        turn_messages = [
+            m for m in turn_messages if m.get("role") != "system"
+        ]
+
+        self.history.extend(turn_messages)
+        self._logger.debug("History now has %d messages (%d from this turn)", len(self.history), len(turn_messages))
         return final_text
 
 
