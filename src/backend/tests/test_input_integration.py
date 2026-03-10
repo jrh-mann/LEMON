@@ -5,6 +5,10 @@ Focuses on potential bugs:
 1. Double-append bug (variables added twice)
 2. Multiple variables handling
 3. State synchronization between tool and orchestrator
+
+After the DB-as-single-source-of-truth refactor, the orchestrator refreshes
+its in-memory state from the database after each tool call instead of
+manually syncing from tool result dicts.
 """
 
 from __future__ import annotations
@@ -34,36 +38,36 @@ def disable_mcp(monkeypatch):
 @pytest.fixture
 def orchestrator_with_workflow(tmp_path):
     """Create an orchestrator with a proper workflow_store, user_id, and test workflow.
-    
+
     This fixture sets up the orchestrator in the same way the real app does,
     ensuring tools have access to workflow_store and user_id for database operations.
     """
     # Create orchestrator
     orch = build_orchestrator(repo_root=_repo_root())
-    
+
     # Create in-memory workflow store for testing
     db_path = tmp_path / "test_workflows.sqlite"
     workflow_store = WorkflowStore(db_path)
-    
+
     # Set up orchestrator with workflow store and test user
     test_user_id = f"test_user_{uuid4().hex[:8]}"
     orch.workflow_store = workflow_store
     orch.user_id = test_user_id
-    
+
     # Create a test workflow using the create_workflow tool
     result = orch.run_tool("create_workflow", {
         "name": "Test Workflow",
         "description": "Test workflow for input integration tests",
         "output_type": "string"
     })
-    
+
     assert result.success, f"Failed to create test workflow: {result.error}"
-    
+
     # Set current_workflow_id to the newly created workflow
     workflow_id = result.data.get("workflow_id")
     assert workflow_id, "create_workflow did not return workflow_id"
     orch.current_workflow_id = workflow_id
-    
+
     return orch
 
 
@@ -71,7 +75,11 @@ class TestVariableDoubleAppendBug:
     """Test for the double-append bug where variables are added twice."""
 
     def test_add_variable_not_duplicated_in_orchestrator(self, orchestrator_with_workflow):
-        """Test that adding a variable doesn't create duplicates in orchestrator state."""
+        """Test that adding a variable doesn't create duplicates in orchestrator state.
+
+        With DB-as-source-of-truth, the tool saves to DB and the orchestrator
+        refreshes from DB. No manual sync means no double-append risk.
+        """
         orch = orchestrator_with_workflow
 
         tool = AddWorkflowVariableTool()
@@ -85,23 +93,18 @@ class TestVariableDoubleAppendBug:
             "user_id": orch.user_id,
         }
 
-        # Execute tool directly
+        # Execute tool directly (saves to DB)
         result = tool.execute(
             {"name": "Patient Age", "type": "number"},
             session_state=session_state
         )
 
-        print(f"\n[DEBUG] Tool result: {json.dumps(result, indent=2)}")
-        print(f"[DEBUG] Orchestrator variables BEFORE update: {orch.workflow['variables']}")
-
         assert result["success"] is True
 
-        # Simulate what orchestrator.run_tool does
-        orch._update_analysis_from_tool_result("add_workflow_variable", result)
+        # Simulate what orchestrator.run_tool now does: refresh from DB
+        orch.refresh_workflow_from_db()
 
-        print(f"[DEBUG] Orchestrator variables AFTER update: {orch.workflow['variables']}")
-
-        # Check for duplicates - this will fail if double-append bug exists
+        # Check for duplicates - DB refresh guarantees exactly what's in DB
         variables = orch.workflow["variables"]
         assert len(variables) == 1, f"Expected 1 variable, got {len(variables)}: {variables}"
         assert variables[0]["name"] == "Patient Age"
@@ -123,17 +126,15 @@ class TestVariableDoubleAppendBug:
                 "workflow_store": orch.workflow_store,
                 "user_id": orch.user_id,
             }
-            
+
             result = tool.execute(
                 {"name": name, "type": "number"},
                 session_state=session_state
             )
             assert result["success"] is True
 
-            # Simulate orchestrator update
-            orch._update_analysis_from_tool_result("add_workflow_variable", result)
-
-        print(f"\n[DEBUG] Final variables: {json.dumps(orch.workflow['variables'], indent=2)}")
+            # Simulate what orchestrator.run_tool now does: refresh from DB
+            orch.refresh_workflow_from_db()
 
         # Should have exactly 3 variables, no duplicates
         variables = orch.workflow["variables"]
@@ -147,11 +148,11 @@ class TestVariableStateSync:
     """Test state synchronization between tool and orchestrator."""
 
     def test_tool_returns_workflow_analysis_for_sync(self, orchestrator_with_workflow):
-        """Test that tool returns workflow_analysis for orchestrator to sync.
-        
-        With the multi-workflow architecture, tools save to database and return
-        workflow_analysis in their response. The orchestrator syncs this back
-        via _update_analysis_from_tool_result().
+        """Test that tool returns workflow_analysis in its result.
+
+        Tools still return workflow_analysis for MCP compatibility and for
+        ws_chat event emissions, but the orchestrator now reads from DB
+        instead of parsing these return values.
         """
         orch = orchestrator_with_workflow
 
@@ -171,23 +172,21 @@ class TestVariableStateSync:
             session_state=session_state
         )
 
-        print(f"\n[DEBUG] Tool result: {result}")
-
         assert result["success"] is True
 
-        # Tool should return workflow_analysis for orchestrator sync
-        assert "workflow_analysis" in result, "Tool must return workflow_analysis for sync"
+        # Tool should still return workflow_analysis (used by ws_chat emissions)
+        assert "workflow_analysis" in result, "Tool must return workflow_analysis for ws_chat"
         assert "variables" in result["workflow_analysis"]
         assert len(result["workflow_analysis"]["variables"]) == 1
         assert result["workflow_analysis"]["variables"][0]["name"] == "Patient Age"
 
-        # After orchestrator syncs, state should be updated
-        orch._update_analysis_from_tool_result("add_workflow_variable", result)
+        # After orchestrator refreshes from DB, state should match
+        orch.refresh_workflow_from_db()
         assert len(orch.workflow["variables"]) == 1
         assert orch.workflow["variables"][0]["name"] == "Patient Age"
 
     def test_orchestrator_run_tool_updates_state(self, orchestrator_with_workflow):
-        """Test that orchestrator.run_tool properly updates workflow_analysis."""
+        """Test that orchestrator.run_tool properly updates workflow state via DB refresh."""
         orch = orchestrator_with_workflow
 
         # Run tool through orchestrator
@@ -196,12 +195,9 @@ class TestVariableStateSync:
             {"name": "Patient Age", "type": "number"}
         )
 
-        print(f"\n[DEBUG] Run tool result: {json.dumps(result.data, indent=2)}")
-        print(f"[DEBUG] Orchestrator variables: {orch.workflow['variables']}")
-
         assert result.data["success"] is True
 
-        # Check orchestrator state was updated
+        # Check orchestrator state was updated (via refresh_workflow_from_db in run_tool)
         variables = orch.workflow["variables"]
 
         # This will fail if there's a double-append bug
@@ -221,7 +217,6 @@ class TestVariableToolSequence:
             "add_workflow_variable",
             {"name": "Patient Age", "type": "number"}
         )
-        print(f"\n[DEBUG] After variable 1: {orch.workflow['variables']}")
         assert result1.data["success"] is True
 
         # Add second variable
@@ -229,7 +224,6 @@ class TestVariableToolSequence:
             "add_workflow_variable",
             {"name": "Blood Glucose", "type": "number"}
         )
-        print(f"[DEBUG] After variable 2: {orch.workflow['variables']}")
         assert result2.data["success"] is True
 
         # Add third variable
@@ -237,12 +231,10 @@ class TestVariableToolSequence:
             "add_workflow_variable",
             {"name": "Patient Gender", "type": "enum", "enum_values": ["Male", "Female", "Other"]}
         )
-        print(f"[DEBUG] After variable 3: {orch.workflow['variables']}")
         assert result3.data["success"] is True
 
         # Verify final state
         variables = orch.workflow["variables"]
-        print(f"\n[DEBUG] Final variables: {json.dumps(variables, indent=2)}")
 
         assert len(variables) == 3, f"Expected 3 variables, got {len(variables)}"
 
@@ -259,8 +251,6 @@ class TestVariableToolSequence:
 
         # List variables
         result = orch.run_tool("list_workflow_variables", {})
-
-        print(f"\n[DEBUG] List result: {json.dumps(result.data, indent=2)}")
 
         assert result.data["success"] is True
         assert result.data["count"] == 2
@@ -283,7 +273,6 @@ class TestVariableAndNodeLinking:
             "add_workflow_variable",
             {"name": "Patient Age", "type": "number"}
         )
-        print(f"\n[DEBUG] Variable result: {json.dumps(input_result.data, indent=2)}")
         assert input_result.data["success"] is True
         var_id = input_result.data["variable"]["id"]
 
@@ -302,7 +291,6 @@ class TestVariableAndNodeLinking:
                 }
             }
         )
-        print(f"\n[DEBUG] Node result: {json.dumps(node_result.data, indent=2)}")
         assert node_result.data["success"] is True
         assert node_result.data["node"]["condition"]["input_id"] == var_id
 
@@ -318,10 +306,10 @@ class TestVariableAndNodeLinking:
         # Add variables
         age_result = orch.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
         glucose_result = orch.run_tool("add_workflow_variable", {"name": "Blood Glucose", "type": "number"})
-        
+
         assert age_result.success, f"Failed to add age variable: {age_result.error}"
         assert glucose_result.success, f"Failed to add glucose variable: {glucose_result.error}"
-        
+
         age_id = age_result.data["variable"]["id"]
         glucose_id = glucose_result.data["variable"]["id"]
 
@@ -346,9 +334,6 @@ class TestVariableAndNodeLinking:
                 "condition": {"input_id": glucose_id, "comparator": "gt", "value": 140}
             }
         )
-
-        print(f"\n[DEBUG] Final variables: {orch.workflow['variables']}")
-        print(f"[DEBUG] Final nodes: {orch.current_workflow['nodes']}")
 
         # Verify no duplicates
         assert len(orch.workflow["variables"]) == 2

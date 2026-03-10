@@ -152,8 +152,8 @@ class TestSetWorkflowOutputConstant:
     def test_orchestrator_syncs_outputs_from_set_workflow_output(
         self, workflow_store, test_user_id, create_test_workflow,
     ):
-        """Orchestrator._update_analysis_from_tool_result should sync outputs
-        from set_workflow_output result."""
+        """Orchestrator.refresh_workflow_from_db should sync outputs
+        from set_workflow_output result (tool saves to DB, orchestrator reads it back)."""
         from src.backend.tools.workflow_output.set_output import SetWorkflowOutputTool
 
         wf_id, session_state = create_test_workflow(name="Sync Test")
@@ -162,6 +162,7 @@ class TestSetWorkflowOutputConstant:
         orch = Orchestrator(registry)
         orch.workflow_store = workflow_store
         orch.user_id = test_user_id
+        orch.current_workflow_id = wf_id  # Required for refresh_workflow_from_db
 
         # Initially no outputs
         assert orch.workflow["outputs"] == []
@@ -171,7 +172,7 @@ class TestSetWorkflowOutputConstant:
         })
         assert result.success
 
-        # Orchestrator should have synced the outputs
+        # Orchestrator should have synced the outputs via DB refresh
         assert len(orch.workflow["outputs"]) >= 1
         assert any(o["name"] == "BMI" for o in orch.workflow["outputs"])
 

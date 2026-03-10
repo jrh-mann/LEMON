@@ -1,14 +1,22 @@
 """Integration tests for variable synchronisation between tools and orchestrator.
 
-Verifies that auto-registered variables (from calculation and subprocess nodes)
-are correctly synced back to the orchestrator's in-memory workflow state, and
-that the WorkflowValidator accepts chained calculation references.
+Verifies that the orchestrator's refresh_workflow_from_db() correctly picks up
+state changes made by tools (which save directly to the database), and that
+the WorkflowValidator accepts chained calculation references.
+
+The old _update_workflow_from_tool_result / _update_analysis_from_tool_result
+methods were replaced by a single refresh_workflow_from_db() call that reads
+the DB after each tool execution.
 """
 
 import pytest
+import tempfile
+from pathlib import Path
+from uuid import uuid4
 
 from src.backend.agents.orchestrator import Orchestrator, ToolResult
 from src.backend.tools import ToolRegistry
+from src.backend.storage.workflows import WorkflowStore
 from src.backend.validation.workflow_validator import WorkflowValidator
 
 
@@ -16,8 +24,48 @@ from src.backend.validation.workflow_validator import WorkflowValidator
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _make_orchestrator_with_db(tmp_path, **db_overrides):
+    """Create an Orchestrator wired to a real WorkflowStore.
+
+    Creates a workflow in the DB and configures the orchestrator to point at it.
+    Returns (orchestrator, workflow_id, workflow_store).
+    """
+    db_path = tmp_path / f"test_{uuid4().hex[:8]}.sqlite"
+    store = WorkflowStore(db_path)
+    user_id = "test_user"
+    wf_id = f"wf_{uuid4().hex[:8]}"
+
+    store.create_workflow(
+        workflow_id=wf_id,
+        user_id=user_id,
+        name="Test",
+        description="",
+        output_type="string",
+    )
+
+    # Apply any overrides to the DB record (nodes, edges, inputs/variables)
+    update_kwargs = {}
+    if "nodes" in db_overrides:
+        update_kwargs["nodes"] = db_overrides["nodes"]
+    if "edges" in db_overrides:
+        update_kwargs["edges"] = db_overrides["edges"]
+    if "variables" in db_overrides:
+        update_kwargs["inputs"] = db_overrides["variables"]
+    if "outputs" in db_overrides:
+        update_kwargs["outputs"] = db_overrides["outputs"]
+    if update_kwargs:
+        store.update_workflow(wf_id, user_id, **update_kwargs)
+
+    registry = ToolRegistry()
+    orch = Orchestrator(registry)
+    orch.workflow_store = store
+    orch.user_id = user_id
+    orch.current_workflow_id = wf_id
+    return orch, wf_id, store
+
+
 def _make_orchestrator(**workflow_overrides) -> Orchestrator:
-    """Create an Orchestrator with a given workflow state (no real tools needed)."""
+    """Create an Orchestrator with a given workflow state (no DB, for validator tests)."""
     registry = ToolRegistry()
     orch = Orchestrator(registry)
     for k, v in workflow_overrides.items():
@@ -63,110 +111,107 @@ def _variable(name: str, var_type: str = "number", source: str = "calculated",
 
 
 # ---------------------------------------------------------------------------
-# Fix 1b: add_node syncs new_variables to orchestrator
+# refresh_workflow_from_db: add_node variable sync
 # ---------------------------------------------------------------------------
 
 class TestAddNodeVariableSync:
-    """Verify _update_workflow_from_tool_result syncs new_variables for add_node."""
+    """Verify refresh_workflow_from_db picks up new variables after add_node saves to DB."""
 
-    def test_new_variables_appended_to_workflow(self):
-        """add_node result with new_variables should update orchestrator variables."""
-        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+    def test_new_variables_loaded_from_db(self, tmp_path):
+        """After a tool saves a new calc variable to DB, refresh picks it up."""
         calc_var = _variable("calc_total", source_node_id="n1")
         node = _calc_node("n1", "Total", "calc_total")
 
-        orch._update_workflow_from_tool_result("add_node", {
-            "node": node,
-            "new_variables": [calc_var],
-        })
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[calc_var],
+        )
+
+        # Orchestrator starts empty, DB has the data
+        assert orch.workflow["variables"] == []
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 1
         assert orch.workflow["variables"][0]["name"] == "calc_total"
 
-    def test_no_new_variables_is_harmless(self):
-        """add_node result without new_variables should not break."""
-        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+    def test_no_new_variables_is_harmless(self, tmp_path):
+        """refresh_workflow_from_db with no variables in DB leaves variables empty."""
         node = {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}
+        orch, wf_id, store = _make_orchestrator_with_db(tmp_path, nodes=[node])
 
-        orch._update_workflow_from_tool_result("add_node", {"node": node})
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 0
         assert len(orch.workflow["nodes"]) == 1
 
-    def test_existing_variables_preserved(self):
-        """add_node should append, not replace, existing variables."""
+    def test_existing_variables_loaded_alongside_new(self, tmp_path):
+        """refresh_workflow_from_db loads all variables from DB."""
         existing = _variable("patient_age", source="user_defined")
-        orch = _make_orchestrator(nodes=[], edges=[], variables=[existing])
         new_var = _variable("calc_bmi", source_node_id="n1")
         node = _calc_node("n1", "BMI", "calc_bmi")
 
-        orch._update_workflow_from_tool_result("add_node", {
-            "node": node,
-            "new_variables": [new_var],
-        })
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[existing, new_var],
+        )
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 2
-        assert orch.workflow["variables"][0]["name"] == "patient_age"
-        assert orch.workflow["variables"][1]["name"] == "calc_bmi"
+        names = {v["name"] for v in orch.workflow["variables"]}
+        assert names == {"patient_age", "calc_bmi"}
 
 
 # ---------------------------------------------------------------------------
-# Fix 1c: batch_edit_workflow syncs variables to orchestrator
+# refresh_workflow_from_db: batch_edit variable sync
 # ---------------------------------------------------------------------------
 
 class TestBatchEditVariableSync:
-    """Verify _update_workflow_from_tool_result syncs variables for batch_edit."""
+    """Verify refresh_workflow_from_db picks up variables after batch_edit saves to DB."""
 
-    def test_variables_synced_from_workflow_analysis(self):
-        """batch_edit result with workflow_analysis.variables should update orchestrator."""
-        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+    def test_variables_loaded_from_db(self, tmp_path):
+        """After batch_edit saves variables to DB, refresh picks them up."""
         calc_var = _variable("calc_egfr", source_node_id="n1")
+        node = _calc_node("n1", "eGFR", "calc_egfr")
 
-        orch._update_workflow_from_tool_result("batch_edit_workflow", {
-            "workflow": {
-                "nodes": [_calc_node("n1", "eGFR", "calc_egfr")],
-                "edges": [],
-            },
-            "workflow_analysis": {
-                "variables": [calc_var],
-            },
-        })
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[calc_var],
+        )
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 1
         assert orch.workflow["variables"][0]["name"] == "calc_egfr"
 
-    def test_no_workflow_analysis_is_harmless(self):
-        """batch_edit result without workflow_analysis should not touch variables."""
-        existing = _variable("patient_age", source="user_defined")
-        orch = _make_orchestrator(nodes=[], edges=[], variables=[existing])
+    def test_no_variables_preserves_empty(self, tmp_path):
+        """refresh_workflow_from_db with no variables in DB gives empty list."""
+        node = {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}
+        orch, wf_id, store = _make_orchestrator_with_db(tmp_path, nodes=[node])
 
-        orch._update_workflow_from_tool_result("batch_edit_workflow", {
-            "workflow": {
-                "nodes": [{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
-                "edges": [],
-            },
-        })
+        # Pre-set local state that should be overwritten
+        orch.workflow["variables"] = [_variable("patient_age", source="user_defined")]
 
-        # Variables unchanged
-        assert len(orch.workflow["variables"]) == 1
-        assert orch.workflow["variables"][0]["name"] == "patient_age"
+        orch.refresh_workflow_from_db()
 
-    def test_nodes_and_edges_also_synced(self):
-        """batch_edit should still sync nodes and edges alongside variables."""
-        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+        # DB has no variables, so local state is overwritten to empty
+        assert len(orch.workflow["variables"]) == 0
+
+    def test_nodes_and_edges_also_loaded(self, tmp_path):
+        """refresh_workflow_from_db loads nodes and edges from DB."""
         node = {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0}
         edge = {"id": "e1", "from": "n1", "to": "n2", "label": ""}
 
-        orch._update_workflow_from_tool_result("batch_edit_workflow", {
-            "workflow": {"nodes": [node], "edges": [edge]},
-        })
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], edges=[edge],
+        )
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["nodes"]) == 1
         assert len(orch.workflow["edges"]) == 1
 
 
 # ---------------------------------------------------------------------------
-# Fix 1b + post-tool validation: chained calc doesn't fail after sync
+# Post-tool validation: chained calc doesn't fail after sync
 # ---------------------------------------------------------------------------
 
 class TestPostToolValidationWithSyncedVars:
@@ -174,7 +219,7 @@ class TestPostToolValidationWithSyncedVars:
 
     def test_chained_calc_passes_after_variable_sync(self):
         """A second calc referencing the first's output should pass post-tool validation
-        when variables have been synced by _update_workflow_from_tool_result."""
+        when variables have been synced by refresh_workflow_from_db."""
         calc1_var = _variable("calc_egfr", source_node_id="n_calc1")
         calc1_node = _calc_node("n_calc1", "eGFR", "calc_egfr")
 
@@ -342,176 +387,177 @@ class TestValidatorChainedCalculations:
 
 
 # ---------------------------------------------------------------------------
-# Fix B+E: delete_node cleans up derived variables in orchestrator
+# refresh_workflow_from_db: delete_node cleans up derived variables
 # ---------------------------------------------------------------------------
 
 class TestDeleteNodeVariableCleanup:
-    """Verify _update_workflow_from_tool_result removes derived vars on delete_node."""
+    """Verify refresh_workflow_from_db reflects variable removal after delete_node."""
 
-    def test_calc_variable_removed_on_node_delete(self):
-        """Deleting a calculation node should remove its derived variable."""
-        calc_var = _variable("calc_total", source_node_id="n_calc")
+    def test_calc_variable_removed_after_node_delete(self, tmp_path):
+        """After tool deletes a calc node and its variable from DB, refresh reflects it."""
         input_var = _variable("patient_age", source="input", source_node_id="")
-        orch = _make_orchestrator(
-            nodes=[_calc_node("n_calc", "Total", "calc_total")],
-            edges=[],
-            variables=[input_var, calc_var],
+
+        # DB initially has calc node + variable; tool will have already removed them
+        # Simulate post-tool DB state: node and calc variable gone
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[], variables=[input_var],
         )
 
-        orch._update_workflow_from_tool_result("delete_node", {
-            "node_id": "n_calc",
-            "removed_variable_ids": ["var_calc_total_number"],
-        })
+        # Pre-set orchestrator with stale state (both variables)
+        calc_var = _variable("calc_total", source_node_id="n_calc")
+        orch.workflow["variables"] = [input_var, calc_var]
 
-        # Calc variable removed, input variable preserved
+        orch.refresh_workflow_from_db()
+
+        # After refresh, only input_var remains (DB truth)
         assert len(orch.workflow["variables"]) == 1
         assert orch.workflow["variables"][0]["name"] == "patient_age"
 
-    def test_subprocess_variable_removed_on_node_delete(self):
-        """Deleting a subprocess node should remove its derived variable."""
-        sub_var = _variable("egfr_result", var_type="number",
-                            source="subprocess", source_node_id="n_sub")
-        orch = _make_orchestrator(
-            nodes=[{"id": "n_sub", "type": "subprocess", "label": "Sub",
-                    "x": 0, "y": 0, "output_variable": "egfr_result"}],
-            edges=[],
-            variables=[sub_var],
+    def test_subprocess_variable_removed_after_node_delete(self, tmp_path):
+        """After tool deletes a subprocess node, refresh reflects variable removal."""
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[], variables=[],
         )
 
-        orch._update_workflow_from_tool_result("delete_node", {
-            "node_id": "n_sub",
-            "removed_variable_ids": ["var_egfr_result_number"],
-        })
+        # Pre-set stale local state
+        sub_var = _variable("egfr_result", var_type="number",
+                            source="subprocess", source_node_id="n_sub")
+        orch.workflow["variables"] = [sub_var]
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 0
 
-    def test_delete_process_node_no_variable_change(self):
-        """Deleting a process node should not affect variables."""
+    def test_delete_process_node_no_variable_change(self, tmp_path):
+        """Deleting a process node should not affect variables in DB."""
         input_var = _variable("age", source="input")
-        orch = _make_orchestrator(
-            nodes=[{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
-            edges=[],
-            variables=[input_var],
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[], variables=[input_var],
         )
 
-        orch._update_workflow_from_tool_result("delete_node", {
-            "node_id": "n1",
-            "removed_variable_ids": [],
-        })
-
-        assert len(orch.workflow["variables"]) == 1
-
-    def test_no_removed_ids_field_is_harmless(self):
-        """Old-style delete_node result without removed_variable_ids should not break."""
-        orch = _make_orchestrator(
-            nodes=[{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
-            edges=[],
-            variables=[_variable("age", source="input")],
-        )
-
-        orch._update_workflow_from_tool_result("delete_node", {
-            "node_id": "n1",
-        })
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 1
 
 
 # ---------------------------------------------------------------------------
-# Fix A: modify_node syncs derived variable changes to orchestrator
+# refresh_workflow_from_db: modify_node variable changes
 # ---------------------------------------------------------------------------
 
 class TestModifyNodeVariableSync:
-    """Verify _update_workflow_from_tool_result handles variable changes on modify_node."""
+    """Verify refresh_workflow_from_db reflects variable changes after modify_node."""
 
-    def test_calc_output_rename_replaces_variable(self):
-        """Renaming a calc node's output should remove old var and add new one."""
-        old_var = _variable("calc_total", source_node_id="n_calc")
-        orch = _make_orchestrator(
-            nodes=[_calc_node("n_calc", "Total", "calc_total")],
-            edges=[],
-            variables=[old_var],
+    def test_calc_output_rename_reflected(self, tmp_path):
+        """After tool renames a calc output in DB, refresh picks up the new variable."""
+        new_var = _variable("calc_grand_total", source_node_id="n_calc")
+        node = _calc_node("n_calc", "Grand Total", "calc_grand_total")
+
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[new_var],
         )
 
-        # Simulate modify_node result where output name changed
-        orch._update_workflow_from_tool_result("modify_node", {
-            "node": _calc_node("n_calc", "Grand Total", "calc_grand_total"),
-            "removed_variable_ids": ["var_calc_total_number"],
-            "new_variables": [_variable("calc_grand_total", source_node_id="n_calc")],
-        })
+        # Pre-set stale orchestrator state with old variable
+        old_var = _variable("calc_total", source_node_id="n_calc")
+        orch.workflow["variables"] = [old_var]
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 1
         assert orch.workflow["variables"][0]["name"] == "calc_grand_total"
 
-    def test_type_change_from_calc_removes_variable(self):
-        """Changing a node from calculation to process should remove its derived var."""
-        calc_var = _variable("calc_total", source_node_id="n1")
-        orch = _make_orchestrator(
-            nodes=[_calc_node("n1", "Total", "calc_total")],
-            edges=[],
-            variables=[calc_var],
+    def test_type_change_from_calc_removes_variable(self, tmp_path):
+        """After tool changes node type from calc to process, refresh shows no variables."""
+        node = {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[],
         )
 
-        orch._update_workflow_from_tool_result("modify_node", {
-            "node": {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0},
-            "removed_variable_ids": ["var_calc_total_number"],
-            "new_variables": [],
-        })
+        # Pre-set stale state
+        orch.workflow["variables"] = [_variable("calc_total", source_node_id="n1")]
+
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 0
 
-    def test_type_change_to_calc_adds_variable(self):
-        """Changing a node to calculation type should add a derived variable."""
-        orch = _make_orchestrator(
-            nodes=[{"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}],
-            edges=[],
-            variables=[],
+    def test_type_change_to_calc_adds_variable(self, tmp_path):
+        """After tool changes node to calc type and adds variable in DB, refresh picks it up."""
+        new_var = _variable("calc_result", source_node_id="n1")
+        node = _calc_node("n1", "Calculate", "calc_result")
+
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[new_var],
         )
 
-        new_var = _variable("calc_result", source_node_id="n1")
-        orch._update_workflow_from_tool_result("modify_node", {
-            "node": _calc_node("n1", "Calculate", "calc_result"),
-            "removed_variable_ids": [],
-            "new_variables": [new_var],
-        })
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 1
         assert orch.workflow["variables"][0]["name"] == "calc_result"
 
-    def test_modify_non_producing_node_no_variable_change(self):
-        """Modifying a process node's label should not affect variables."""
-        input_var = _variable("age", source="input")
-        orch = _make_orchestrator(
-            nodes=[{"id": "n1", "type": "process", "label": "Old", "x": 0, "y": 0}],
-            edges=[],
-            variables=[input_var],
-        )
-
-        orch._update_workflow_from_tool_result("modify_node", {
-            "node": {"id": "n1", "type": "process", "label": "New", "x": 0, "y": 0},
-        })
-
-        assert len(orch.workflow["variables"]) == 1
-        assert orch.workflow["variables"][0]["name"] == "age"
-
-    def test_input_variables_preserved_during_calc_rename(self):
-        """Renaming a calc output should not disturb user-defined input variables."""
+    def test_input_variables_preserved_during_calc_rename(self, tmp_path):
+        """After tool renames a calc output in DB, input variables are preserved."""
         input_var = _variable("patient_age", source="input")
-        calc_var = _variable("calc_bmi", source_node_id="n_calc")
-        orch = _make_orchestrator(
-            nodes=[_calc_node("n_calc", "BMI", "calc_bmi")],
-            edges=[],
-            variables=[input_var, calc_var],
+        new_calc_var = _variable("calc_bmi_adjusted", source_node_id="n_calc")
+        node = _calc_node("n_calc", "BMI", "calc_bmi_adjusted")
+
+        orch, wf_id, store = _make_orchestrator_with_db(
+            tmp_path, nodes=[node], variables=[input_var, new_calc_var],
         )
 
-        orch._update_workflow_from_tool_result("modify_node", {
-            "node": _calc_node("n_calc", "BMI", "calc_bmi_adjusted"),
-            "removed_variable_ids": ["var_calc_bmi_number"],
-            "new_variables": [_variable("calc_bmi_adjusted", source_node_id="n_calc")],
-        })
+        orch.refresh_workflow_from_db()
 
         assert len(orch.workflow["variables"]) == 2
         names = {v["name"] for v in orch.workflow["variables"]}
         assert names == {"patient_age", "calc_bmi_adjusted"}
+
+
+# ---------------------------------------------------------------------------
+# refresh_workflow_from_db: edge cases
+# ---------------------------------------------------------------------------
+
+class TestRefreshEdgeCases:
+    """Verify refresh_workflow_from_db handles edge cases gracefully."""
+
+    def test_no_workflow_store_is_noop(self):
+        """refresh_workflow_from_db without workflow_store does nothing."""
+        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+        orch.workflow["variables"] = [_variable("age", source="input")]
+
+        orch.refresh_workflow_from_db()
+
+        # State unchanged since no DB to read from
+        assert len(orch.workflow["variables"]) == 1
+
+    def test_no_workflow_id_is_noop(self, tmp_path):
+        """refresh_workflow_from_db without current_workflow_id does nothing."""
+        db_path = tmp_path / "test.sqlite"
+        store = WorkflowStore(db_path)
+
+        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+        orch.workflow_store = store
+        orch.user_id = "test_user"
+        # No current_workflow_id set
+
+        orch.workflow["variables"] = [_variable("age", source="input")]
+        orch.refresh_workflow_from_db()
+
+        # State unchanged
+        assert len(orch.workflow["variables"]) == 1
+
+    def test_missing_workflow_record_is_noop(self, tmp_path):
+        """refresh_workflow_from_db with non-existent workflow ID does nothing."""
+        db_path = tmp_path / "test.sqlite"
+        store = WorkflowStore(db_path)
+
+        orch = _make_orchestrator(nodes=[], edges=[], variables=[])
+        orch.workflow_store = store
+        orch.user_id = "test_user"
+        orch.current_workflow_id = "wf_nonexistent"
+
+        orch.workflow["variables"] = [_variable("age", source="input")]
+        orch.refresh_workflow_from_db()
+
+        # State unchanged since record not found
+        assert len(orch.workflow["variables"]) == 1
 
 
 # ---------------------------------------------------------------------------
