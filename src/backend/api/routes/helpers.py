@@ -8,7 +8,22 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from starlette.responses import JSONResponse
+
 from ...storage.workflows import WorkflowRecord
+
+
+def api_error(message: str, status_code: int = 400) -> JSONResponse:
+    """Create a standardized API error response.
+
+    Ensures every error response from the API layer has the same shape:
+        {"error": "<message>"}
+
+    Args:
+        message: Human-readable error description.
+        status_code: HTTP status code (default 400 Bad Request).
+    """
+    return JSONResponse({"error": message}, status_code=status_code)
 
 
 def _infer_outputs_from_nodes(

@@ -252,7 +252,11 @@ class WsChatTask:
                             task_id=self.task_id,
                         )
                 except Exception:
-                    logger.warning("Failed to log tool call to audit trail", exc_info=True)
+                    logger.error(
+                        "Failed to log tool call to audit trail: tool=%s conv=%s",
+                        tool, self.convo.id if self.convo else "?",
+                        exc_info=True,
+                    )
         if event == "tool_batch_complete":
             self.flush_tool_summary()
 
@@ -473,7 +477,11 @@ class WsChatTask:
                         self.current_workflow_id, self.user_id, building=True,
                     )
                 except Exception:
-                    logger.warning("Failed to set building=True for workflow %s", self.current_workflow_id, exc_info=True)
+                    logger.error(
+                        "Failed to set building=True for workflow %s — frontend may not show loading state",
+                        self.current_workflow_id,
+                        exc_info=True,
+                    )
 
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
@@ -508,7 +516,12 @@ class WsChatTask:
                         self.current_workflow_id, self.user_id, **update_kwargs,
                     )
                 except Exception:
-                    logger.debug("Failed to persist conversation_id/files on workflow", exc_info=True)
+                    logger.warning(
+                        "Failed to persist conversation_id/files on workflow %s — "
+                        "chat may not survive page refresh",
+                        self.current_workflow_id,
+                        exc_info=True,
+                    )
 
             # Ensure the conversation exists in the audit log.
             # Wrapped in try/except so a logging failure never crashes the chat.
@@ -532,7 +545,11 @@ class WsChatTask:
                         self.convo.id, self.task_id,
                     )
                 except Exception:
-                    logger.warning("Failed to log user message to audit trail", exc_info=True)
+                    logger.error(
+                        "Failed to log user message to audit trail: conv=%s task=%s",
+                        self.convo.id, self.task_id,
+                        exc_info=True,
+                    )
             else:
                 logger.warning(
                     "Audit log skipped: conversation_logger=%s convo=%s",
@@ -566,7 +583,11 @@ class WsChatTask:
                             self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
                         )
                 except Exception:
-                    logger.warning("Failed to log assistant response to audit trail", exc_info=True)
+                    logger.error(
+                        "Failed to log assistant response to audit trail: conv=%s task=%s",
+                        self.convo.id, self.task_id,
+                        exc_info=True,
+                    )
 
             # Emit context window usage so the frontend can show an indicator
             orch = self.convo.orchestrator
@@ -604,7 +625,12 @@ class WsChatTask:
                             self.current_workflow_id, self.user_id, building=False,
                         )
                     except Exception:
-                        logger.debug("Failed to set building=False", exc_info=True)
+                        logger.warning(
+                            "Failed to clear building=False for workflow %s — "
+                            "workflow may appear stuck in 'Building' state",
+                            self.current_workflow_id,
+                            exc_info=True,
+                        )
 
 
 # ---------- Handler functions (called from ws_handler.py dispatch loop) ----------

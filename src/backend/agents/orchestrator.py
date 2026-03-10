@@ -167,8 +167,14 @@ class Orchestrator:
                 original_len, len(recent_messages), len(self.history),
             )
         except Exception as exc:
-            # Fallback: hard truncation if compaction LLM call fails
-            self._logger.warning("Compaction LLM call failed (%s), falling back to truncation", exc)
+            # Fallback: hard truncation if compaction LLM call fails.
+            # Logged at ERROR because this indicates the summarization LLM is
+            # unreachable or broken — hard truncation loses conversation context.
+            self._logger.error(
+                "Compaction LLM call failed, falling back to hard truncation: %s",
+                exc,
+                exc_info=True,
+            )
             self.history = self.history[-50:]
 
     @property

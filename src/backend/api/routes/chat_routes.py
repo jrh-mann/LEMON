@@ -6,6 +6,7 @@ conversation retrieval (GET /api/chat/<id>).
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -20,6 +21,7 @@ from ..response_utils import extract_flowchart, extract_tool_calls, summarize_re
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
 from ...utils.uploads import save_uploaded_image
+from .helpers import api_error
 
 logger = logging.getLogger("backend.api")
 
@@ -48,15 +50,15 @@ def register_chat_routes(
     ) -> JSONResponse:
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError) as e:
+            return api_error(f"Invalid JSON: {e}")
 
         message = payload.get("message", "")
         conversation_id = payload.get("conversation_id")
         image_data = payload.get("image")
 
         if not isinstance(message, str) or not message.strip():
-            return JSONResponse({"error": "message is required"}, status_code=400)
+            return api_error("message is required")
 
         convo = conversation_store.get_or_create(conversation_id)
         if isinstance(image_data, str) and image_data.strip():
@@ -64,9 +66,7 @@ def register_chat_routes(
                 save_uploaded_image(image_data, repo_root=repo_root)
             except Exception as exc:
                 logger.exception("Failed to save uploaded image")
-                return JSONResponse(
-                    {"error": f"Invalid image data: {exc}"}, status_code=400
-                )
+                return api_error(f"Invalid image data: {exc}")
 
         executed_tools: list[dict[str, Any]] = []
 
@@ -184,6 +184,6 @@ def register_chat_routes(
                     }
                 )
 
-        return JSONResponse({"error": "conversation not found"}, status_code=404)
+        return api_error("conversation not found", 404)
 
     app.include_router(router)
