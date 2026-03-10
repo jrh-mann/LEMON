@@ -1,8 +1,8 @@
 /**
- * WebSocket action functions — send messages to the backend.
+ * Socket.IO action functions -- send events to the backend.
  * Separated from connection management for clean separation of concerns.
  *
- * Exports: sendChatMessage, cancelChatTask, syncWorkflow,
+ * Exports: sendChatMessage, cancelChatTask, syncWorkflow, resumeTask,
  *          startWorkflowExecution, pauseWorkflowExecution,
  *          resumeWorkflowExecution, stopWorkflowExecution
  */
@@ -23,7 +23,7 @@ export function sendChatMessage(
   annotations?: unknown[]
 ): void {
   if (!isConnected()) {
-    console.error('[WS] Not connected')
+    console.error('[SIO] Not connected')
     useUIStore.getState().setError('Not connected to server')
     return
   }
@@ -71,7 +71,7 @@ export function sendChatMessage(
     file_type: f.type,
     purpose: f.purpose,
   })) : undefined
-  console.log('[WS] sendChatMessage files_count:', files?.length ?? 0,
+  console.log('[SIO] sendChatMessage files_count:', files?.length ?? 0,
     'payload_files:', filesPayload?.length ?? 0,
     'file_names:', files?.map(f => f.name) ?? [],
     'data_url_lengths:', files?.map(f => f.dataUrl?.length ?? 0) ?? [])
@@ -99,7 +99,7 @@ export function sendChatMessage(
 /** Cancel an in-progress chat task */
 export function cancelChatTask(taskId: string): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot cancel task: not connected')
+    console.warn('[SIO] Cannot cancel task: not connected')
     return
   }
   sendMessage('cancel_task', { task_id: taskId })
@@ -111,7 +111,7 @@ export function cancelChatTask(taskId: string): void {
  */
 export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual'): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot sync workflow: not connected')
+    console.warn('[SIO] Cannot sync workflow: not connected')
     return
   }
 
@@ -125,7 +125,7 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
     : null
 
   if (!conversationIdVal) {
-    console.error('[WS] Failed to generate conversation ID')
+    console.error('[SIO] Failed to generate conversation ID')
     return
   }
 
@@ -136,7 +136,7 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
 
   const analysis = workflowStore.currentAnalysis
 
-  console.log('[WS] Syncing workflow to backend:', {
+  console.log('[SIO] Syncing workflow to backend:', {
     source,
     conversationId: conversationIdVal,
     nodes: workflow.nodes.length,
@@ -158,10 +158,10 @@ export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual')
  */
 export function resumeTask(workflowId: string): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot resume task: not connected')
+    console.warn('[SIO] Cannot resume task: not connected')
     return
   }
-  console.log('[WS] Resuming task for workflow:', workflowId)
+  console.log('[SIO] Resuming task for workflow:', workflowId)
   sendMessage('resume_task', { workflow_id: workflowId })
 }
 
@@ -179,7 +179,7 @@ export function startWorkflowExecution(
   speedMs?: number
 ): string | null {
   if (!isConnected()) {
-    console.error('[WS] Cannot execute workflow: not connected')
+    console.error('[SIO] Cannot execute workflow: not connected')
     useUIStore.getState().setError('Not connected to server')
     return null
   }
@@ -189,7 +189,7 @@ export function startWorkflowExecution(
 
   // Don't start if already executing
   if (execution.isExecuting) {
-    console.warn('[WS] Workflow is already executing')
+    console.warn('[SIO] Workflow is already executing')
     return execution.executionId
   }
 
@@ -205,7 +205,7 @@ export function startWorkflowExecution(
     output_type: workflowStore.currentWorkflow?.output_type || 'string',
   }
 
-  console.log('[WS] Executing workflow:', {
+  console.log('[SIO] Executing workflow:', {
     executionId,
     inputs,
     speedMs: speedMs ?? execution.executionSpeed,
@@ -230,7 +230,7 @@ export function startWorkflowExecution(
 /** Pause the currently executing workflow */
 export function pauseWorkflowExecution(): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot pause: not connected')
+    console.warn('[SIO] Cannot pause: not connected')
     return
   }
 
@@ -238,11 +238,11 @@ export function pauseWorkflowExecution(): void {
   const execution = workflowStore.execution
 
   if (!execution.isExecuting || !execution.executionId) {
-    console.warn('[WS] No active execution to pause')
+    console.warn('[SIO] No active execution to pause')
     return
   }
 
-  console.log('[WS] Pausing execution:', execution.executionId)
+  console.log('[SIO] Pausing execution:', execution.executionId)
   sendMessage('pause_execution', { execution_id: execution.executionId })
 
   // Optimistic update
@@ -252,7 +252,7 @@ export function pauseWorkflowExecution(): void {
 /** Resume a paused workflow execution */
 export function resumeWorkflowExecution(): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot resume: not connected')
+    console.warn('[SIO] Cannot resume: not connected')
     return
   }
 
@@ -260,11 +260,11 @@ export function resumeWorkflowExecution(): void {
   const execution = workflowStore.execution
 
   if (!execution.isPaused || !execution.executionId) {
-    console.warn('[WS] No paused execution to resume')
+    console.warn('[SIO] No paused execution to resume')
     return
   }
 
-  console.log('[WS] Resuming execution:', execution.executionId)
+  console.log('[SIO] Resuming execution:', execution.executionId)
   sendMessage('resume_execution', { execution_id: execution.executionId })
 
   // Optimistic update
@@ -274,7 +274,7 @@ export function resumeWorkflowExecution(): void {
 /** Stop the currently executing workflow */
 export function stopWorkflowExecution(): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot stop: not connected')
+    console.warn('[SIO] Cannot stop: not connected')
     return
   }
 
@@ -282,11 +282,11 @@ export function stopWorkflowExecution(): void {
   const execution = workflowStore.execution
 
   if (!execution.executionId) {
-    console.warn('[WS] No execution to stop')
+    console.warn('[SIO] No execution to stop')
     return
   }
 
-  console.log('[WS] Stopping execution:', execution.executionId)
+  console.log('[SIO] Stopping execution:', execution.executionId)
   sendMessage('stop_execution', { execution_id: execution.executionId })
 
   // Optimistic update

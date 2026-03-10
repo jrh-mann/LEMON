@@ -14,7 +14,7 @@ fi
 
 python run_mcp.py &
 
-# uvicorn ASGI server for FastAPI + native WebSocket
+# uvicorn ASGI server for Socket.IO + FastAPI
 # Use "python -m uvicorn" instead of bare "uvicorn" because Azure Oryx
 # creates a venv with --copies whose shebang points to a temp build dir
 # that doesn't exist at runtime (causes "bad interpreter" exit code 127).

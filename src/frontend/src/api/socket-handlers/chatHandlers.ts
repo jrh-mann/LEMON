@@ -1,29 +1,29 @@
 /**
- * Chat-related WebSocket event handlers.
+ * Chat-related Socket.IO event handlers.
  * Handles: chat_progress, chat_thinking, chat_response, chat_stream,
- *          chat_cancelled, build_user_message
+ *          chat_cancelled, build_user_message, context_status
  *
  * ALL events are routed to chatStore by workflow_id. Normal orchestrator events
  * include workflow_id (added by WsChatTask), and background builder events
  * include workflow_id (added by BackgroundBuilderCallbacks). This means the
- * same chatStore conversation map handles both — no separate build buffer system.
+ * same chatStore conversation map handles both -- no separate build buffer system.
  */
+import type { Socket } from 'socket.io-client'
 import { useChatStore, addAssistantMessage } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import type { SocketChatResponse } from '../../types'
-import type { HandlerMap } from './index'
 
-/** Resolve the workflow_id for an event — falls back to active workflow */
+/** Resolve the workflow_id for an event -- falls back to active workflow */
 function resolveWorkflowId(data: { workflow_id?: string }): string | null {
   return data.workflow_id || useChatStore.getState().activeWorkflowId
 }
 
-/** Register all chat-related event handlers into the handler map */
-export function registerChatHandlers(handlers: HandlerMap): void {
+/** Register all chat-related event handlers on the Socket.IO client */
+export function registerChatHandlers(socket: Socket): void {
   // Chat progress (incremental status updates)
-  handlers['chat_progress'] = (data: { event: string; status?: string; tool?: string; task_id?: string; workflow_id?: string }) => {
-    console.log('[WS] chat_progress:', data)
+  socket.on('chat_progress', (data: { event: string; status?: string; tool?: string; task_id?: string; workflow_id?: string }) => {
+    console.log('[SIO] chat_progress:', data)
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
@@ -41,13 +41,13 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     }
 
     if (data.status) {
-      console.log('[WS] Setting processing status:', data.status, 'workflow:', workflowId)
+      console.log('[SIO] Setting processing status:', data.status, 'workflow:', workflowId)
       chatStore.setProcessingStatus(workflowId, data.status)
     }
-  }
+  })
 
   // LLM reasoning/thinking chunks streamed during analysis
-  handlers['chat_thinking'] = (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
+  socket.on('chat_thinking', (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
@@ -58,11 +58,11 @@ export function registerChatHandlers(handlers: HandlerMap): void {
       if (conv?.currentTaskId && data.task_id !== conv.currentTaskId) return
     }
     chatStore.appendThinkingContent(workflowId, data.chunk || '')
-  }
+  })
 
   // Chat response (final response from LLM)
-  handlers['chat_response'] = (data: SocketChatResponse) => {
-    console.log('[WS] chat_response:', data)
+  socket.on('chat_response', (data: SocketChatResponse) => {
+    console.log('[SIO] chat_response:', data)
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
@@ -72,12 +72,12 @@ export function registerChatHandlers(handlers: HandlerMap): void {
 
     if (taskId) {
       if (chatStore.isTaskCancelled(taskId) && !data.cancelled) {
-        console.log('[WS] Ignoring cancelled chat_response:', taskId)
+        console.log('[SIO] Ignoring cancelled chat_response:', taskId)
         return
       }
       const conv = chatStore.conversations[workflowId]
       if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
-        console.log('[WS] Ignoring stale chat_response:', taskId)
+        console.log('[SIO] Ignoring stale chat_response:', taskId)
         return
       }
     }
@@ -89,7 +89,7 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     chatStore.finalizeStream(workflowId, data.tool_calls)
     chatStore.setCurrentTaskId(workflowId, null)
 
-    // No streamed content was finalized — add the response text directly.
+    // No streamed content was finalized -- add the response text directly.
     // Also add a message when tool_calls exist but response is empty, so
     // the user can see which tools ran even without accompanying text.
     if (!hadStreamContent && (data.response || data.tool_calls?.length)) {
@@ -105,7 +105,7 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     useWorkflowStore.getState().setPlan([])
 
     // Dispatch event so WorkflowPage can re-fetch flowchart state from DB.
-    // Only fire for background builder responses — i.e. when the event's
+    // Only fire for background builder responses -- i.e. when the event's
     // workflow_id differs from the active workflow (the user is on the parent
     // workflow while a subworkflow builds in the background), OR when the
     // conversation is marked as streaming (builder in progress).
@@ -119,10 +119,10 @@ export function registerChatHandlers(handlers: HandlerMap): void {
         }))
       }
     }
-  }
+  })
 
   // Streaming response chunks
-  handlers['chat_stream'] = (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
+  socket.on('chat_stream', (data: { chunk: string; task_id?: string; workflow_id?: string }) => {
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
@@ -140,11 +140,11 @@ export function registerChatHandlers(handlers: HandlerMap): void {
 
     chatStore.setStreaming(workflowId, true)
     chatStore.appendStreamContent(workflowId, data.chunk || '')
-  }
+  })
 
   // Chat cancelled by user
-  handlers['chat_cancelled'] = (data: { task_id?: string; workflow_id?: string }) => {
-    console.log('[WS] chat_cancelled:', data)
+  socket.on('chat_cancelled', (data: { task_id?: string; workflow_id?: string }) => {
+    console.log('[SIO] chat_cancelled:', data)
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
@@ -161,19 +161,18 @@ export function registerChatHandlers(handlers: HandlerMap): void {
     chatStore.setProcessingStatus(workflowId, null)
     chatStore.setCurrentTaskId(workflowId, null)
     useWorkflowStore.getState().setPlan([])
-  }
+  })
 
-  // Context window usage indicator — emitted after each orchestrator response
-  handlers['context_status'] = (data: { usage_pct: number; workflow_id?: string }) => {
+  // Context window usage indicator -- emitted after each orchestrator response
+  socket.on('context_status', (data: { usage_pct: number; workflow_id?: string }) => {
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
     useChatStore.getState().setContextUsage(workflowId, data.usage_pct ?? 0)
-  }
+  })
 
-  // Initial user message from background builder — shows the brief/prompt in chat.
-  // Moved from workflowHandlers since this is a chat event.
-  handlers['build_user_message'] = (data: { workflow_id: string; content: string }) => {
-    console.log('[WS] build_user_message:', data.workflow_id)
+  // Initial user message from background builder -- shows the brief/prompt in chat.
+  socket.on('build_user_message', (data: { workflow_id: string; content: string }) => {
+    console.log('[SIO] build_user_message:', data.workflow_id)
     const chatStore = useChatStore.getState()
     chatStore.addMessage(data.workflow_id, {
       id: `bu_${Date.now()}`,
@@ -182,5 +181,5 @@ export function registerChatHandlers(handlers: HandlerMap): void {
       timestamp: new Date().toISOString(),
       tool_calls: [],
     })
-  }
+  })
 }

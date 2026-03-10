@@ -1,16 +1,16 @@
 /**
- * Workflow-related WebSocket event handlers.
- * Handles: workflow_update, analysis_updated, workflow_created,
- *          workflow_saved, pending_question, plan_updated,
+ * Workflow-related Socket.IO event handlers.
+ * Handles: workflow_update, workflow_state_updated, analysis_updated,
+ *          workflow_created, workflow_saved, pending_question, plan_updated,
  *          subworkflow_created, subworkflow_building,
  *          build_error, subworkflow_ready
  */
+import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../../stores/chatStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore } from '../../stores/uiStore'
 import { transformFlowchartFromBackend, transformNodeFromBackend } from '../../utils/canvas'
 import type { WorkflowAnalysis } from '../../types'
-import type { HandlerMap } from './index'
 
 
 type WorkflowStateUpdate = {
@@ -46,26 +46,26 @@ function applyWorkflowStateUpdate(data: WorkflowStateUpdate): void {
   }
 }
 
-/** Register all workflow-related event handlers into the handler map */
-export function registerWorkflowHandlers(handlers: HandlerMap): void {
+/** Register all workflow-related event handlers on the Socket.IO client */
+export function registerWorkflowHandlers(socket: Socket): void {
   // Workflow update events (from orchestrator manipulation tools)
-  handlers['workflow_update'] = (data: { action: string; data: Record<string, unknown> }) => {
-    // Guard against malformed payloads — backend bugs shouldn't crash the WS loop
+  socket.on('workflow_update', (data: { action: string; data: Record<string, unknown> }) => {
+    // Guard against malformed payloads -- backend bugs shouldn't crash the handler
     if (!data?.data) {
-      console.error('[WS] workflow_update missing data payload:', data)
+      console.error('[SIO] workflow_update missing data payload:', data)
       return
     }
 
-    console.log('[WS] workflow_update:', data.action, 'workflow_id:', data.data.workflow_id)
+    console.log('[SIO] workflow_update:', data.action, 'workflow_id:', data.data.workflow_id)
     const workflowStore = useWorkflowStore.getState()
     const uiStore = useUIStore.getState()
 
     // Filter by workflow_id: background subworkflow builders emit events
-    // for their own workflow — ignore them unless the user is viewing that workflow
+    // for their own workflow -- ignore them unless the user is viewing that workflow
     const eventWorkflowId = data.data.workflow_id as string | undefined
     const currentWorkflowId = workflowStore.currentWorkflow?.id
     if (eventWorkflowId && currentWorkflowId && eventWorkflowId !== currentWorkflowId) {
-      console.log('[WS] Ignoring workflow_update for different workflow:', eventWorkflowId)
+      console.log('[SIO] Ignoring workflow_update for different workflow:', eventWorkflowId)
       return
     }
 
@@ -78,7 +78,7 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
             workflowStore.addNode(node)
             // Switch to workflow tab to show the change
             uiStore.setCanvasTab('workflow')
-            console.log('[WS] Added node:', node.id)
+            console.log('[SIO] Added node:', node.id)
           }
           break
 
@@ -88,11 +88,11 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
             const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
             const exists = workflowStore.flowchart.nodes.find(n => n.id === node.id)
             if (!exists) {
-              console.error('[WS] Cannot modify non-existent node:', node.id)
+              console.error('[SIO] Cannot modify non-existent node:', node.id)
               break
             }
             workflowStore.updateNode(node.id, node)
-            console.log('[WS] Modified node:', node.id)
+            console.log('[SIO] Modified node:', node.id)
           }
           break
 
@@ -102,11 +102,11 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
             const nodeId = data.data.node_id as string
             const exists = workflowStore.flowchart.nodes.find(n => n.id === nodeId)
             if (!exists) {
-              console.error('[WS] Cannot delete non-existent node:', nodeId)
+              console.error('[SIO] Cannot delete non-existent node:', nodeId)
               break
             }
             workflowStore.deleteNode(nodeId)
-            console.log('[WS] Deleted node:', nodeId)
+            console.log('[SIO] Deleted node:', nodeId)
             // Note: deleteNode() automatically removes connected edges
           }
           break
@@ -126,7 +126,7 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
               label: edge.label || '',
               id: edge.id,
             })
-            console.log('[WS] Added connection:', edge.from, '->', edge.to)
+            console.log('[SIO] Added connection:', edge.from, '->', edge.to)
           }
           break
 
@@ -136,12 +136,12 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
             const fromId = data.data.from_node_id as string
             const toId = data.data.to_node_id as string
             workflowStore.deleteEdge(fromId, toId)
-            console.log('[WS] Deleted connection:', fromId, '->', toId)
+            console.log('[SIO] Deleted connection:', fromId, '->', toId)
           }
           break
 
         case 'batch_edit':
-          // Multiple operations applied atomically — use setFlowchartSilent
+          // Multiple operations applied atomically -- use setFlowchartSilent
           // to avoid polluting the undo stack with server-driven changes
           if (data.data.workflow) {
             const flowchart = transformFlowchartFromBackend(
@@ -150,7 +150,7 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
             workflowStore.setFlowchartSilent(flowchart)
             // Switch to workflow tab to show the changes
             uiStore.setCanvasTab('workflow')
-            console.log('[WS] Applied batch edit:', data.data.operation_count, 'operations')
+            console.log('[SIO] Applied batch edit:', data.data.operation_count, 'operations')
           }
           break
 
@@ -159,22 +159,22 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
           if (data.data.node_id) {
             workflowStore.highlightNode(data.data.node_id as string)
             uiStore.setCanvasTab('workflow')
-            console.log('[WS] Highlighting node:', data.data.node_id)
+            console.log('[SIO] Highlighting node:', data.data.node_id)
           }
           break
 
         default:
-          console.warn('[WS] Unknown workflow_update action:', data.action)
+          console.warn('[SIO] Unknown workflow_update action:', data.action)
       }
     } catch (err) {
-      console.error('[WS] workflow_update handler error:', data.action, err)
+      console.error('[SIO] workflow_update handler error:', data.action, err)
     }
-  }
+  })
 
   // Analysis updates (from input management tools)
   // Only apply if task_id matches current task (prevents updates from inactive tabs)
-  handlers['analysis_updated'] = (data: { variables: unknown[]; outputs: unknown[]; task_id?: string }) => {
-    console.log('[WS] analysis_updated:', data)
+  socket.on('analysis_updated', (data: { variables: unknown[]; outputs: unknown[]; task_id?: string }) => {
+    console.log('[SIO] analysis_updated:', data)
     const chatStore = useChatStore.getState()
     const workflowStore = useWorkflowStore.getState()
     const taskId = data.task_id
@@ -182,14 +182,14 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
     // Filter out updates from stale/different tasks to prevent tab cross-contamination
     if (taskId) {
       if (chatStore.isTaskCancelled(taskId)) {
-        console.log('[WS] Ignoring cancelled analysis_updated:', taskId)
+        console.log('[SIO] Ignoring cancelled analysis_updated:', taskId)
         return
       }
       // Check currentTaskId from the active workflow's conversation
       const activeWfId = chatStore.activeWorkflowId
       const conv = activeWfId ? chatStore.conversations[activeWfId] : undefined
       if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
-        console.log('[WS] Ignoring stale analysis_updated:', taskId, 'current:', conv.currentTaskId)
+        console.log('[SIO] Ignoring stale analysis_updated:', taskId, 'current:', conv.currentTaskId)
         return
       }
     }
@@ -207,11 +207,11 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
     }
 
     workflowStore.setAnalysis(updatedAnalysis)
-    console.log('[WS] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
-  }
+    console.log('[SIO] Updated analysis with', data.variables.length, 'variables and', data.outputs.length, 'outputs')
+  })
 
-  handlers['workflow_state_updated'] = (data: WorkflowStateUpdate) => {
-    console.log('[WS] workflow_state_updated:', data)
+  socket.on('workflow_state_updated', (data: WorkflowStateUpdate) => {
+    console.log('[SIO] workflow_state_updated:', data)
     const chatStore = useChatStore.getState()
     const taskId = data.task_id
     if (taskId) {
@@ -225,20 +225,20 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
       }
     }
     applyWorkflowStateUpdate(data)
-  }
+  })
 
   // ===== Workflow Library Events =====
   // These events handle workflow creation and saving by the LLM
 
   // Workflow created - LLM called create_workflow, track the workflow_id for this tab.
   // Uses a single atomic state update to avoid race conditions from multiple getState() calls.
-  handlers['workflow_created'] = (data: {
+  socket.on('workflow_created', (data: {
     workflow_id: string
     name: string
     output_type: string
     is_draft: boolean
   }) => {
-    console.log('[WS] workflow_created:', data)
+    console.log('[SIO] workflow_created:', data)
     const store = useWorkflowStore.getState()
     const currentId = store.currentWorkflow?.id
 
@@ -264,17 +264,17 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
       })
     }
 
-    console.log('[WS] workflow_created complete - ID:', data.workflow_id, 'name:', data.name, 'output_type:', data.output_type)
-  }
+    console.log('[SIO] workflow_created complete - ID:', data.workflow_id, 'name:', data.name, 'output_type:', data.output_type)
+  })
 
   // Workflow saved - LLM called save_workflow_to_library, update draft status
-  handlers['workflow_saved'] = (data: {
+  socket.on('workflow_saved', (data: {
     workflow_id: string
     name: string
     is_draft: boolean
     already_saved: boolean
   }) => {
-    console.log('[WS] workflow_saved:', data)
+    console.log('[SIO] workflow_saved:', data)
     const workflowStore = useWorkflowStore.getState()
 
     // Update the workflow in the current tab to mark it as saved
@@ -288,55 +288,55 @@ export function registerWorkflowHandlers(handlers: HandlerMap): void {
           metadata: { ...currentWf.metadata, name: data.name }
         })
       }
-      console.log('[WS] Workflow saved to library:', data.workflow_id, 'name:', data.name)
+      console.log('[SIO] Workflow saved to library:', data.workflow_id, 'name:', data.name)
     } else {
-      console.log('[WS] Workflow was already saved:', data.workflow_id)
+      console.log('[SIO] Workflow was already saved:', data.workflow_id)
     }
-  }
+  })
 
-  // Inline question from ask_question tool — enqueue so multiple questions
+  // Inline question from ask_question tool -- enqueue so multiple questions
   // are shown one at a time (answering one reveals the next).
-  handlers['pending_question'] = (data: { question: string; options: { label: string; value: string }[] }) => {
-    console.log('[WS] pending_question:', data)
+  socket.on('pending_question', (data: { question: string; options: { label: string; value: string }[] }) => {
+    console.log('[SIO] pending_question:', data)
     const chatStore = useChatStore.getState()
     chatStore.enqueuePendingQuestion(data)
-  }
+  })
 
-  // Plan updates (from update_plan tool — extraction progress checklist)
-  handlers['plan_updated'] = (data: { items: Array<{ text: string; done: boolean }> }) => {
-    console.log('[WS] plan_updated:', data)
+  // Plan updates (from update_plan tool -- extraction progress checklist)
+  socket.on('plan_updated', (data: { items: Array<{ text: string; done: boolean }> }) => {
+    console.log('[SIO] plan_updated:', data)
     const workflowStore = useWorkflowStore.getState()
     workflowStore.setPlan(data.items)
-  }
+  })
 
   // ===== Background Subworkflow Build Events =====
   // These events handle library auto-refresh for subworkflows being built
   // by background orchestrators. Chat streaming events (chat_stream, chat_thinking,
   // chat_response, build_user_message) are handled by chatHandlers.
 
-  // New subworkflow created — trigger library refresh so it appears
+  // New subworkflow created -- trigger library refresh so it appears
   // with a "Building..." badge without manual page reload
-  handlers['subworkflow_created'] = (data: { workflow_id: string; name: string; building: boolean }) => {
-    console.log('[WS] subworkflow_created:', data.workflow_id, data.name)
+  socket.on('subworkflow_created', (data: { workflow_id: string; name: string; building: boolean }) => {
+    console.log('[SIO] subworkflow_created:', data.workflow_id, data.name)
     useWorkflowStore.getState().incrementLibraryRefresh()
-  }
+  })
 
   // Existing subworkflow is being rebuilt by update_subworkflow tool
-  handlers['subworkflow_building'] = (data: { workflow_id: string; name: string; building: boolean }) => {
-    console.log('[WS] subworkflow_building:', data.workflow_id, data.name)
+  socket.on('subworkflow_building', (data: { workflow_id: string; name: string; building: boolean }) => {
+    console.log('[SIO] subworkflow_building:', data.workflow_id, data.name)
     useWorkflowStore.getState().incrementLibraryRefresh()
-  }
+  })
 
-  // Subworkflow build failed — refresh library to clear "Building..." badge
-  handlers['build_error'] = (data: { workflow_id: string; error: string }) => {
-    console.error('[WS] build_error:', data.workflow_id, data.error)
+  // Subworkflow build failed -- refresh library to clear "Building..." badge
+  socket.on('build_error', (data: { workflow_id: string; error: string }) => {
+    console.error('[SIO] build_error:', data.workflow_id, data.error)
     useWorkflowStore.getState().incrementLibraryRefresh()
-  }
+  })
 
-  // Subworkflow build complete — refresh library badge.
+  // Subworkflow build complete -- refresh library badge.
   // Chat conversation state is managed by chatStore, no cleanup needed here.
-  handlers['subworkflow_ready'] = (data: { workflow_id: string }) => {
-    console.log('[WS] subworkflow_ready:', data.workflow_id)
+  socket.on('subworkflow_ready', (data: { workflow_id: string }) => {
+    console.log('[SIO] subworkflow_ready:', data.workflow_id)
     useWorkflowStore.getState().incrementLibraryRefresh()
-  }
+  })
 }
