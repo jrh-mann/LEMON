@@ -103,66 +103,122 @@ def register_ws_endpoint(
                     # If old_conn_id not found (task already finished), keep the new conn_id
 
                 elif msg_type == "chat":
-                    from .ws_chat import handle_ws_chat
-                    await asyncio.to_thread(
-                        handle_ws_chat,
-                        ws_registry,
-                        conn_id=conn_id,
-                        conversation_store=conversation_store,
-                        repo_root=repo_root,
-                        workflow_store=workflow_store,
-                        user_id=user.id,
-                        payload=payload,
-                        conversation_logger=conversation_logger,
-                    )
+                    try:
+                        from .ws_chat import handle_ws_chat
+                        await asyncio.to_thread(
+                            handle_ws_chat,
+                            ws_registry,
+                            conn_id=conn_id,
+                            conversation_store=conversation_store,
+                            repo_root=repo_root,
+                            workflow_store=workflow_store,
+                            user_id=user.id,
+                            payload=payload,
+                            conversation_logger=conversation_logger,
+                        )
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "cancel_task":
-                    from .ws_chat import handle_cancel_task
-                    await asyncio.to_thread(
-                        handle_cancel_task, ws_registry, conn_id=conn_id, payload=payload,
-                    )
+                    try:
+                        from .ws_chat import handle_cancel_task
+                        await asyncio.to_thread(
+                            handle_cancel_task, ws_registry, conn_id=conn_id, payload=payload,
+                        )
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "sync_workflow":
-                    from .ws_chat import handle_sync_workflow
-                    await asyncio.to_thread(
-                        handle_sync_workflow,
-                        ws_registry,
-                        conversation_store=conversation_store,
-                        payload=payload,
-                    )
+                    try:
+                        from .ws_chat import handle_sync_workflow
+                        await asyncio.to_thread(
+                            handle_sync_workflow,
+                            ws_registry,
+                            conversation_store=conversation_store,
+                            payload=payload,
+                        )
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "resume_task":
-                    from .ws_chat import handle_resume_task
-                    await asyncio.to_thread(
-                        handle_resume_task,
-                        ws_registry,
-                        conn_id=conn_id,
-                        user_id=user.id,
-                        payload=payload,
-                    )
+                    try:
+                        from .ws_chat import handle_resume_task
+                        await asyncio.to_thread(
+                            handle_resume_task,
+                            ws_registry,
+                            conn_id=conn_id,
+                            user_id=user.id,
+                            payload=payload,
+                        )
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "execute_workflow":
-                    from .ws_execution import handle_execute_workflow
-                    await asyncio.to_thread(
-                        handle_execute_workflow,
-                        ws_registry,
-                        conn_id=conn_id,
-                        workflow_store=workflow_store,
-                        user_id=user.id,
-                        payload=payload,
-                    )
+                    try:
+                        from .ws_execution import handle_execute_workflow
+                        await asyncio.to_thread(
+                            handle_execute_workflow,
+                            ws_registry,
+                            conn_id=conn_id,
+                            workflow_store=workflow_store,
+                            user_id=user.id,
+                            payload=payload,
+                        )
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "pause_execution":
-                    from .ws_execution import handle_pause_execution
-                    await asyncio.to_thread(handle_pause_execution, payload=payload)
+                    try:
+                        from .ws_execution import handle_pause_execution
+                        await asyncio.to_thread(handle_pause_execution, payload=payload)
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "resume_execution":
-                    from .ws_execution import handle_resume_execution
-                    await asyncio.to_thread(handle_resume_execution, payload=payload)
+                    try:
+                        from .ws_execution import handle_resume_execution
+                        await asyncio.to_thread(handle_resume_execution, payload=payload)
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 elif msg_type == "stop_execution":
-                    from .ws_execution import handle_stop_execution
-                    await asyncio.to_thread(handle_stop_execution, payload=payload)
+                    try:
+                        from .ws_execution import handle_stop_execution
+                        await asyncio.to_thread(handle_stop_execution, payload=payload)
+                    except Exception as exc:
+                        logger.error("Handler error for '%s': %s", msg_type, exc, exc_info=True)
+                        await ws.send_json({
+                            "type": "error",
+                            "payload": {"message": f"Server error handling '{msg_type}': {str(exc)}"},
+                        })
 
                 else:
                     logger.warning("WS unknown message type=%s conn_id=%s", msg_type, conn_id)

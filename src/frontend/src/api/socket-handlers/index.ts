@@ -21,12 +21,18 @@ export function registerAllHandlers(handlers: HandlerMap): void {
   registerExecutionHandlers(handlers)
 }
 
-/** Dispatch an incoming WebSocket event to its registered handler */
-export function dispatchEvent(handlers: HandlerMap, type: string, payload: any): void {
+/** Dispatch an incoming WebSocket event to its registered handler.
+ *  Wrapped in try-catch so a single handler failure never kills the WebSocket listener. */
+export function dispatchEvent(handlers: HandlerMap, type: string, payload: unknown): void {
   const handler = handlers[type]
-  if (handler) {
+  if (!handler) {
+    console.warn(`[WS] No handler for event: ${type}`)
+    return
+  }
+  try {
     handler(payload)
-  } else {
-    console.warn('[WS] Unhandled event type:', type)
+  } catch (err) {
+    console.error(`[WS] Handler error for "${type}":`, err)
+    // Don't re-throw — keep the WebSocket alive
   }
 }
