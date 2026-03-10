@@ -1,8 +1,8 @@
-"""WebSocket handlers for stepped workflow execution.
+"""Socket.IO handlers for stepped workflow execution.
 
-Replaces socket_execution.py — uses ConnectionRegistry + conn_id instead
-of SocketIO + sid. Provides visual workflow execution by emitting events
-for each node visited so the frontend can highlight nodes in real-time.
+Provides visual workflow execution by emitting events for each node
+visited so the frontend can highlight nodes in real-time. The conn_id
+parameter throughout this module is the Socket.IO session ID (sid).
 
 Events emitted to client:
 - execution_step: {node_id, node_type, node_label, step_index, execution_id}

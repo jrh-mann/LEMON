@@ -2,11 +2,11 @@
 
 Emits the same chat_* events as WsChatTask, but tags each event with
 `workflow_id`. The frontend routes ALL events to chatStore.conversations[workflow_id]
-— both normal orchestrator chats and background builder chats use the same
+-- both normal orchestrator chats and background builder chats use the same
 per-workflow conversation map. No separate build buffer system.
 
-Uses ConnectionRegistry + conn_id instead of SocketIO + sid. All emit
-calls go through registry.send_to_sync() for thread-safe async bridging.
+All emit calls go through registry.send_to_sync() which dispatches to
+the python-socketio AsyncServer for thread-safe async bridging.
 """
 
 from __future__ import annotations

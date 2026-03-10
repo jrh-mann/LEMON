@@ -11,8 +11,9 @@ export default defineConfig({
         target: 'http://localhost:5001',
         changeOrigin: true,
       },
-      '/ws': {
-        target: 'ws://localhost:5001',
+      // Socket.IO uses /socket.io/ path for handshake and transport
+      '/socket.io': {
+        target: 'http://localhost:5001',
         ws: true,
       },
     },

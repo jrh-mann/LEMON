@@ -19,36 +19,27 @@ import pytest
 class TestConnectionRegistryOwnership:
     """Verify ConnectionRegistry stores and enforces user_id ownership."""
 
-    def test_register_stores_user_id(self):
+    def _make_registry(self):
+        """Create a ConnectionRegistry with a mock sio server."""
         from src.backend.api.ws_registry import ConnectionRegistry
-        reg = ConnectionRegistry()
-        mock_ws = MagicMock()
-        reg.register("conn-1", mock_ws, "user-alice")
-        assert reg.get_user_id("conn-1") == "user-alice"
+        mock_sio = MagicMock()
+        return ConnectionRegistry(mock_sio)
+
+    def test_set_user_stores_user_id(self):
+        reg = self._make_registry()
+        reg.set_user("sid-1", "user-alice")
+        assert reg.get_user_id("sid-1") == "user-alice"
 
     def test_get_user_id_returns_none_for_unknown(self):
-        from src.backend.api.ws_registry import ConnectionRegistry
-        reg = ConnectionRegistry()
+        reg = self._make_registry()
         assert reg.get_user_id("nonexistent") is None
 
-    def test_rebind_preserves_user_id(self):
-        from src.backend.api.ws_registry import ConnectionRegistry
-        reg = ConnectionRegistry()
-        mock_ws_1 = MagicMock()
-        mock_ws_2 = MagicMock()
-        reg.register("conn-1", mock_ws_1, "user-alice")
-        reg.rebind("conn-1", mock_ws_2)
-        # user_id should still be alice after rebind
-        assert reg.get_user_id("conn-1") == "user-alice"
-
-    def test_has_and_unregister(self):
-        from src.backend.api.ws_registry import ConnectionRegistry
-        reg = ConnectionRegistry()
-        mock_ws = MagicMock()
-        reg.register("conn-1", mock_ws, "user-alice")
-        assert reg.has("conn-1") is True
-        reg.unregister("conn-1")
-        assert reg.has("conn-1") is False
+    def test_remove_user(self):
+        reg = self._make_registry()
+        reg.set_user("sid-1", "user-alice")
+        assert reg.get_user_id("sid-1") == "user-alice"
+        reg.remove_user("sid-1")
+        assert reg.get_user_id("sid-1") is None
 
 
 # ---------------------------------------------------------------------------

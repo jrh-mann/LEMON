@@ -1,135 +1,100 @@
 /**
- * WebSocket connection management — singleton native WebSocket.
+ * Socket.IO connection management -- singleton socket.io-client instance.
  * Handler registration is delegated to socket-handlers/ modules.
  * Action functions (send messages) are in socketActions.ts.
  *
- * Protocol: All messages are JSON with {type, payload} structure.
- * Auth is cookie-based (lemon_session cookie sent automatically).
- * Reconnection uses conn_id handshake to rebind background threads.
+ * Auth is cookie-based (lemon_session cookie sent automatically by
+ * the browser for same-origin connections, handled by the Vite proxy
+ * in dev and same-origin in production).
+ *
+ * Reconnection is handled natively by socket.io-client. The resume_task
+ * mechanism (re-routing backend events after page refresh) is triggered
+ * from the WorkflowPage component, not from the socket layer.
  */
+import { io, type Socket } from 'socket.io-client'
 import { useUIStore } from '../stores/uiStore'
-import { registerAllHandlers, dispatchEvent } from './socket-handlers'
+import { registerAllHandlers } from './socket-handlers'
 
-let ws: WebSocket | null = null
-let savedConnId: string | null = null // Server-assigned connection ID for reconnection
-let reconnectAttempts = 0
-let intentionalClose = false // Prevents reconnect on logout/navigate-away
-const MAX_RECONNECT_ATTEMPTS = 5
-const RECONNECT_BASE_DELAY = 1000 // 1s, doubles each attempt
+let socket: Socket | null = null
 
-// Handler map populated once by registerAllHandlers()
-const handlers: Record<string, (payload: any) => void> = {}
-let handlersRegistered = false
-
-/** Build WebSocket URL — uses Vite proxy in dev, env var in production */
-function getWsUrl(): string {
+/** Build Socket.IO URL -- uses Vite proxy in dev, env var in production */
+function getSocketUrl(): string {
   if (import.meta.env.VITE_API_URL) {
-    return `${import.meta.env.VITE_API_URL.replace(/^http/, 'ws')}/ws`
+    return import.meta.env.VITE_API_URL as string
   }
-  // In development with Vite proxy, connect to same origin via ws://
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws`
+  // In development with Vite proxy, connect to same origin.
+  // The proxy forwards /socket.io/ to the backend.
+  return ''
 }
 
-/** Check if the WebSocket is currently connected */
+/** Check if the Socket.IO client is currently connected */
 export function isConnected(): boolean {
-  return ws !== null && ws.readyState === WebSocket.OPEN
+  return socket !== null && socket.connected
 }
 
 /**
- * Send a JSON message to the backend via WebSocket.
+ * Send an event to the backend via Socket.IO.
  * Silently no-ops if not connected (callers should check isConnected() for user-facing errors).
  */
-export function sendMessage(type: string, payload: Record<string, unknown>): void {
+export function sendMessage(event: string, data: Record<string, unknown>): void {
   if (!isConnected()) {
-    console.warn('[WS] Cannot send — not connected')
+    console.warn('[SIO] Cannot send -- not connected')
     return
   }
-  ws!.send(JSON.stringify({ type, payload }))
+  socket!.emit(event, data)
 }
 
 /**
- * Connect the WebSocket, registering all event handlers.
- * Idempotent — returns immediately if already connected.
+ * Connect the Socket.IO client, registering all event handlers.
+ * Idempotent -- returns immediately if already connected.
  */
 export function connectSocket(): void {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+  if (socket && socket.connected) {
     return
   }
 
-  // Register handler map once
-  if (!handlersRegistered) {
-    registerAllHandlers(handlers)
-    handlersRegistered = true
+  // Disconnect any stale instance before creating a new one
+  if (socket) {
+    socket.disconnect()
+    socket = null
   }
 
-  intentionalClose = false
-  const url = getWsUrl()
-  console.log('[WS] Connecting to:', url)
-  ws = new WebSocket(url)
+  const url = getSocketUrl()
+  console.log('[SIO] Connecting to:', url || '(same origin)')
 
-  ws.onopen = () => {
-    console.log('[WS] Connected')
-    reconnectAttempts = 0
+  socket = io(url, {
+    // Reconnection is handled natively by socket.io-client
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 5,
+    // Cookies are sent automatically for same-origin connections
+    withCredentials: true,
+  })
+
+  socket.on('connect', () => {
+    console.log('[SIO] Connected, id:', socket?.id)
     useUIStore.getState().clearError()
+  })
 
-    // Reconnection handshake: always try to rebind if we have a saved conn_id.
-    // This ensures background builder events still reach us even when idle.
-    if (savedConnId) {
-      sendMessage('reconnect', { conn_id: savedConnId })
-    }
-  }
+  socket.on('disconnect', (reason) => {
+    console.log('[SIO] Disconnected:', reason)
+  })
 
-  ws.onclose = (e) => {
-    console.log('[WS] Disconnected:', e.code, e.reason)
-    ws = null
-    if (!intentionalClose) {
-      scheduleReconnect()
-    }
-  }
-
-  ws.onerror = () => {
-    console.error('[WS] Connection error')
+  socket.on('connect_error', (err) => {
+    console.error('[SIO] Connection error:', err.message)
     useUIStore.getState().setError('Connection error')
-  }
+  })
 
-  ws.onmessage = (e) => {
-    try {
-      const { type, payload } = JSON.parse(e.data)
-
-      // Store conn_id from server for reconnection
-      if (type === 'connected' || type === 'reconnected') {
-        savedConnId = payload.conn_id
-        console.log('[WS]', type, '— conn_id:', savedConnId)
-      }
-
-      // Dispatch to registered handlers
-      dispatchEvent(handlers, type, payload)
-    } catch (err) {
-      console.error('[WS] Invalid message:', e.data, err)
-    }
-  }
+  // Register all domain-specific event handlers directly on the socket
+  registerAllHandlers(socket)
 }
 
-/** Schedule a reconnect attempt with exponential backoff */
-function scheduleReconnect(): void {
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    useUIStore.getState().setError('Lost connection to server')
-    return
-  }
-  const delay = RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts)
-  reconnectAttempts++
-  console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
-  setTimeout(() => connectSocket(), delay)
-}
-
-/** Disconnect and dispose the WebSocket (intentional close — no reconnect) */
+/** Disconnect and dispose the Socket.IO client (intentional close -- no reconnect) */
 export function disconnectSocket(): void {
-  intentionalClose = true
-  reconnectAttempts = 0
-  if (ws) {
-    ws.close()
-    ws = null
+  if (socket) {
+    socket.disconnect()
+    socket = null
   }
 }
 

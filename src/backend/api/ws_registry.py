@@ -1,13 +1,13 @@
-"""WebSocket connection registry.
+"""Socket.IO-backed connection registry.
 
-Tracks active WebSocket connections and provides helpers for sending
-messages from both async and sync (background thread) contexts.
+Wraps a python-socketio AsyncServer instance and provides helpers for
+sending events from both async and sync (background thread) contexts.
 
-Background threads (SocketChatTask, SteppedExecutionTask, BackgroundBuilderCallbacks)
-run synchronous code but need to send to async WebSocket. This class bridges
-the gap with asyncio.run_coroutine_threadsafe().
+Background threads (WsChatTask, SteppedExecutionTask, BackgroundBuilderCallbacks)
+run synchronous code but need to emit via the async Socket.IO server.
+The send_to_sync() method bridges the gap with asyncio.run_coroutine_threadsafe().
 
-The event loop is set lazily via set_loop() — called from FastAPI's lifespan
+The event loop is set lazily via set_loop() -- called from FastAPI's lifespan
 startup hook, NOT at import time.
 """
 
@@ -17,71 +17,62 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from fastapi import WebSocket
+import socketio
 
 logger = logging.getLogger(__name__)
 
 
 class ConnectionRegistry:
-    """Track active WebSocket connections and provide send helpers."""
+    """Wrap a python-socketio AsyncServer with sync emit helpers.
 
-    def __init__(self) -> None:
+    Provides the same send_to_sync() / sleep_sync() interface that
+    WsChatTask, SteppedExecutionTask, and BackgroundBuilderCallbacks
+    rely on, but delegates to socketio.AsyncServer under the hood.
+    """
+
+    def __init__(self, sio: socketio.AsyncServer) -> None:
+        # The shared AsyncServer instance created in ws_handler.py
+        self.sio = sio
         # Event loop set lazily via set_loop() from FastAPI lifespan
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        # conn_id → (WebSocket, user_id) — user_id stored for ownership checks on reconnect
-        self._connections: Dict[str, tuple[WebSocket, str]] = {}
+        # sid -> user_id mapping for ownership checks on reconnect
+        self._user_map: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Called once from the FastAPI lifespan startup event."""
         self._loop = loop
 
-    def register(self, conn_id: str, ws: WebSocket, user_id: str) -> None:
-        """Register a new WebSocket connection with owner user_id."""
+    # -- User tracking (replaces old conn_id -> (ws, user_id) map) --
+
+    def set_user(self, sid: str, user_id: str) -> None:
+        """Record which user owns a given socket session."""
         with self._lock:
-            self._connections[conn_id] = (ws, user_id)
+            self._user_map[sid] = user_id
 
-    def unregister(self, conn_id: str) -> None:
-        """Remove a connection from the registry."""
+    def get_user_id(self, sid: str) -> Optional[str]:
+        """Return the user_id that owns this sid, or None."""
         with self._lock:
-            self._connections.pop(conn_id, None)
+            return self._user_map.get(sid)
 
-    def has(self, conn_id: str) -> bool:
-        """Check if a conn_id is currently registered."""
+    def remove_user(self, sid: str) -> None:
+        """Remove a sid from the user map (on disconnect)."""
         with self._lock:
-            return conn_id in self._connections
+            self._user_map.pop(sid, None)
 
-    def get_user_id(self, conn_id: str) -> Optional[str]:
-        """Return the user_id that owns this conn_id, or None if not found."""
-        with self._lock:
-            entry = self._connections.get(conn_id)
-            return entry[1] if entry else None
+    # -- Emit helpers --
 
-    def rebind(self, conn_id: str, ws: WebSocket) -> None:
-        """Rebind a conn_id to a new WebSocket (reconnection).
+    async def send_to(self, sid: str, event: str, payload: dict) -> None:
+        """Emit an event to a specific client (async context)."""
+        try:
+            await self.sio.emit(event, payload, to=sid)
+        except Exception as exc:
+            logger.warning("send_to failed for sid=%s event=%s: %s", sid, event, exc)
 
-        Preserves the original user_id ownership.
-        """
-        with self._lock:
-            entry = self._connections.get(conn_id)
-            if entry:
-                self._connections[conn_id] = (ws, entry[1])
-
-    async def send_to(self, conn_id: str, event: str, payload: dict) -> None:
-        """Send JSON message to a specific connection (async context)."""
-        with self._lock:
-            entry = self._connections.get(conn_id)
-        ws = entry[0] if entry else None
-        if ws:
-            try:
-                await ws.send_json({"type": event, "payload": payload})
-            except Exception as exc:
-                logger.warning("send_to failed for conn_id=%s event=%s: %s", conn_id, event, exc)
-
-    def send_to_sync(self, conn_id: str, event: str, payload: dict) -> None:
-        """Send from a background thread (sync context).
+    def send_to_sync(self, sid: str, event: str, payload: dict) -> None:
+        """Emit from a background thread (sync context).
 
         Uses asyncio.run_coroutine_threadsafe() to dispatch to the event loop.
         Short timeout + swallowed exceptions so a dead connection doesn't
@@ -91,13 +82,13 @@ class ConnectionRegistry:
             return
         try:
             future = asyncio.run_coroutine_threadsafe(
-                self.send_to(conn_id, event, payload),
+                self.sio.emit(event, payload, to=sid),
                 self._loop,
             )
             future.result(timeout=0.5)  # Short timeout for streaming hot path
         except Exception as exc:
-            logger.warning("send_to_sync failed for conn_id=%s event=%s: %s", conn_id, event, exc)
+            logger.warning("send_to_sync failed for sid=%s event=%s: %s", sid, event, exc)
 
     def sleep_sync(self, seconds: float) -> None:
-        """Non-blocking sleep from background thread (replaces socketio.sleep)."""
+        """Non-blocking sleep from background thread."""
         time.sleep(seconds)

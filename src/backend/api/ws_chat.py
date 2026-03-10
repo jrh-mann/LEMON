@@ -1,8 +1,8 @@
-"""WebSocket chat workflow for the API server.
+"""Socket.IO chat workflow for the API server.
 
-Replaces socket_chat.py — uses ConnectionRegistry + conn_id instead of
-SocketIO + sid. Background threads use registry.send_to_sync() to emit
-events to the async WebSocket.
+Background threads use registry.send_to_sync(sid, event, payload) to emit
+events via the python-socketio AsyncServer. The conn_id parameter throughout
+this module is the Socket.IO session ID (sid).
 """
 
 from __future__ import annotations

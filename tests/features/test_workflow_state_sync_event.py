@@ -10,7 +10,7 @@ def test_backend_emits_combined_workflow_state_event():
 
 def test_frontend_registers_combined_workflow_state_handler():
     content = Path("src/frontend/src/api/socket-handlers/workflowHandlers.ts").read_text(encoding="utf-8")
-    assert "handlers['workflow_state_updated']" in content
+    assert "'workflow_state_updated'" in content
     assert "applyWorkflowStateUpdate" in content
     assert "setFlowchartSilent" in content
     assert "setAnalysis" in content
