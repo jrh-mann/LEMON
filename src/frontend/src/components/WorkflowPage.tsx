@@ -19,7 +19,7 @@ import { hydrateWorkflowDetail } from '../utils/workflowHydration'
 import { sendChatMessage } from '../api/socket'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
-import type { WorkflowAnalysis, Workflow } from '../types'
+
 import '../styles/HomePage.css'
 
 export default function WorkflowPage() {

@@ -92,7 +92,7 @@ function ValidationFlow() {
 
   // Get possible outputs from workflow
   const possibleOutputs = currentAnalysis?.outputs
-    ?.map((output) => output.value || output.name)
+    ?.map((output) => output.name)
     .filter((value): value is string => Boolean(value)) || []
 
   // Start validation session

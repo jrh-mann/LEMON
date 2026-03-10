@@ -33,12 +33,8 @@ _MODEL_MAX_TOKENS: Dict[str, int] = {
 
 
 def _cap_max_tokens(requested: int) -> int:
-    """Cap max_tokens to the model's limit. Falls back to 128000 for unknown models."""
-    model = get_anthropic_model().lower()
-    for fragment, limit in _MODEL_MAX_TOKENS.items():
-        if fragment in model:
-            return min(requested, limit)
-    return requested
+    """Return a high max_tokens value to avoid hitting limits with extended thinking."""
+    return 128000
 
 
 def _retry_api_call(

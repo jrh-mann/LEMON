@@ -36,16 +36,32 @@ _GUIDANCE_PROMPT = (
     "with enough multi-step logic (treatment escalation, scoring, assessment) to "
     "become its own standalone workflow. If yes, write a detailed brief describing "
     "what that subworkflow would compute — its inputs, step-by-step logic, and output.\n\n"
-    "Return a JSON array (empty [] if nothing found). Each item:\n"
+    "Also identify the ROOT NODE of the flowchart — the first real node after Start.\n"
+    "- The root is the node with ONLY OUTGOING edges (no incoming edges from other flowchart nodes).\n"
+    "- It may have a unique colour or shape, but not always.\n"
+    "- Do NOT pick the node that seems most clinically/logically important. "
+    "\"Primary\" does not always mean \"first\". Determine the root by STRUCTURE "
+    "(arrow direction, which node has only outgoing edges), NOT by domain importance.\n"
+    "- After identifying the root, list ALL of its outgoing edges and where they lead.\n\n"
+    "Return a JSON object with two keys:\n"
     "```\n"
     "{\n"
-    '  "text": "exact text as written in the image",\n'
-    '  "location": "where it appears (e.g. green box, right side)",\n'
-    '  "category": "clarification|definition|constraint|note|legend|treatment_detail|criteria",\n'
-    '  "linked_to": "exact label of the node this references, or null",\n'
-    '  "link_type": "asterisk|footnote|arrow|color_group|proximity, or null",\n'
-    '  "subworkflow_candidate": true/false,\n'
-    '  "subworkflow_brief": "detailed description of subworkflow logic, or null"\n'
+    '  "root_node": {\n'
+    '    "label": "exact label of the root node",\n'
+    '    "type": "decision|process|calculation",\n'
+    '    "outgoing_edges": ["description of each outgoing edge and where it leads"]\n'
+    "  },\n"
+    '  "guidance": [\n'
+    "    {\n"
+    '      "text": "exact text as written in the image",\n'
+    '      "location": "where it appears (e.g. green box, right side)",\n'
+    '      "category": "clarification|definition|constraint|note|legend|treatment_detail|criteria",\n'
+    '      "linked_to": "exact label of the node this references, or null",\n'
+    '      "link_type": "asterisk|footnote|arrow|color_group|proximity, or null",\n'
+    '      "subworkflow_candidate": true/false,\n'
+    '      "subworkflow_brief": "detailed description of subworkflow logic, or null"\n'
+    "    }\n"
+    "  ]\n"
     "}\n"
     "```\n"
     "Return JSON only, no other text."
@@ -145,31 +161,49 @@ class ExtractGuidanceTool(Tool):
             logger.warning("Guidance extraction LLM call failed: %s", exc)
             return {"success": False, "error": f"LLM call failed: {exc}"}
 
-        # Parse JSON array — strip code fences if present
+        # Parse JSON — strip code fences if present
         text = raw_response.strip()
         if text.startswith("```") and text.endswith("```"):
             text = text.strip("`").strip()
             if text.lower().startswith("json"):
                 text = text[4:].strip()
 
-        start = text.find("[")
-        if start == -1:
-            logger.debug("No JSON array found in guidance response")
-            return {"success": True, "guidance": []}
+        # Try parsing as object first (new format), fall back to array (legacy)
+        root_node = None
+        guidance_items: list = []
+
+        start_obj = text.find("{")
+        start_arr = text.find("[")
 
         try:
-            parsed = json.loads(text[start:])
+            if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+                # New format: {"root_node": {...}, "guidance": [...]}
+                parsed = json.loads(text[start_obj:])
+                if isinstance(parsed, dict):
+                    root_node = parsed.get("root_node")
+                    guidance_items = parsed.get("guidance", [])
+            elif start_arr != -1:
+                # Legacy format: bare JSON array
+                guidance_items = json.loads(text[start_arr:])
+            else:
+                logger.debug("No JSON found in guidance response")
+                return {"success": True, "guidance": []}
         except json.JSONDecodeError:
             logger.warning("Failed to parse guidance JSON")
             return {"success": True, "guidance": []}
 
-        # Validate and normalize items
+        # Validate and normalize guidance items
         valid = []
-        for item in parsed:
+        for item in guidance_items:
             if isinstance(item, dict) and "text" in item:
                 item.setdefault("linked_to", None)
                 item.setdefault("link_type", None)
                 valid.append(item)
 
         logger.info("Extracted %d guidance items from %s", len(valid), image_path.name)
-        return {"success": True, "guidance": valid}
+
+        result: Dict[str, Any] = {"success": True, "guidance": valid}
+        if root_node and isinstance(root_node, dict):
+            result["root_node"] = root_node
+            logger.info("Root node identified: %s", root_node.get("label", "?"))
+        return result

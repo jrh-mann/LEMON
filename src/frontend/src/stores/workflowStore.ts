@@ -173,6 +173,7 @@ const persistWorkflowGraph = async (
   workflowId: string | undefined,
   flowchart: Flowchart,
   analysis: WorkflowAnalysis | null,
+  outputType?: string,
 ) => {
   if (!workflowId) return
   try {
@@ -181,7 +182,7 @@ const persistWorkflowGraph = async (
       edges: flowchart.edges,
       variables: analysis?.variables,
       outputs: analysis?.outputs,
-      output_type: analysis?.output_type,
+      output_type: outputType,
     })
     console.log('[WorkflowStore] Synced workflow graph to backend')
   } catch (error) {
@@ -256,7 +257,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setFlowchartSilent: (flowchart) => set({ flowchart }),
   persistFlowchart: async () => {
     const state = get()
-    await persistWorkflowGraph(state.currentWorkflow?.id, state.flowchart, state.currentAnalysis)
+    await persistWorkflowGraph(state.currentWorkflow?.id, state.flowchart, state.currentAnalysis, state.currentWorkflow?.output_type)
   },
 
   setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
@@ -426,7 +427,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     void persistWorkflowGraph(state.currentWorkflow?.id, {
       ...state.flowchart,
       edges: newEdges,
-    }, state.currentAnalysis)
+    }, state.currentAnalysis, state.currentWorkflow?.output_type)
   },
 
   // Swap edge labels for decision nodes (used for batch operations)

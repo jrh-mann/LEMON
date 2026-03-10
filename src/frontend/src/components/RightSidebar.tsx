@@ -132,7 +132,6 @@ export default function RightSidebar() {
   const effectiveAnalysis: WorkflowAnalysis = currentAnalysis ?? {
     variables: [],
     outputs: [],
-    output_type: currentWorkflow?.output_type || 'string',
   }
   const isCollapsed = sidebarWidth === 0
 

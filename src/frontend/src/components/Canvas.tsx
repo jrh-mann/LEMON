@@ -111,7 +111,7 @@ function resolveDecisionEdgeLabel(
     const parts = node.condition.conditions.map(c =>
       formatSimpleCondition(c, branch, variables),
     )
-    const joiner = node.condition.operator === 'AND' ? ' & ' : ' | '
+    const joiner = node.condition.operator === 'and' ? ' & ' : ' | '
     return parts.join(joiner)
   }
 
