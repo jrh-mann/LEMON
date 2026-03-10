@@ -124,32 +124,19 @@ export default function Palette() {
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
 
-  // Parse and validate workflow JSON - handles both old and new formats
+  // Parse and validate workflow JSON — expects new export format only
   const parseWorkflowJson = useCallback((jsonString: string) => {
     const parsed = JSON.parse(jsonString)
 
-    // Detect format: new format has flowchart.nodes, old format has nodes at root
-    let nodes: unknown[]
-    let edges: unknown[]
-    let variables: unknown[] | undefined
-    let outputs: unknown[] | undefined
-
-    if (parsed.flowchart && Array.isArray(parsed.flowchart.nodes)) {
-      // New export format: { id, metadata, flowchart: { nodes, edges }, variables, outputs }
-      nodes = parsed.flowchart.nodes
-      edges = parsed.flowchart.edges || []
-      // Extract analysis data from export format
-      variables = parsed.variables || parsed.flowchart.variables
-      outputs = parsed.outputs || parsed.flowchart.outputs
-    } else if (Array.isArray(parsed.nodes)) {
-      // Old format: { nodes, edges } at root level
-      nodes = parsed.nodes
-      edges = parsed.edges || []
-      variables = parsed.variables
-      outputs = parsed.outputs
-    } else {
-      throw new Error('Invalid format: JSON must have "nodes" array (either at root or under "flowchart")')
+    // New export format: { id, metadata, flowchart: { nodes, edges }, variables, outputs }
+    if (!parsed.flowchart || !Array.isArray(parsed.flowchart.nodes)) {
+      throw new Error('Invalid format: JSON must have a "flowchart" object with a "nodes" array')
     }
+
+    const nodes: unknown[] = parsed.flowchart.nodes
+    const edges: unknown[] = parsed.flowchart.edges || []
+    const variables: unknown[] | undefined = parsed.variables || parsed.flowchart.variables
+    const outputs: unknown[] | undefined = parsed.outputs || parsed.flowchart.outputs
 
     // Validate and normalize nodes
     const validatedNodes: FlowNode[] = nodes.map((n: unknown, i: number) => {

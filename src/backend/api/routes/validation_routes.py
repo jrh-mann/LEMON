@@ -1,7 +1,6 @@
-"""Validation routes: validate workflow structure and validation stubs.
+"""Validation routes: validate workflow structure.
 
-Provides the /api/validate endpoint for pre-save structural checks
-and stub endpoints for the future validation session system.
+Provides the /api/validate endpoint for pre-save structural checks.
 """
 
 from __future__ import annotations
@@ -72,24 +71,5 @@ def register_validation_routes(app: FastAPI) -> None:
                 ],
                 "message": error_message,
             })
-
-    @router.post("/api/validation/start")
-    async def start_validation(
-        user: AuthUser = Depends(require_auth),
-    ) -> JSONResponse:
-        return JSONResponse({"error": "Validation not implemented."}, status_code=501)
-
-    @router.post("/api/validation/submit")
-    async def submit_validation(
-        user: AuthUser = Depends(require_auth),
-    ) -> JSONResponse:
-        return JSONResponse({"error": "Validation not implemented."}, status_code=501)
-
-    @router.get("/api/validation/{session_id}")
-    async def validation_status(
-        session_id: str,
-        user: AuthUser = Depends(require_auth),
-    ) -> JSONResponse:
-        return JSONResponse({"error": "Validation not implemented."}, status_code=501)
 
     app.include_router(router)

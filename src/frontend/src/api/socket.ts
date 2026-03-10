@@ -137,7 +137,6 @@ export function disconnectSocket(): void {
 export {
   sendChatMessage,
   cancelChatTask,
-  syncWorkflow,
   resumeTask,
   startWorkflowExecution,
   pauseWorkflowExecution,

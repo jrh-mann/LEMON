@@ -154,6 +154,27 @@ interface WorkflowState {
 
 const emptyFlowchart: Flowchart = { nodes: [], edges: [] }
 
+/** Create a blank Workflow shell with all required fields populated. */
+function createEmptyWorkflow(id = '', name = 'New Workflow'): Workflow {
+  const now = new Date().toISOString()
+  return {
+    id,
+    metadata: {
+      name,
+      description: '',
+      tags: [],
+      created_at: now,
+      updated_at: now,
+      validation_score: 0,
+      validation_count: 0,
+      confidence: 'none',
+      is_validated: false,
+    },
+    blocks: [],
+    connections: [],
+  }
+}
+
 // Default execution state
 const initialExecutionState: ExecutionState = {
   isExecuting: false,
@@ -196,12 +217,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   isLoadingWorkflows: false,
 
   // ID starts empty — WorkflowPage sets it from the URL (single source of truth)
-  currentWorkflow: {
-    id: '',
-    metadata: { name: 'New Workflow' },
-    blocks: [],
-    connections: [],
-  } as unknown as Workflow,
+  currentWorkflow: createEmptyWorkflow(),
   flowchart: emptyFlowchart,
   currentAnalysis: null,
   conversationId: null,
@@ -237,12 +253,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setCurrentWorkflowId: (workflowId) => set((state) => {
     const workflow = state.currentWorkflow
       ? { ...state.currentWorkflow, id: workflowId }
-      : {
-        id: workflowId,
-        metadata: { name: '' },
-        blocks: [],
-        connections: [],
-      } as unknown as Workflow
+      : createEmptyWorkflow(workflowId, '')
     return { currentWorkflow: workflow }
   }),
 
@@ -578,12 +589,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   reset: () =>
     set({
       // ID starts empty — WorkflowPage sets it from the URL
-      currentWorkflow: {
-        id: '',
-        metadata: { name: 'New Workflow' },
-        blocks: [],
-        connections: [],
-      } as unknown as Workflow,
+      currentWorkflow: createEmptyWorkflow(),
       flowchart: emptyFlowchart,
       currentAnalysis: null,
       conversationId: null,

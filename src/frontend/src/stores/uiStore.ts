@@ -29,8 +29,6 @@ interface UIState {
 
   // Canvas zoom
   zoom: number
-  panX: number
-  panY: number
 
   // Chat panel height (for dynamic workspace sizing)
   chatHeight: number
@@ -71,7 +69,6 @@ interface UIState {
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
-  setPan: (x: number, y: number) => void
 
   // Chat
   setChatHeight: (height: number) => void
@@ -115,8 +112,6 @@ export const useUIStore = create<UIState>((set) => ({
   loadingMessage: null,
   error: null,
   zoom: 1,
-  panX: 0,
-  panY: 0,
   chatHeight: 280,
   devMode: typeof localStorage !== 'undefined' && localStorage.getItem('devMode') === 'true',
   selectedToolCall: null,
@@ -167,9 +162,7 @@ export const useUIStore = create<UIState>((set) => ({
       zoom: Math.max(MIN_ZOOM, state.zoom - ZOOM_STEP),
     })),
 
-  resetZoom: () => set({ zoom: 1, panX: 0, panY: 0 }),
-
-  setPan: (x, y) => set({ panX: x, panY: y }),
+  resetZoom: () => set({ zoom: 1 }),
 
   // Chat
   setChatHeight: (height) => set({ chatHeight: height }),
@@ -223,8 +216,6 @@ export const useUIStore = create<UIState>((set) => ({
       loadingMessage: null,
       error: null,
       zoom: 1,
-      panX: 0,
-      panY: 0,
       chatHeight: 280,
       workspaceRevealed: false,
       homeExited: false,

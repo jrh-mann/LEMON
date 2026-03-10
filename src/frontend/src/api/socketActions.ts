@@ -2,7 +2,7 @@
  * WebSocket action functions — send messages to the backend.
  * Separated from connection management for clean separation of concerns.
  *
- * Exports: sendChatMessage, cancelChatTask, syncWorkflow,
+ * Exports: sendChatMessage, cancelChatTask, resumeTask,
  *          startWorkflowExecution, pauseWorkflowExecution,
  *          resumeWorkflowExecution, stopWorkflowExecution
  */
@@ -103,53 +103,6 @@ export function cancelChatTask(taskId: string): void {
     return
   }
   sendMessage('cancel_task', { task_id: taskId })
-}
-
-/**
- * Sync workflow to backend session (fire-and-forget for upload/library).
- * Chat messages now carry workflow atomically, so this is only needed for non-chat syncs.
- */
-export function syncWorkflow(source: 'upload' | 'library' | 'manual' = 'manual'): void {
-  if (!isConnected()) {
-    console.warn('[WS] Cannot sync workflow: not connected')
-    return
-  }
-
-  const chatStore = useChatStore.getState()
-  const workflowStore = useWorkflowStore.getState()
-
-  // Ensure conversationId exists for the active workflow
-  const activeWfId = workflowStore.currentWorkflow?.id || chatStore.activeWorkflowId
-  const conversationIdVal = activeWfId
-    ? chatStore.ensureConversationId(activeWfId)
-    : null
-
-  if (!conversationIdVal) {
-    console.error('[WS] Failed to generate conversation ID')
-    return
-  }
-
-  const workflow = {
-    nodes: workflowStore.flowchart.nodes,
-    edges: workflowStore.flowchart.edges,
-  }
-
-  const analysis = workflowStore.currentAnalysis
-
-  console.log('[WS] Syncing workflow to backend:', {
-    source,
-    conversationId: conversationIdVal,
-    nodes: workflow.nodes.length,
-    edges: workflow.edges.length,
-    variables: analysis?.variables?.length ?? 0,
-  })
-
-  sendMessage('sync_workflow', {
-    conversation_id: conversationIdVal,
-    workflow,
-    analysis,
-    source,
-  })
 }
 
 /**

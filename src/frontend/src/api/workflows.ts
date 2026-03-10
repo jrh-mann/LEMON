@@ -7,6 +7,10 @@ import type {
   DomainsResponse,
   CreateWorkflowRequest,
   CreateWorkflowResponse,
+  FlowNode,
+  FlowEdge,
+  WorkflowVariable,
+  WorkflowOutput,
 } from '../types'
 
 // List all workflows (returns summaries, not full workflows)
@@ -39,10 +43,10 @@ export async function updateWorkflow(
 // Incrementally patch a workflow without changing draft status
 // Use this for UI-triggered changes (edge labels, node positions, etc.)
 export interface PatchWorkflowRequest {
-  nodes?: any[]
-  edges?: any[]
-  variables?: any[]
-  outputs?: any[]
+  nodes?: FlowNode[]
+  edges?: FlowEdge[]
+  variables?: WorkflowVariable[]
+  outputs?: WorkflowOutput[]
   output_type?: string
 }
 
