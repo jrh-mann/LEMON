@@ -18,6 +18,8 @@ from .system_prompt import build_system_prompt
 from .tool_schemas import tool_descriptions
 from ..utils.cancellation import CancellationError
 from ..validation.workflow_validator import WorkflowValidator
+from ..events.bus import EventBus
+from ..events.types import TOOL_STARTED, TOOL_COMPLETED, TOOL_BATCH_COMPLETE
 
 
 @dataclass
@@ -32,8 +34,11 @@ class ToolResult:
 class Orchestrator:
     """Minimal orchestrator that uses the LLM to choose tools."""
 
-    def __init__(self, tools: ToolRegistry):
+    def __init__(self, tools: ToolRegistry, event_bus: Optional[EventBus] = None):
         self.tools = tools
+        # In-process event bus for decoupled tool/state notifications.
+        # A default instance is created if none is injected.
+        self.event_bus: EventBus = event_bus or EventBus()
 
         # Single canonical workflow dict (nodes + edges + variables + outputs)
         self.workflow: Dict[str, Any] = {
@@ -303,6 +308,9 @@ class Orchestrator:
             json.dumps(args, ensure_ascii=True),
         )
 
+        # Notify subscribers that a tool is about to execute
+        self.event_bus.emit(TOOL_STARTED, {"tool": tool_name, "args": args})
+
         if self._use_mcp:
             # MCP mode: Only pass serializable data (workflow_store can't be serialized)
             # The MCP server should have its own workflow_store instance
@@ -375,6 +383,14 @@ class Orchestrator:
             guidance_items = result.data.get("guidance")
             if isinstance(guidance_items, list):
                 self._guidance = guidance_items
+
+        # Notify subscribers that tool execution completed
+        self.event_bus.emit(TOOL_COMPLETED, {
+            "tool": tool_name,
+            "args": args,
+            "result": result.data,
+            "success": result.success,
+        })
 
         return result
 
@@ -887,6 +903,8 @@ class Orchestrator:
 
             if on_tool_event:
                 on_tool_event("tool_batch_complete", "", {}, None)
+            # Notify event bus that the batch of tool calls is complete
+            self.event_bus.emit(TOOL_BATCH_COMPLETE, {})
 
             # ask_question was called — don't call LLM again, wait for user's answer
             if asked_question:
