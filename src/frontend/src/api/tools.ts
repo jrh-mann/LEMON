@@ -1,5 +1,5 @@
 /**
- * API functions for MCP tool listing and execution.
+ * API functions for tool listing and execution.
  * Used by the DevTools panel for tool exploration and testing.
  */
 
@@ -24,17 +24,17 @@ export interface ToolDefinition {
 }
 
 /**
- * Fetch all available MCP tools with their schemas.
+ * Fetch all available tools with their schemas.
  */
-export async function listMCPTools(): Promise<ToolDefinition[]> {
+export async function listTools(): Promise<ToolDefinition[]> {
     const response = await api.get<{ tools: ToolDefinition[] }>('/api/tools')
     return response.tools || []
 }
 
 /**
- * Execute an MCP tool with the provided arguments.
+ * Execute a tool with the provided arguments.
  */
-export async function executeMCPTool(
+export async function executeTool(
     toolName: string,
     args: Record<string, unknown>
 ): Promise<{ success: boolean; result?: unknown; error?: string }> {

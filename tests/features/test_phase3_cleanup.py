@@ -24,6 +24,9 @@ class TestDeletedModulesGone:
         "src.backend.storage.history",
         "src.backend.validation.tree_validator",
         "src.backend.validation.retry_harness",
+        "src.backend.mcp_bridge",
+        "src.backend.mcp_bridge.server",
+        "src.backend.mcp_bridge.client",
     ])
     def test_deleted_module_not_importable(self, module: str):
         with pytest.raises(ModuleNotFoundError):
@@ -41,7 +44,6 @@ class TestRemainingModulesImport:
         "src.backend.api.ws_chat",
         "src.backend.api.response_utils",
         "src.backend.api.tool_summaries",
-        "src.backend.mcp_bridge.server",
         "src.backend.tools",
         "src.backend.tools.workflow_analysis",
         "src.backend.validation",

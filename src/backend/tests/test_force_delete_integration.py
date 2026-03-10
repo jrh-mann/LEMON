@@ -22,12 +22,6 @@ def _repo_root() -> Path:
     return Path(__file__).parent.parent.parent.parent
 
 
-# Disable MCP for these tests to ensure direct tool execution
-@pytest.fixture(autouse=True)
-def disable_mcp(monkeypatch):
-    """Disable MCP mode for all tests in this module."""
-    monkeypatch.setenv("LEMON_USE_MCP", "false")
-
 
 @pytest.fixture
 def orchestrator_with_workflow(tmp_path):

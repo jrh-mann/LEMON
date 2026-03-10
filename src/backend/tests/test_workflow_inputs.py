@@ -26,12 +26,6 @@ def _repo_root() -> Path:
     return Path(__file__).parent.parent.parent.parent
 
 
-# Disable MCP for these tests to ensure direct tool execution
-@pytest.fixture(autouse=True)
-def disable_mcp(monkeypatch):
-    """Disable MCP mode for all tests in this module."""
-    monkeypatch.setenv("LEMON_USE_MCP", "false")
-
 
 @pytest.fixture
 def orchestrator_with_workflow(tmp_path):
@@ -271,7 +265,7 @@ class TestWorkflowVariableManagement:
                 assert "condition" not in node
 
     def test_remove_variable_force_as_string_boolean(self, orchestrator_with_workflow):
-        """Test that force parameter works when passed as string 'true' (MCP compatibility)."""
+        """Test that force parameter works when passed as string 'true' (JSON compatibility)."""
         orch = orchestrator_with_workflow
 
         # Add variable
@@ -289,7 +283,7 @@ class TestWorkflowVariableManagement:
         })
         assert result2.success
 
-        # Remove variable with force as STRING "true" (simulating MCP JSON deserialization)
+        # Remove variable with force as STRING "true" (simulating JSON deserialization)
         result = orch.run_tool("remove_workflow_variable", {"name": "Patient Age", "force": "true"})
 
         print(f"\n[DEBUG] Remove with force='true' (string): {json.dumps(result.data, indent=2)}")

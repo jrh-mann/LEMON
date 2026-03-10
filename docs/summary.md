@@ -62,7 +62,6 @@ LEMON/
 │   │   │   ├── parser.py           # Workflow parsing
 │   │   │   └── types.py            # Block types
 │   │   ├── llm/                    # LLM client abstraction
-│   │   ├── mcp_bridge/             # Model Context Protocol
 │   │   ├── storage/                # SQLite persistence
 │   │   └── utils/                  # Utilities (flowchart, tokens, uploads, etc.)
 │   └── frontend/                   # React + TypeScript
@@ -98,7 +97,7 @@ LEMON/
 - Flask + python-socketio (real-time communication)
 - Anthropic Claude API (claude-sonnet-4-20250514)
 - SQLite (auth + workflow storage)
-- MCP (Model Context Protocol) for tool interoperability
+
 
 **Frontend:**
 - React 19 + TypeScript
@@ -482,7 +481,7 @@ The `ensure_workflow_analysis()` helper in `tools/workflow_input/helpers.py` aut
 
 ### Dev Tools & Experience
 1. **Dev Tools Sidebar**: Moved Developer Tools to a dedicated "Dev Mode" in the Left Sidebar, replacing the Palette when active.
-2. **Tool Inspector**: New "Tools" tab in Dev Tools to browse and execute MCP tools directly from the UI.
+2. **Tool Inspector**: New "Tools" tab in Dev Tools to browse and execute tools directly from the UI.
 3. **Execution Logging**: 
     - Enhanced indentation for nested subflows (client-side stack tracking).
     - Visual separation of "Entering Subflow" headers and indented content.

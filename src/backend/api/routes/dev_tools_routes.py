@@ -1,4 +1,4 @@
-"""Dev tools routes: list and execute MCP tools.
+"""Dev tools routes: list and execute tools.
 
 Provides REST endpoints for the DevTools panel to enumerate
 available tools and execute them with provided arguments.
@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import anyio
 from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse
 
@@ -39,18 +38,39 @@ def register_dev_tools_routes(
     async def list_tools(
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
-        """List all available MCP tools with their schemas.
+        """List all available tools with their schemas.
 
         Returns array of tools, each with name, description, and inputSchema.
         Used by the DevTools panel to show available tools for execution.
         """
-        from ...mcp_bridge.client import list_mcp_tools
+        from ...tools import build_tool_registry
 
         try:
-            tools = await anyio.to_thread.run_sync(list_mcp_tools)
+            registry = build_tool_registry(repo_root)
+            tools = []
+            for tool in registry.all_tools():
+                # Convert List[ToolParameter] to JSON Schema format
+                properties = {}
+                required_params = []
+                for param in tool.parameters:
+                    properties[param.name] = {
+                        "type": param.type,
+                        "description": param.description,
+                    }
+                    if param.required:
+                        required_params.append(param.name)
+                tools.append({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required_params,
+                    },
+                })
             return JSONResponse({"tools": tools})
         except Exception as e:
-            logger.exception("Failed to list MCP tools: %s", e)
+            logger.exception("Failed to list tools: %s", e)
             return JSONResponse({"error": str(e), "tools": []}, status_code=500)
 
     @router.post("/api/tools/{tool_name}/execute")
@@ -59,7 +79,7 @@ def register_dev_tools_routes(
         request: Request,
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
-        """Execute an MCP tool with the provided arguments.
+        """Execute a tool with the provided arguments.
 
         Request body should contain the tool arguments as JSON.
         The user_id and session_state are automatically injected from the

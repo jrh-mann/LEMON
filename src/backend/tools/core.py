@@ -83,6 +83,10 @@ class ToolRegistry:
         """Register a tool under its canonical name."""
         self._tools[tool.name] = tool
 
+    def all_tools(self) -> List[Tool]:
+        """Return all registered tools in alphabetical order by name."""
+        return sorted(self._tools.values(), key=lambda t: t.name)
+
     def execute(self, name: str, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         tool = self._tools.get(name)
         if tool is None:

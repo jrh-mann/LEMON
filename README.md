@@ -27,21 +27,19 @@ cd src/frontend && npm install
 
 ### Running
 
-Start all servers (backend, MCP, frontend) with one command:
+Start all servers (backend and frontend) with one command:
 
 ```bash
 ./scripts/dev.sh
 ```
 
 - **Backend API:** http://localhost:5001
-- **MCP Server:** http://localhost:8000
 - **Frontend:** http://localhost:5173
 
 Or start individually:
 
 ```bash
 python run_api.py      # backend
-python run_mcp.py      # MCP server
 cd src/frontend && npx vite --host   # frontend
 ```
 
@@ -55,7 +53,6 @@ LEMON/
 │   │   ├── api/           # FastAPI routes, WebSocket handlers
 │   │   ├── execution/     # Workflow interpreter and evaluator
 │   │   ├── llm/           # Anthropic API wrapper
-│   │   ├── mcp/           # MCP server bridge
 │   │   ├── storage/       # SQLite persistence
 │   │   ├── tools/         # LLM tool implementations
 │   │   ├── utils/         # Logging, validation helpers
@@ -74,7 +71,6 @@ LEMON/
 ├── scripts/               # Dev scripts (dev.sh, etc.)
 ├── evals/                 # Evaluation framework and scoring
 ├── run_api.py             # Backend entry point
-├── run_mcp.py             # MCP server entry point
 └── pyproject.toml         # Project config and dependencies
 ```
 
