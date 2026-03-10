@@ -244,6 +244,30 @@ class Orchestrator:
                 len(edges)
             )
 
+    def refresh_workflow_from_db(self) -> None:
+        """Reload workflow state from database after tool calls.
+
+        Tools already load from DB, modify, and save back. This method
+        reads the persisted state so the orchestrator's in-memory cache
+        matches what tools wrote, eliminating manual per-tool sync code.
+        """
+        if not self.workflow_store or not self.current_workflow_id:
+            return
+        try:
+            record = self.workflow_store.get_workflow(
+                self.current_workflow_id, self.user_id
+            )
+        except Exception as exc:
+            self._logger.error("refresh_workflow_from_db failed: %s", exc)
+            return
+        if not record:
+            return
+        # WorkflowRecord uses 'inputs' for variables (DB column name).
+        self.workflow["nodes"] = record.nodes or []
+        self.workflow["edges"] = record.edges or []
+        self.workflow["variables"] = record.inputs or []
+        self.workflow["outputs"] = record.outputs or []
+
     def sync_workflow_analysis(
         self,
         analysis_provider: Optional[Callable[[], Dict[str, Any]]] = None
@@ -336,17 +360,16 @@ class Orchestrator:
             json.dumps(result.data, ensure_ascii=True),
         )
 
-        # Update current_workflow if this was a successful workflow manipulation tool
-        if result.success:
-            if tool_name in WORKFLOW_EDIT_TOOLS:
-                self._update_workflow_from_tool_result(tool_name, result.data)
-                # Post-tool structural validation (non-strict: workflow is still being built).
-                # Hard-fail so the LLM sees the error and can call corrective tools.
-                result = self._post_tool_validate(result)
+        # Refresh in-memory state from DB after any tool that modifies the workflow.
+        # Tools already save to DB; this replaces 100+ lines of manual per-tool sync.
+        if result.success and tool_name in (WORKFLOW_EDIT_TOOLS | WORKFLOW_INPUT_TOOLS):
+            self.refresh_workflow_from_db()
 
-            # Update workflow_analysis if this was a successful input management tool
-            if tool_name in WORKFLOW_INPUT_TOOLS:
-                self._update_analysis_from_tool_result(tool_name, result.data)
+            # Post-tool structural validation for edit tools (non-strict: workflow
+            # is still being built). Hard-fail so the LLM sees the error and can
+            # call corrective tools.
+            if tool_name in WORKFLOW_EDIT_TOOLS:
+                result = self._post_tool_validate(result)
 
 
         # Persist guidance notes from extract_guidance so they survive history
@@ -384,77 +407,6 @@ class Orchestrator:
         if result.message:
             return result.message
         return f"Tool error ({result.tool})"
-
-    def _update_workflow_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update workflow structure based on successful tool execution.
-
-        Also syncs derived variables (from calc/subprocess nodes) that tools
-        return via 'new_variables' and 'removed_variable_ids' keys.
-        """
-        if tool_name == "add_node":
-            node = result.get("node")
-            if node:
-                self.workflow["nodes"].append(node)
-            # Sync auto-registered variables (calc/subprocess output vars)
-            for var in result.get("new_variables", []):
-                self.workflow["variables"].append(var)
-
-        elif tool_name == "modify_node":
-            node = result.get("node")
-            if node:
-                nodes = self.workflow["nodes"]
-                for i, n in enumerate(nodes):
-                    if n["id"] == node["id"]:
-                        nodes[i] = node
-                        break
-            # Sync derived variable removals (e.g. calc output renamed, type changed)
-            for var_id in result.get("removed_variable_ids", []):
-                self.workflow["variables"] = [
-                    v for v in self.workflow["variables"] if v.get("id") != var_id
-                ]
-            # Sync newly-created derived variables
-            for var in result.get("new_variables", []):
-                self.workflow["variables"].append(var)
-
-        elif tool_name == "delete_node":
-            node_id = result.get("node_id")
-            if node_id:
-                self.workflow["nodes"] = [
-                    n for n in self.workflow["nodes"] if n["id"] != node_id
-                ]
-                self.workflow["edges"] = [
-                    e for e in self.workflow["edges"]
-                    if e["from"] != node_id and e["to"] != node_id
-                ]
-            # Remove derived variables whose producing node was deleted
-            for var_id in result.get("removed_variable_ids", []):
-                self.workflow["variables"] = [
-                    v for v in self.workflow["variables"] if v.get("id") != var_id
-                ]
-
-        elif tool_name == "add_connection":
-            edge = result.get("edge")
-            if edge:
-                self.workflow["edges"].append(edge)
-
-        elif tool_name == "delete_connection":
-            from_id = result.get("from_node_id")
-            to_id = result.get("to_node_id")
-            if from_id and to_id:
-                self.workflow["edges"] = [
-                    e for e in self.workflow["edges"]
-                    if not (e["from"] == from_id and e["to"] == to_id)
-                ]
-
-        elif tool_name == "batch_edit_workflow":
-            new_workflow = result.get("workflow")
-            if new_workflow:
-                self.workflow["nodes"] = new_workflow.get("nodes", [])
-                self.workflow["edges"] = new_workflow.get("edges", [])
-            # Sync variables if batch edit auto-registered calc/subprocess outputs
-            wa = result.get("workflow_analysis", {})
-            if "variables" in wa:
-                self.workflow["variables"] = wa["variables"]
 
     # Shared validator instance for post-tool checks (non-strict).
     _workflow_validator = WorkflowValidator()
@@ -497,42 +449,6 @@ class Orchestrator:
             message="",
             error=f"Workflow validation failed after tool execution: {error_text}",
         )
-
-    def _update_analysis_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update workflow metadata based on successful input tool execution.
-
-        Tools modify session_state["workflow_analysis"] directly (by reference).
-        Tools also return workflow_analysis in their response for explicit sync.
-        """
-        if tool_name in WORKFLOW_INPUT_TOOLS:
-            # Extract workflow_analysis from response and sync
-            if "workflow_analysis" in result:
-                returned_analysis = result["workflow_analysis"]
-                if isinstance(returned_analysis, dict):
-                    if "variables" in returned_analysis:
-                        self.workflow["variables"] = returned_analysis["variables"]
-                    if "outputs" in returned_analysis:
-                        self.workflow["outputs"] = returned_analysis["outputs"]
-                    self._logger.debug(
-                        "Synced workflow_analysis from tool result: %d variables, %d outputs",
-                        len(self.workflow.get("variables", [])),
-                        len(self.workflow.get("outputs", [])),
-                    )
-
-            # CRITICAL: Also sync current_workflow if tool modified nodes/edges
-            # (e.g., remove_workflow_variable with force=true clears conditions from nodes)
-            if "current_workflow" in result:
-                returned_workflow = result["current_workflow"]
-                if isinstance(returned_workflow, dict):
-                    if "nodes" in returned_workflow:
-                        self.workflow["nodes"] = returned_workflow["nodes"]
-                    if "edges" in returned_workflow:
-                        self.workflow["edges"] = returned_workflow["edges"]
-                    self._logger.debug(
-                        "Synced current_workflow from tool result: %d nodes, %d edges",
-                        len(self.workflow.get("nodes", [])),
-                        len(self.workflow.get("edges", [])),
-                    )
 
     def respond(
         self,
