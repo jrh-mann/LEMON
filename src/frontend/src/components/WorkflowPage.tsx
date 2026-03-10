@@ -168,8 +168,9 @@ export default function WorkflowPage() {
                                 timestamp: m.timestamp,
                                 tool_calls: m.tool_calls || [],
                             }))
-                        // Use backend if it has more messages (caught responses we missed)
-                        if (backendMessages.length > localMessages.length) {
+                        // Always prefer backend when it has at least as many messages —
+                        // it's the source of truth and may have responses we missed.
+                        if (backendMessages.length >= localMessages.length) {
                             cs.setMessages(workflowId, backendMessages)
                         }
                     }

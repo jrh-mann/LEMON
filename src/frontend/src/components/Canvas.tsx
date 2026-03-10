@@ -29,9 +29,9 @@ const COMPARATOR_SYMBOL: Record<string, { true: string; false: string }> = {
   lte:   { true: '≤',  false: '>' },
   gt:    { true: '>',  false: '≤' },
   gte:   { true: '≥',  false: '<' },
-  // Boolean
-  is_true:  { true: '= Yes', false: '= No' },
-  is_false: { true: '= No',  false: '= Yes' },
+  // Boolean — just show True / False
+  is_true:  { true: 'True',  false: 'False' },
+  is_false: { true: 'False', false: 'True' },
   // String
   str_eq:          { true: '=',  false: '≠' },
   str_neq:         { true: '≠',  false: '=' },
@@ -69,9 +69,20 @@ function formatSimpleCondition(
       : `${varName} outside ${lo}–${hi}`
   }
 
-  // Boolean comparators don't need a value
+  // Boolean comparators — just show True / False
   if (cond.comparator === 'is_true' || cond.comparator === 'is_false') {
-    return `${varName} ${sym}`
+    return sym
+  }
+
+  // Enum comparators — show the matching value on the match branch,
+  // and the other enum value(s) on the non-match branch.
+  if (cond.comparator === 'enum_eq' || cond.comparator === 'enum_neq') {
+    const val = cond.value ?? '?'
+    const isMatch = (cond.comparator === 'enum_eq') === (branch === 'true')
+    if (isMatch) return String(val)
+    // Show the other enum value(s) instead of "Not {val}"
+    const others = (variable?.enum_values ?? []).filter(v => v !== val)
+    return others.length ? others.join(' | ') : `Not ${val}`
   }
 
   const val = cond.value ?? '?'
@@ -94,11 +105,13 @@ function resolveDecisionEdgeLabel(
   if (!branch) return null
 
   if (isCompoundCondition(node.condition)) {
-    // Compound: join sub-conditions with AND/OR
+    // Compound: true branch shows concise conditions joined with & / |,
+    // false branch just shows "Else" since negating a compound is confusing.
+    if (branch === 'false') return 'Else'
     const parts = node.condition.conditions.map(c =>
       formatSimpleCondition(c, branch, variables),
     )
-    const joiner = ` ${node.condition.operator} `
+    const joiner = node.condition.operator === 'AND' ? ' & ' : ' | '
     return parts.join(joiner)
   }
 
