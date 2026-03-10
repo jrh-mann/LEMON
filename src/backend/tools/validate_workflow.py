@@ -21,8 +21,9 @@ class ValidateWorkflowTool(WorkflowTool):
 
     name = "validate_workflow"
     description = (
-        "Validate the workflow for structural correctness. "
-        "Checks reachability, disconnected nodes, decision node conditions, and more."
+        "Check if the active workflow is valid. "
+        "Reports errors like disconnected nodes, missing branches, or unreachable paths. "
+        "Use this when the user asks to validate, check, or verify the workflow."
     )
     parameters = []
 

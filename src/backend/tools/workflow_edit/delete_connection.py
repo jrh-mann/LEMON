@@ -18,7 +18,10 @@ class DeleteConnectionTool(WorkflowTool):
     """Remove an edge from the workflow."""
 
     name = "delete_connection"
-    description = "Remove a connection between two nodes."
+    description = (
+        "Remove an edge between two nodes in the active workflow. "
+        "Validates that removing the connection doesn't create an invalid workflow structure."
+    )
     parameters = [
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),

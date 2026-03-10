@@ -20,89 +20,119 @@ from .helpers import (
 
 class ModifyNodeTool(WorkflowTool):
     """Modify an existing node's properties.
-    
+
     For decision nodes, you can update the 'condition' field with a structured
     condition object containing variable (name), comparator, value, and optionally value2.
-    
+
     For calculation nodes, you can update the 'calculation' field with output,
     operator, and operands.
     """
 
     name = "modify_node"
-    description = "Update an existing node's label, type, position, condition, or calculation."
+    description = (
+        "Update an existing node's properties (label, type, position) in the active workflow. "
+        "You must know the node_id first - call get_current_workflow to find it.\n\n"
+        "For SUBPROCESS nodes: You can update subworkflow_id, input_mapping, and output_variable.\n"
+        "For DECISION nodes: You can update the condition.\n"
+        "For CALCULATION nodes: You can update the calculation definition."
+    )
     parameters = [
         ToolParameter("node_id", "string", "ID of the node to modify", required=True),
         ToolParameter("label", "string", "New label text", required=False),
-        ToolParameter("type", "string", "New node type", required=False),
+        ToolParameter("type", "string", "New node type", required=False,
+                      enum=["start", "process", "decision", "subprocess", "calculation", "end"]),
         ToolParameter("x", "number", "New X coordinate", required=False),
         ToolParameter("y", "number", "New Y coordinate", required=False),
-        # Decision node condition
-        ToolParameter(
-            "condition",
-            "object",
-            (
-                "For decision nodes: Structured condition to evaluate. "
-                "Object with: variable (name string), comparator (string), value (any), value2 (optional for ranges). "
-                "Comparators by type: "
-                "int/float: eq,neq,lt,lte,gt,gte,within_range | "
-                "bool: is_true,is_false | "
-                "string: str_eq,str_neq,str_contains,str_starts_with,str_ends_with | "
-                "date: date_eq,date_before,date_after,date_between | "
-                "enum: enum_eq,enum_neq"
-            ),
-            required=False,
-        ),
-        # Calculation node config
-        ToolParameter(
-            "calculation",
-            "object",
-            (
-                "For calculation nodes: Mathematical operation to perform. "
-                "Object with: output {name, description?}, operator (string), operands (array). "
-                "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}."
-            ),
-            required=False,
-        ),
-        ToolParameter(
-            "output_type",
-            "string",
-            (
-                "Optional: data type for end nodes (string, number, bool, json). "
-                "Defaults to 'string'. Use 'number' or 'bool' to preserve typed returns."
-            ),
-            required=False,
-        ),
-        ToolParameter(
-            "output",
-            "any",
-            (
-                "For end nodes: what to return. Smart routing: "
-                "variable name (e.g., 'BMI') → returns that variable's typed value; "
-                "template with {vars} (e.g., 'Your BMI is {BMI}') → string interpolation; "
-                "literal value (e.g., 42, true) → static return value."
-            ),
-            required=False,
-        ),
-        # Subprocess-specific parameters
-        ToolParameter(
-            "subworkflow_id",
-            "string",
-            "For subprocess: ID of the workflow to call as a subflow",
-            required=False,
-        ),
-        ToolParameter(
-            "input_mapping",
-            "object",
-            "For subprocess: dict mapping parent input names to subworkflow input names",
-            required=False,
-        ),
-        ToolParameter(
-            "output_variable",
-            "string",
-            "For subprocess nodes only: name for the variable that stores subworkflow output.",
-            required=False,
-        ),
+        ToolParameter("output_type", "string", "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+                      required=False, enum=["string", "number", "bool", "json"]),
+        ToolParameter("output", "any",
+                      "For 'end' nodes: what to return. variable name, template with {vars}, or literal value.",
+                      required=False),
+        ToolParameter("condition", "object", "For 'decision' nodes: condition. See add_node for schema details.", required=False),
+        ToolParameter("calculation", "object", "For 'calculation' nodes: Updated calculation definition. See add_node for schema.", required=False),
+        ToolParameter("subworkflow_id", "string", "For 'subprocess' nodes: ID of the workflow to call.", required=False),
+        ToolParameter("input_mapping", "object", "For 'subprocess' nodes: Maps parent input names to subworkflow input names.", required=False),
+        ToolParameter("output_variable", "string", "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.", required=False),
     ]
+
+    # Full JSON Schema override — condition and calculation have deeply nested schemas.
+    _schema_override = {
+        "type": "object",
+        "properties": {
+            "node_id": {
+                "type": "string",
+                "description": "ID of the node to modify",
+            },
+            "label": {
+                "type": "string",
+                "description": "New label text",
+            },
+            "type": {
+                "type": "string",
+                "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
+                "description": "New node type",
+            },
+            "x": {"type": "number", "description": "New X coordinate"},
+            "y": {"type": "number", "description": "New Y coordinate"},
+            "output_type": {
+                "type": "string",
+                "enum": ["string", "number", "bool", "json"],
+                "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+            },
+            "output": {
+                "description": (
+                    "For 'end' nodes: what to return. Smart routing: "
+                    "variable name (e.g., 'BMI') returns that variable's typed value; "
+                    "template with {vars} (e.g., 'Your BMI is {BMI}') does string interpolation; "
+                    "literal value (e.g., 42, true) returns a static value."
+                ),
+            },
+            "condition": {
+                "description": (
+                    "For 'decision' nodes: Simple or compound condition. "
+                    "See add_node for full schema details."
+                ),
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "variable": {"type": "string"},
+                            "comparator": {"type": "string"},
+                            "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                            "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                        },
+                        "required": ["variable", "comparator"],
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "operator": {"type": "string", "enum": ["and", "or"]},
+                            "conditions": {"type": "array", "minItems": 2},
+                        },
+                        "required": ["operator", "conditions"],
+                    },
+                ],
+            },
+            "subworkflow_id": {
+                "type": "string",
+                "description": "For 'subprocess' nodes: ID of the workflow to call.",
+            },
+            "input_mapping": {
+                "type": "object",
+                "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names.",
+                "additionalProperties": {"type": "string"},
+            },
+            "output_variable": {
+                "type": "string",
+                "description": "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
+            },
+            "calculation": {
+                "type": "object",
+                "description": "For 'calculation' nodes: Updated calculation definition. See add_node for schema.",
+            },
+        },
+        "required": ["node_id"],
+    }
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)

@@ -13,21 +13,106 @@ from typing import Any, Dict, List, Optional, Tuple
 
 @dataclass
 class ToolParameter:
+    """Describes a single parameter for an LLM-callable tool.
+
+    Basic parameters need only name, type, and description.
+    Rich JSON Schema features (enum, items, nested properties, oneOf) are
+    supported via optional fields so tool classes can fully describe their
+    schemas without a separate hand-maintained file.
+    """
     name: str
     type: str
     description: str
     required: bool = True
+    # Fixed set of allowed string values (e.g., node types)
+    enum: Optional[List[str]] = None
+    # Schema for array element items (e.g., {"type": "object", "properties": ...})
+    items: Optional[Dict[str, Any]] = None
+    # Nested properties for object-type parameters
+    properties: Optional[Dict[str, Any]] = None
+    # additionalProperties constraint for object-type parameters
+    additional_properties: Optional[Dict[str, Any]] = None
+    # oneOf / anyOf for union types (e.g., simple vs compound condition)
+    one_of: Optional[List[Dict[str, Any]]] = None
+    # Numeric constraints
+    minimum: Optional[int] = None
+    maximum: Optional[int] = None
+
+    def to_json_schema(self) -> Dict[str, Any]:
+        """Convert this parameter to a JSON Schema property dict."""
+        prop: Dict[str, Any] = {"description": self.description}
+        # oneOf replaces the top-level type (union types)
+        if self.one_of:
+            prop["oneOf"] = self.one_of
+        else:
+            prop["type"] = self.type
+        if self.enum is not None:
+            prop["enum"] = self.enum
+        if self.items is not None:
+            prop["items"] = self.items
+        if self.properties is not None:
+            prop["properties"] = self.properties
+        if self.additional_properties is not None:
+            prop["additionalProperties"] = self.additional_properties
+        if self.minimum is not None:
+            prop["minimum"] = self.minimum
+        if self.maximum is not None:
+            prop["maximum"] = self.maximum
+        return prop
 
 
 class Tool:
-    """Base class for all LLM-callable tools."""
+    """Base class for all LLM-callable tools.
+
+    Each tool declares ``name``, ``description``, and ``parameters``
+    (a list of ToolParameter objects).  Tools with complex nested schemas
+    that are awkward to express via ToolParameter can set
+    ``_schema_override`` — a raw JSON Schema dict for the parameters
+    property — which takes precedence in ``to_anthropic_schema()``.
+    """
 
     name: str
     description: str
     parameters: List[ToolParameter]
+    # Optional: raw JSON Schema dict that replaces auto-generated parameters.
+    # Use this for tools with deeply nested schemas (e.g., add_node's condition).
+    _schema_override: Optional[Dict[str, Any]] = None
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         raise NotImplementedError
+
+    def to_anthropic_schema(self) -> Dict[str, Any]:
+        """Generate Anthropic function-calling schema from this tool's metadata.
+
+        Returns a dict in the format expected by the Anthropic API:
+        ``{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}``
+
+        If ``_schema_override`` is set, it is used as-is for the parameters
+        property.  Otherwise, the schema is auto-generated from ``self.parameters``.
+        """
+        if self._schema_override is not None:
+            params_schema = self._schema_override
+        else:
+            properties: Dict[str, Any] = {}
+            required: List[str] = []
+            for param in self.parameters:
+                properties[param.name] = param.to_json_schema()
+                if param.required:
+                    required.append(param.name)
+            params_schema = {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }
+
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": params_schema,
+            },
+        }
 
 
 class WorkflowTool(Tool):
@@ -84,8 +169,8 @@ class ToolRegistry:
         self._tools[tool.name] = tool
 
     def all_tools(self) -> List[Tool]:
-        """Return all registered tools in alphabetical order by name."""
-        return sorted(self._tools.values(), key=lambda t: t.name)
+        """Return all registered tools in registration order."""
+        return list(self._tools.values())
 
     def execute(self, name: str, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         tool = self._tools.get(name)

@@ -147,21 +147,22 @@ class UpdateSubworkflowTool(Tool):
 
     name = "update_subworkflow"
     description = (
-        "Update an existing subworkflow by resuming its builder with new "
-        "instructions. The builder has full context of how the workflow was "
-        "originally built and will apply your changes. Returns immediately "
-        "while the update happens in the background."
+        "Update an existing subworkflow by resuming its builder with new instructions. "
+        "The builder retains full context of how the workflow was originally built. "
+        "Returns immediately while the update happens in the background."
     )
     parameters = [
         ToolParameter(
             "workflow_id", "string",
-            "ID of the subworkflow to update (from create_subworkflow or list_workflows_in_library)",
+            "ID of the subworkflow to update",
             required=True,
         ),
         ToolParameter(
             "instructions", "string",
-            "Detailed instructions for what to change in the subworkflow. Be specific "
-            "about which nodes to add/modify/remove and what logic to change.",
+            (
+                "Detailed instructions for what to change. Be specific about "
+                "which nodes to add/modify/remove and what logic to change."
+            ),
             required=True,
         ),
     ]

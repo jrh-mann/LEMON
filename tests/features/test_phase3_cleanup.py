@@ -39,7 +39,7 @@ class TestRemainingModulesImport:
     @pytest.mark.parametrize("module", [
         "src.backend.agents.orchestrator",
         "src.backend.agents.system_prompt",
-        "src.backend.agents.tool_schemas",
+        "src.backend.tools.schema_gen",
         "src.backend.api.conversations",
         "src.backend.api.ws_chat",
         "src.backend.api.response_utils",

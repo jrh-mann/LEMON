@@ -27,11 +27,11 @@ class ListWorkflowVariablesTool(WorkflowTool):
 
     name = "list_workflow_variables"
     description = (
-        "Get all workflow variables. "
-        "Returns ALL variables available in the workflow, including user inputs, "
-        "subprocess outputs, and calculated values. "
-        "Use this to see what variables can be referenced in decision conditions "
-        "and output templates."
+        "Get all registered variables for the active workflow. "
+        "Returns both user-input variables (source='input') and derived variables "
+        "(e.g., subprocess outputs with source='subprocess'). "
+        "Variable IDs use the format var_{name}_{type} for inputs, var_sub_{name}_{type} for subprocess outputs. "
+        "Use this to see what variables are available before referencing them in decision nodes."
     )
     parameters = []
 

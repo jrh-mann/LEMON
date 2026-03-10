@@ -18,7 +18,10 @@ class DeleteNodeTool(WorkflowTool):
     """Delete a node from the workflow."""
 
     name = "delete_node"
-    description = "Remove a node and all connected edges from the workflow."
+    description = (
+        "Remove a node and all connected edges from the active workflow. "
+        "Validates that the result is still a valid workflow structure."
+    )
     parameters = [
         ToolParameter("node_id", "string", "ID of the node to delete", required=True),
     ]

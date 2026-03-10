@@ -39,10 +39,11 @@ class ModifyWorkflowVariableTool(WorkflowTool):
 
     name = "modify_workflow_variable"
     description = (
-        "Modify an existing workflow input variable's properties (type, description, range, enum values). "
-        "Only works on user-input variables (source='input'). Derived variables from calculation or "
-        "subprocess nodes are read-only — modify the producing node instead. "
-        "NOTE: Changing the type will also update the variable ID."
+        "Modify an existing user-input variable's properties in the active workflow (type, name, description, range, enum values). "
+        "ONLY works on user-input variables (source='input'). "
+        "Derived variables (from calculation or subprocess nodes) CANNOT be modified — "
+        "modify the producing node instead (e.g. change the calc output name or subprocess output_variable). "
+        "WARNING: Changing the type also changes the variable ID, so decision nodes using the old ID must be updated."
     )
     parameters = [
         ToolParameter(
@@ -54,26 +55,28 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         ToolParameter(
             "new_type",
             "string",
-            "New type: 'string', 'number', 'integer', 'boolean', 'enum', or 'date'. If not provided, type is unchanged.",
+            "New type for the variable. 'number' = float, 'integer' = int.",
             required=False,
+            enum=["string", "number", "integer", "boolean", "enum", "date"],
         ),
         ToolParameter(
             "new_name",
             "string",
-            "New name for the variable. If not provided, name is unchanged.",
+            "New name for the variable (optional)",
             required=False,
         ),
         ToolParameter(
             "description",
             "string",
-            "New description. If not provided, description is unchanged.",
+            "New description (optional)",
             required=False,
         ),
         ToolParameter(
             "enum_values",
             "array",
-            "For enum type: array of allowed values. Required if changing to enum type.",
+            "For enum type: array of allowed values",
             required=False,
+            items={"type": "string"},
         ),
         ToolParameter(
             "range_min",
