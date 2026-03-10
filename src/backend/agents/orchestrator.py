@@ -15,7 +15,7 @@ from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLO
 from ..mcp_bridge.client import call_mcp_tool
 from ..llm import call_llm_stream, call_llm_with_tools
 from .system_prompt import build_system_prompt
-from .tool_schemas import tool_descriptions
+from ..tools.schema_gen import generate_all_schemas
 from ..utils.cancellation import CancellationError
 from ..validation.workflow_validator import WorkflowValidator
 
@@ -605,7 +605,7 @@ class Orchestrator:
             })
             self.history.append({"role": "assistant", "content": "Understood."})
             return partial
-        tool_desc = tool_descriptions()
+        tool_desc = generate_all_schemas(self.tools)
 
         system = build_system_prompt(
             has_files=self.uploaded_files,  # all files (current + previous) for prompt context

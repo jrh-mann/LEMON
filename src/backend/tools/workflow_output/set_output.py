@@ -34,9 +34,10 @@ class SetWorkflowOutputTool(WorkflowTool):
 
     name = "set_workflow_output"
     description = (
-        "Declare the workflow's output with a name, type, and optional description. "
-        "The output type is REQUIRED and determines the type of the derived variable "
-        "when this workflow is called as a subprocess. Common types: string, int, float, bool."
+        "Declare the active workflow's output with a name and REQUIRED type. "
+        "The output type is critical for subprocess variable inference - when this workflow "
+        "is used as a subprocess, the calling workflow uses this type for the derived variable. "
+        "Use this to ensure proper type inference when workflows are called as subprocesses."
     )
     parameters = [
         ToolParameter(
@@ -48,8 +49,9 @@ class SetWorkflowOutputTool(WorkflowTool):
         ToolParameter(
             "type",
             "string",
-            "Output type: 'string', 'number', 'bool', 'enum', or 'date'. This is REQUIRED.",
+            "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values.",
             required=True,
+            enum=["string", "number", "bool", "enum", "date"],
         ),
         ToolParameter(
             "description",

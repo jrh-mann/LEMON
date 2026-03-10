@@ -151,11 +151,11 @@ class CreateSubworkflowTool(Tool):
 
     name = "create_subworkflow"
     description = (
-        "Create a new subworkflow and build it in the background. Returns a "
-        "workflow_id immediately that you can use in a subprocess node's "
-        "subworkflow_id field. The subworkflow is built autonomously by a "
-        "background orchestrator using your brief. FIRST check if a suitable "
-        "workflow already exists with list_workflows_in_library before calling this."
+        "Create a subworkflow and build it in the background. Returns a workflow_id "
+        "that you can use as the subworkflow_id in a subprocess node. "
+        "A background orchestrator builds the subworkflow's nodes and connections "
+        "autonomously using your brief. FIRST check list_workflows_in_library to "
+        "see if a suitable workflow already exists before calling this."
     )
     parameters = [
         ToolParameter(
@@ -165,21 +165,42 @@ class CreateSubworkflowTool(Tool):
         ),
         ToolParameter(
             "output_type", "string",
-            "Type of value the subworkflow returns: 'string', 'number', 'bool', or 'json'",
+            "Type of value the subworkflow returns",
             required=True,
+            enum=["string", "number", "bool", "json"],
         ),
         ToolParameter(
             "brief", "string",
-            "Detailed description of the subworkflow's logic. Include: what it calculates "
-            "or decides, step-by-step decision logic, all inputs with types, expected output "
-            "meaning. The more detail, the better the background builder performs.",
+            (
+                "Detailed description of the subworkflow's logic. Include: "
+                "what it calculates/decides, step-by-step decision logic, "
+                "all inputs with types, expected output meaning. More detail = better result."
+            ),
             required=True,
         ),
         ToolParameter(
             "inputs", "array",
-            "Array of input variable definitions: [{\"name\": \"Age\", \"type\": \"number\", "
-            "\"description\": \"Patient age in years\"}]. Types: string, number, bool, json.",
+            "Input variables the subworkflow expects",
             required=True,
+            items={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Input variable name",
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["string", "number", "bool", "json"],
+                        "description": "Input variable type",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "What this input represents",
+                    },
+                },
+                "required": ["name", "type"],
+            },
         ),
     ]
 

@@ -26,10 +26,22 @@ class UpdatePlanTool(Tool):
         ToolParameter(
             name="items",
             type="array",
-            description=(
-                "List of plan items. Each item has 'text' (string) and 'done' (boolean)."
-            ),
+            description="List of plan items to display.",
             required=True,
+            items={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Description of this plan step.",
+                    },
+                    "done": {
+                        "type": "boolean",
+                        "description": "Whether this step is completed.",
+                    },
+                },
+                "required": ["text", "done"],
+            },
         ),
     ]
 

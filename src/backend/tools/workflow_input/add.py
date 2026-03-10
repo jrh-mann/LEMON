@@ -64,10 +64,13 @@ class AddWorkflowVariableTool(WorkflowTool):
 
     name = "add_workflow_variable"
     description = (
-        "Register an input variable for the workflow. "
-        "This variable will appear in the Variables tab where users can provide values at execution time. "
-        "Use this when the workflow needs data from users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
-        "For subprocess outputs, use the output_variable parameter when adding a subprocess node instead."
+        "Register a user-input variable for the active workflow. "
+        "This variable will appear in the Variables tab under 'Inputs' where users "
+        "provide values at execution time. Use this when the workflow needs data from "
+        "users (e.g., 'Patient Age', 'Email Address', 'Order Amount'). "
+        "Returns the variable with its ID (format: var_{name}_{type}, e.g., 'var_patient_age_int'). "
+        "NOTE: For subprocess outputs, use the output_variable parameter when adding a subprocess node - "
+        "those are automatically registered as derived variables."
     )
     parameters = [
         ToolParameter(
@@ -81,6 +84,7 @@ class AddWorkflowVariableTool(WorkflowTool):
             "string",
             "Variable type: 'string', 'number', 'boolean', or 'enum'",
             required=True,
+            enum=["string", "number", "boolean", "enum"],
         ),
         ToolParameter(
             "description",
@@ -93,6 +97,7 @@ class AddWorkflowVariableTool(WorkflowTool):
             "array",
             "For enum type: array of allowed values (e.g., ['Male', 'Female', 'Other'])",
             required=False,
+            items={"type": "string"},
         ),
         ToolParameter(
             "range_min",

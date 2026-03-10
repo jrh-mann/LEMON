@@ -18,7 +18,11 @@ class AddConnectionTool(WorkflowTool):
     """Connect two nodes with an edge."""
 
     name = "add_connection"
-    description = "Create an edge connecting two nodes."
+    description = (
+        "Create an edge connecting two nodes in the active workflow. For decision nodes, use label "
+        "'true' or 'false'. "
+        "Validates that the connection creates a valid workflow."
+    )
     parameters = [
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),

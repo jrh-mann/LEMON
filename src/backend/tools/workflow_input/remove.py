@@ -29,21 +29,21 @@ class RemoveWorkflowVariableTool(WorkflowTool):
 
     name = "remove_workflow_variable"
     description = (
-        "Remove a registered workflow input variable by name (case-insensitive). "
+        "Remove a registered input variable from the active workflow by name (case-insensitive). "
         "If the variable is used in decision node conditions, deletion will fail by default. "
-        "Use force=true to cascade delete (automatically clears condition from affected nodes)."
+        "Use force=true to cascade delete (automatically clears conditions from affected nodes)."
     )
     parameters = [
         ToolParameter(
             "name",
             "string",
-            "Name of the input variable to remove (case-insensitive)",
+            "Name of the variable to remove (case-insensitive)",
             required=True,
         ),
         ToolParameter(
             "force",
             "boolean",
-            "If true, removes input even if referenced by nodes (cascade delete). Default: false",
+            "If true, removes variable even if referenced by nodes (cascade delete). Default: false",
             required=False,
         ),
     ]

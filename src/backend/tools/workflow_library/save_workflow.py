@@ -28,35 +28,37 @@ class SaveWorkflowToLibrary(Tool):
 
     name = "save_workflow_to_library"
     description = (
-        "Save a draft workflow to the user's permanent library. Drafts are workflows "
-        "you've created that haven't been saved yet. Once saved, the workflow will "
-        "appear in the user's browse library. Use this when the user asks to save "
-        "the workflow or confirms they want to keep it."
+        "Save the active workflow to the user's permanent library. "
+        "Drafts are workflows you've created that haven't been explicitly saved yet. "
+        "Once saved, the workflow appears in the user's browse library. "
+        "Use this when the user asks to save the workflow, confirms they want to keep it, "
+        "or says the workflow is complete and ready to use."
     )
     parameters = [
         ToolParameter(
             "name",
             "string",
-            "Optional new name for the workflow (updates existing name if provided)",
+            "Optional new name for the workflow",
             required=False,
         ),
         ToolParameter(
             "description",
             "string",
-            "Optional new description (updates existing if provided)",
+            "Optional new description",
             required=False,
         ),
         ToolParameter(
             "domain",
             "string",
-            "Optional domain/category (updates existing if provided)",
+            "Optional domain/category",
             required=False,
         ),
         ToolParameter(
             "tags",
             "array",
-            "Optional list of tags (updates existing if provided)",
+            "Optional list of tags",
             required=False,
+            items={"type": "string"},
         ),
     ]
 

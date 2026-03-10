@@ -147,7 +147,11 @@ class GetCurrentWorkflowTool(WorkflowTool):
     uses_validator = False
 
     name = "get_current_workflow"
-    description = "Get the current workflow as JSON (nodes, edges, variables)."
+    description = (
+        "Get the active workflow's current state as JSON (nodes and edges). "
+        "Returns workflow structure with semantic descriptions to help you understand "
+        "node IDs and connections. Use this before making changes to see what exists."
+    )
     parameters: List[ToolParameter] = []
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
