@@ -118,9 +118,9 @@ export const useUIStore = create<UIState>((set) => ({
   panX: 0,
   panY: 0,
   chatHeight: 280,
-  devMode: typeof localStorage !== 'undefined' && localStorage.getItem('devMode') === 'true',
+  devMode: (() => { try { return localStorage.getItem('devMode') === 'true' } catch { return false } })(),
   selectedToolCall: null,
-  trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
+  trackExecution: (() => { try { return localStorage.getItem('trackExecution') !== 'false' } catch { return true } })(),  // Default on
   executionLogModalOpen: false,
   workspaceRevealed: false,
   homeExited: false,
@@ -176,17 +176,13 @@ export const useUIStore = create<UIState>((set) => ({
 
   // Dev mode
   setDevMode: (enabled) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('devMode', String(enabled))
-    }
+    try { localStorage.setItem('devMode', String(enabled)) } catch { /* storage full or blocked */ }
     set({ devMode: enabled })
   },
 
   toggleDevMode: () => set((state) => {
     const newValue = !state.devMode
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('devMode', String(newValue))
-    }
+    try { localStorage.setItem('devMode', String(newValue)) } catch { /* storage full or blocked */ }
     return { devMode: newValue }
   }),
 
@@ -194,9 +190,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   // Execution tracking
   setTrackExecution: (enabled) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('trackExecution', String(enabled))
-    }
+    try { localStorage.setItem('trackExecution', String(enabled)) } catch { /* storage full or blocked */ }
     set({ trackExecution: enabled })
   },
 
