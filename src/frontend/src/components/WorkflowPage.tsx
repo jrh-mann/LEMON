@@ -42,7 +42,7 @@ export default function WorkflowPage() {
     const clearError = useUIStore(s => s.clearError)
 
     // Workflow Store
-    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
+    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
 
@@ -231,6 +231,10 @@ export default function WorkflowPage() {
                     cs.setMessages(workflowId, historyMessages)
                 }
 
+                // Clear previous workflow's pending files before restoring new ones.
+                // Without this, switching workflows accumulates images from all visited workflows.
+                clearPendingFiles()
+
                 // Restore uploaded files (images/PDFs) so they reappear after refresh.
                 // Fetches each file from the backend uploads endpoint and converts
                 // to a data URL for the image viewer.
@@ -275,6 +279,7 @@ export default function WorkflowPage() {
 
                 // 404 = new workflow (not in DB yet) — sync URL ID to store
                 if (err instanceof ApiError && err.status === 404) {
+                    clearPendingFiles()
                     setCurrentWorkflowId(workflowId)
                     useChatStore.getState().setActiveWorkflowId(workflowId)
                     loadedWorkflowIdRef.current = workflowId
@@ -287,7 +292,7 @@ export default function WorkflowPage() {
         }
         loadWorkflow()
         return () => { isActive = false }
-    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited])
+    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles])
 
     // Re-fetch workflow when a background subworkflow build completes.
     // This loads the complete build_history and final nodes/edges,
