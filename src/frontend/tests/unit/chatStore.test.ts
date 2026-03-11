@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useChatStore } from '../stores/chatStore'
+import { useChatStore } from '../../src/stores/chatStore'
 
 // Reset store state between tests
 beforeEach(() => {

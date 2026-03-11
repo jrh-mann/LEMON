@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useChatStore } from '../stores/chatStore'
-import { useWorkflowStore } from '../stores/workflowStore'
-import { resolveWorkflowId, isForDifferentWorkflow, shouldIgnoreTask } from '../api/socket-handlers/utils'
+import { useChatStore } from '../../src/stores/chatStore'
+import { useWorkflowStore } from '../../src/stores/workflowStore'
+import { resolveWorkflowId, isForDifferentWorkflow, shouldIgnoreTask } from '../../src/api/socket-handlers/utils'
 
 beforeEach(() => {
   useChatStore.getState().reset()

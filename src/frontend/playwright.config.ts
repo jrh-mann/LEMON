@@ -7,7 +7,7 @@ import { defineConfig } from '@playwright/test'
  * Start it beforehand with `npm run dev` (or `./dev.sh`).
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './tests/e2e',
   timeout: 30_000,
   retries: 0,
   use: {

@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    exclude: ['e2e/**', 'node_modules/**'],
+    exclude: ['tests/e2e/**', 'node_modules/**'],
   },
   server: {
     port: 5173,

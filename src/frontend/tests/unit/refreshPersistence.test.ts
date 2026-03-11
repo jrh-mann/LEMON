@@ -8,8 +8,8 @@
  * - ConversationId is preserved across refresh
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useChatStore } from '../stores/chatStore'
-import type { Message, ToolCall } from '../types'
+import { useChatStore } from '../../src/stores/chatStore'
+import type { Message, ToolCall } from '../../src/types'
 
 // Helper: create a message with optional tool_calls
 function makeMsg(

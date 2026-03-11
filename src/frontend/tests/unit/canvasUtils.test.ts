@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { wrapText } from '../utils/canvas/textWrap'
-import { hasCollision, resolveCollision } from '../utils/canvas/collision'
-import { resolveDecisionEdgeLabel } from '../utils/canvas/edgeLabels'
-import type { FlowNode } from '../types'
+import { wrapText } from '../../src/utils/canvas/textWrap'
+import { hasCollision, resolveCollision } from '../../src/utils/canvas/collision'
+import { resolveDecisionEdgeLabel } from '../../src/utils/canvas/edgeLabels'
+import type { FlowNode } from '../../src/types'
 
 describe('wrapText', () => {
   it('returns single line for short text', () => {
