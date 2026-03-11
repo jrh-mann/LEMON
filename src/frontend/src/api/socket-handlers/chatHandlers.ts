@@ -13,11 +13,7 @@ import { useChatStore, addAssistantMessage } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import type { SocketChatResponse } from '../../types'
-
-/** Resolve the workflow_id for an event -- falls back to active workflow */
-function resolveWorkflowId(data: { workflow_id?: string }): string | null {
-  return data.workflow_id || useChatStore.getState().activeWorkflowId
-}
+import { resolveWorkflowId, shouldIgnoreTask } from './utils'
 
 /** Register all chat-related event handlers on the Socket.IO client */
 export function registerChatHandlers(socket: Socket): void {
@@ -31,13 +27,11 @@ export function registerChatHandlers(socket: Socket): void {
     useUIStore.getState().clearError()
     const taskId = data.task_id
 
-    if (taskId) {
-      if (chatStore.isTaskCancelled(taskId)) return
-      const conv = chatStore.conversations[workflowId]
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) return
-      if (!conv?.currentTaskId && data.event === 'start') {
-        chatStore.setCurrentTaskId(workflowId, taskId)
-      }
+    if (shouldIgnoreTask(taskId, workflowId)) return
+    // Assign task_id on first progress event so subsequent events can be filtered.
+    // Accept both 'start' (normal) and 'resumed' (after page refresh reconnection).
+    if (taskId && !chatStore.conversations[workflowId]?.currentTaskId && (data.event === 'start' || data.event === 'resumed')) {
+      chatStore.setCurrentTaskId(workflowId, taskId)
     }
 
     if (data.status) {
@@ -51,13 +45,8 @@ export function registerChatHandlers(socket: Socket): void {
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
-    const chatStore = useChatStore.getState()
-    if (data.task_id) {
-      if (chatStore.isTaskCancelled(data.task_id)) return
-      const conv = chatStore.conversations[workflowId]
-      if (conv?.currentTaskId && data.task_id !== conv.currentTaskId) return
-    }
-    chatStore.appendThinkingContent(workflowId, data.chunk || '')
+    if (shouldIgnoreTask(data.task_id, workflowId)) return
+    useChatStore.getState().appendThinkingContent(workflowId, data.chunk || '')
   })
 
   // Chat response (final response from LLM)
@@ -70,16 +59,12 @@ export function registerChatHandlers(socket: Socket): void {
     useUIStore.getState().clearError()
     const taskId = data.task_id
 
+    // For cancelled responses, only drop if it wasn't an ack of the cancellation
+    if (taskId && !data.cancelled && shouldIgnoreTask(taskId, workflowId)) return
+    // Also check stale task_id even for cancelled acks
     if (taskId) {
-      if (chatStore.isTaskCancelled(taskId) && !data.cancelled) {
-        console.log('[SIO] Ignoring cancelled chat_response:', taskId)
-        return
-      }
       const conv = chatStore.conversations[workflowId]
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
-        console.log('[SIO] Ignoring stale chat_response:', taskId)
-        return
-      }
+      if (conv?.currentTaskId && taskId !== conv.currentTaskId) return
     }
 
     // Check if there's streamed content to finalize before calling finalizeStream.
@@ -126,16 +111,11 @@ export function registerChatHandlers(socket: Socket): void {
     const workflowId = resolveWorkflowId(data)
     if (!workflowId) return
 
+    if (shouldIgnoreTask(data.task_id, workflowId)) return
     const chatStore = useChatStore.getState()
-    const taskId = data.task_id
-
-    if (taskId) {
-      if (chatStore.isTaskCancelled(taskId)) return
-      const conv = chatStore.conversations[workflowId]
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) return
-      if (!conv?.currentTaskId) {
-        chatStore.setCurrentTaskId(workflowId, taskId)
-      }
+    // Assign task_id on first stream chunk if not yet set
+    if (data.task_id && !chatStore.conversations[workflowId]?.currentTaskId) {
+      chatStore.setCurrentTaskId(workflowId, data.task_id)
     }
 
     chatStore.setStreaming(workflowId, true)
@@ -149,12 +129,13 @@ export function registerChatHandlers(socket: Socket): void {
     if (!workflowId) return
 
     const chatStore = useChatStore.getState()
-    const taskId = data.task_id
 
-    if (taskId) {
+    // Only filter stale task_id — don't use shouldIgnoreTask here because
+    // the task is being cancelled (markTaskCancelled must still run)
+    if (data.task_id) {
       const conv = chatStore.conversations[workflowId]
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) return
-      chatStore.markTaskCancelled(taskId)
+      if (conv?.currentTaskId && data.task_id !== conv.currentTaskId) return
+      chatStore.markTaskCancelled(data.task_id)
     }
 
     chatStore.setStreaming(workflowId, false)
@@ -171,10 +152,12 @@ export function registerChatHandlers(socket: Socket): void {
   })
 
   // Initial user message from background builder -- shows the brief/prompt in chat.
-  socket.on('build_user_message', (data: { workflow_id: string; content: string }) => {
-    console.log('[SIO] build_user_message:', data.workflow_id)
+  socket.on('build_user_message', (data: { workflow_id?: string; content: string }) => {
+    const workflowId = resolveWorkflowId(data)
+    if (!workflowId) return
+    console.log('[SIO] build_user_message:', workflowId)
     const chatStore = useChatStore.getState()
-    chatStore.addMessage(data.workflow_id, {
+    chatStore.addMessage(workflowId, {
       id: `bu_${Date.now()}`,
       role: 'user',
       content: data.content,

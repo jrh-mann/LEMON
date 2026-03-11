@@ -111,20 +111,56 @@ def register_chat_routes(
         history). Falls back to the ConversationLogger SQLite DB which
         persists across server restarts.
         """
-        # Try in-memory store first (richest data)
+        # Try in-memory store first (richest data).
+        # Only use it when the orchestrator history is non-empty — during
+        # mid-task execution the history hasn't been saved yet, so fall
+        # through to the persistent ConversationLogger instead.
         convo = conversation_store.get(conversation_id)
-        if convo:
+        if convo and convo.orchestrator.conversation.history:
+            # Build a lookup of tool_calls per assistant response from
+            # the audit trail so we can attach them to messages.  The
+            # in-memory history only has plain text; the conversation
+            # logger has the structured tool_call entries.
+            assistant_tool_calls: Dict[int, list] = {}
+            if conversation_logger:
+                entries = conversation_logger.get_conversation_timeline(
+                    conversation_id,
+                    entry_types=["user_message", "assistant_response", "tool_call"],
+                )
+                pending_tools: list[dict] = []
+                assistant_seq = 0  # counts assistant msgs seen
+                for entry in entries:
+                    etype = entry["entry_type"]
+                    if etype == "tool_call":
+                        pending_tools.append({
+                            "tool": entry.get("tool_name", ""),
+                            "arguments": {},
+                            "success": bool(entry.get("tool_success", 1)),
+                        })
+                    elif etype == "user_message":
+                        pending_tools = []
+                    elif etype == "assistant_response":
+                        if pending_tools:
+                            assistant_tool_calls[assistant_seq] = pending_tools
+                            pending_tools = []
+                        assistant_seq += 1
+
             messages = []
-            for idx, msg in enumerate(convo.orchestrator.history):
+            assistant_idx = 0
+            for idx, msg in enumerate(convo.orchestrator.conversation.history):
                 role = msg.get("role", "assistant")
                 content = msg.get("content", "")
+                tool_calls = []
+                if role == "assistant":
+                    tool_calls = assistant_tool_calls.get(assistant_idx, [])
+                    assistant_idx += 1
                 messages.append(
                     {
                         "id": f"{conversation_id}_{idx}",
                         "role": role,
                         "content": content,
                         "timestamp": utc_now(),
-                        "tool_calls": extract_tool_calls(content),
+                        "tool_calls": tool_calls,
                     }
                 )
             return JSONResponse(
