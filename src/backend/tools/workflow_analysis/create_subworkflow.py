@@ -48,20 +48,21 @@ def _run_subworkflow_builder(
     """
     # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
     from ...api.builder_callbacks import BackgroundBuilderCallbacks
-    from ...api.ws_chat import _ACTIVE_TASKS, _ACTIVE_TASKS_LOCK
+    from ...api.ws_chat import _task_registry
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
     # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
     bg_task_id = f"bg_{uuid4().hex[:8]}"
-    cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id, task_id=bg_task_id)
+    cb = BackgroundBuilderCallbacks(
+        ws_registry, conn_id, workflow_id,
+        user_id=user_id, task_id=bg_task_id,
+    )
     response_text = ""
 
     # Register as active task so handle_resume_task can reconnect after refresh.
     # BackgroundBuilderCallbacks exposes the same interface as WsChatTask
-    # (done, conn_id, thinking_chunks, stream_buffer, task_id).
-    task_key = (user_id, workflow_id)
-    with _ACTIVE_TASKS_LOCK:
-        _ACTIVE_TASKS[task_key] = cb
+    # (done, conn_id, thinking_chunks, stream_buffer, task_id, current_workflow_id, user_id).
+    _task_registry.register(cb)
 
     # Acquire semaphore to limit concurrent builder threads
     with builder_semaphore:
@@ -141,8 +142,7 @@ def _run_subworkflow_builder(
             cb.emit_response(response_text)
             # Mark done and unregister so handle_resume_task knows the build finished
             cb.done.set()
-            with _ACTIVE_TASKS_LOCK:
-                _ACTIVE_TASKS.pop(task_key, None)
+            _task_registry.unregister(cb)
             # Notify frontend for library badge refresh
             if ws_registry and conn_id:
                 ws_registry.send_to_sync(

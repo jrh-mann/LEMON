@@ -34,12 +34,14 @@ class BackgroundBuilderCallbacks:
         ws_registry: ConnectionRegistry,
         conn_id: str,
         workflow_id: str,
+        user_id: str = "",
         orchestrator: Any | None = None,
         task_id: str | None = None,
     ) -> None:
         self.ws_registry = ws_registry
         self.conn_id = conn_id
         self.workflow_id = workflow_id
+        self.user_id = user_id
         self.orchestrator = orchestrator
         self.task_id = task_id
         self.cancelled = False
@@ -53,6 +55,16 @@ class BackgroundBuilderCallbacks:
         self.done = threading.Event()
         self.thinking_chunks: List[str] = []
         self.stream_buffer: str = ""
+        # TaskRegistry-compatible fields: the unified registry uses these to
+        # index, purge stale entries, and support conn_id mutation on resume.
+        import time
+        self.current_workflow_id = workflow_id
+        self._created_at = time.monotonic()
+        self._cancelled = False  # registry's cached cancel flag
+        self._notified = False
+        self._conn_lock = threading.Lock()
+        self._consecutive_send_failures = 0
+        self._first_failure_time: float | None = None
 
     def _emit(self, event: str, payload: dict) -> None:
         """Emit via registry (sync, from background thread)."""
@@ -97,11 +109,12 @@ class BackgroundBuilderCallbacks:
 
     def is_cancelled(self) -> bool:
         """Check if this build has been cancelled."""
-        return self.cancelled
+        return self._cancelled or self.cancelled
 
     def cancel(self) -> None:
         """Mark this build as cancelled."""
         self.cancelled = True
+        self._cancelled = True
 
     def flush_tool_summary(self) -> None:
         """Flush accumulated tool summaries into the stream as inline markdown."""
