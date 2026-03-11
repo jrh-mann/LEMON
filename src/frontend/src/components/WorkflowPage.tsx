@@ -175,21 +175,28 @@ export default function WorkflowPage() {
                     cs.setConversationId(workflowId, workflowData.conversation_id)
                 }
 
-                // If a backend task is still running, fire resumeTask FIRST
-                // (before the conversation history fetch) so streaming reconnects
-                // as fast as possible. History fetch runs in parallel below.
+                // If a backend task is still running, set up streaming and polling.
+                // Detect SPA navigation vs page refresh: after SPA nav, builder
+                // events have already been flowing into chatStore (isStreaming/
+                // streamingContent are set). After refresh, persist middleware
+                // resets them to false/''. Only fire resumeTask on refresh.
                 if (workflowData.building) {
-                    cs.setStreaming(workflowId, true)
-                    cs.setProcessingStatus(workflowId, 'Reconnecting...')
+                    const conv = cs.conversations?.[workflowId]
+                    const needsResume = !conv?.isStreaming && !conv?.streamingContent
 
-                    // Tell the backend to re-route events to the new connection.
-                    import('../api/socket').then(({ resumeTask, waitForConnection }) => {
-                        waitForConnection().then(() => {
-                            if (isActive) resumeTask(workflowId)
-                        }).catch(() => {
-                            console.warn('[WorkflowPage] Socket connection timeout — falling back to poll')
+                    if (needsResume) {
+                        // Page refresh — socket just reconnected, need to re-subscribe
+                        cs.setStreaming(workflowId, true)
+                        cs.setProcessingStatus(workflowId, 'Reconnecting...')
+                        import('../api/socket').then(({ resumeTask, waitForConnection }) => {
+                            waitForConnection().then(() => {
+                                if (isActive) resumeTask(workflowId)
+                            }).catch(() => {
+                                console.warn('[WorkflowPage] Socket connection timeout — falling back to poll')
+                            })
                         })
-                    })
+                    }
+                    // else: SPA navigation — events are already flowing, no resume needed
 
                     // Poll until the task completes, then fetch the final response.
                     const pollInterval = setInterval(async () => {
