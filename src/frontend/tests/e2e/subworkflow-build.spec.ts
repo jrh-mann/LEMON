@@ -167,4 +167,39 @@ test.describe('live backend — subworkflow build from library', () => {
     const nodeCount = await canvasNodes.count()
     expect(nodeCount).toBeGreaterThanOrEqual(1)
   })
+
+  test('subworkflow chat shows the initial brief as a user message', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
+
+    // Create a subworkflow — the orchestrator sends a brief to the builder
+    await sendMessage(
+      page,
+      'Create a subworkflow called "BMI Calc" that calculates body mass index from weight and height inputs.',
+    )
+    await waitForResponseComplete(page, 180_000)
+
+    // Navigate to library → find and open the subworkflow
+    await page.goto('/library')
+    await page.waitForLoadState('networkidle')
+    const card = page.locator('.library-card').filter({ hasText: /bmi/i })
+    await expect(card).toBeVisible({ timeout: 30_000 })
+    await card.click()
+
+    // Wait for workspace
+    await page.waitForFunction(
+      () => !!document.querySelector('.workspace-revealed'),
+      { timeout: 15_000 },
+    )
+
+    // The first message in the chat should be a user message (the brief).
+    // This verifies that build_user_message wasn't lost during SPA navigation
+    // and that build_history recovery works for completed builds.
+    const userMessages = page.locator('.message.user')
+    await expect(userMessages.first()).toBeVisible({ timeout: 15_000 })
+
+    const briefContent = await userMessages.first().locator('.message-content').textContent()
+    // The brief should contain something about BMI (from the orchestrator's prompt)
+    expect(briefContent?.toLowerCase()).toMatch(/bmi|body mass|weight|height/)
+  })
 })

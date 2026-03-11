@@ -228,14 +228,31 @@ export default function WorkflowPage() {
                 if (workflowData.conversation_id) {
                     await mergeBackendMessages(workflowId, workflowData.conversation_id)
                 } else if (!localMessages.length && workflowData.build_history?.length) {
-                    const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
-                        id: `bh_${crypto.randomUUID()}`,
-                        role: msg.role as 'user' | 'assistant',
-                        content: msg.content,
+                    // Build completed — restore chat from build_history.
+                    // Filter to user/assistant with content (skip tool messages
+                    // and empty assistant blocks from tool-use rounds).
+                    const historyMessages = workflowData.build_history
+                        .filter((msg: { role: string; content: string }) =>
+                            (msg.role === 'user' || msg.role === 'assistant') && msg.content)
+                        .map((msg: { role: string; content: string }) => ({
+                            id: `bh_${crypto.randomUUID()}`,
+                            role: msg.role as 'user' | 'assistant',
+                            content: msg.content,
+                            timestamp: new Date().toISOString(),
+                            tool_calls: [],
+                        }))
+                    cs.setMessages(workflowId, historyMessages)
+                } else if (!localMessages.length && workflowData.building && workflowData.metadata?.description) {
+                    // Building in progress, but build_user_message socket event was
+                    // missed (page refresh / late navigation). Recover the brief from
+                    // the workflow description so the chat isn't empty.
+                    cs.addMessage(workflowId, {
+                        id: `brief_${Date.now()}`,
+                        role: 'user',
+                        content: workflowData.metadata.description,
                         timestamp: new Date().toISOString(),
                         tool_calls: [],
-                    }))
-                    cs.setMessages(workflowId, historyMessages)
+                    })
                 }
 
                 // Clear previous workflow's pending files before restoring new ones.
@@ -327,15 +344,18 @@ export default function WorkflowPage() {
                 const cs = useChatStore.getState()
                 const existingConv = cs.conversations?.[workflowId]
                 if (workflowData.build_history?.length && !existingConv?.messages?.length) {
-                    const historyMessages = workflowData.build_history.map(
-                        (msg: { role: string; content: string }) => ({
-                            id: `bh_${crypto.randomUUID()}`,
-                            role: msg.role as 'user' | 'assistant',
-                            content: msg.content,
-                            timestamp: new Date().toISOString(),
-                            tool_calls: [],
-                        })
-                    )
+                    const historyMessages = workflowData.build_history
+                        .filter((msg: { role: string; content: string }) =>
+                            (msg.role === 'user' || msg.role === 'assistant') && msg.content)
+                        .map(
+                            (msg: { role: string; content: string }) => ({
+                                id: `bh_${crypto.randomUUID()}`,
+                                role: msg.role as 'user' | 'assistant',
+                                content: msg.content,
+                                timestamp: new Date().toISOString(),
+                                tool_calls: [],
+                            })
+                        )
                     cs.setMessages(workflowId, historyMessages)
                 }
             } catch (err) {
