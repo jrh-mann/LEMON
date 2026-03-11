@@ -30,82 +30,69 @@ from ..workflow_persistence import persist_workflow_snapshot
 
 logger = logging.getLogger("backend.api")
 
-# ---------- Active task registry ----------
-# Maps (user_id, workflow_id) → WsChatTask for in-progress tasks.
-# Used by resume_task to reconnect a refreshed frontend to a running backend task.
-_ACTIVE_TASKS: Dict[tuple[str, str], "WsChatTask"] = {}
-_ACTIVE_TASKS_LOCK = Lock()
+# ---------- Unified task registry ----------
+# Single registry replacing the old dual-dict system (_TASK_STATE + _ACTIVE_TASKS).
+# Indexes tasks by task_id (primary) and (user_id, workflow_id) (for resume).
+# Cancellation and notification state live directly on WsChatTask instances.
 
-# ---------- Task cancellation state ----------
+class TaskRegistry:
+    """Single source of truth for all in-progress chat tasks."""
 
-_TASK_STATE: Dict[str, Dict[str, Dict[str, Any]]] = {}
-_TASK_LOCK = Lock()
-_TASK_TTL_SECONDS = 1800.0
+    _TTL_SECONDS = 1800.0
 
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._by_task_id: Dict[str, "WsChatTask"] = {}
+        self._by_workflow: Dict[tuple[str, str], "WsChatTask"] = {}
 
-def _purge_stale_tasks_locked(now: float) -> None:
-    stale_sessions: list[str] = []
-    for conn_id, tasks in _TASK_STATE.items():
-        stale_tasks = [
-            task_id
-            for task_id, state in tasks.items()
-            if now - state.get("created_at", now) > _TASK_TTL_SECONDS
+    def register(self, task: "WsChatTask") -> None:
+        """Register a task. Purges stale entries on each registration."""
+        with self._lock:
+            self._purge_stale()
+            self._by_task_id[task.task_id] = task
+            if task.current_workflow_id:
+                self._by_workflow[(task.user_id, task.current_workflow_id)] = task
+
+    def cancel(self, task_id: str) -> Optional["WsChatTask"]:
+        """Mark a task as cancelled. Returns the task if found."""
+        with self._lock:
+            task = self._by_task_id.get(task_id)
+            if task:
+                task._cancelled = True
+            return task
+
+    def mark_notified(self, task_id: str) -> bool:
+        """Mark cancellation as notified. Returns True on first call only."""
+        with self._lock:
+            task = self._by_task_id.get(task_id)
+            if not task or task._notified:
+                return False
+            task._notified = True
+            return True
+
+    def get_by_workflow(self, user_id: str, workflow_id: str) -> Optional["WsChatTask"]:
+        with self._lock:
+            return self._by_workflow.get((user_id, workflow_id))
+
+    def unregister(self, task: "WsChatTask") -> None:
+        with self._lock:
+            self._by_task_id.pop(task.task_id, None)
+            if task.current_workflow_id:
+                self._by_workflow.pop((task.user_id, task.current_workflow_id), None)
+
+    def _purge_stale(self) -> None:
+        now = time.monotonic()
+        stale = [
+            tid for tid, t in self._by_task_id.items()
+            if now - t._created_at > self._TTL_SECONDS
         ]
-        for task_id in stale_tasks:
-            tasks.pop(task_id, None)
-        if not tasks:
-            stale_sessions.append(conn_id)
-    for conn_id in stale_sessions:
-        _TASK_STATE.pop(conn_id, None)
+        for tid in stale:
+            task = self._by_task_id.pop(tid, None)
+            if task and task.current_workflow_id:
+                self._by_workflow.pop((task.user_id, task.current_workflow_id), None)
 
 
-def _register_task(conn_id: str, task_id: str) -> None:
-    with _TASK_LOCK:
-        now = time.monotonic()
-        _purge_stale_tasks_locked(now)
-        session_tasks = _TASK_STATE.setdefault(conn_id, {})
-        session_tasks.setdefault(
-            task_id,
-            {"cancelled": False, "notified": False, "created_at": now},
-        )
-
-
-def _cancel_task(conn_id: str, task_id: str) -> None:
-    with _TASK_LOCK:
-        now = time.monotonic()
-        _purge_stale_tasks_locked(now)
-        session_tasks = _TASK_STATE.setdefault(conn_id, {})
-        state = session_tasks.get(task_id)
-        if not state:
-            session_tasks[task_id] = {"cancelled": True, "notified": False, "created_at": now}
-            return
-        state["cancelled"] = True
-
-
-def _is_task_cancelled(conn_id: str, task_id: str) -> bool:
-    with _TASK_LOCK:
-        _purge_stale_tasks_locked(time.monotonic())
-        state = _TASK_STATE.get(conn_id, {}).get(task_id)
-        return bool(state and state.get("cancelled"))
-
-
-def _mark_task_notified(conn_id: str, task_id: str) -> bool:
-    with _TASK_LOCK:
-        state = _TASK_STATE.get(conn_id, {}).get(task_id)
-        if not state or state.get("notified"):
-            return False
-        state["notified"] = True
-        return True
-
-
-def _clear_task(conn_id: str, task_id: str) -> None:
-    with _TASK_LOCK:
-        session_tasks = _TASK_STATE.get(conn_id)
-        if not session_tasks:
-            return
-        session_tasks.pop(task_id, None)
-        if not session_tasks:
-            _TASK_STATE.pop(conn_id, None)
+_task_registry = TaskRegistry()
 
 
 # ---------- Chat task ----------
@@ -143,21 +130,62 @@ class WsChatTask:
     stream_buffer: str = ""
     # Tool start times for duration measurement (keyed by tool name)
     _tool_start_times: dict[str, float] = field(default_factory=dict)
+    # Cached cancellation flag — set by TaskRegistry.cancel() to avoid
+    # lock + dict lookup on every stream chunk. Volatile read is safe
+    # because Python's GIL makes bool assignment atomic.
+    _cancelled: bool = False
+    # Whether a chat_cancelled event has already been emitted for this task.
+    # Prevents duplicate cancellation notifications from concurrent paths.
+    _notified: bool = False
+    # Timestamp for stale task purging in TaskRegistry.
+    _created_at: float = field(default_factory=time.monotonic)
+    # Lock protecting conn_id reads/writes between the background thread
+    # (_emit) and handle_resume_task which mutates conn_id.
+    _conn_lock: Lock = field(default_factory=Lock)
+    # Consecutive send failures — tracks dead connections.
+    _consecutive_send_failures: int = 0
+    # Monotonic timestamp of the first failure in the current streak.
+    # Connection is declared dead only after failures span DEAD_CONN_GRACE_SECONDS,
+    # giving time for page refreshes to reconnect via resume_task.
+    _first_failure_time: Optional[float] = None
 
     # --- Helpers ---
 
     def is_cancelled(self) -> bool:
-        return _is_task_cancelled(self.conn_id, self.task_id)
+        # Fast path: cached flag (set by handle_cancel_task or dead-connection detection)
+        return self._cancelled
 
     def _emit(self, event: str, payload: dict) -> None:
         """Emit a JSON message via the registry (sync, from background thread).
 
         Automatically includes workflow_id so the frontend can route events
-        to the correct per-workflow conversation.
+        to the correct per-workflow conversation. Tracks consecutive failures
+        and cancels the task if the connection appears dead.
         """
         if self.current_workflow_id and "workflow_id" not in payload:
             payload["workflow_id"] = self.current_workflow_id
-        self.registry.send_to_sync(self.conn_id, event, payload)
+        # Read conn_id under lock — handle_resume_task may be writing it
+        with self._conn_lock:
+            sid = self.conn_id
+        ok = self.registry.send_to_sync(sid, event, payload)
+        if ok:
+            self._consecutive_send_failures = 0
+            self._first_failure_time = None
+        else:
+            self._consecutive_send_failures += 1
+            now = time.monotonic()
+            if self._first_failure_time is None:
+                self._first_failure_time = now
+            # Declare dead only after failures span 10+ seconds — gives page
+            # refreshes enough time to reconnect via resume_task.
+            elif now - self._first_failure_time > 10.0:
+                logger.warning(
+                    "Dead connection detected (%d failures over %.1fs) — aborting task %s",
+                    self._consecutive_send_failures,
+                    now - self._first_failure_time,
+                    self.task_id,
+                )
+                self._cancelled = True
 
     def emit_progress(self, event: str, status: str, *, tool: Optional[str] = None) -> None:
         payload: Dict[str, Any] = {"event": event, "status": status, "task_id": self.task_id}
@@ -171,20 +199,22 @@ class WsChatTask:
         self._emit("agent_error", {"task_id": self.task_id, "error": error})
 
     def emit_cancelled(self) -> None:
-        if _mark_task_notified(self.conn_id, self.task_id):
+        if _task_registry.mark_notified(self.task_id):
             self._emit("chat_cancelled", {"task_id": self.task_id})
 
     def stream_chunk(self, chunk: str) -> None:
-        """Stream text to frontend character-by-character for typewriter effect."""
+        """Stream an SDK chunk to the frontend as-is (no char-by-char splitting).
+
+        The Anthropic SDK already yields ~20-50 char chunks. Emitting them
+        directly removes the 5ms-per-char artificial delay that made a 4000-char
+        response take 20+ seconds. If a typewriter effect is desired, it should
+        be done client-side with CSS animation.
+        """
         if self.is_cancelled():
             return
         self.did_stream = True
         self.stream_buffer += chunk  # Accumulate for resume replay
-        for char in chunk:
-            if self.is_cancelled():
-                return
-            self._emit("chat_stream", {"chunk": char, "task_id": self.task_id})
-            self.registry.sleep_sync(0.005)  # 5ms delay for visible typewriter effect
+        self._emit("chat_stream", {"chunk": chunk, "task_id": self.task_id})
 
     def stream_thinking(self, chunk: str) -> None:
         """Stream LLM reasoning/thinking chunks to the frontend."""
@@ -195,7 +225,9 @@ class WsChatTask:
 
     def heartbeat(self) -> None:
         while not self.done.is_set():
-            self.registry.sleep_sync(5)
+            # done.wait() returns immediately when done is set, unlike sleep()
+            # which hangs for the full duration even after the task finishes.
+            self.done.wait(5)
             if self.done.is_set() or self.is_cancelled():
                 break
             self.emit_progress("heartbeat", "Analysing...")
@@ -605,7 +637,7 @@ class WsChatTask:
         self.emit_progress("start", "Thinking...")
         threading.Thread(target=self.heartbeat, daemon=True).start()
 
-        # NOTE: _ACTIVE_TASKS registration and building=True are set in
+        # NOTE: TaskRegistry registration and building=True are set in
         # handle_ws_chat BEFORE the thread spawns (eliminates race condition
         # where a fast page refresh misses in-progress state).
 
@@ -644,29 +676,25 @@ class WsChatTask:
                 return
             self._emit_response(response_text)
         except Exception as exc:
-            logger.exception("WS chat failed")
+            logger.exception("WS chat failed: task=%s", self.task_id)
             self._log_error(exc)
             self.emit_error(str(exc))
         finally:
             self.done.set()
-            _clear_task(self.conn_id, self.task_id)
-            # Unregister from active tasks and clear building flag
-            task_key = (self.user_id, self.current_workflow_id) if self.current_workflow_id else None
-            if task_key:
-                with _ACTIVE_TASKS_LOCK:
-                    _ACTIVE_TASKS.pop(task_key, None)
-                if self.workflow_store:
-                    try:
-                        self.workflow_store.update_workflow(
-                            self.current_workflow_id, self.user_id, building=False,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to clear building=False for workflow %s — "
-                            "workflow may appear stuck in 'Building' state",
-                            self.current_workflow_id,
-                            exc_info=True,
-                        )
+            _task_registry.unregister(self)
+            # Clear building flag so the workflow doesn't appear stuck
+            if self.current_workflow_id and self.workflow_store:
+                try:
+                    self.workflow_store.update_workflow(
+                        self.current_workflow_id, self.user_id, building=False,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to clear building=False for workflow %s — "
+                        "workflow may appear stuck in 'Building' state",
+                        self.current_workflow_id,
+                        exc_info=True,
+                    )
 
 
 # ---------- Handler functions (called from ws_handler.py dispatch loop) ----------
@@ -700,7 +728,6 @@ def handle_ws_chat(
 
     if not isinstance(task_id, str) or not task_id.strip():
         task_id = uuid4().hex
-    _register_task(conn_id, task_id)
 
     current_workflow_id = payload.get("current_workflow_id") or f"wf_{uuid4().hex}"
 
@@ -723,14 +750,29 @@ def handle_ws_chat(
         conversation_logger=conversation_logger,
     )
 
-    # Register the task and set building=True BEFORE spawning the thread.
+    # Register and set building=True BEFORE spawning the thread.
     # This eliminates the race where a page refresh between thread spawn
     # and thread execution finds building=false and no active task.
-    task_key = (user_id, current_workflow_id)
-    with _ACTIVE_TASKS_LOCK:
-        _ACTIVE_TASKS[task_key] = task
-    if workflow_store:
+    _task_registry.register(task)
+    if workflow_store and current_workflow_id:
         try:
+            # Ensure the workflow row exists — for brand-new unsaved workflows,
+            # the DB row doesn't exist yet, so UPDATE building=True would be a no-op.
+            # persist_workflow_snapshot does create-or-update.
+            workflow_data = payload.get("workflow") or {}
+            persist_workflow_snapshot(
+                workflow_store,
+                workflow_id=current_workflow_id,
+                user_id=user_id,
+                name="New Workflow",
+                description="",
+                nodes=workflow_data.get("nodes", []),
+                edges=workflow_data.get("edges", []),
+                variables=workflow_data.get("variables", []),
+                outputs=workflow_data.get("outputs"),
+                output_type=workflow_data.get("output_type"),
+                is_draft=True,
+            )
             workflow_store.update_workflow(current_workflow_id, user_id, building=True)
         except Exception:
             logger.error("Failed to set building=True for %s before thread spawn", current_workflow_id, exc_info=True)
@@ -744,12 +786,16 @@ def handle_cancel_task(
     conn_id: str,
     payload: Dict[str, Any],
 ) -> None:
-    """Handle cancel_task message."""
+    """Handle cancel_task message.
+
+    Sets _cancelled on the WsChatTask via the unified registry so
+    is_cancelled() returns True immediately (no lock on hot path).
+    """
     task_id = payload.get("task_id")
     if not isinstance(task_id, str) or not task_id.strip():
         return
-    _cancel_task(conn_id, task_id)
-    if _mark_task_notified(conn_id, task_id):
+    _task_registry.cancel(task_id)
+    if _task_registry.mark_notified(task_id):
         registry.send_to_sync(conn_id, "chat_cancelled", {"task_id": task_id})
 
 
@@ -803,18 +849,19 @@ def handle_resume_task(
     if not workflow_id:
         return
 
-    task_key = (user_id, workflow_id)
-    with _ACTIVE_TASKS_LOCK:
-        task = _ACTIVE_TASKS.get(task_key)
+    task = _task_registry.get_by_workflow(user_id, workflow_id)
 
     if task and not task.done.is_set():
-        old_conn_id = task.conn_id
-        # Snapshot accumulated content before switching conn_id so we
+        # Lock conn_id mutation — the background thread reads it in _emit()
+        with task._conn_lock:
+            old_conn_id = task.conn_id
+            task.conn_id = conn_id
+        # Reset failure counter since we have a fresh connection
+        task._consecutive_send_failures = 0
+        # Snapshot accumulated content after switching conn_id so we
         # capture everything streamed up to this point.
         replay_thinking = "".join(task.thinking_chunks)
         replay_stream = task.stream_buffer
-        # Re-route future events to the new WebSocket connection
-        task.conn_id = conn_id
         logger.info(
             "resume_task: reconnected workflow=%s old_conn=%s new_conn=%s "
             "replay_thinking=%d replay_stream=%d",

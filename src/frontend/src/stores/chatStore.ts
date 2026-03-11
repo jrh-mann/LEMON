@@ -176,10 +176,12 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   setContextUsage: (workflowId, pct) =>
     set((state) => updateConv(state, workflowId, { contextUsagePct: pct })),
 
-  // Finalize streaming: convert streamContent into a Message, clear streaming state
+  // Finalize streaming: convert streamContent into a Message, clear streaming state.
+  // Falls back to thinkingContent if the model was stopped during extended thinking
+  // before any actual response text was emitted.
   finalizeStream: (workflowId, toolCalls) => {
     const conv = getConv(get(), workflowId)
-    const content = conv.streamingContent
+    const content = conv.streamingContent || conv.thinkingContent
     if (content) {
       const msg: Message = {
         id: generateId(),

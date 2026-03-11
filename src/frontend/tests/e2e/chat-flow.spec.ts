@@ -190,7 +190,7 @@ test.describe('chat flow — stop button', () => {
       .toContainText('create the workflow')
   })
 
-  test('stop during thinking (no streamed content) does not add empty message', async ({ page }) => {
+  test('stop during thinking preserves thinking content as assistant message', async ({ page }) => {
     const taskId = await sendAndGetTaskId(page, 'analyze the image')
 
     sio.emit('chat_progress', {
@@ -204,9 +204,9 @@ test.describe('chat flow — stop button', () => {
 
     await page.click('#stopBtn')
 
-    // Only the user message should remain
+    // Thinking content is preserved as an assistant message (finalizeStream fallback)
     await expect(page.locator('.message.user')).toHaveCount(1)
-    await expect(page.locator('.message.assistant')).toHaveCount(0)
+    await expect(page.locator('.message.assistant')).toHaveCount(1)
     await expect(page.locator('#chatInput')).toBeEnabled()
   })
 

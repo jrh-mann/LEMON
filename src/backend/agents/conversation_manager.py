@@ -98,17 +98,14 @@ class ConversationManager:
         self.history.append({"role": "user", "content": user_message})
         if partial:
             self.history.append({"role": "assistant", "content": partial})
-        # Tell the LLM its generation was interrupted so it can pick up
-        # where it left off on the next turn.
+        # Tell the LLM its generation was interrupted. Short markers that
+        # the frontend won't render as visible chat bubbles (the old
+        # "Understood." text appeared as a duplicate message in the UI).
         self.history.append({
             "role": "user",
-            "content": (
-                "[SYSTEM] Your previous response was interrupted by the user. "
-                "Any tool calls in progress may not have completed. "
-                "When the user sends their next message, continue from where you left off."
-            ),
+            "content": "[CANCELLED] Previous response was interrupted. Resume on next turn.",
         })
-        self.history.append({"role": "assistant", "content": "Understood."})
+        self.history.append({"role": "assistant", "content": "[CANCELLED]"})
         return partial
 
     # ------------------------------------------------------------------

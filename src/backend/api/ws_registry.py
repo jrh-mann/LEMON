@@ -71,23 +71,25 @@ class ConnectionRegistry:
         except Exception as exc:
             logger.warning("send_to failed for sid=%s event=%s: %s", sid, event, exc)
 
-    def send_to_sync(self, sid: str, event: str, payload: dict) -> None:
+    def send_to_sync(self, sid: str, event: str, payload: dict) -> bool:
         """Emit from a background thread (sync context).
 
         Uses asyncio.run_coroutine_threadsafe() to dispatch to the event loop.
-        Short timeout + swallowed exceptions so a dead connection doesn't
-        stall the streaming hot path.
+        Short timeout so a dead connection doesn't stall the streaming hot path.
+        Returns True on success, False on failure (callers can track failures).
         """
         if not self._loop:
-            return
+            return False
         try:
             future = asyncio.run_coroutine_threadsafe(
                 self.sio.emit(event, payload, to=sid),
                 self._loop,
             )
             future.result(timeout=0.5)  # Short timeout for streaming hot path
+            return True
         except Exception as exc:
             logger.warning("send_to_sync failed for sid=%s event=%s: %s", sid, event, exc)
+            return False
 
     def sleep_sync(self, seconds: float) -> None:
         """Non-blocking sleep from background thread."""
