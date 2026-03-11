@@ -203,24 +203,58 @@ def register_chat_routes(
                             pending_tools = []
                         assistant_seq += 1
 
+            # Collapse history into user + final-assistant per turn.
+            # The history now includes intermediate assistant messages from
+            # tool rounds, but the frontend's streaming already concatenated
+            # all text into one message. Returning intermediates would cause
+            # duplicates in mergeBackendMessages. Instead, return only the
+            # LAST assistant response per turn (matches ConversationLogger).
             messages = []
             assistant_idx = 0
+            # Pending turn state: accumulates tool_calls across tool rounds
+            pending_user: dict | None = None
+            pending_assistant: dict | None = None
+            pending_all_tools: list = []
+
             for idx, msg in enumerate(convo.orchestrator.conversation.history):
                 role = msg.get("role", "assistant")
                 content = msg.get("content", "")
-                tool_calls = []
-                if role == "assistant":
-                    tool_calls = assistant_tool_calls.get(assistant_idx, [])
-                    assistant_idx += 1
-                messages.append(
-                    {
+
+                if role == "user":
+                    # Flush previous turn
+                    if pending_user is not None:
+                        messages.append(pending_user)
+                        if pending_assistant is not None:
+                            messages.append(pending_assistant)
+                    pending_user = {
                         "id": f"{conversation_id}_{idx}",
-                        "role": role,
+                        "role": "user",
                         "content": content,
                         "timestamp": utc_now(),
-                        "tool_calls": tool_calls,
+                        "tool_calls": [],
                     }
-                )
+                    pending_assistant = None
+                    pending_all_tools = []
+                elif role == "assistant":
+                    tc = assistant_tool_calls.get(assistant_idx, [])
+                    assistant_idx += 1
+                    pending_all_tools.extend(tc)
+                    if content:
+                        # Keep updating to the latest assistant with content
+                        pending_assistant = {
+                            "id": f"{conversation_id}_{idx}",
+                            "role": "assistant",
+                            "content": content,
+                            "timestamp": utc_now(),
+                            "tool_calls": list(pending_all_tools),
+                        }
+                # Skip role == "tool"
+
+            # Flush last turn
+            if pending_user is not None:
+                messages.append(pending_user)
+                if pending_assistant is not None:
+                    messages.append(pending_assistant)
             return JSONResponse(
                 {
                     "id": convo.id,
