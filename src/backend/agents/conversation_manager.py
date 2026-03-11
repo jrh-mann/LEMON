@@ -70,9 +70,19 @@ class ConversationManager:
     # Turn persistence
     # ------------------------------------------------------------------
 
-    def save_turn(self, user_message: str, final_text: str) -> None:
-        """Append a completed turn (user + assistant) to history."""
+    def save_turn(
+        self, user_message: str, final_text: str,
+        tool_messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Append a completed turn to history.
+
+        When tool_messages is provided, the full tool-use / tool-result exchange
+        is preserved between the user message and final assistant response so the
+        LLM has context about executed tools on future turns.
+        """
         self.history.append({"role": "user", "content": user_message})
+        if tool_messages:
+            self.history.extend(tool_messages)
         self.history.append({"role": "assistant", "content": final_text})
         self._logger.debug("History now has %d messages", len(self.history))
 

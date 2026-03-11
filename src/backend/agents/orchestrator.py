@@ -277,6 +277,8 @@ class Orchestrator:
 
         # --- Tool loop ---
         tool_results: List[ToolResult] = []
+        # Track tool-use/tool-result messages so they persist in history
+        turn_tool_messages: List[Dict[str, Any]] = []
         asked_question = False
         iterations = 0
 
@@ -289,7 +291,9 @@ class Orchestrator:
                 self.conversation.save_error(user_message, f"Max tool iterations ({_MAX_TOOL_ITERATIONS}).")
                 return finalize_cancel()
 
-            messages.append({"role": "assistant", "content": raw or "", "tool_calls": tool_calls})
+            asst_msg = {"role": "assistant", "content": raw or "", "tool_calls": tool_calls}
+            messages.append(asst_msg)
+            turn_tool_messages.append(asst_msg)
 
             # Execute each tool in the batch
             tool_failure = None
@@ -315,11 +319,13 @@ class Orchestrator:
 
                     # Image blocks pass through directly; otherwise json.dumps
                     content = result.data.get("content")
-                    messages.append({
+                    tool_msg = {
                         "role": "tool",
                         "tool_call_id": tc.get("id"),
                         "content": content if isinstance(content, list) else json.dumps(result.data),
-                    })
+                    }
+                    messages.append(tool_msg)
+                    turn_tool_messages.append(tool_msg)
                     if on_tool_event:
                         on_tool_event("tool_complete", tool_name, args, result.data)
 
@@ -343,7 +349,9 @@ class Orchestrator:
                 sname = sfn.get("name")
                 sargs = _parse_args(sfn.get("arguments") or "{}")
                 sp = {"success": False, "skipped": True, "error": f"Skipped {sname} — previous tool failed."}
-                messages.append({"role": "tool", "tool_call_id": skipped.get("id"), "content": json.dumps(sp)})
+                skip_msg = {"role": "tool", "tool_call_id": skipped.get("id"), "content": json.dumps(sp)}
+                messages.append(skip_msg)
+                turn_tool_messages.append(skip_msg)
                 if on_tool_event:
                     on_tool_event("tool_complete", sname, sargs, sp)
 
@@ -389,7 +397,10 @@ class Orchestrator:
             for i in range(0, len(final_text), 800):
                 stream(final_text[i:i + 800])
 
-        self.conversation.save_turn(user_message, final_text)
+        self.conversation.save_turn(
+            user_message, final_text,
+            tool_messages=turn_tool_messages or None,
+        )
         return final_text
 
 
