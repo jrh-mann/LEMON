@@ -160,6 +160,111 @@ test.describe('refresh persistence', () => {
     await expect(assistantMessages.nth(1).locator('.tool-call')).toHaveCount(2)
   })
 
+  test('backend messages merge into local after refresh (assistant arrived while page closed)', async ({ page }) => {
+    // Scenario: user sent a message, then refreshed while the backend was
+    // still processing. The orchestrator finished and the backend now has
+    // both user + assistant messages. Local only has the user message.
+    // After reload, the assistant message from the backend should appear.
+    const CONV_ID = 'conv-merge-test'
+
+    // Seed localStorage with ONLY the user message
+    await seedAndLoad(page, WF_ID, buildChatStorage(WF_ID, [msg('user', 'build a triage workflow')], CONV_ID))
+
+    // Verify only user message is present
+    await expect(page.locator('.message.user')).toHaveCount(1)
+    await expect(page.locator('.message.assistant')).toHaveCount(0)
+
+    // Now re-mock APIs so the workflow detail returns a conversation_id
+    // and the chat history returns BOTH user + assistant messages
+    await mockAllAPIs(page, {
+      workflowDetail: {
+        id: WF_ID, name: 'Merge Test',
+        nodes: [{ id: 'n1', type: 'start', label: 'Start', x: 100, y: 100, color: 'green' }],
+        edges: [], variables: [],
+        conversation_id: CONV_ID,
+      },
+      chatMessages: [
+        msg('user', 'build a triage workflow'),
+        msg('assistant', 'I built the triage workflow with 5 nodes.', [
+          tc('add_node', { label: 'Start' }),
+          tc('add_node', { label: 'Triage' }),
+          tc('add_connection', { from: 'n1', to: 'n2' }),
+        ]),
+      ],
+    })
+
+    await page.reload()
+
+    // After reload, both messages should be visible — the assistant
+    // message was merged from the backend conversation history.
+    await expect(page.locator('.message.user')).toHaveCount(1)
+    await expect(page.locator('.message.assistant')).toHaveCount(1)
+    await expect(page.locator('.message.assistant .message-content')).toContainText('triage workflow')
+    await expect(page.locator('.message.assistant .tool-call')).toHaveCount(3)
+  })
+
+  test('local messages preserved when backend returns empty history', async ({ page }) => {
+    // Scenario: backend chat endpoint returns 0 messages (e.g. task still
+    // running, or server restarted with empty ConversationLogger).
+    // Local messages should be preserved — not wiped out.
+    const CONV_ID = 'conv-empty-backend'
+
+    const messages = [
+      msg('user', 'analyze this image'),
+      msg('assistant', 'I see a flowchart with 3 nodes.', [
+        tc('view_image', {}),
+        tc('extract_guidance', {}),
+      ]),
+    ]
+
+    await seedAndLoad(page, WF_ID, buildChatStorage(WF_ID, messages, CONV_ID))
+
+    await expect(page.locator('.message')).toHaveCount(2)
+
+    // Re-mock with conversation_id but empty chat history (backend has 0 messages)
+    await mockAllAPIs(page, {
+      workflowDetail: {
+        id: WF_ID, name: 'Empty Backend Test',
+        nodes: [{ id: 'n1', type: 'start', label: 'Start', x: 100, y: 100, color: 'green' }],
+        edges: [], variables: [],
+        conversation_id: CONV_ID,
+      },
+      chatMessages: [],
+    })
+
+    await page.reload()
+
+    // Local messages should still be present — backend returning empty
+    // should NOT wipe out the richer local state.
+    await expect(page.locator('.message')).toHaveCount(2)
+    await expect(page.locator('.message.user .message-content')).toContainText('analyze this image')
+    await expect(page.locator('.message.assistant .tool-call')).toHaveCount(2)
+  })
+
+  test('building flag shows streaming UI on refresh', async ({ page }) => {
+    // Scenario: user sent a message, the backend is still processing
+    // (building=true). After refresh, the UI should show streaming state.
+    await seedAndLoad(page, WF_ID, buildChatStorage(WF_ID, [msg('user', 'build it')]))
+
+    // Re-mock with building=true to simulate in-progress task
+    await mockAllAPIs(page, {
+      workflowDetail: {
+        id: WF_ID, name: 'Building Test',
+        nodes: [{ id: 'n1', type: 'start', label: 'Start', x: 100, y: 100, color: 'green' }],
+        edges: [], variables: [],
+        conversation_id: 'conv-building',
+        building: true,
+      },
+    })
+
+    await page.reload()
+
+    // Streaming UI should appear because the backend is still building.
+    // The stop button indicates the frontend entered streaming mode.
+    await expect(page.locator('#stopBtn')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('#chatInput')).toBeDisabled()
+  })
+
   test('failed tool calls retain failure badge after refresh', async ({ page }) => {
     const messages = [
       msg('user', 'do something'),
