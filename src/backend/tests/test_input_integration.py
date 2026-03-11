@@ -14,55 +14,10 @@ manually syncing from tool result dicts.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
-from ..agents.orchestrator_factory import build_orchestrator
-from ..storage.workflows import WorkflowStore
 from ..tools.workflow_input import AddWorkflowVariableTool
-
-
-def _repo_root() -> Path:
-    return Path(__file__).parent.parent.parent.parent
-
-
-
-@pytest.fixture
-def orchestrator_with_workflow(tmp_path):
-    """Create an orchestrator with a proper workflow_store, user_id, and test workflow.
-
-    This fixture sets up the orchestrator in the same way the real app does,
-    ensuring tools have access to workflow_store and user_id for database operations.
-    """
-    # Create orchestrator
-    orch = build_orchestrator(repo_root=_repo_root())
-
-    # Create in-memory workflow store for testing
-    db_path = tmp_path / "test_workflows.sqlite"
-    workflow_store = WorkflowStore(db_path)
-
-    # Set up orchestrator with workflow store and test user
-    test_user_id = f"test_user_{uuid4().hex[:8]}"
-    orch.workflow_store = workflow_store
-    orch.user_id = test_user_id
-
-    # Create a test workflow using the create_workflow tool
-    result = orch.run_tool("create_workflow", {
-        "name": "Test Workflow",
-        "description": "Test workflow for input integration tests",
-        "output_type": "string"
-    })
-
-    assert result.success, f"Failed to create test workflow: {result.error}"
-
-    # Set current_workflow_id to the newly created workflow
-    workflow_id = result.data.get("workflow_id")
-    assert workflow_id, "create_workflow did not return workflow_id"
-    orch.current_workflow_id = workflow_id
-
-    return orch
 
 
 class TestVariableDoubleAppendBug:

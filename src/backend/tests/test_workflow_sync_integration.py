@@ -156,15 +156,16 @@ class TestWorkflowSyncIntegration:
             "Bug reproduction: orchestrator sees 0 nodes because sync never happened"
         )
 
-    def test_get_current_workflow_tool_after_sync(
+    def test_orchestrator_state_matches_after_sync(
         self, conversation_store: ConversationStore, conversation_id: str
     ):
         """
-        Test that GetCurrentWorkflowTool returns the synced workflow.
+        Test that orchestrator's current_workflow matches the synced workflow.
 
-        This simulates what happens when user asks "what's on the canvas?"
+        This verifies the sync_workflow path correctly populates orchestrator
+        state that tools will read (tools now load from DB in production, but
+        the sync path is still used for the ConversationStore flow).
         """
-        # Setup: Sync workflow first
         frontend_workflow = {
             "nodes": [
                 {
@@ -193,38 +194,28 @@ class TestWorkflowSyncIntegration:
         convo.update_workflow_state(frontend_workflow)
         convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
 
-        # Execute get_current_workflow tool
-        from ..tools.workflow_edit import GetCurrentWorkflowTool
-
-        tool = GetCurrentWorkflowTool()
-        result = tool.execute(
-            {},
-            session_state={"current_workflow": convo.orchestrator.current_workflow}
-        )
-
-        print(f"\n[DEBUG] Tool result: {json.dumps(result, indent=2)}")
-
-        # Verify tool returns the workflow
-        assert result["success"] is True, "Tool should succeed"
-        assert "workflow" in result, "Tool should return workflow"
-
-        workflow = result["workflow"]
+        # Verify orchestrator state matches
+        workflow = convo.orchestrator.current_workflow
         assert len(workflow["nodes"]) == 2, (
-            f"Tool should return 2 nodes, got {len(workflow['nodes'])}"
+            f"Orchestrator should have 2 nodes after sync, got {len(workflow['nodes'])}"
         )
         assert len(workflow["edges"]) == 1, (
-            f"Tool should return 1 edge, got {len(workflow['edges'])}"
+            f"Orchestrator should have 1 edge after sync, got {len(workflow['edges'])}"
         )
 
-    def test_full_e2e_flow_with_orchestrator_respond(
+        # Verify node content survived sync
+        node_labels = {n["label"] for n in workflow["nodes"]}
+        assert node_labels == {"Start", "End"}
+
+    def test_full_e2e_sync_preserves_node_details(
         self, conversation_store: ConversationStore, conversation_id: str
     ):
         """
-        End-to-end test: sync workflow, send message, orchestrator responds.
+        End-to-end test: sync workflow with detailed nodes, verify all fields preserved.
 
-        This is the closest to the real user flow.
+        Tests that sync_workflow preserves node types, labels, positions, and
+        edge relationships through the ConversationStore → orchestrator path.
         """
-        # Setup: Add nodes to workflow
         frontend_workflow = {
             "nodes": [
                 {
@@ -249,39 +240,26 @@ class TestWorkflowSyncIntegration:
             ],
         }
 
-        # Sync workflow to backend
         convo = conversation_store.get_or_create(conversation_id)
         convo.update_workflow_state(frontend_workflow)
         convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
 
-        # User sends message asking about workflow
-        message = "What nodes are on the canvas?"
-
-        # Orchestrator responds (with tools enabled)
-        # Note: We're NOT actually calling respond() here because it requires LLM
-        # Instead, we'll just verify the state is correct
-
-        print(f"\n[DEBUG] Conversation workflow_state nodes: {len(convo.workflow_state['nodes'])}")
-        print(f"[DEBUG] Orchestrator current_workflow nodes: {len(convo.orchestrator.current_workflow['nodes'])}")
-
         # Verify state is synced correctly
-        assert len(convo.orchestrator.current_workflow["nodes"]) == 2, (
-            "Orchestrator should have 2 nodes after sync"
-        )
+        nodes = convo.orchestrator.current_workflow["nodes"]
+        edges = convo.orchestrator.current_workflow["edges"]
+        assert len(nodes) == 2, "Orchestrator should have 2 nodes after sync"
+        assert len(edges) == 1, "Orchestrator should have 1 edge after sync"
 
-        # Verify the orchestrator's tool registry has access to the workflow
-        session_state = {"current_workflow": convo.orchestrator.current_workflow}
+        # Verify node details survived sync
+        node_map = {n["id"]: n for n in nodes}
+        assert node_map["node_abc"]["type"] == "start"
+        assert node_map["node_abc"]["label"] == "User Registration"
+        assert node_map["node_def"]["type"] == "decision"
+        assert node_map["node_def"]["label"] == "Email Valid?"
 
-        from ..tools.workflow_edit import GetCurrentWorkflowTool
-        tool = GetCurrentWorkflowTool()
-        tool_result = tool.execute({}, session_state=session_state)
-
-        assert tool_result["success"] is True
-        assert len(tool_result["workflow"]["nodes"]) == 2, (
-            "GetCurrentWorkflowTool should see 2 nodes"
-        )
-
-        print("[DEBUG] ✓ Full E2E flow passed - orchestrator has access to synced workflow")
+        # Verify edge details
+        assert edges[0]["from"] == "node_abc"
+        assert edges[0]["to"] == "node_def"
 
 
 if __name__ == "__main__":
