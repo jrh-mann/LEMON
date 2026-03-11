@@ -180,6 +180,31 @@ test.describe('live backend — stop button', () => {
   })
 })
 
+test.describe('live backend — conversation persistence', () => {
+  test('second message demonstrates awareness of first message', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
+
+    // First turn: ask to add a start node
+    await sendMessage(page, 'Add a start node to the workflow.')
+    await waitForResponseComplete(page, 150_000)
+
+    // Canvas should have at least one node
+    const canvasNodes = page.locator('.flow-node')
+    await expect(canvasNodes.first()).toBeVisible({ timeout: 10_000 })
+
+    // Second turn: ask about what was just done (proves conversation memory)
+    await sendMessage(page, 'What did you just add to the workflow? Answer briefly.')
+    await waitForResponseComplete(page, 150_000)
+
+    // The second assistant response should reference the start node
+    const assistantMessages = page.locator('.message.assistant')
+    const secondResponse = assistantMessages.last()
+    const content = await secondResponse.locator('.message-content').textContent()
+    expect(content?.toLowerCase()).toMatch(/start/)
+  })
+})
+
 test.describe('live backend — workflow building', () => {
   test('model creates nodes on the canvas via tool calls', async ({ page }) => {
     await registerUser(page)

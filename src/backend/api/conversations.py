@@ -82,8 +82,9 @@ class Conversation:
 
 
 class ConversationStore:
-    def __init__(self, repo_root: Path) -> None:
+    def __init__(self, repo_root: Path, conversation_logger: Any = None) -> None:
         self._repo_root = repo_root
+        self._conversation_logger = conversation_logger
         self._conversations: Dict[str, Conversation] = {}
         # Lock protects _conversations from concurrent WS thread access
         self._lock = threading.Lock()
@@ -98,8 +99,43 @@ class ConversationStore:
             self._evict_if_full()
             new_id = conversation_id or f"conv_{uuid4().hex}"
             convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root))
+            # Reload history from persistent logger when the conversation_id was
+            # provided but not found in memory (e.g. after backend restart).
+            if conversation_id and self._conversation_logger:
+                self._reload_history(convo)
             self._conversations[new_id] = convo
             return convo
+
+    def _reload_history(self, convo: Conversation) -> None:
+        """Reload conversation history from ConversationLogger into the orchestrator.
+
+        Called when a known conversation_id is not in memory — typically after
+        a backend restart. Reads user/assistant messages from the persistent
+        SQLite log and injects them so the LLM has prior context.
+        """
+        try:
+            entries = self._conversation_logger.get_conversation_timeline(
+                convo.id, entry_types=["user_message", "assistant_response"],
+            )
+            if not entries:
+                return
+            history = []
+            for entry in entries:
+                role = "user" if entry["entry_type"] == "user_message" else "assistant"
+                content = entry.get("content", "")
+                if content:
+                    history.append({"role": role, "content": content})
+            if history:
+                convo.orchestrator.conversation.history = history
+                logger.info(
+                    "Reloaded %d messages for conversation %s from persistent log",
+                    len(history), convo.id,
+                )
+        except Exception:
+            logger.warning(
+                "Failed to reload history for conversation %s — starting fresh",
+                convo.id, exc_info=True,
+            )
 
     def get(self, conversation_id: str) -> Optional[Conversation]:
         with self._lock:

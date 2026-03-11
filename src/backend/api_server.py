@@ -25,10 +25,11 @@ _data_dir = lemon_data_dir(_repo_root)
 
 # Shared instances -- created once at import time
 ws_registry = create_registry()  # Wraps the module-level sio server
-conversation_store = ConversationStore(_repo_root)
+conversation_logger = ConversationLogger(_data_dir / "conversation_log.sqlite")
+# Pass conversation_logger so ConversationStore can reload history after backend restart
+conversation_store = ConversationStore(_repo_root, conversation_logger=conversation_logger)
 auth_store = AuthStore(_data_dir / "auth.sqlite")
 workflow_store = WorkflowStore(_data_dir / "workflows.sqlite")
-conversation_logger = ConversationLogger(_data_dir / "conversation_log.sqlite")
 
 _startup_logger = logging.getLogger("backend.api")
 _startup_logger.info(

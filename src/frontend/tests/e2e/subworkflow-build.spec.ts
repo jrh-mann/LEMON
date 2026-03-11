@@ -118,21 +118,17 @@ test.describe('live backend — subworkflow build from library', () => {
       { timeout: 15_000 },
     )
 
-    // The subworkflow should have chat content — either:
-    // - Live streaming messages (if still building)
-    // - Finalized messages from build_history (if build already completed)
-    // - A combination of both
-    //
-    // Wait for at least one message (user or assistant) to appear in the chat.
-    // The build_user_message event creates a user message with the brief,
-    // and streaming/response events create assistant messages.
+    // The subworkflow should have chat content quickly — builder events have been
+    // flowing into chatStore while the user was on the parent workflow (SPA nav
+    // keeps the socket connected). Content should appear within seconds, not minutes.
+    // Timeout is 15s to catch regressions where the page gets stuck on "Processing...".
     await page.waitForFunction(
       () => {
         const messages = document.querySelectorAll('.message.user, .message.assistant')
         const streaming = document.querySelector('.message.assistant.streaming')
         return messages.length > 0 || streaming !== null
       },
-      { timeout: 60_000 },
+      { timeout: 15_000 },
     )
 
     // Verify we have meaningful chat content — at least one message with text
