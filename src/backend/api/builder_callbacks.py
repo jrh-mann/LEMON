@@ -12,6 +12,7 @@ the python-socketio AsyncServer for thread-safe async bridging.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 
 from ..tools.constants import WORKFLOW_EDIT_TOOLS
@@ -46,6 +47,12 @@ class BackgroundBuilderCallbacks:
         # ToolSummaryTracker injects inline markdown summaries (e.g. "> Added a workflow node.")
         # between tool rounds — matches WsChatTask behavior for visual structure in the stream.
         self.tool_summary = ToolSummaryTracker()
+        # Resume-compatible fields: handle_resume_task reads these to replay
+        # accumulated content and re-route events after a page refresh.
+        # Matches the interface of WsChatTask so builders are resumable.
+        self.done = threading.Event()
+        self.thinking_chunks: List[str] = []
+        self.stream_buffer: str = ""
 
     def _emit(self, event: str, payload: dict) -> None:
         """Emit via registry (sync, from background thread)."""
@@ -57,6 +64,7 @@ class BackgroundBuilderCallbacks:
         """Emit chat_stream with workflow_id tag."""
         if self.cancelled:
             return
+        self.stream_buffer += chunk  # Accumulate for replay on resume
         self._emit("chat_stream", {
             "chunk": chunk,
             "workflow_id": self.workflow_id,
@@ -66,6 +74,7 @@ class BackgroundBuilderCallbacks:
         """Emit chat_thinking with workflow_id tag."""
         if not chunk or self.cancelled:
             return
+        self.thinking_chunks.append(chunk)  # Accumulate for replay on resume
         self._emit("chat_thinking", {
             "chunk": chunk,
             "workflow_id": self.workflow_id,

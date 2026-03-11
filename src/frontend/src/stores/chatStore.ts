@@ -130,25 +130,15 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   setMessages: (workflowId, messages) =>
     set((state) => updateConv(state, workflowId, { messages })),
 
-  setConversationId: (workflowId, id) => {
-    set((state) => updateConv(state, workflowId, { conversationId: id }))
-    // Sync to workflowStore if this is the active workflow
-    if (id && workflowId === get().activeWorkflowId) {
-      useWorkflowStore.getState().setConversationId(id)
-    }
-  },
+  setConversationId: (workflowId, id) =>
+    set((state) => updateConv(state, workflowId, { conversationId: id })),
 
   ensureConversationId: (workflowId) => {
     const conv = getConv(get(), workflowId)
     if (conv.conversationId) return conv.conversationId
 
-    // Check workflowStore for an existing conversationId
-    const workflowStore = useWorkflowStore.getState()
-    let conversationId = workflowStore.conversationId
-    if (!conversationId) {
-      conversationId = crypto.randomUUID()
-      workflowStore.setConversationId(conversationId)
-    }
+    // Generate a new ID — chatStore.conversations is the single source of truth
+    const conversationId = crypto.randomUUID()
     set((state) => updateConv(state, workflowId, { conversationId }))
     return conversationId
   },

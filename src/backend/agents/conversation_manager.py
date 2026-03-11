@@ -190,10 +190,9 @@ class ConversationManager:
                     },
                     {"role": "user", "content": conversation_text},
                 ],
-                max_completion_tokens=2000,
                 caller="conversation_manager",
                 request_tag="compaction",
-            )
+            ).text
             # Replace history with summary + recent messages
             original_len = len(self.history)
             self.history = [

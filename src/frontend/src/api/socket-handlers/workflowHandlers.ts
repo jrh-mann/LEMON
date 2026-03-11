@@ -11,6 +11,7 @@ import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore } from '../../stores/uiStore'
 import { transformFlowchartFromBackend, transformNodeFromBackend } from '../../utils/canvas'
 import type { WorkflowAnalysis } from '../../types'
+import { isForDifferentWorkflow, shouldIgnoreTask } from './utils'
 
 
 type WorkflowStateUpdate = {
@@ -22,12 +23,8 @@ type WorkflowStateUpdate = {
 
 
 function applyWorkflowStateUpdate(data: WorkflowStateUpdate): void {
+  if (isForDifferentWorkflow(data.workflow_id)) return
   const workflowStore = useWorkflowStore.getState()
-  const eventWorkflowId = data.workflow_id
-  const currentWorkflowId = workflowStore.currentWorkflow?.id
-  if (eventWorkflowId && currentWorkflowId && eventWorkflowId !== currentWorkflowId) {
-    return
-  }
 
   if (data.workflow) {
     const flowchart = transformFlowchartFromBackend(data.workflow)
@@ -62,12 +59,7 @@ export function registerWorkflowHandlers(socket: Socket): void {
 
     // Filter by workflow_id: background subworkflow builders emit events
     // for their own workflow -- ignore them unless the user is viewing that workflow
-    const eventWorkflowId = data.data.workflow_id as string | undefined
-    const currentWorkflowId = workflowStore.currentWorkflow?.id
-    if (eventWorkflowId && currentWorkflowId && eventWorkflowId !== currentWorkflowId) {
-      console.log('[SIO] Ignoring workflow_update for different workflow:', eventWorkflowId)
-      return
-    }
+    if (isForDifferentWorkflow(data.data.workflow_id as string | undefined)) return
 
     try {
       switch (data.action) {
@@ -177,22 +169,10 @@ export function registerWorkflowHandlers(socket: Socket): void {
     console.log('[SIO] analysis_updated:', data)
     const chatStore = useChatStore.getState()
     const workflowStore = useWorkflowStore.getState()
-    const taskId = data.task_id
+    const activeWfId = chatStore.activeWorkflowId
 
     // Filter out updates from stale/different tasks to prevent tab cross-contamination
-    if (taskId) {
-      if (chatStore.isTaskCancelled(taskId)) {
-        console.log('[SIO] Ignoring cancelled analysis_updated:', taskId)
-        return
-      }
-      // Check currentTaskId from the active workflow's conversation
-      const activeWfId = chatStore.activeWorkflowId
-      const conv = activeWfId ? chatStore.conversations[activeWfId] : undefined
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
-        console.log('[SIO] Ignoring stale analysis_updated:', taskId, 'current:', conv.currentTaskId)
-        return
-      }
-    }
+    if (activeWfId && shouldIgnoreTask(data.task_id, activeWfId)) return
 
     // Update the analysis with new variables/outputs
     const currentAnalysis = workflowStore.currentAnalysis ?? {
@@ -212,18 +192,8 @@ export function registerWorkflowHandlers(socket: Socket): void {
 
   socket.on('workflow_state_updated', (data: WorkflowStateUpdate) => {
     console.log('[SIO] workflow_state_updated:', data)
-    const chatStore = useChatStore.getState()
-    const taskId = data.task_id
-    if (taskId) {
-      if (chatStore.isTaskCancelled(taskId)) {
-        return
-      }
-      const activeWfId = chatStore.activeWorkflowId
-      const conv = activeWfId ? chatStore.conversations[activeWfId] : undefined
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
-        return
-      }
-    }
+    const activeWfId = useChatStore.getState().activeWorkflowId
+    if (activeWfId && shouldIgnoreTask(data.task_id, activeWfId)) return
     applyWorkflowStateUpdate(data)
   })
 

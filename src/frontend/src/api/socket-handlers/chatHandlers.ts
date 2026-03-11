@@ -15,6 +15,12 @@ import { useWorkflowStore } from '../../stores/workflowStore'
 import type { SocketChatResponse } from '../../types'
 import { resolveWorkflowId, shouldIgnoreTask } from './utils'
 
+// Deduplication guard: prevents chat_response from being processed twice
+// when Vite HMR creates duplicate socket event handler registrations.
+// Without this, the second handler invocation finds streamingContent already
+// cleared by the first, and addAssistantMessage creates a duplicate message.
+const _processedResponses = new Set<string>()
+
 /** Register all chat-related event handlers on the Socket.IO client */
 export function registerChatHandlers(socket: Socket): void {
   // Chat progress (incremental status updates)
@@ -59,12 +65,42 @@ export function registerChatHandlers(socket: Socket): void {
     useUIStore.getState().clearError()
     const taskId = data.task_id
 
-    // For cancelled responses, only drop if it wasn't an ack of the cancellation
-    if (taskId && !data.cancelled && shouldIgnoreTask(taskId, workflowId)) return
-    // Also check stale task_id even for cancelled acks
+    // Drop events for cancelled or stale tasks. When the user clicks Stop,
+    // handleStop calls markTaskCancelled + finalizeStream before the backend
+    // acks. If we don't drop the ack here, the response text gets added as
+    // a duplicate message.
+    if (taskId && shouldIgnoreTask(taskId, workflowId)) {
+      console.log('[SIO] chat_response DROPPED: task ignored', taskId)
+      return
+    }
     if (taskId) {
       const conv = chatStore.conversations[workflowId]
-      if (conv?.currentTaskId && taskId !== conv.currentTaskId) return
+      if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
+        console.log('[SIO] chat_response DROPPED: stale task', taskId, 'vs', conv.currentTaskId)
+        return
+      }
+    }
+
+    // Deduplicate: if this task_id was already processed by a prior handler
+    // invocation (from HMR-duplicated event listeners), skip it.
+    if (taskId) {
+      if (_processedResponses.has(taskId)) {
+        console.log('[SIO] chat_response SKIPPED: already processed', taskId)
+        return
+      }
+      _processedResponses.add(taskId)
+      setTimeout(() => _processedResponses.delete(taskId), 60_000)
+    }
+
+    // If this is a cancellation ack from the backend, just clean up state
+    // without adding any messages — the frontend already finalized the
+    // stream when the user clicked Stop.
+    if (data.cancelled) {
+      console.log('[SIO] chat_response: cancelled ack, cleaning up only')
+      chatStore.setStreaming(workflowId, false)
+      chatStore.setProcessingStatus(workflowId, null)
+      chatStore.setCurrentTaskId(workflowId, null)
+      return
     }
 
     // Check if there's streamed content to finalize before calling finalizeStream.

@@ -84,8 +84,6 @@ def setup_logging(log_path: Optional[Path] = None) -> Path:
     _attach_logger("backend.tool_calls", level, tool_handler)
     _attach_logger("backend.llm", level, llm_handler)
     _attach_logger("backend.history", level, history_handler)
-    _attach_logger("backend.mcp", level, tool_handler)
-    _attach_logger("backend.mcp_client", level, tool_handler)
 
     _CONFIGURED = True
     logging.getLogger(__name__).info("Logging initialized: %s", resolved)

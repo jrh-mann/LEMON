@@ -205,6 +205,21 @@ class WsChatTask:
         if summary:
             self.stream_chunk(summary)
 
+    def _workflow_state_payload(self) -> Optional[Dict[str, Any]]:
+        """Build workflow state payload from current conversation.
+
+        Returns a dict with workflow_id, workflow, analysis, and task_id,
+        or None when no conversation is available.
+        """
+        if not self.convo:
+            return None
+        return {
+            "workflow_id": self.convo.orchestrator.current_workflow_id,
+            "workflow": self.convo.orchestrator.current_workflow,
+            "analysis": self.convo.orchestrator.workflow_analysis,
+            "task_id": self.task_id,
+        }
+
     def on_tool_event(
         self,
         event: str,
@@ -212,6 +227,11 @@ class WsChatTask:
         args: Dict[str, Any],
         result: Optional[Dict[str, Any]],
     ) -> None:
+        """Dispatch tool lifecycle events: start, complete, batch_complete.
+
+        Records tool results, logs to the audit trail, and emits socket
+        events so the frontend can update the canvas in real time.
+        """
         cancelled = self.is_cancelled()
 
         if event == "tool_start":
@@ -276,15 +296,7 @@ class WsChatTask:
                 })
 
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
-            # Build state payload once (only when convo is available)
-            workflow_state_payload = None
-            if self.convo:
-                workflow_state_payload = {
-                    "workflow_id": self.convo.orchestrator.current_workflow_id,
-                    "workflow": self.convo.orchestrator.current_workflow,
-                    "analysis": self.convo.orchestrator.workflow_analysis,
-                    "task_id": self.task_id,
-                }
+            payload = self._workflow_state_payload()
 
             if tool in WORKFLOW_EDIT_TOOLS:
                 action = result.get("action")
@@ -293,8 +305,8 @@ class WsChatTask:
                     action, tool, result.get("workflow_id"),
                 )
                 self._emit("workflow_update", {"action": action, "data": result})
-                if workflow_state_payload:
-                    self._emit("workflow_state_updated", workflow_state_payload)
+                if payload:
+                    self._emit("workflow_state_updated", payload)
 
                 has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
                 has_removed_vars = isinstance(result.get("removed_variable_ids"), list) and result["removed_variable_ids"]
@@ -305,8 +317,8 @@ class WsChatTask:
                         "task_id": self.task_id,
                     })
 
-            if tool in WORKFLOW_INPUT_TOOLS and workflow_state_payload:
-                self._emit("workflow_state_updated", workflow_state_payload)
+            if tool in WORKFLOW_INPUT_TOOLS and payload:
+                self._emit("workflow_state_updated", payload)
                 self._emit("analysis_updated", {
                     "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
                     "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
@@ -370,7 +382,61 @@ class WsChatTask:
         if isinstance(self.analysis, dict):
             self.convo.update_workflow_analysis(self.analysis)
 
+    def _ensure_workflow_persisted(self) -> None:
+        """Persist the canvas workflow snapshot to the database.
+
+        Creates or updates the workflow record and emits a workflow_created
+        event if this is the first time the workflow is saved. Also looks
+        up the workflow name from the DB for system prompt display.
+        """
+        if not (self.convo and self.current_workflow_id and self.workflow_store):
+            return
+        workflow = self.convo.workflow
+        try:
+            created, persisted = persist_workflow_snapshot(
+                self.workflow_store,
+                workflow_id=self.current_workflow_id,
+                user_id=self.user_id,
+                name="New Workflow",
+                description="",
+                nodes=workflow.get("nodes", []),
+                edges=workflow.get("edges", []),
+                variables=workflow.get("variables", []),
+                outputs=workflow.get("outputs", []),
+                output_type=workflow.get("output_type", "string"),
+                is_draft=True,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to persist canvas workflow {self.current_workflow_id}: {exc}"
+            ) from exc
+
+        self.convo.workflow["outputs"] = persisted["outputs"]
+        self.convo.workflow["output_type"] = persisted["output_type"]
+        logger.info(
+            "Persisted canvas workflow snapshot %s for user %s",
+            self.current_workflow_id, self.user_id,
+        )
+        if created:
+            self._emit("workflow_created", {
+                "workflow_id": self.current_workflow_id,
+                "name": "New Workflow",
+                "output_type": persisted["output_type"],
+                "is_draft": True,
+            })
+        self.convo.orchestrator.current_workflow_id = self.current_workflow_id
+        # Look up workflow name from DB for system prompt display
+        record = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
+        if record:
+            self.convo.orchestrator.current_workflow_name = record.name
+
     def _sync_orchestrator_from_convo(self) -> None:
+        """Synchronise orchestrator state from the conversation object.
+
+        Wires up workflow state, analysis, stores, and connection info
+        so the orchestrator can operate on the current canvas. Also
+        persists the workflow snapshot via _ensure_workflow_persisted().
+        """
         if not self.convo:
             return
         self.convo.orchestrator.sync_workflow(lambda: self.convo.workflow_state)
@@ -382,50 +448,11 @@ class WsChatTask:
         self.convo.orchestrator.ws_registry = self.registry
         self.convo.orchestrator.conn_id = self.conn_id
         # Ensure the canvas workflow snapshot exists in the database
-        if self.current_workflow_id and self.workflow_store:
-            workflow = self.convo.workflow
-            try:
-                created, persisted = persist_workflow_snapshot(
-                    self.workflow_store,
-                    workflow_id=self.current_workflow_id,
-                    user_id=self.user_id,
-                    name="New Workflow",
-                    description="",
-                    nodes=workflow.get("nodes", []),
-                    edges=workflow.get("edges", []),
-                    variables=workflow.get("variables", []),
-                    outputs=workflow.get("outputs", []),
-                    output_type=workflow.get("output_type", "string"),
-                    is_draft=True,
-                )
-            except Exception as exc:
-                raise RuntimeError(
-                    f"Failed to persist canvas workflow {self.current_workflow_id}: {exc}"
-                ) from exc
-
-            self.convo.workflow["outputs"] = persisted["outputs"]
-            self.convo.workflow["output_type"] = persisted["output_type"]
-            logger.info(
-                "Persisted canvas workflow snapshot %s for user %s",
-                self.current_workflow_id, self.user_id,
-            )
-            if created:
-                self._emit("workflow_created", {
-                    "workflow_id": self.current_workflow_id,
-                    "name": "New Workflow",
-                    "output_type": persisted["output_type"],
-                    "is_draft": True,
-                })
-            self.convo.orchestrator.current_workflow_id = self.current_workflow_id
-            # Look up workflow name from DB for system prompt display
-            if self.workflow_store:
-                record = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
-                if record:
-                    self.convo.orchestrator.current_workflow_name = record.name
+        self._ensure_workflow_persisted()
         self.convo.orchestrator.open_tabs = self.open_tabs or []
         # Inject conversation logger so the orchestrator can log compaction events
-        self.convo.orchestrator._conversation_logger = self.conversation_logger
-        self.convo.orchestrator._conversation_id = self.convo.id
+        self.convo.orchestrator.conversation._conversation_logger = self.conversation_logger
+        self.convo.orchestrator.conversation._conversation_id = self.convo.id
 
     def _sync_convo_from_orchestrator(self) -> None:
         if not self.convo:
@@ -459,29 +486,128 @@ class WsChatTask:
             payload["cancelled"] = True
         self._emit("chat_response", payload)
 
+    # --- Audit logging helpers ---
+    # These are wrapped in try/except because a logging failure should
+    # never crash the chat, but errors are logged with exc_info=True
+    # so they remain visible per CLAUDE.md "fail loudly" convention.
+
+    def _log_user_message(self) -> None:
+        """Log user message to audit trail."""
+        if not (self.conversation_logger and self.convo):
+            logger.warning(
+                "Audit log skipped: conversation_logger=%s convo=%s",
+                self.conversation_logger is not None, self.convo is not None,
+            )
+            return
+        try:
+            self.conversation_logger.ensure_conversation(
+                self.convo.id,
+                user_id=self.user_id,
+                workflow_id=self.current_workflow_id,
+                model="claude-sonnet-4-6",
+            )
+            file_meta = [
+                {"name": f.get("name"), "file_type": f.get("file_type")}
+                for f in self.saved_file_paths
+            ] if self.saved_file_paths else None
+            self.conversation_logger.log_user_message(
+                self.convo.id, self.message, files=file_meta, task_id=self.task_id,
+            )
+            logger.info(
+                "Audit log: recorded user message conv=%s task=%s",
+                self.convo.id, self.task_id,
+            )
+        except Exception:
+            logger.error(
+                "Failed to log user message to audit trail: conv=%s task=%s",
+                self.convo.id, self.task_id,
+                exc_info=True,
+            )
+
+    def _log_assistant_response(self, response_text: str) -> None:
+        """Log assistant response and thinking to audit trail."""
+        if not (self.conversation_logger and self.convo):
+            return
+        try:
+            orch = self.convo.orchestrator
+            self.conversation_logger.log_assistant_response(
+                self.convo.id, response_text,
+                input_tokens=orch.conversation._last_input_tokens or None,
+                output_tokens=getattr(orch, "_last_output_tokens", None),
+                task_id=self.task_id,
+            )
+            if self.thinking_chunks:
+                self.conversation_logger.log_thinking(
+                    self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
+                )
+        except Exception:
+            logger.error(
+                "Failed to log assistant response to audit trail: conv=%s task=%s",
+                self.convo.id, self.task_id,
+                exc_info=True,
+            )
+
+    def _log_error(self, exc: Exception) -> None:
+        """Log an error to the audit trail."""
+        if not (self.conversation_logger and self.convo):
+            return
+        try:
+            self.conversation_logger.log_error(
+                self.convo.id, exc, task_id=self.task_id,
+            )
+        except Exception:
+            logger.warning("Failed to log error to audit trail", exc_info=True)
+
+    # --- Conversation metadata persistence ---
+
+    def _persist_conversation_metadata(self) -> None:
+        """Persist conversation_id and uploaded file metadata on the workflow.
+
+        Stores these on the workflow record so the chat session and any
+        uploaded images survive page reloads.
+        """
+        if not (self.current_workflow_id and self.workflow_store and self.convo):
+            return
+        try:
+            update_kwargs: Dict[str, Any] = {"conversation_id": self.convo.id}
+            # Store uploaded file metadata so images reappear after refresh
+            if self.saved_file_paths:
+                data_dir = lemon_data_dir(self.repo_root)
+                uploaded_files = []
+                for fp in self.saved_file_paths:
+                    abs_p = Path(fp["path"])
+                    try:
+                        rel = str(abs_p.relative_to(data_dir))
+                    except ValueError:
+                        rel = fp["path"]
+                    uploaded_files.append({
+                        "name": fp.get("name", ""),
+                        "rel_path": rel,
+                        "file_type": fp.get("file_type", "image"),
+                        "purpose": fp.get("purpose", "unclassified"),
+                    })
+                update_kwargs["uploaded_files"] = uploaded_files
+            self.workflow_store.update_workflow(
+                self.current_workflow_id, self.user_id, **update_kwargs,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to persist conversation_id/files on workflow %s — "
+                "chat may not survive page refresh",
+                self.current_workflow_id,
+                exc_info=True,
+            )
+
     # --- Main run loop ---
 
     def run(self) -> None:
+        """Execute one chat turn: save files, sync state, call LLM, emit response."""
         self.emit_progress("start", "Thinking...")
         threading.Thread(target=self.heartbeat, daemon=True).start()
 
-        # Register as active task so resume_task can reconnect after refresh
-        task_key = (self.user_id, self.current_workflow_id) if self.current_workflow_id else None
-        if task_key:
-            with _ACTIVE_TASKS_LOCK:
-                _ACTIVE_TASKS[task_key] = self
-            # Mark workflow as building so frontend knows a task is in progress
-            if self.workflow_store:
-                try:
-                    self.workflow_store.update_workflow(
-                        self.current_workflow_id, self.user_id, building=True,
-                    )
-                except Exception:
-                    logger.error(
-                        "Failed to set building=True for workflow %s — frontend may not show loading state",
-                        self.current_workflow_id,
-                        exc_info=True,
-                    )
+        # NOTE: _ACTIVE_TASKS registration and building=True are set in
+        # handle_ws_chat BEFORE the thread spawns (eliminates race condition
+        # where a fast page refresh misses in-progress state).
 
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
@@ -489,72 +615,8 @@ class WsChatTask:
                 return
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
-
-            # Persist conversation_id (and uploaded file metadata) on the workflow
-            # so they survive page reloads.
-            if self.current_workflow_id and self.workflow_store and self.convo:
-                try:
-                    update_kwargs: Dict[str, Any] = {"conversation_id": self.convo.id}
-                    # Store uploaded file metadata so images reappear after refresh
-                    if self.saved_file_paths:
-                        data_dir = lemon_data_dir(self.repo_root)
-                        uploaded_files = []
-                        for fp in self.saved_file_paths:
-                            abs_p = Path(fp["path"])
-                            try:
-                                rel = str(abs_p.relative_to(data_dir))
-                            except ValueError:
-                                rel = fp["path"]
-                            uploaded_files.append({
-                                "name": fp.get("name", ""),
-                                "rel_path": rel,
-                                "file_type": fp.get("file_type", "image"),
-                                "purpose": fp.get("purpose", "unclassified"),
-                            })
-                        update_kwargs["uploaded_files"] = uploaded_files
-                    self.workflow_store.update_workflow(
-                        self.current_workflow_id, self.user_id, **update_kwargs,
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to persist conversation_id/files on workflow %s — "
-                        "chat may not survive page refresh",
-                        self.current_workflow_id,
-                        exc_info=True,
-                    )
-
-            # Ensure the conversation exists in the audit log.
-            # Wrapped in try/except so a logging failure never crashes the chat.
-            if self.conversation_logger and self.convo:
-                try:
-                    self.conversation_logger.ensure_conversation(
-                        self.convo.id,
-                        user_id=self.user_id,
-                        workflow_id=self.current_workflow_id,
-                        model="claude-sonnet-4-6",
-                    )
-                    file_meta = [
-                        {"name": f.get("name"), "file_type": f.get("file_type")}
-                        for f in self.saved_file_paths
-                    ] if self.saved_file_paths else None
-                    self.conversation_logger.log_user_message(
-                        self.convo.id, self.message, files=file_meta, task_id=self.task_id,
-                    )
-                    logger.info(
-                        "Audit log: recorded user message conv=%s task=%s",
-                        self.convo.id, self.task_id,
-                    )
-                except Exception:
-                    logger.error(
-                        "Failed to log user message to audit trail: conv=%s task=%s",
-                        self.convo.id, self.task_id,
-                        exc_info=True,
-                    )
-            else:
-                logger.warning(
-                    "Audit log skipped: conversation_logger=%s convo=%s",
-                    self.conversation_logger is not None, self.convo is not None,
-                )
+            self._persist_conversation_metadata()
+            self._log_user_message()
 
             response_text = self.convo.orchestrator.respond(
                 self.message,
@@ -567,34 +629,14 @@ class WsChatTask:
                 on_thinking=self.stream_thinking,
             )
             self._sync_convo_from_orchestrator()
-
-            # Log the assistant response and any accumulated thinking to the audit trail
-            if self.conversation_logger and self.convo:
-                try:
-                    orch = self.convo.orchestrator
-                    self.conversation_logger.log_assistant_response(
-                        self.convo.id, response_text,
-                        input_tokens=orch._last_input_tokens or None,
-                        output_tokens=getattr(orch, "_last_output_tokens", None),
-                        task_id=self.task_id,
-                    )
-                    if self.thinking_chunks:
-                        self.conversation_logger.log_thinking(
-                            self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
-                        )
-                except Exception:
-                    logger.error(
-                        "Failed to log assistant response to audit trail: conv=%s task=%s",
-                        self.convo.id, self.task_id,
-                        exc_info=True,
-                    )
+            self._log_assistant_response(response_text)
 
             # Emit context window usage so the frontend can show an indicator
             orch = self.convo.orchestrator
             self._emit("context_status", {
-                "usage_pct": orch.context_usage_pct,
-                "input_tokens": orch._last_input_tokens,
-                "message_count": len(orch.history),
+                "usage_pct": orch.conversation.context_usage_pct,
+                "input_tokens": orch.conversation._last_input_tokens,
+                "message_count": len(orch.conversation.history),
             })
             if self.is_cancelled():
                 self._emit_response(response_text, cancelled=True)
@@ -603,19 +645,13 @@ class WsChatTask:
             self._emit_response(response_text)
         except Exception as exc:
             logger.exception("WS chat failed")
-            # Log the error to the audit trail
-            if self.conversation_logger and self.convo:
-                try:
-                    self.conversation_logger.log_error(
-                        self.convo.id, exc, task_id=self.task_id,
-                    )
-                except Exception:
-                    logger.warning("Failed to log error to audit trail", exc_info=True)
+            self._log_error(exc)
             self.emit_error(str(exc))
         finally:
             self.done.set()
             _clear_task(self.conn_id, self.task_id)
             # Unregister from active tasks and clear building flag
+            task_key = (self.user_id, self.current_workflow_id) if self.current_workflow_id else None
             if task_key:
                 with _ACTIVE_TASKS_LOCK:
                     _ACTIVE_TASKS.pop(task_key, None)
@@ -666,6 +702,8 @@ def handle_ws_chat(
         task_id = uuid4().hex
     _register_task(conn_id, task_id)
 
+    current_workflow_id = payload.get("current_workflow_id") or f"wf_{uuid4().hex}"
+
     task = WsChatTask(
         registry=registry,
         conversation_store=conversation_store,
@@ -679,11 +717,24 @@ def handle_ws_chat(
         files_data=payload.get("files") or [],
         workflow=payload.get("workflow"),
         analysis=payload.get("analysis"),
-        current_workflow_id=payload.get("current_workflow_id") or f"wf_{uuid4().hex}",
+        current_workflow_id=current_workflow_id,
         open_tabs=payload.get("open_tabs"),
         img_annotations=payload.get("annotations"),
         conversation_logger=conversation_logger,
     )
+
+    # Register the task and set building=True BEFORE spawning the thread.
+    # This eliminates the race where a page refresh between thread spawn
+    # and thread execution finds building=false and no active task.
+    task_key = (user_id, current_workflow_id)
+    with _ACTIVE_TASKS_LOCK:
+        _ACTIVE_TASKS[task_key] = task
+    if workflow_store:
+        try:
+            workflow_store.update_workflow(current_workflow_id, user_id, building=True)
+        except Exception:
+            logger.error("Failed to set building=True for %s before thread spawn", current_workflow_id, exc_info=True)
+
     threading.Thread(target=task.run, daemon=True, name=f"ws-chat-{task_id}").start()
 
 

@@ -48,12 +48,20 @@ def _run_subworkflow_builder(
     """
     # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
     from ...api.builder_callbacks import BackgroundBuilderCallbacks
+    from ...api.ws_chat import _ACTIVE_TASKS, _ACTIVE_TASKS_LOCK
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
     # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
     bg_task_id = f"bg_{uuid4().hex[:8]}"
     cb = BackgroundBuilderCallbacks(ws_registry, conn_id, workflow_id, task_id=bg_task_id)
     response_text = ""
+
+    # Register as active task so handle_resume_task can reconnect after refresh.
+    # BackgroundBuilderCallbacks exposes the same interface as WsChatTask
+    # (done, conn_id, thinking_chunks, stream_buffer, task_id).
+    task_key = (user_id, workflow_id)
+    with _ACTIVE_TASKS_LOCK:
+        _ACTIVE_TASKS[task_key] = cb
 
     # Acquire semaphore to limit concurrent builder threads
     with builder_semaphore:
@@ -95,7 +103,7 @@ def _run_subworkflow_builder(
             # Save the workflow to library and persist the builder's conversation
             # history so the user can see how it was built and resume later.
             # Cap history to prevent unbounded DB blob growth.
-            build_hist = orchestrator.history
+            build_hist = orchestrator.conversation.history
             if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
                 build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
             workflow_store.update_workflow(
@@ -131,6 +139,10 @@ def _run_subworkflow_builder(
         finally:
             # Always emit chat_response to signal build completion to frontend
             cb.emit_response(response_text)
+            # Mark done and unregister so handle_resume_task knows the build finished
+            cb.done.set()
+            with _ACTIVE_TASKS_LOCK:
+                _ACTIVE_TASKS.pop(task_key, None)
             # Notify frontend for library badge refresh
             if ws_registry and conn_id:
                 ws_registry.send_to_sync(

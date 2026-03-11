@@ -23,3 +23,15 @@ export { transformFlowchartFromBackend, transformNodeFromBackend } from './trans
 
 // Layout - auto-layout algorithm
 export { autoLayoutFlowchart } from './layout'
+
+// Edge labels - decision edge label resolution
+export { resolveDecisionEdgeLabel } from './edgeLabels'
+
+// Node styles - default labels, fill/stroke colors
+export { DEFAULT_LABELS, getNodeFillColor, getNodeStrokeColor } from './nodeStyles'
+
+// Text wrapping - SVG label text wrapping with truncation
+export { wrapText } from './textWrap'
+
+// Collision detection - node overlap prevention
+export { hasCollision, resolveCollision } from './collision'

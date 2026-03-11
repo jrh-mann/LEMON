@@ -97,29 +97,35 @@ class TestSteppedExecutionTask:
 
     @pytest.fixture
     def simple_workflow(self):
-        """Create a simple test workflow."""
+        """Create a simple test workflow matching the validated workflow format.
+
+        Nodes require id, type, label, x, y. Decision edges use "true"/"false"
+        labels. End nodes (not "output") are the terminal type. Variables live
+        under the "variables" key.
+        """
         return {
             "nodes": [
-                {"id": "start", "type": "start", "label": "Start"},
+                {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
                 {
                     "id": "decision1",
                     "type": "decision",
                     "label": "Age >= 18",
+                    "x": 0, "y": 100,
                     "condition": {
                         "input_id": "input_age_int",
                         "comparator": "gte",
-                        "value": 18
-                    }
+                        "value": 18,
+                    },
                 },
-                {"id": "out_adult", "type": "output", "label": "Adult"},
-                {"id": "out_minor", "type": "output", "label": "Minor"},
+                {"id": "out_adult", "type": "end", "label": "Adult", "x": -100, "y": 200},
+                {"id": "out_minor", "type": "end", "label": "Minor", "x": 100, "y": 200},
             ],
             "edges": [
                 {"from": "start", "to": "decision1"},
-                {"from": "decision1", "to": "out_adult", "label": "Yes"},
-                {"from": "decision1", "to": "out_minor", "label": "No"},
+                {"from": "decision1", "to": "out_adult", "label": "true"},
+                {"from": "decision1", "to": "out_minor", "label": "false"},
             ],
-            "inputs": [
+            "variables": [
                 {"id": "input_age_int", "name": "Age", "type": "int", "range": {"min": 0, "max": 120}},
             ],
             "outputs": [

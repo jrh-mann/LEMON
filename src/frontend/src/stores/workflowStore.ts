@@ -39,7 +39,6 @@ interface WorkflowState {
   currentWorkflow: Workflow | null
   flowchart: Flowchart
   currentAnalysis: WorkflowAnalysis | null
-  conversationId: string | null
   inputValues: Record<string, unknown>
 
   // Canvas state
@@ -82,7 +81,6 @@ interface WorkflowState {
   setFlowchartSilent: (flowchart: Flowchart) => void  // Set flowchart without pushing undo history (for WS events)
   persistFlowchart: () => Promise<void>
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
-  setConversationId: (conversationId: string | null) => void
   setInputValues: (values: Record<string, unknown>) => void
 
   // Node operations
@@ -220,7 +218,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   currentWorkflow: createEmptyWorkflow(),
   flowchart: emptyFlowchart,
   currentAnalysis: null,
-  conversationId: null,
   inputValues: {},
 
   selectedNodeId: null,
@@ -272,7 +269,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
-  setConversationId: (conversationId) => set({ conversationId }),
   setInputValues: (inputValues) => set({ inputValues }),
 
   // Node operations
@@ -592,7 +588,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentWorkflow: createEmptyWorkflow(),
       flowchart: emptyFlowchart,
       currentAnalysis: null,
-      conversationId: null,
       inputValues: {},
       selectedNodeId: null,
       selectedNodeIds: [],

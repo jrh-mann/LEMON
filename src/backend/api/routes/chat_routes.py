@@ -1,11 +1,13 @@
 """Chat routes: send message and retrieve conversation history.
 
-Handles the REST-based chat endpoint (POST /api/chat) and
+Handles the async chat endpoint (POST /api/chat/send) for guaranteed
+message delivery, the legacy sync endpoint (POST /api/chat), and
 conversation retrieval (GET /api/chat/<id>).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -18,8 +20,10 @@ from ..common import utc_now
 from ..conversations import ConversationStore
 from ..deps import require_auth
 from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
+from ..ws_registry import ConnectionRegistry
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
+from ...storage.workflows import WorkflowStore
 from ...utils.uploads import save_uploaded_image
 from .helpers import api_error
 
@@ -32,6 +36,8 @@ def register_chat_routes(
     conversation_store: ConversationStore,
     repo_root: Path,
     conversation_logger: Optional[ConversationLogger] = None,
+    workflow_store: Optional[WorkflowStore] = None,
+    ws_registry: Optional[ConnectionRegistry] = None,
 ) -> None:
     """Register chat endpoints on the FastAPI app.
 
@@ -40,8 +46,60 @@ def register_chat_routes(
         conversation_store: In-memory conversation manager.
         repo_root: Repository root path for image uploads.
         conversation_logger: SQLite audit log for persistent chat history.
+        workflow_store: Workflow store for setting building flags.
+        ws_registry: Socket.IO registry for streaming events to clients.
     """
     router = APIRouter()
+
+    @router.post("/api/chat/send")
+    async def send_chat_message(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        """Accept a chat message via HTTP POST (guaranteed delivery).
+
+        Creates a background task and returns immediately with the task_id.
+        Streaming events are sent to the client's socket connection identified
+        by the socket_id field in the request body.
+        """
+        if not ws_registry:
+            return api_error("Chat streaming not available", 503)
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, ValueError) as e:
+            return api_error(f"Invalid JSON: {e}")
+
+        message = payload.get("message", "")
+        socket_id = payload.get("socket_id")
+
+        if not isinstance(message, str) or not message.strip():
+            return api_error("message is required")
+        if not isinstance(socket_id, str) or not socket_id.strip():
+            return api_error("socket_id is required")
+
+        # Delegate to the same handler that the socket event uses.
+        # This guarantees identical behaviour — the only difference is
+        # message delivery is now via HTTP (reliable) instead of socket
+        # (fire-and-forget).
+        from ..ws_chat import handle_ws_chat
+        await asyncio.to_thread(
+            handle_ws_chat,
+            ws_registry,
+            conn_id=socket_id,
+            conversation_store=conversation_store,
+            repo_root=repo_root,
+            workflow_store=workflow_store,
+            user_id=user.id,
+            payload=payload,
+            conversation_logger=conversation_logger,
+        )
+
+        return JSONResponse({
+            "ok": True,
+            "task_id": payload.get("task_id"),
+            "current_workflow_id": payload.get("current_workflow_id"),
+        })
 
     @router.post("/api/chat")
     async def chat(

@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from typing import Optional
 
 from ..conversations import ConversationStore
+from ..ws_registry import ConnectionRegistry
 from ...storage.auth import AuthStore
 from ...storage.conversation_log import ConversationLogger
 from ...storage.workflows import WorkflowStore
@@ -49,6 +50,7 @@ def register_routes(
     auth_store: AuthStore,
     workflow_store: WorkflowStore,
     conversation_logger: Optional[ConversationLogger] = None,
+    ws_registry: Optional[ConnectionRegistry] = None,
 ) -> None:
     """Register all HTTP routes on the FastAPI app.
 
@@ -61,6 +63,7 @@ def register_routes(
         repo_root: Repository root path.
         auth_store: Auth store for user/session persistence.
         workflow_store: Workflow storage backend.
+        ws_registry: Socket.IO connection registry for chat task streaming.
     """
     # Middleware (request logging) — must be registered first
     app.add_middleware(RequestLoggingMiddleware)
@@ -77,6 +80,8 @@ def register_routes(
         conversation_store=conversation_store,
         repo_root=repo_root,
         conversation_logger=conversation_logger,
+        workflow_store=workflow_store,
+        ws_registry=ws_registry,
     )
 
     # Workflow CRUD (list, create, get, delete, patch, update)

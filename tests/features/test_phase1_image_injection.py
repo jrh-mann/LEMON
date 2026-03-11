@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
+from src.backend.llm.client import LLMResponse
+
 import pytest
 
 
@@ -37,14 +39,14 @@ class TestImageInjection:
             {"name": "test.jpeg", "path": str(img_path), "file_type": "image"}
         ]
 
-        # Patch call_llm_with_tools to capture the messages it receives
+        # Patch call_llm to capture the messages it receives
         captured_messages = []
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", [], {}
+            return LLMResponse(text="OK")
 
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
+        with patch("src.backend.agents.orchestrator.call_llm", side_effect=mock_llm):
             orch.respond("Analyze this workflow", has_files=orch.uploaded_files)
 
         # The user message (last before LLM call) should have content blocks
@@ -74,9 +76,9 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", [], {}
+            return LLMResponse(text="OK")
 
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
+        with patch("src.backend.agents.orchestrator.call_llm", side_effect=mock_llm):
             orch.respond("Just a text message", has_files=[])
 
         msgs = captured_messages[0]
@@ -100,9 +102,9 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", [], {}
+            return LLMResponse(text="OK")
 
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
+        with patch("src.backend.agents.orchestrator.call_llm", side_effect=mock_llm):
             orch.respond("Check this", has_files=orch.uploaded_files)
 
         user_msg = captured_messages[0][-1]
@@ -121,9 +123,9 @@ class TestImageInjection:
 
         def mock_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return "OK", [], {}
+            return LLMResponse(text="OK")
 
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=mock_llm):
+        with patch("src.backend.agents.orchestrator.call_llm", side_effect=mock_llm):
             orch.respond("Check this", has_files=orch.uploaded_files)
 
         user_msg = captured_messages[0][-1]

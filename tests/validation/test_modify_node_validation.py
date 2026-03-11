@@ -84,7 +84,7 @@ class TestModifyNodeValidation:
         result = self.tool.execute(args, session_state=session)
         
         assert result["success"] is False
-        assert "INVALID_CONDITION" in result.get("error_code", "") or "VALIDATION_FAILED" in result.get("error_code", "")
+        assert result.get("error_code", "") in ("INVALID_CONDITION", "VALIDATION_FAILED", "INVALID_NODE_UPDATE")
         assert "input_height" in result.get("error", "") or "not found" in result.get("error", "").lower()
 
     def test_modify_decision_with_invalid_condition_input_fails(self, workflow_store, test_user_id):

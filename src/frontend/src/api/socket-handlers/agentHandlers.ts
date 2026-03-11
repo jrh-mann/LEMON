@@ -13,6 +13,7 @@ import { useWorkflowStore } from '../../stores/workflowStore'
 import { useUIStore } from '../../stores/uiStore'
 import { getConversationHistory } from '../workflows'
 import type { SocketAgentError } from '../../types'
+import { resolveWorkflowId, shouldIgnoreTask } from './utils'
 
 /** Register all agent-related event handlers on the Socket.IO client */
 export function registerAgentHandlers(socket: Socket): void {
@@ -44,9 +45,12 @@ export function registerAgentHandlers(socket: Socket): void {
               timestamp: m.timestamp,
               tool_calls: m.tool_calls || [],
             }))
+          // Merge: keep rich local messages (with tool_calls, inline
+          // summaries) and only append new ones from backend.
           const localMessages = chatStore.conversations?.[workflowId]?.messages ?? []
           if (backendMessages.length > localMessages.length) {
-            chatStore.setMessages(workflowId, backendMessages)
+            const newMessages = backendMessages.slice(localMessages.length)
+            chatStore.setMessages(workflowId, [...localMessages, ...newMessages])
           }
         }
       }).catch(() => { /* non-critical */ })
@@ -58,22 +62,9 @@ export function registerAgentHandlers(socket: Socket): void {
     console.error('[SIO] agent_error:', data)
     const chatStore = useChatStore.getState()
     const uiStore = useUIStore.getState()
-    const taskId = data.task_id
-    const workflowId = (data as { workflow_id?: string }).workflow_id || chatStore.activeWorkflowId
+    const workflowId = resolveWorkflowId(data as { workflow_id?: string })
 
-    if (taskId) {
-      if (chatStore.isTaskCancelled(taskId)) {
-        console.log('[SIO] Ignoring cancelled agent_error:', taskId)
-        return
-      }
-      if (workflowId) {
-        const conv = chatStore.conversations[workflowId]
-        if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
-          console.log('[SIO] Ignoring stale agent_error:', taskId)
-          return
-        }
-      }
-    }
+    if (workflowId && shouldIgnoreTask(data.task_id, workflowId)) return
 
     if (workflowId) {
       chatStore.setStreaming(workflowId, false)

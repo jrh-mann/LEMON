@@ -77,17 +77,17 @@ def main() -> None:
     )
 
     print(f"\nTurn 1 response: {response1[:100]}...")
-    print(f"History length after cancel: {len(orchestrator.history)}")
+    print(f"History length after cancel: {len(orchestrator.conversation.history)}")
 
     # Check if history contains tool_calls
     has_tool_calls = any(
-        m.get("tool_calls") for m in orchestrator.history
+        m.get("tool_calls") for m in orchestrator.conversation.history
     )
     print(f"History has tool_calls: {has_tool_calls}")
 
     # Print history roles for debugging
     print("\nHistory messages:")
-    for i, m in enumerate(orchestrator.history):
+    for i, m in enumerate(orchestrator.conversation.history):
         role = m.get("role", "?")
         has_tc = bool(m.get("tool_calls"))
         content_preview = str(m.get("content", ""))[:80]

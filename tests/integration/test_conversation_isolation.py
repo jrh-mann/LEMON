@@ -83,16 +83,16 @@ class TestConversationIsolation:
         convo_b = self.store.get_or_create("convo_b")
 
         # Add a message to conversation A's orchestrator history
-        convo_a.orchestrator.history.append({
+        convo_a.orchestrator.conversation.history.append({
             "role": "user",
             "content": "Build me a workflow for age checking",
         })
 
         # Conversation B's orchestrator should have no history
-        assert len(convo_b.orchestrator.history) == 0
+        assert len(convo_b.orchestrator.conversation.history) == 0
 
         # Conversation A should have the message
-        assert len(convo_a.orchestrator.history) == 1
+        assert len(convo_a.orchestrator.conversation.history) == 1
 
     def test_null_id_generates_unique_conversations(self):
         """Passing None as conversation_id should create distinct conversations each time."""

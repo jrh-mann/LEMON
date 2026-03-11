@@ -203,17 +203,14 @@ class TestRetryStreamPollution:
     """Verify retry notifications don't call on_delta."""
 
     def test_retry_callback_logs_instead_of_streaming(self):
-        """The _notify_retry_stream function should log, not call on_delta."""
+        """Retry notifications use logger.warning, not on_delta."""
         import inspect
         from src.backend.llm import client
 
-        # Find the call_llm_with_tools_stream function source
         source = inspect.getsource(client)
-        # Verify _notify_retry_stream does NOT call on_delta
-        # Find the function definition
-        assert "def _notify_retry_stream" in source
-        # The new implementation should use logger.warning, not on_delta
-        # We check that the specific bad pattern is gone
+        # _retry_api_call uses logger.warning for retries
+        assert "def _retry_api_call" in source
+        # The bad pattern (injecting retry text into the user stream) must be gone
         assert 'on_delta(f"\\n\\n*Retrying' not in source
 
 

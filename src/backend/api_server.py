@@ -59,6 +59,7 @@ register_routes(
     auth_store=auth_store,
     workflow_store=workflow_store,
     conversation_logger=conversation_logger,
+    ws_registry=ws_registry,
 )
 
 # Register Socket.IO event handlers (connect, disconnect, chat, etc.)

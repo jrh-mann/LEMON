@@ -118,6 +118,27 @@ def _clear_execution(execution_id: str) -> None:
         _EXECUTION_STATE.pop(execution_id, None)
 
 
+# -- Log-emission config for on_step -------------------------------------------
+# Fields present on most step events that should be forwarded to execution_log.
+_COMMON_LOG_FIELDS = [
+    "node_id", "node_label", "parent_node_id",
+    "subworkflow_id", "subworkflow_name", "subworkflow_stack",
+]
+
+# event_type -> (log_type, extra fields to copy, whether to also call emit_step)
+_EVENT_LOG_MAP: Dict[str, tuple] = {
+    "decision_evaluated": ("decision", [
+        "condition_expression", "input_name", "input_value",
+        "comparator", "compare_value", "compare_value2", "result", "branch_taken",
+    ], True),
+    "calculation_completed": ("calculation", [
+        "output_name", "operator", "operands", "result", "formula",
+    ], True),
+    "start_executed": ("start", ["inputs"], True),
+    "end_reached": ("end", ["output"], True),
+}
+
+
 # ---------- Execution task ----------
 
 @dataclass
@@ -194,8 +215,25 @@ class SteppedExecutionTask:
             "error": error,
         })
 
+    def _emit_log(self, log_type: str, step_info: Dict[str, Any],
+                  extra_fields: list) -> None:
+        """Emit an execution_log event with common + extra fields from step_info.
+
+        Builds a payload containing execution_id, log_type, and any common /
+        extra fields that are present (non-None) in step_info.
+        """
+        payload: Dict[str, Any] = {
+            "execution_id": self.execution_id,
+            "log_type": log_type,
+        }
+        for key in _COMMON_LOG_FIELDS + extra_fields:
+            val = step_info.get(key)
+            if val is not None:
+                payload[key] = val
+        self._emit("execution_log", payload)
+
     def on_step(self, step_info: Dict[str, Any]) -> None:
-        """Callback for TreeInterpreter — called before each node.
+        """Callback for TreeInterpreter -- called before each node.
 
         Handles emitting step events, checking stop, waiting on pause,
         and applying speed delay.
@@ -205,6 +243,7 @@ class SteppedExecutionTask:
 
         event_type = step_info.get("event_type")
 
+        # -- Subworkflow events: emit a direct event AND an execution_log -----
         if event_type == "subflow_start":
             self._emit("subflow_start", {
                 "execution_id": self.execution_id,
@@ -214,15 +253,12 @@ class SteppedExecutionTask:
                 "nodes": step_info.get("nodes", []),
                 "edges": step_info.get("edges", []),
             })
-            self._emit("execution_log", {
-                "execution_id": self.execution_id,
-                "log_type": "subflow_start",
-                "node_id": step_info.get("parent_node_id"),
-                "node_label": step_info.get("subworkflow_name"),
-                "subworkflow_id": step_info.get("subworkflow_id"),
-                "subworkflow_name": step_info.get("subworkflow_name"),
-                "subworkflow_stack": step_info.get("subworkflow_stack"),
-            })
+            # Log uses parent_node_id as node_id, subworkflow_name as node_label
+            self._emit_log("subflow_start",
+                           {**step_info,
+                            "node_id": step_info.get("parent_node_id"),
+                            "node_label": step_info.get("subworkflow_name")},
+                           [])
             return
 
         elif event_type == "subflow_step":
@@ -235,19 +271,11 @@ class SteppedExecutionTask:
                 "node_label": step_info.get("node_label"),
                 "step_index": step_info.get("step_index"),
             })
+            # Only log if node_type isn't handled by _EVENT_LOG_MAP (those emit
+            # their own log via a subsequent on_step call from the interpreter).
             node_type = step_info.get("node_type")
-            if node_type not in ('decision', 'calculation', 'start', 'end'):
-                self._emit("execution_log", {
-                    "execution_id": self.execution_id,
-                    "log_type": "subflow_step",
-                    "node_id": step_info.get("node_id"),
-                    "node_label": step_info.get("node_label"),
-                    "node_type": node_type,
-                    "subworkflow_id": step_info.get("subworkflow_id"),
-                    "subworkflow_name": step_info.get("subworkflow_name"),
-                    "parent_node_id": step_info.get("parent_node_id"),
-                    "subworkflow_stack": step_info.get("subworkflow_stack"),
-                })
+            if node_type not in ("decision", "calculation", "start", "end"):
+                self._emit_log("subflow_step", step_info, ["node_type"])
 
         elif event_type == "subflow_complete":
             self._emit("subflow_complete", {
@@ -259,87 +287,26 @@ class SteppedExecutionTask:
                 "output": step_info.get("output"),
                 "error": step_info.get("error"),
             })
-            self._emit("execution_log", {
-                "execution_id": self.execution_id,
-                "log_type": "subflow_complete",
-                "node_id": step_info.get("parent_node_id"),
-                "node_label": step_info.get("subworkflow_name"),
-                "subworkflow_id": step_info.get("subworkflow_id"),
-                "subworkflow_name": step_info.get("subworkflow_name"),
-                "success": step_info.get("success"),
-                "output": step_info.get("output"),
-                "error": step_info.get("error"),
-                "subworkflow_stack": step_info.get("subworkflow_stack"),
-            })
+            # Log uses parent_node_id as node_id, subworkflow_name as node_label
+            self._emit_log("subflow_complete",
+                           {**step_info,
+                            "node_id": step_info.get("parent_node_id"),
+                            "node_label": step_info.get("subworkflow_name")},
+                           ["success", "output", "error"])
             return
 
-        elif event_type == "decision_evaluated":
-            self._emit("execution_log", {
-                "execution_id": self.execution_id,
-                "log_type": "decision",
-                "node_id": step_info.get("node_id"),
-                "node_label": step_info.get("node_label"),
-                "condition_expression": step_info.get("condition_expression"),
-                "input_name": step_info.get("input_name"),
-                "input_value": step_info.get("input_value"),
-                "comparator": step_info.get("comparator"),
-                "compare_value": step_info.get("compare_value"),
-                "compare_value2": step_info.get("compare_value2"),
-                "result": step_info.get("result"),
-                "branch_taken": step_info.get("branch_taken"),
-                "subworkflow_id": step_info.get("subworkflow_id"),
-                "subworkflow_name": step_info.get("subworkflow_name"),
-                "subworkflow_stack": step_info.get("subworkflow_stack"),
-            })
-            self.emit_step(step_info)
+        # -- Standard node events: use the mapping table ----------------------
+        elif event_type in _EVENT_LOG_MAP:
+            log_type, extra_fields, do_emit_step = _EVENT_LOG_MAP[event_type]
+            self._emit_log(log_type, step_info, extra_fields)
+            if do_emit_step:
+                self.emit_step(step_info)
 
-        elif event_type == "calculation_completed":
-            self._emit("execution_log", {
-                "execution_id": self.execution_id,
-                "log_type": "calculation",
-                "node_id": step_info.get("node_id"),
-                "node_label": step_info.get("node_label"),
-                "output_name": step_info.get("output_name"),
-                "operator": step_info.get("operator"),
-                "operands": step_info.get("operands"),
-                "result": step_info.get("result"),
-                "formula": step_info.get("formula"),
-                "subworkflow_id": step_info.get("subworkflow_id"),
-                "subworkflow_name": step_info.get("subworkflow_name"),
-                "subworkflow_stack": step_info.get("subworkflow_stack"),
-            })
-            self.emit_step(step_info)
-
-        elif event_type == "start_executed":
-            self._emit("execution_log", {
-                "execution_id": self.execution_id,
-                "log_type": "start",
-                "node_id": step_info.get("node_id"),
-                "node_label": step_info.get("node_label"),
-                "inputs": step_info.get("inputs", {}),
-                "subworkflow_id": step_info.get("subworkflow_id"),
-                "subworkflow_name": step_info.get("subworkflow_name"),
-                "subworkflow_stack": step_info.get("subworkflow_stack"),
-            })
-            self.emit_step(step_info)
-
-        elif event_type == "end_reached":
-            self._emit("execution_log", {
-                "execution_id": self.execution_id,
-                "log_type": "end",
-                "node_id": step_info.get("node_id"),
-                "node_label": step_info.get("node_label"),
-                "output": step_info.get("output"),
-                "subworkflow_id": step_info.get("subworkflow_id"),
-                "subworkflow_name": step_info.get("subworkflow_name"),
-                "subworkflow_stack": step_info.get("subworkflow_stack"),
-            })
-            self.emit_step(step_info)
-
+        # -- Fallback: unknown event_type, just emit the step -----------------
         else:
             self.emit_step(step_info)
 
-        # Check for pause and wait if needed
+        # -- Pause / resume gate (unchanged) ----------------------------------
         pause_event = _get_pause_event(self.execution_id)
         if pause_event:
             was_paused = _is_execution_paused(self.execution_id)
@@ -351,7 +318,7 @@ class SteppedExecutionTask:
             if was_paused:
                 self.emit_resumed()
 
-        # Apply step delay for visualization (skip in instant mode)
+        # -- Step delay for visualization (skip in instant mode) --------------
         if self.speed_ms > 0:
             delay_seconds = self.speed_ms / 1000.0
             elapsed = 0.0

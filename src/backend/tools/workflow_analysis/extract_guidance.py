@@ -154,12 +154,12 @@ class ExtractGuidanceTool(Tool):
         ]
 
         try:
-            raw_response = call_llm(
+            resp = call_llm(
                 messages,
-                max_completion_tokens=5000,
                 caller="extract_guidance",
                 request_tag="extract_guidance",
-            ).strip()
+            )
+            raw_response = resp.text.strip()
         except Exception as exc:
             logger.warning("Guidance extraction LLM call failed: %s", exc)
             return {"success": False, "error": f"LLM call failed: {exc}"}

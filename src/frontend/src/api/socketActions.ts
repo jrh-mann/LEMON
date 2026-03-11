@@ -2,19 +2,28 @@
  * Socket.IO action functions -- send events to the backend.
  * Separated from connection management for clean separation of concerns.
  *
+ * sendChatMessage uses HTTP POST for guaranteed delivery — the message
+ * reaches the backend even if the user refreshes immediately after sending.
+ * All other actions use socket events (fire-and-forget is acceptable for
+ * cancellation, sync, resume, and execution control).
+ *
  * Exports: sendChatMessage, cancelChatTask, syncWorkflow, resumeTask,
  *          startWorkflowExecution, pauseWorkflowExecution,
  *          resumeWorkflowExecution, stopWorkflowExecution
  */
-import { getSessionId } from './client'
-import { isConnected, sendMessage } from './socket'
+import { getSessionId, api } from './client'
+import { isConnected, sendMessage, getSocketId } from './socket'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 
 /**
- * Send a chat message to the backend via WebSocket.
- * Includes current workflow state atomically to avoid race conditions.
+ * Send a chat message to the backend via HTTP POST.
+ *
+ * Uses HTTP instead of socket for guaranteed delivery — if the user
+ * refreshes the page immediately after sending, the message is still
+ * received by the backend (the POST completes before navigation).
+ * Streaming events still flow via Socket.IO (identified by socket_id).
  */
 export function sendChatMessage(
   message: string,
@@ -22,8 +31,9 @@ export function sendChatMessage(
   files?: import('../types').PendingFile[],
   annotations?: unknown[]
 ): void {
-  if (!isConnected()) {
-    console.error('[SIO] Not connected')
+  const socketId = getSocketId()
+  if (!socketId) {
+    console.error('[SIO] Not connected — no socket ID for streaming')
     useUIStore.getState().setError('Not connected to server')
     return
   }
@@ -71,14 +81,18 @@ export function sendChatMessage(
     file_type: f.type,
     purpose: f.purpose,
   })) : undefined
-  console.log('[SIO] sendChatMessage files_count:', files?.length ?? 0,
+  console.log('[HTTP] sendChatMessage files_count:', files?.length ?? 0,
     'payload_files:', filesPayload?.length ?? 0,
     'file_names:', files?.map(f => f.name) ?? [],
     'data_url_lengths:', files?.map(f => f.dataUrl?.length ?? 0) ?? [])
 
-  // Atomic: workflow travels with message (no race conditions)
-  sendMessage('chat', {
+  // Send via HTTP POST for guaranteed delivery.
+  // The backend creates the task and streams events to our socket_id.
+  // Fire-and-forget from the UI's perspective — errors are caught and
+  // displayed but the user doesn't need to wait for the POST to resolve.
+  const payload = {
     session_id: getSessionId(),
+    socket_id: socketId,
     message,
     conversation_id: ensuredConversationId || conversationId || undefined,
     files: filesPayload,
@@ -89,10 +103,21 @@ export function sendChatMessage(
       nodes: workflowStore.flowchart.nodes,
       edges: workflowStore.flowchart.edges,
     },
-    // Include analysis so backend has current variables
     analysis: workflowStore.currentAnalysis ?? undefined,
-    // Include all open tabs so list_workflows_in_library can show all drafts
     open_tabs: openTabs,
+  }
+
+  api.post('/api/chat/send', payload).catch((err) => {
+    console.error('[HTTP] sendChatMessage failed:', err)
+    // Revert streaming state so the UI isn't stuck
+    if (currentWorkflowId) {
+      chatStore.setStreaming(currentWorkflowId, false)
+      chatStore.setProcessingStatus(currentWorkflowId, null)
+      chatStore.setCurrentTaskId(currentWorkflowId, null)
+    }
+    useUIStore.getState().setError(
+      err?.message || 'Failed to send message — please try again',
+    )
   })
 }
 

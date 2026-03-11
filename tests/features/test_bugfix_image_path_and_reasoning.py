@@ -103,24 +103,23 @@ class TestReasoningWiring:
         )
 
     def test_thinking_budget_forwarded_to_llm(self):
-        """Orchestrator.respond must forward thinking_budget to call_llm_with_tools."""
-        from src.backend.agents.orchestrator import Orchestrator
+        """Orchestrator.respond must forward thinking_budget to call_llm."""
         from src.backend.agents.orchestrator_factory import build_orchestrator
+        from src.backend.llm.client import LLMResponse
 
         orch = build_orchestrator(Path("."))
 
-        # Patch call_llm_with_tools to capture kwargs
         captured_kwargs = {}
 
         def fake_llm(*args, **kwargs):
             captured_kwargs.update(kwargs)
-            return ("I'm a response", [], {})
+            return LLMResponse(text="I'm a response")
 
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=fake_llm):
+        with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_llm):
             orch.respond("test message", thinking_budget=8000)
 
         assert "thinking_budget" in captured_kwargs, (
-            "thinking_budget not forwarded to call_llm_with_tools"
+            "thinking_budget not forwarded to call_llm"
         )
         assert captured_kwargs["thinking_budget"] == 8000
 
@@ -137,21 +136,22 @@ class TestReasoningWiring:
         )
 
     def test_on_thinking_forwarded_to_llm(self):
-        """Orchestrator.respond must forward on_thinking to call_llm_with_tools."""
+        """Orchestrator.respond must forward on_thinking to call_llm."""
         from src.backend.agents.orchestrator_factory import build_orchestrator
+        from src.backend.llm.client import LLMResponse
 
         orch = build_orchestrator(Path("."))
         captured_kwargs = {}
 
         def fake_llm(*args, **kwargs):
             captured_kwargs.update(kwargs)
-            return ("response", [], {})
+            return LLMResponse(text="response")
 
         thinking_chunks = []
         def my_thinking(chunk: str) -> None:
             thinking_chunks.append(chunk)
 
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools", side_effect=fake_llm):
+        with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_llm):
             orch.respond("test", thinking_budget=5000, on_thinking=my_thinking)
 
         assert captured_kwargs.get("on_thinking") is my_thinking

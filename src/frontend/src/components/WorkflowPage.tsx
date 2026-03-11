@@ -168,10 +168,16 @@ export default function WorkflowPage() {
                                 timestamp: m.timestamp,
                                 tool_calls: m.tool_calls || [],
                             }))
-                        // Always prefer backend when it has at least as many messages —
-                        // it's the source of truth and may have responses we missed.
-                        if (backendMessages.length >= localMessages.length) {
-                            cs.setMessages(workflowId, backendMessages)
+                        // Only merge from backend when it has MORE messages than
+                        // local — backend may have responses that arrived after
+                        // refresh.  When counts are equal, keep local messages
+                        // because they carry rich content (tool_calls, inline
+                        // summaries) that the backend endpoint strips away.
+                        if (backendMessages.length > localMessages.length) {
+                            // Merge: keep rich local messages, append only the
+                            // new ones from backend (those beyond localMessages.length).
+                            const newMessages = backendMessages.slice(localMessages.length)
+                            cs.setMessages(workflowId, [...localMessages, ...newMessages])
                         }
                     }
                 } else if (!localMessages.length && workflowData.build_history?.length) {
@@ -191,12 +197,17 @@ export default function WorkflowPage() {
                     cs.setStreaming(workflowId, true)
                     cs.setProcessingStatus(workflowId, 'Reconnecting...')
 
-                    // Try to reconnect to live events (streaming, tool calls)
-                    setTimeout(() => {
-                        import('../api/socket').then(({ resumeTask }) => {
-                            resumeTask(workflowId)
+                    // Wait for the socket to finish its handshake, then
+                    // tell the backend to re-route events to the new connection.
+                    // A blind timeout was unreliable — the socket may not be
+                    // connected within 500ms, causing resumeTask to silently no-op.
+                    import('../api/socket').then(({ resumeTask, waitForConnection }) => {
+                        waitForConnection().then(() => {
+                            if (isActive) resumeTask(workflowId)
+                        }).catch(() => {
+                            console.warn('[WorkflowPage] Socket connection timeout — falling back to poll')
                         })
-                    }, 500)
+                    })
 
                     // Poll until the task completes, then fetch the final response.
                     // The backend sets building=false when the task finishes.
@@ -223,7 +234,14 @@ export default function WorkflowPage() {
                                                 timestamp: m.timestamp,
                                                 tool_calls: m.tool_calls || [],
                                             }))
-                                        chatStore.setMessages(workflowId, backendMsgs)
+                                        // Merge: keep rich local messages, append only
+                                        // new ones from backend to preserve tool_calls
+                                        // and inline summaries in local state.
+                                        const localMsgs = chatStore.conversations?.[workflowId]?.messages ?? []
+                                        if (backendMsgs.length > localMsgs.length) {
+                                            const newMsgs = backendMsgs.slice(localMsgs.length)
+                                            chatStore.setMessages(workflowId, [...localMsgs, ...newMsgs])
+                                        }
                                     }
                                 }
                                 // Also refresh the flowchart in case it was updated

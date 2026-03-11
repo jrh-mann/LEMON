@@ -9,150 +9,15 @@ import {
   calculateViewBox,
   getDecisionPath,
   generateNodeId,
+  resolveDecisionEdgeLabel,
+  resolveCollision,
 } from '../utils/canvas'
+import { getNodeFillColor, getNodeStrokeColor, DEFAULT_LABELS } from '../utils/canvas/nodeStyles'
+import { wrapText } from '../utils/canvas/textWrap'
 import { patchWorkflow } from '../api/workflows'
-import type { FlowNode, FlowNodeType, SimpleCondition, WorkflowVariable } from '../types'
-import { isCompoundCondition } from '../types'
-
-// ---------------------------------------------------------------------------
-// Decision edge label resolver
-// Converts "true"/"false" edge labels into human-readable descriptions
-// based on the decision node's structured condition and workflow variables.
-// ---------------------------------------------------------------------------
-
-/** Comparator symbols for concise edge labels */
-const COMPARATOR_SYMBOL: Record<string, { true: string; false: string }> = {
-  // Numeric
-  eq:    { true: '=',  false: '≠' },
-  neq:   { true: '≠',  false: '=' },
-  lt:    { true: '<',  false: '≥' },
-  lte:   { true: '≤',  false: '>' },
-  gt:    { true: '>',  false: '≤' },
-  gte:   { true: '≥',  false: '<' },
-  // Boolean — just show True / False
-  is_true:  { true: 'True',  false: 'False' },
-  is_false: { true: 'False', false: 'True' },
-  // String
-  str_eq:          { true: '=',  false: '≠' },
-  str_neq:         { true: '≠',  false: '=' },
-  str_contains:    { true: 'contains',      false: '!contains' },
-  str_starts_with: { true: 'starts with',   false: '!starts with' },
-  str_ends_with:   { true: 'ends with',     false: '!ends with' },
-  // Enum
-  enum_eq:  { true: '=',  false: '≠' },
-  enum_neq: { true: '≠',  false: '=' },
-  // Date
-  date_eq:      { true: '=',      false: '≠' },
-  date_before:  { true: 'before', false: 'on/after' },
-  date_after:   { true: 'after',  false: 'on/before' },
-  date_between: { true: 'in',     false: 'outside' },
-}
-
-/** Build a label string for one simple condition on a given branch. */
-function formatSimpleCondition(
-  cond: SimpleCondition,
-  branch: 'true' | 'false',
-  variables: WorkflowVariable[],
-): string {
-  const variable = variables.find(v => v.id === cond.input_id)
-  const varName = variable?.name ?? cond.input_id
-  const symbols = COMPARATOR_SYMBOL[cond.comparator]
-  if (!symbols) return branch === 'true' ? 'Yes' : 'No'
-  const sym = symbols[branch]
-
-  // Range comparators show both bounds
-  if (cond.comparator === 'within_range' || cond.comparator === 'date_between') {
-    const lo = cond.value ?? '?'
-    const hi = cond.value2 ?? '?'
-    return branch === 'true'
-      ? `${varName} ${lo}–${hi}`
-      : `${varName} outside ${lo}–${hi}`
-  }
-
-  // Boolean comparators — just show True / False
-  if (cond.comparator === 'is_true' || cond.comparator === 'is_false') {
-    return sym
-  }
-
-  // Enum comparators — show the matching value on the match branch,
-  // and the other enum value(s) on the non-match branch.
-  if (cond.comparator === 'enum_eq' || cond.comparator === 'enum_neq') {
-    const val = cond.value ?? '?'
-    const isMatch = (cond.comparator === 'enum_eq') === (branch === 'true')
-    if (isMatch) return String(val)
-    // Show the other enum value(s) instead of "Not {val}"
-    const others = (variable?.enum_values ?? []).filter(v => v !== val)
-    return others.length ? others.join(' | ') : `Not ${val}`
-  }
-
-  const val = cond.value ?? '?'
-  return `${varName} ${sym} ${val}`
-}
-
-/** Resolve a decision edge label from its condition. Returns null to keep
- *  the original label when no condition is available. */
-function resolveDecisionEdgeLabel(
-  node: FlowNode,
-  edgeLabel: string,
-  variables: WorkflowVariable[],
-): string | null {
-  if (!node.condition) return null
-  const lower = edgeLabel.toLowerCase()
-  // Map yes/no and true/false to the canonical branch names
-  const branch: 'true' | 'false' | null =
-    lower === 'true' || lower === 'yes' ? 'true' :
-    lower === 'false' || lower === 'no' ? 'false' : null
-  if (!branch) return null
-
-  if (isCompoundCondition(node.condition)) {
-    // Compound: true branch shows concise conditions joined with & / |,
-    // false branch just shows "Else" since negating a compound is confusing.
-    if (branch === 'false') return 'Else'
-    const parts = node.condition.conditions.map(c =>
-      formatSimpleCondition(c, branch, variables),
-    )
-    const joiner = node.condition.operator === 'and' ? ' & ' : ' | '
-    return parts.join(joiner)
-  }
-
-  return formatSimpleCondition(node.condition, branch, variables)
-}
-
-// Default labels for each node type
-const DEFAULT_LABELS: Record<FlowNodeType, string> = {
-  start: 'Input',
-  end: 'Result',
-  process: 'Process',
-  decision: 'Condition?',
-  subprocess: 'Workflow',
-  calculation: 'Calculate',
-}
-
-// Get fill color based on node type
-const getNodeFillColor = (type: FlowNodeType): string => {
-  switch (type) {
-    case 'start': return 'var(--teal-light)'
-    case 'decision': return 'var(--amber-light)'
-    case 'end': return 'var(--green-light)'
-    case 'subprocess': return 'var(--rose-light)'
-    case 'calculation': return 'var(--purple-light)'
-    case 'process': return 'var(--paper)'
-    default: return 'var(--paper)'
-  }
-}
-
-// Get stroke color based on node type
-const getNodeStrokeColor = (type: FlowNodeType): string => {
-  switch (type) {
-    case 'start': return 'var(--teal)'
-    case 'decision': return 'var(--amber)'
-    case 'end': return 'var(--green)'
-    case 'subprocess': return 'var(--rose)'
-    case 'calculation': return 'var(--purple)'
-    case 'process': return 'var(--edge)'
-    default: return 'var(--edge)'
-  }
-}
+import { useCanvasKeyboard } from '../hooks/useCanvasKeyboard'
+import { useWheelZoom } from '../hooks/useWheelZoom'
+import type { FlowNode, FlowNodeType } from '../types'
 
 export default function Canvas() {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -208,8 +73,7 @@ export default function Canvas() {
   } = useUIStore()
 
   // Zoom limits for wheel zoom - matches uiStore constants
-  const MIN_ZOOM = 0.25
-  const MAX_ZOOM = 8
+
 
   // Auto-switch to image tab when files are uploaded
   useEffect(() => {
@@ -407,88 +271,6 @@ export default function Canvas() {
     [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes]
   )
 
-  // Check if position collides with any node
-  const hasCollision = useCallback(
-    (nodeId: string, x: number, y: number, nodeType: string): boolean => {
-      const draggingSize = getNodeSize(nodeType as any)
-      const padding = 20
-
-      for (const other of flowchart.nodes) {
-        if (other.id === nodeId) continue
-
-        const otherSize = getNodeSize(other.type)
-        const minDistX = draggingSize.w / 2 + otherSize.w / 2 + padding
-        const minDistY = draggingSize.h / 2 + otherSize.h / 2 + padding
-
-        if (Math.abs(x - other.x) < minDistX && Math.abs(y - other.y) < minDistY) {
-          return true
-        }
-      }
-      return false
-    },
-    [flowchart.nodes]
-  )
-
-  // Find valid position that doesn't collide - allows sliding along edges
-  const checkCollision = useCallback(
-    (nodeId: string, newX: number, newY: number): { x: number; y: number } => {
-      const draggingNode = flowchart.nodes.find(n => n.id === nodeId)
-      if (!draggingNode) return { x: newX, y: newY }
-
-      // If no collision at target, allow it
-      if (!hasCollision(nodeId, newX, newY, draggingNode.type)) {
-        return { x: newX, y: newY }
-      }
-
-      // There's a collision - try sliding along each axis independently
-      const startX = draggingNode.x
-      const startY = draggingNode.y
-
-      // Try X movement only (horizontal slide)
-      let finalX = startX
-      if (!hasCollision(nodeId, newX, startY, draggingNode.type)) {
-        finalX = newX
-      } else {
-        // Binary search for X
-        let lo = 0, hi = 1
-        const dx = newX - startX
-        for (let i = 0; i < 10; i++) {
-          const mid = (lo + hi) / 2
-          const testX = startX + dx * mid
-          if (hasCollision(nodeId, testX, startY, draggingNode.type)) {
-            hi = mid
-          } else {
-            lo = mid
-          }
-        }
-        finalX = startX + dx * lo
-      }
-
-      // Try Y movement only (vertical slide)
-      let finalY = startY
-      if (!hasCollision(nodeId, finalX, newY, draggingNode.type)) {
-        finalY = newY
-      } else {
-        // Binary search for Y
-        let lo = 0, hi = 1
-        const dy = newY - startY
-        for (let i = 0; i < 10; i++) {
-          const mid = (lo + hi) / 2
-          const testY = startY + dy * mid
-          if (hasCollision(nodeId, finalX, testY, draggingNode.type)) {
-            hi = mid
-          } else {
-            lo = mid
-          }
-        }
-        finalY = startY + dy * lo
-      }
-
-      return { x: finalX, y: finalY }
-    },
-    [flowchart.nodes, hasCollision]
-  )
-
   // Handle pointer move
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -544,11 +326,11 @@ export default function Canvas() {
         })
       } else {
         // Single node drag with collision detection
-        const newPos = checkCollision(dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
+        const newPos = resolveCollision(flowchart.nodes, dragNodeId, dragStart.nodeX + dx, dragStart.nodeY + dy)
         moveNode(dragNodeId, newPos.x, newPos.y)
       }
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, moveNodes, dragConnection, checkCollision, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, moveNodes, dragConnection, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
   )
 
   // Handle pointer up
@@ -761,86 +543,14 @@ export default function Canvas() {
 
 
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore shortcuts when typing in input fields
-      const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return
-      }
+  // Keyboard shortcuts (delete, undo/redo, escape, mode switch)
+  useCanvasKeyboard({
+    selectedNodeIds, deleteNode, undo, redo,
+    connectMode, cancelConnect, clearSelection, setCanvasMode,
+  })
 
-      // Delete selected nodes
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeIds.length > 0) {
-        // Delete all selected nodes
-        selectedNodeIds.forEach(nodeId => deleteNode(nodeId))
-      }
-
-      // Undo/Redo
-      if (e.key === 'z' && (e.metaKey || e.ctrlKey)) {
-        if (e.shiftKey) {
-          redo()
-        } else {
-          undo()
-        }
-      }
-
-      // Cancel connect mode or clear selection
-      if (e.key === 'Escape') {
-        if (connectMode) {
-          cancelConnect()
-        } else if (selectedNodeIds.length > 0) {
-          clearSelection()
-        }
-      }
-
-      // Canvas mode shortcuts (V for select, H for pan/hand)
-      if (e.key === 'v' || e.key === 'V') {
-        setCanvasMode('select')
-      }
-      if (e.key === 'h' || e.key === 'H') {
-        setCanvasMode('pan')
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeIds, deleteNode, undo, redo, connectMode, cancelConnect, clearSelection, setCanvasMode])
-
-  // Mouse wheel zoom handler - zooms centered on cursor position
-  // Wheel up = zoom in, wheel down = zoom out
-  // Registered via useEffect with { passive: false } because React's onWheel
-  // is passive by default, making e.preventDefault() a no-op (page still scrolls).
-  const handleWheelRef = useRef<(e: WheelEvent) => void>(() => {})
-  handleWheelRef.current = (e: WheelEvent) => {
-    e.preventDefault()
-
-    const svg = svgRef.current
-    const container = containerRef.current
-    if (!svg || !container) return
-
-    const zoomFactor = 0.1
-    const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
-    if (newZoom === zoom) return
-
-    const cursorSVG = screenToSVG(e.clientX, e.clientY)
-    const zoomRatio = zoom / newZoom
-    const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
-    const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
-
-    setZoom(newZoom)
-    setPanOffset({ x: newPanX, y: newPanY })
-  }
-
-  // Attach non-passive wheel listener to the SVG element
-  useEffect(() => {
-    const svg = svgRef.current
-    if (!svg) return
-    const handler = (e: WheelEvent) => handleWheelRef.current(e)
-    svg.addEventListener('wheel', handler, { passive: false })
-    return () => svg.removeEventListener('wheel', handler)
-  }, [])
+  // Mouse wheel zoom (centred on cursor, non-passive listener)
+  useWheelZoom(svgRef, containerRef, zoom, panOffset, setZoom, setPanOffset, screenToSVG)
 
   // Render node
   const renderNode = (node: FlowNode) => {
@@ -1087,35 +797,6 @@ export default function Canvas() {
         })()}
       </g>
     )
-  }
-
-  // Wrap text into multiple lines, breaking on spaces
-  function wrapText(text: string, maxCharsPerLine: number): string[] {
-    if (text.length <= maxCharsPerLine) return [text]
-
-    const words = text.split(' ')
-    const lines: string[] = []
-    let currentLine = ''
-
-    for (const word of words) {
-      if (currentLine.length === 0) {
-        currentLine = word
-      } else if (currentLine.length + 1 + word.length <= maxCharsPerLine) {
-        currentLine += ' ' + word
-      } else {
-        lines.push(currentLine)
-        currentLine = word
-      }
-    }
-    if (currentLine) lines.push(currentLine)
-
-    // Limit to 3 lines max, truncate last line if needed
-    if (lines.length > 3) {
-      lines.length = 3
-      lines[2] = lines[2].slice(0, maxCharsPerLine - 1) + '\u2026'
-    }
-
-    return lines
   }
 
   // Beautify/auto-layout the flowchart - hierarchical tree with node duplication

@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.backend.agents.orchestrator import Orchestrator
+from src.backend.llm.client import LLMResponse
 from src.backend.tools import ToolRegistry
 from src.backend.tools.core import Tool, ToolParameter
 
@@ -111,10 +112,10 @@ class TestOrchestratorThinkingForwarding:
             },
         }
         # First LLM call returns a tool call; second returns final text
-        with patch("src.backend.agents.orchestrator.call_llm_with_tools") as mock_llm:
+        with patch("src.backend.agents.orchestrator.call_llm") as mock_llm:
             mock_llm.side_effect = [
-                ("", [fake_tool_call], {}),  # Initial: request tool call
-                ("Analysis complete.", [], {}),  # Post-tool: final text
+                LLMResponse(text="", tool_calls=[fake_tool_call]),
+                LLMResponse(text="Analysis complete."),
             ]
             orch.respond(
                 "Analyze the workflow",
