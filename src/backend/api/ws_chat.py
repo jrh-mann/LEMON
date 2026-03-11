@@ -21,7 +21,9 @@ from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
 from .tool_summaries import ToolSummaryTracker
 from .ws_registry import ConnectionRegistry
+from ..agents.turn import Turn, TurnStatus
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
+from ..utils.cancellation import CancellationError
 from ..utils.uploads import save_uploaded_file, save_annotations
 from ..utils.paths import lemon_data_dir
 from ..storage.conversation_log import ConversationLogger
@@ -128,8 +130,6 @@ class WsChatTask:
     thinking_chunks: list[str] = field(default_factory=list)
     # Accumulated stream text — replayed on resume_task so refresh doesn't lose content
     stream_buffer: str = ""
-    # Tool start times for duration measurement (keyed by tool name)
-    _tool_start_times: dict[str, float] = field(default_factory=dict)
     # Cached cancellation flag — set by TaskRegistry.cancel() to avoid
     # lock + dict lookup on every stream chunk. Volatile read is safe
     # because Python's GIL makes bool assignment atomic.
@@ -261,8 +261,9 @@ class WsChatTask:
     ) -> None:
         """Dispatch tool lifecycle events: start, complete, batch_complete.
 
-        Records tool results, logs to the audit trail, and emits socket
-        events so the frontend can update the canvas in real time.
+        Records tool results and emits socket events so the frontend can
+        update the canvas in real time. Audit logging (log_tool_call) is
+        handled by the Turn object — not here.
         """
         cancelled = self.is_cancelled()
 
@@ -271,8 +272,6 @@ class WsChatTask:
             if cancelled:
                 entry["interrupted"] = True
             self.executed_tools.append(entry)
-            # Record start time for duration measurement
-            self._tool_start_times[tool] = time.perf_counter()
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -287,25 +286,17 @@ class WsChatTask:
                     if cancelled:
                         executed["interrupted"] = True
                     break
-            # Log tool call to the audit trail
-            if self.conversation_logger and self.convo:
-                start = self._tool_start_times.pop(tool, None)
-                duration_ms = (time.perf_counter() - start) * 1000 if start else 0.0
+            # Snapshot workflow after successful edit tool calls
+            if success and tool in WORKFLOW_EDIT_TOOLS and self.conversation_logger and self.convo:
                 try:
-                    self.conversation_logger.log_tool_call(
-                        self.convo.id, tool, args, result, success, duration_ms,
+                    self.conversation_logger.log_workflow_snapshot(
+                        self.convo.id,
+                        self.convo.orchestrator.current_workflow,
                         task_id=self.task_id,
                     )
-                    # Snapshot workflow after successful edit tool calls
-                    if success and tool in WORKFLOW_EDIT_TOOLS and self.convo:
-                        self.conversation_logger.log_workflow_snapshot(
-                            self.convo.id,
-                            self.convo.orchestrator.current_workflow,
-                            task_id=self.task_id,
-                        )
                 except Exception:
                     logger.error(
-                        "Failed to log tool call to audit trail: tool=%s conv=%s",
+                        "Failed to log workflow snapshot: tool=%s conv=%s",
                         tool, self.convo.id if self.convo else "?",
                         exc_info=True,
                     )
@@ -519,76 +510,24 @@ class WsChatTask:
         self._emit("chat_response", payload)
 
     # --- Audit logging helpers ---
-    # These are wrapped in try/except because a logging failure should
-    # never crash the chat, but errors are logged with exc_info=True
-    # so they remain visible per CLAUDE.md "fail loudly" convention.
 
-    def _log_user_message(self) -> None:
-        """Log user message to audit trail."""
-        if not (self.conversation_logger and self.convo):
-            logger.warning(
-                "Audit log skipped: conversation_logger=%s convo=%s",
-                self.conversation_logger is not None, self.convo is not None,
-            )
+    def _log_thinking(self) -> None:
+        """Log accumulated thinking chunks to the audit trail.
+
+        Thinking content is NOT part of Turn — it's not conversation history,
+        it's internal reasoning. We log it separately as a diagnostic entry.
+        """
+        if not (self.conversation_logger and self.convo and self.thinking_chunks):
             return
         try:
-            self.conversation_logger.ensure_conversation(
-                self.convo.id,
-                user_id=self.user_id,
-                workflow_id=self.current_workflow_id,
-                model="claude-sonnet-4-6",
-            )
-            file_meta = [
-                {"name": f.get("name"), "file_type": f.get("file_type")}
-                for f in self.saved_file_paths
-            ] if self.saved_file_paths else None
-            self.conversation_logger.log_user_message(
-                self.convo.id, self.message, files=file_meta, task_id=self.task_id,
-            )
-            logger.info(
-                "Audit log: recorded user message conv=%s task=%s",
-                self.convo.id, self.task_id,
+            self.conversation_logger.log_thinking(
+                self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
             )
         except Exception:
             logger.error(
-                "Failed to log user message to audit trail: conv=%s task=%s",
-                self.convo.id, self.task_id,
-                exc_info=True,
+                "Failed to log thinking to audit trail: conv=%s",
+                self.convo.id if self.convo else "?", exc_info=True,
             )
-
-    def _log_assistant_response(self, response_text: str) -> None:
-        """Log assistant response and thinking to audit trail."""
-        if not (self.conversation_logger and self.convo):
-            return
-        try:
-            orch = self.convo.orchestrator
-            self.conversation_logger.log_assistant_response(
-                self.convo.id, response_text,
-                input_tokens=orch.conversation._last_input_tokens or None,
-                output_tokens=getattr(orch, "_last_output_tokens", None),
-                task_id=self.task_id,
-            )
-            if self.thinking_chunks:
-                self.conversation_logger.log_thinking(
-                    self.convo.id, "".join(self.thinking_chunks), task_id=self.task_id,
-                )
-        except Exception:
-            logger.error(
-                "Failed to log assistant response to audit trail: conv=%s task=%s",
-                self.convo.id, self.task_id,
-                exc_info=True,
-            )
-
-    def _log_error(self, exc: Exception) -> None:
-        """Log an error to the audit trail."""
-        if not (self.conversation_logger and self.convo):
-            return
-        try:
-            self.conversation_logger.log_error(
-                self.convo.id, exc, task_id=self.task_id,
-            )
-        except Exception:
-            logger.warning("Failed to log error to audit trail", exc_info=True)
 
     # --- Conversation metadata persistence ---
 
@@ -633,13 +572,21 @@ class WsChatTask:
     # --- Main run loop ---
 
     def run(self) -> None:
-        """Execute one chat turn: save files, sync state, call LLM, emit response."""
+        """Execute one chat turn: save files, sync state, call LLM, emit response.
+
+        Creates a Turn object that centralizes audit logging and history
+        persistence. The Turn's commit() is the single point where
+        ConversationManager.history is mutated.
+        """
         self.emit_progress("start", "Thinking...")
         threading.Thread(target=self.heartbeat, daemon=True).start()
 
         # NOTE: TaskRegistry registration and building=True are set in
         # handle_ws_chat BEFORE the thread spawns (eliminates race condition
         # where a fast page refresh misses in-progress state).
+
+        turn: Optional[Turn] = None
+        response_text = ""
 
         try:
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
@@ -648,10 +595,38 @@ class WsChatTask:
             self._sync_payload_workflow()
             self._sync_orchestrator_from_convo()
             self._persist_conversation_metadata()
-            self._log_user_message()
+
+            # Create Turn — centralizes audit logging + history persistence
+            turn = Turn(
+                self.message, self.convo.id,
+                conversation_logger=self.conversation_logger,
+                task_id=self.task_id,
+            )
+            # Ensure conversation row exists in audit DB before Turn.start()
+            if self.conversation_logger:
+                try:
+                    self.conversation_logger.ensure_conversation(
+                        self.convo.id,
+                        user_id=self.user_id,
+                        workflow_id=self.current_workflow_id,
+                        model="claude-sonnet-4-6",
+                    )
+                except Exception:
+                    logger.error(
+                        "Failed to ensure conversation in audit DB: conv=%s",
+                        self.convo.id, exc_info=True,
+                    )
+
+            # File metadata for audit log
+            file_meta = [
+                {"name": f.get("name"), "file_type": f.get("file_type")}
+                for f in self.saved_file_paths
+            ] if self.saved_file_paths else None
+            turn.start(file_meta=file_meta)
 
             response_text = self.convo.orchestrator.respond(
                 self.message,
+                turn=turn,
                 has_files=self.saved_file_paths if self.saved_file_paths else [],
                 stream=self.stream_chunk,
                 allow_tools=True,
@@ -660,25 +635,43 @@ class WsChatTask:
                 thinking_budget=50_000,
                 on_thinking=self.stream_thinking,
             )
+
+            # Turn completed successfully
+            orch = self.convo.orchestrator
+            turn.complete(
+                response_text,
+                input_tokens=orch.conversation._last_input_tokens or 0,
+                output_tokens=getattr(orch, "_last_output_tokens", None) or 0,
+            )
+            turn.commit(orch.conversation)
+            self._log_thinking()
             self._sync_convo_from_orchestrator()
-            self._log_assistant_response(response_text)
 
             # Emit context window usage so the frontend can show an indicator
-            orch = self.convo.orchestrator
             self._emit("context_status", {
                 "usage_pct": orch.conversation.context_usage_pct,
                 "input_tokens": orch.conversation._last_input_tokens,
                 "message_count": len(orch.conversation.history),
             })
-            if self.is_cancelled():
-                self._emit_response(response_text, cancelled=True)
-                self.emit_cancelled()
-                return
             self._emit_response(response_text)
+
+        except CancellationError:
+            # Turn was cancelled — commit partial state to history
+            if turn and turn.status not in (TurnStatus.COMPLETED, TurnStatus.CANCELLED, TurnStatus.FAILED):
+                turn.cancel([self.stream_buffer] if self.stream_buffer else [])
+                turn.commit(self.convo.orchestrator.conversation)
+            response_text = turn.partial_text if turn else ""
+            self._emit_response(response_text, cancelled=True)
+            self.emit_cancelled()
+
         except Exception as exc:
             logger.exception("WS chat failed: task=%s", self.task_id)
-            self._log_error(exc)
+            if turn and turn.status not in (TurnStatus.COMPLETED, TurnStatus.CANCELLED, TurnStatus.FAILED):
+                turn.fail(str(exc))
+                if self.convo:
+                    turn.commit(self.convo.orchestrator.conversation)
             self.emit_error(str(exc))
+
         finally:
             self.done.set()
             _task_registry.unregister(self)

@@ -62,7 +62,17 @@ class AtomicTestSession:
         self.orchestrator.sync_workflow(lambda: self.workflow_state)
 
         # Execute
-        response = self.orchestrator.respond(message, allow_tools=True)
+        from ..agents.turn import Turn
+        turn = Turn(message, "test")
+        turn.start()
+        try:
+            response = self.orchestrator.respond(message, turn=turn, allow_tools=True)
+            turn.complete(response)
+        except Exception as exc:
+            turn.fail(str(exc))
+            response = f"Error: {exc}"
+        finally:
+            turn.commit(self.orchestrator.conversation)
 
         # Sync back
         self.workflow_state = copy.deepcopy(self.orchestrator.current_workflow)

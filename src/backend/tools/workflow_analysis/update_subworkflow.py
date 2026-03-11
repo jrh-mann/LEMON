@@ -90,14 +90,25 @@ def _run_subworkflow_updater(
 
             # Run the orchestrator with the update instructions
             # Uses the same callback pattern as SocketChatTask.run()
-            response_text = orchestrator.respond(
-                instructions, allow_tools=True,
-                stream=cb.stream_chunk,
-                on_tool_event=cb.on_tool_event,
-                should_cancel=cb.is_cancelled,
-                thinking_budget=50_000,
-                on_thinking=cb.stream_thinking,
-            )
+            # Turn wraps the update turn — no audit logger for background builds
+            from ...agents.turn import Turn
+            update_turn = Turn(instructions, f"bg_{workflow_id}")
+            update_turn.start()
+            try:
+                response_text = orchestrator.respond(
+                    instructions, turn=update_turn, allow_tools=True,
+                    stream=cb.stream_chunk,
+                    on_tool_event=cb.on_tool_event,
+                    should_cancel=cb.is_cancelled,
+                    thinking_budget=50_000,
+                    on_thinking=cb.stream_thinking,
+                )
+                update_turn.complete(response_text)
+            except Exception as update_exc:
+                update_turn.fail(str(update_exc))
+                raise
+            finally:
+                update_turn.commit(orchestrator.conversation)
 
             # Persist the updated conversation history and clear building flag.
             # Cap history to prevent unbounded DB blob growth.

@@ -14,7 +14,8 @@ from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from ..tools import ToolRegistry
 from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_BOUND_TOOLS
@@ -26,6 +27,9 @@ from ..utils.cancellation import CancellationError
 from ..validation.workflow_validator import WorkflowValidator
 from ..events.bus import EventBus
 from ..events.types import TOOL_STARTED, TOOL_COMPLETED, TOOL_BATCH_COMPLETE
+
+if TYPE_CHECKING:
+    from .turn import Turn
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +212,7 @@ class Orchestrator:
         self,
         user_message: str,
         *,
+        turn: Optional["Turn"] = None,
         has_files: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
@@ -218,7 +223,16 @@ class Orchestrator:
         thinking_budget: Optional[int] = None,
         on_thinking: Optional[Callable[[str], None]] = None,
     ) -> str:
-        """Run one conversation turn: user message → LLM → tools → response."""
+        """Run one conversation turn: user message → LLM → tools → response.
+
+        When a Turn is provided, the orchestrator:
+        - Records tool messages on the Turn (replaces turn_tool_messages)
+        - Raises CancellationError on cancel (caller handles via turn.cancel())
+        - Re-raises exceptions on error (caller handles via turn.fail())
+        - Does NOT call save_turn/finalize_cancel/save_error (caller uses turn.commit())
+
+        When turn=None, falls back to the legacy self-contained behavior.
+        """
         new_files = has_files or []
         if new_files:
             self.uploaded_files = new_files
@@ -231,6 +245,9 @@ class Orchestrator:
         streamed_chunks: List[str] = []
 
         def finalize_cancel() -> str:
+            """Handle cancellation. With Turn: raises. Without: saves to history."""
+            if turn:
+                raise CancellationError("Turn cancelled by user")
             return self.conversation.finalize_cancel(user_message, streamed_chunks)
 
         def on_delta(delta: str) -> None:
@@ -272,12 +289,14 @@ class Orchestrator:
             return finalize_cancel()
         except Exception as exc:
             logger.exception("LLM error while responding")
+            if turn:
+                raise  # Caller handles via turn.fail()
             self.conversation.save_error(user_message, f"LLM error: {exc}")
             return f"LLM error: {exc}"
 
         # --- Tool loop ---
         tool_results: List[ToolResult] = []
-        # Track tool-use/tool-result messages so they persist in history
+        # turn_tool_messages: only used when turn=None (legacy path)
         turn_tool_messages: List[Dict[str, Any]] = []
         asked_question = False
         iterations = 0
@@ -288,12 +307,21 @@ class Orchestrator:
             iterations += 1
             if iterations > _MAX_TOOL_ITERATIONS:
                 logger.error("Max tool iterations. Tools: %s", [r.tool for r in tool_results])
+                if turn:
+                    raise CancellationError(f"Max tool iterations ({_MAX_TOOL_ITERATIONS})")
                 self.conversation.save_error(user_message, f"Max tool iterations ({_MAX_TOOL_ITERATIONS}).")
                 return finalize_cancel()
 
+            # Transition: CALLING_LLM → EXECUTING_TOOLS
+            if turn:
+                turn.begin_tool_execution()
+
             asst_msg = {"role": "assistant", "content": raw or "", "tool_calls": tool_calls}
             messages.append(asst_msg)
-            turn_tool_messages.append(asst_msg)
+            if turn:
+                turn.add_assistant_tool_use(asst_msg)
+            else:
+                turn_tool_messages.append(asst_msg)
 
             # Execute each tool in the batch
             tool_failure = None
@@ -310,22 +338,34 @@ class Orchestrator:
                     if on_tool_event:
                         on_tool_event("tool_start", tool_name, args, None)
 
+                    tool_start = time.perf_counter()
                     result = self.run_tool(
                         tool_name, args, stream=None, should_cancel=should_cancel,
                         on_progress=lambda s, n=tool_name: on_tool_event and on_tool_event("tool_progress", n, {"status": s}, None),
                         on_thinking=lambda c, n=tool_name: on_tool_event and on_tool_event("tool_thinking", n, {"chunk": c}, None),
                     )
+                    duration_ms = (time.perf_counter() - tool_start) * 1000
                     tool_results.append(result)
 
                     # Image blocks pass through directly; otherwise json.dumps
-                    content = result.data.get("content")
+                    raw_content = result.data.get("content")
+                    tool_content = raw_content if isinstance(raw_content, list) else json.dumps(result.data)
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": tc.get("id"),
-                        "content": content if isinstance(content, list) else json.dumps(result.data),
+                        "content": tool_content,
                     }
                     messages.append(tool_msg)
-                    turn_tool_messages.append(tool_msg)
+
+                    if turn:
+                        turn.add_tool_result(
+                            tc.get("id"), tool_name, args, result.data,
+                            success=result.success, duration_ms=duration_ms,
+                            content=tool_content,
+                        )
+                    else:
+                        turn_tool_messages.append(tool_msg)
+
                     if on_tool_event:
                         on_tool_event("tool_complete", tool_name, args, result.data)
 
@@ -340,6 +380,8 @@ class Orchestrator:
                     return finalize_cancel()
                 except Exception as exc:
                     logger.error("tool_error name=%s error=%s", tool_name, exc, exc_info=True)
+                    if turn:
+                        raise  # Caller handles via turn.fail()
                     self.conversation.save_error(user_message, f"Tool error ({tool_name}): {exc}")
                     return f"Tool error ({tool_name}): {exc}"
 
@@ -351,7 +393,10 @@ class Orchestrator:
                 sp = {"success": False, "skipped": True, "error": f"Skipped {sname} — previous tool failed."}
                 skip_msg = {"role": "tool", "tool_call_id": skipped.get("id"), "content": json.dumps(sp)}
                 messages.append(skip_msg)
-                turn_tool_messages.append(skip_msg)
+                if turn:
+                    turn.add_skipped_tool(skipped.get("id"), sname, sargs)
+                else:
+                    turn_tool_messages.append(skip_msg)
                 if on_tool_event:
                     on_tool_event("tool_complete", sname, sargs, sp)
 
@@ -366,6 +411,10 @@ class Orchestrator:
             if len(messages) > _MAX_TOOL_MESSAGES:
                 logger.info("Tool loop messages trimmed from %d to %d", len(messages), _MAX_TOOL_MESSAGES)
                 messages[:] = [messages[0]] + messages[-(_MAX_TOOL_MESSAGES - 1):]
+
+            # Transition: EXECUTING_TOOLS → CALLING_LLM
+            if turn:
+                turn.begin_llm_call()
 
             # Next LLM call
             try:
@@ -397,10 +446,12 @@ class Orchestrator:
             for i in range(0, len(final_text), 800):
                 stream(final_text[i:i + 800])
 
-        self.conversation.save_turn(
-            user_message, final_text,
-            tool_messages=turn_tool_messages or None,
-        )
+        # Persist turn to history — when Turn is active, caller handles via turn.commit()
+        if not turn:
+            self.conversation.save_turn(
+                user_message, final_text,
+                tool_messages=turn_tool_messages or None,
+            )
         return final_text
 
 

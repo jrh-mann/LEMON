@@ -21,7 +21,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 os.environ.setdefault("LEMON_LOG_LEVEL", "WARNING")
 
 from src.backend.agents.orchestrator_factory import build_orchestrator
+from src.backend.agents.turn import Turn
 from src.backend.storage.workflows import WorkflowStore
+from src.backend.utils.cancellation import CancellationError
 
 
 def main() -> None:
@@ -69,12 +71,25 @@ def main() -> None:
     print("TURN 1: Build workflow, cancel after 3 tool calls")
     print("=" * 60)
 
-    response1 = orchestrator.respond(
-        "Build a BMI calculator with height and weight inputs",
-        allow_tools=True,
-        should_cancel=cancel_flag.is_set,
-        on_tool_event=on_tool_event,
-    )
+    turn1 = Turn("Build a BMI calculator with height and weight inputs", "cancel_test")
+    turn1.start()
+    try:
+        response1 = orchestrator.respond(
+            "Build a BMI calculator with height and weight inputs",
+            turn=turn1,
+            allow_tools=True,
+            should_cancel=cancel_flag.is_set,
+            on_tool_event=on_tool_event,
+        )
+        turn1.complete(response1)
+    except CancellationError:
+        turn1.cancel([])
+        response1 = turn1.partial_text or "[cancelled]"
+    except Exception as exc:
+        turn1.fail(str(exc))
+        response1 = f"Error: {exc}"
+    finally:
+        turn1.commit(orchestrator.conversation)
 
     print(f"\nTurn 1 response: {response1[:100]}...")
     print(f"History length after cancel: {len(orchestrator.conversation.history)}")
@@ -98,10 +113,20 @@ def main() -> None:
     print("TURN 2: Ask what it remembers")
     print("=" * 60)
 
-    response2 = orchestrator.respond(
-        "What tools did you just use? List the tool names.",
-        allow_tools=False,
-    )
+    turn2 = Turn("What tools did you just use? List the tool names.", "cancel_test")
+    turn2.start()
+    try:
+        response2 = orchestrator.respond(
+            "What tools did you just use? List the tool names.",
+            turn=turn2,
+            allow_tools=False,
+        )
+        turn2.complete(response2)
+    except Exception as exc:
+        turn2.fail(str(exc))
+        response2 = f"Error: {exc}"
+    finally:
+        turn2.commit(orchestrator.conversation)
 
     print(f"\nTurn 2 response:\n{response2}")
 

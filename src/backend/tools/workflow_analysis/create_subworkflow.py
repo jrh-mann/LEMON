@@ -92,14 +92,25 @@ def _run_subworkflow_builder(
             # Run the orchestrator with the brief — it will use its tools to build
             # the subworkflow autonomously (add_node, add_connection, etc.)
             # Uses the same callback pattern as SocketChatTask.run()
-            response_text = orchestrator.respond(
-                brief, allow_tools=True,
-                stream=cb.stream_chunk,
-                on_tool_event=cb.on_tool_event,
-                should_cancel=cb.is_cancelled,
-                thinking_budget=50_000,
-                on_thinking=cb.stream_thinking,
-            )
+            # Turn wraps the build turn — no audit logger for background builds
+            from ...agents.turn import Turn
+            build_turn = Turn(brief, f"bg_{workflow_id}")
+            build_turn.start()
+            try:
+                response_text = orchestrator.respond(
+                    brief, turn=build_turn, allow_tools=True,
+                    stream=cb.stream_chunk,
+                    on_tool_event=cb.on_tool_event,
+                    should_cancel=cb.is_cancelled,
+                    thinking_budget=50_000,
+                    on_thinking=cb.stream_thinking,
+                )
+                build_turn.complete(response_text)
+            except Exception as build_exc:
+                build_turn.fail(str(build_exc))
+                raise
+            finally:
+                build_turn.commit(orchestrator.conversation)
 
             # Save the workflow to library and persist the builder's conversation
             # history so the user can see how it was built and resume later.

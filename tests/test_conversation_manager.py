@@ -11,6 +11,7 @@ import pytest
 
 from src.backend.agents.conversation_manager import ConversationManager
 from src.backend.agents.orchestrator_factory import build_orchestrator
+from src.backend.agents.turn import Turn
 from src.backend.llm.client import LLMResponse
 
 
@@ -137,7 +138,11 @@ class TestOrchestratorToolHistoryIntegration:
                 )
 
         with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_call_llm):
-            result = orch.respond("Show me the current workflow", allow_tools=True)
+            turn = Turn("Show me the current workflow", "test")
+            turn.start()
+            result = orch.respond("Show me the current workflow", turn=turn, allow_tools=True)
+            turn.complete(result)
+            turn.commit(orch.conversation)
 
         assert "empty" in result.lower()
 
@@ -198,8 +203,17 @@ class TestOrchestratorToolHistoryIntegration:
                 )
 
         with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_call_llm):
-            orch.respond("Check the workflow", allow_tools=True)
-            orch.respond("Did you already check it?", allow_tools=True)
+            turn1 = Turn("Check the workflow", "test")
+            turn1.start()
+            r1 = orch.respond("Check the workflow", turn=turn1, allow_tools=True)
+            turn1.complete(r1)
+            turn1.commit(orch.conversation)
+
+            turn2 = Turn("Did you already check it?", "test")
+            turn2.start()
+            r2 = orch.respond("Did you already check it?", turn=turn2, allow_tools=True)
+            turn2.complete(r2)
+            turn2.commit(orch.conversation)
 
         # The third call_llm invocation (turn 2) should contain tool messages from turn 1
         turn2_messages = captured_messages[2]

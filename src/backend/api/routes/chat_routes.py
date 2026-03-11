@@ -20,6 +20,7 @@ from ..common import utc_now
 from ..conversations import ConversationStore
 from ..deps import require_auth
 from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
+from ...agents.turn import Turn
 from ..ws_registry import ConnectionRegistry
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
@@ -137,14 +138,29 @@ def register_chat_routes(
             if event == "tool_start":
                 executed_tools.append({"tool": tool, "arguments": args})
 
-        response_text = convo.orchestrator.respond(
-            message,
-            has_files=[],  # REST endpoint doesn't support multi-file yet
-            allow_tools=True,
-            on_tool_event=on_tool_event,
-        )
+        turn = Turn(message, convo.id)
+        turn.start()
+        try:
+            response_text = convo.orchestrator.respond(
+                message,
+                turn=turn,
+                has_files=[],  # REST endpoint doesn't support multi-file yet
+                allow_tools=True,
+                on_tool_event=on_tool_event,
+            )
+            turn.complete(response_text)
+        except Exception:
+            turn.fail(str(message))
+            response_text = ""
+        finally:
+            from ...agents.turn import TurnStatus
+            if turn.status != TurnStatus.PENDING:
+                turn.commit(convo.orchestrator.conversation)
+
         tool_calls = extract_tool_calls(response_text, include_result=False)
-        if not tool_calls and executed_tools:
+        if not tool_calls and turn.tool_calls:
+            tool_calls = turn.tool_calls
+        elif not tool_calls and executed_tools:
             tool_calls = executed_tools
         response_summary = summarize_response(response_text)
         flowchart = extract_flowchart(response_text)

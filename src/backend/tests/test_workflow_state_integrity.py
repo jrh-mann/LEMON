@@ -25,6 +25,7 @@ import pytest
 
 from ..agents.orchestrator import Orchestrator
 from ..agents.orchestrator_factory import build_orchestrator
+from ..agents.turn import Turn
 
 
 def _repo_root() -> Path:
@@ -83,8 +84,17 @@ class WorkflowTestSession:
         # Sync workflow from session to orchestrator (like socket_chat.py does)
         self.orchestrator.sync_workflow(lambda: self.workflow_state)
 
-        # Call LLM
-        response = self.orchestrator.respond(message, **kwargs)
+        # Call LLM — wrap in a Turn for proper state management
+        turn = Turn(message, "test")
+        turn.start()
+        try:
+            response = self.orchestrator.respond(message, turn=turn, **kwargs)
+            turn.complete(response)
+        except Exception as exc:
+            turn.fail(str(exc))
+            response = f"Error: {exc}"
+        finally:
+            turn.commit(self.orchestrator.conversation)
 
         # Write orchestrator's workflow state back to session
         self.workflow_state = copy.deepcopy(self.orchestrator.current_workflow)
