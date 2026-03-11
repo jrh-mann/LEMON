@@ -79,3 +79,12 @@ status.md
 # Local tool outputs
 pytest_output.txt
 src/frontend/lint_output.txt
+
+# Vite cache (scripts dev server)
+scripts/.vite/
+
+# Scratch files
+problem.md
+
+# Playwright test artifacts
+src/frontend/test-results/
