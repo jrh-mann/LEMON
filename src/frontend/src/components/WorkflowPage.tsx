@@ -130,6 +130,30 @@ export default function WorkflowPage() {
         if (loadedWorkflowIdRef.current === workflowId) return
 
         let isActive = true
+
+        // Shared helper: fetch conversation history from backend and merge
+        // any new messages into the local store. Used by both initial load
+        // and the building-complete poll.
+        const mergeBackendMessages = async (wfId: string, convId: string) => {
+            const history = await getConversationHistory(convId)
+            if (!history?.messages?.length) return
+            const backendMessages = history.messages
+                .filter(m => m.role === 'user' || m.role === 'assistant')
+                .map(m => ({
+                    id: m.id,
+                    role: m.role as 'user' | 'assistant',
+                    content: m.content,
+                    timestamp: m.timestamp,
+                    tool_calls: m.tool_calls || [],
+                }))
+            const chatStore = useChatStore.getState()
+            const localMsgs = chatStore.conversations?.[wfId]?.messages ?? []
+            if (backendMessages.length > localMsgs.length) {
+                const newMsgs = backendMessages.slice(localMsgs.length)
+                chatStore.setMessages(wfId, [...localMsgs, ...newMsgs])
+            }
+        }
+
         const loadWorkflow = async () => {
             try {
                 const workflowData = await getWorkflow(workflowId)
@@ -151,56 +175,14 @@ export default function WorkflowPage() {
                     cs.setConversationId(workflowId, workflowData.conversation_id)
                 }
 
-                // Chat messages are persisted to localStorage via zustand persist,
-                // so they survive page refreshes. But we also check the backend
-                // for any responses that arrived while the page was closed
-                // (e.g. the LLM finished responding after refresh).
-                const localMessages = cs.conversations?.[workflowId]?.messages ?? []
-                if (workflowData.conversation_id) {
-                    const history = await getConversationHistory(workflowData.conversation_id)
-                    if (history?.messages?.length) {
-                        const backendMessages = history.messages
-                            .filter(m => m.role === 'user' || m.role === 'assistant')
-                            .map(m => ({
-                                id: m.id,
-                                role: m.role as 'user' | 'assistant',
-                                content: m.content,
-                                timestamp: m.timestamp,
-                                tool_calls: m.tool_calls || [],
-                            }))
-                        // Only merge from backend when it has MORE messages than
-                        // local — backend may have responses that arrived after
-                        // refresh.  When counts are equal, keep local messages
-                        // because they carry rich content (tool_calls, inline
-                        // summaries) that the backend endpoint strips away.
-                        if (backendMessages.length > localMessages.length) {
-                            // Merge: keep rich local messages, append only the
-                            // new ones from backend (those beyond localMessages.length).
-                            const newMessages = backendMessages.slice(localMessages.length)
-                            cs.setMessages(workflowId, [...localMessages, ...newMessages])
-                        }
-                    }
-                } else if (!localMessages.length && workflowData.build_history?.length) {
-                    // No conversation_id and no local messages — use build_history as last resort
-                    const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
-                        id: `bh_${crypto.randomUUID()}`,
-                        role: msg.role as 'user' | 'assistant',
-                        content: msg.content,
-                        timestamp: new Date().toISOString(),
-                        tool_calls: [],
-                    }))
-                    cs.setMessages(workflowId, historyMessages)
-                }
-                // If a backend task is still running, reconnect to receive
-                // live events and poll until it completes to fetch the final response.
+                // If a backend task is still running, fire resumeTask FIRST
+                // (before the conversation history fetch) so streaming reconnects
+                // as fast as possible. History fetch runs in parallel below.
                 if (workflowData.building) {
                     cs.setStreaming(workflowId, true)
                     cs.setProcessingStatus(workflowId, 'Reconnecting...')
 
-                    // Wait for the socket to finish its handshake, then
-                    // tell the backend to re-route events to the new connection.
-                    // A blind timeout was unreliable — the socket may not be
-                    // connected within 500ms, causing resumeTask to silently no-op.
+                    // Tell the backend to re-route events to the new connection.
                     import('../api/socket').then(({ resumeTask, waitForConnection }) => {
                         waitForConnection().then(() => {
                             if (isActive) resumeTask(workflowId)
@@ -210,41 +192,19 @@ export default function WorkflowPage() {
                     })
 
                     // Poll until the task completes, then fetch the final response.
-                    // The backend sets building=false when the task finishes.
                     const pollInterval = setInterval(async () => {
                         try {
                             const fresh = await getWorkflow(workflowId)
                             if (!fresh.building) {
                                 clearInterval(pollInterval)
-                                // Task finished — fetch the final conversation
                                 const chatStore = useChatStore.getState()
                                 chatStore.setStreaming(workflowId, false)
                                 chatStore.setProcessingStatus(workflowId, null)
                                 chatStore.setCurrentTaskId(workflowId, null)
                                 const convId = fresh.conversation_id || workflowData.conversation_id
                                 if (convId) {
-                                    const history = await getConversationHistory(convId)
-                                    if (history?.messages?.length) {
-                                        const backendMsgs = history.messages
-                                            .filter(m => m.role === 'user' || m.role === 'assistant')
-                                            .map(m => ({
-                                                id: m.id,
-                                                role: m.role as 'user' | 'assistant',
-                                                content: m.content,
-                                                timestamp: m.timestamp,
-                                                tool_calls: m.tool_calls || [],
-                                            }))
-                                        // Merge: keep rich local messages, append only
-                                        // new ones from backend to preserve tool_calls
-                                        // and inline summaries in local state.
-                                        const localMsgs = chatStore.conversations?.[workflowId]?.messages ?? []
-                                        if (backendMsgs.length > localMsgs.length) {
-                                            const newMsgs = backendMsgs.slice(localMsgs.length)
-                                            chatStore.setMessages(workflowId, [...localMsgs, ...newMsgs])
-                                        }
-                                    }
+                                    mergeBackendMessages(workflowId, convId)
                                 }
-                                // Also refresh the flowchart in case it was updated
                                 const hydrated = hydrateWorkflowDetail(fresh)
                                 setFlowchart(hydrated.flowchart)
                                 setAnalysis(hydrated.analysis)
@@ -252,7 +212,23 @@ export default function WorkflowPage() {
                         } catch {
                             clearInterval(pollInterval)
                         }
-                    }, 2000) // Check every 2 seconds
+                    }, 2000)
+                }
+
+                // Fetch conversation history (runs in parallel with resume above).
+                // Merges any backend messages that arrived while the page was closed.
+                const localMessages = cs.conversations?.[workflowId]?.messages ?? []
+                if (workflowData.conversation_id) {
+                    await mergeBackendMessages(workflowId, workflowData.conversation_id)
+                } else if (!localMessages.length && workflowData.build_history?.length) {
+                    const historyMessages = workflowData.build_history.map((msg: { role: string; content: string }) => ({
+                        id: `bh_${crypto.randomUUID()}`,
+                        role: msg.role as 'user' | 'assistant',
+                        content: msg.content,
+                        timestamp: new Date().toISOString(),
+                        tool_calls: [],
+                    }))
+                    cs.setMessages(workflowId, historyMessages)
                 }
 
                 // Restore uploaded files (images/PDFs) so they reappear after refresh.
