@@ -16,10 +16,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from typing import Optional
+from typing import Any, Optional
 
 from ..conversations import ConversationStore
-from ..ws_registry import ConnectionRegistry
 from ...storage.auth import AuthStore
 from ...storage.conversation_log import ConversationLogger
 from ...storage.workflows import WorkflowStore
@@ -38,6 +37,7 @@ from .dev_tools_routes import register_dev_tools_routes
 from .validation_routes import register_validation_routes
 from .execution_routes import register_execution_routes
 from .compilation_routes import register_compilation_routes
+from .stepped_execution_routes import register_stepped_execution_routes
 
 __all__ = ["register_routes", "_infer_outputs_from_nodes"]
 
@@ -50,7 +50,7 @@ def register_routes(
     auth_store: AuthStore,
     workflow_store: WorkflowStore,
     conversation_logger: Optional[ConversationLogger] = None,
-    ws_registry: Optional[ConnectionRegistry] = None,
+    ws_registry: Optional[Any] = None,
 ) -> None:
     """Register all HTTP routes on the FastAPI app.
 
@@ -106,3 +106,6 @@ def register_routes(
 
     # Compilation (compile workflow to Python)
     register_compilation_routes(app, workflow_store=workflow_store)
+
+    # Stepped execution (visual step-through with SSE streaming)
+    register_stepped_execution_routes(app, workflow_store=workflow_store)
