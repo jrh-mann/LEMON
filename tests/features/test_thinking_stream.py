@@ -134,6 +134,47 @@ class TestOrchestratorThinkingForwarding:
         assert thinking_events[1] == ("tool_thinking", "fake_thinking_tool", {"chunk": "the diagram "})
         assert thinking_events[2] == ("tool_thinking", "fake_thinking_tool", {"chunk": "structure..."})
 
+    def test_post_tool_llm_calls_suppress_thinking_stream(self):
+        """Post-tool LLM calls should NOT stream thinking to the frontend.
+
+        With adaptive thinking on Opus 4.6, interleaved thinking from
+        multiple LLM calls in the tool loop would accumulate in the
+        frontend's reasoning section, mixing initial reasoning with
+        internal tool-result analysis. Only the initial call streams thinking.
+        """
+        orch = _make_orchestrator_with_fake_tool()
+
+        thinking_chunks: List[str] = []
+
+        def capture_thinking(chunk: str) -> None:
+            thinking_chunks.append(chunk)
+
+        fake_tool_call = {
+            "id": "call_1",
+            "name": "fake_thinking_tool",
+            "input": {},
+        }
+
+        with patch("src.backend.agents.orchestrator.call_llm") as mock_llm:
+            mock_llm.side_effect = [
+                LLMResponse(text="", tool_calls=[fake_tool_call]),
+                LLMResponse(text="Done."),
+            ]
+            orch.respond(
+                "Do something",
+                stream=lambda c: None,
+                allow_tools=True,
+                thinking=True,
+                on_thinking=capture_thinking,
+            )
+
+        # Post-tool call should have on_thinking=None
+        assert mock_llm.call_count == 2
+        _, initial_kwargs = mock_llm.call_args_list[0]
+        _, post_tool_kwargs = mock_llm.call_args_list[1]
+        assert initial_kwargs["on_thinking"] is capture_thinking
+        assert post_tool_kwargs["on_thinking"] is None
+
 
 # ---------------------------------------------------------------------------
 # Test: SocketChatTask.on_tool_event emits chat_thinking socket events
