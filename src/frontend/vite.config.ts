@@ -16,11 +16,16 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:5001',
         changeOrigin: true,
-      },
-      // Socket.IO uses /socket.io/ path for handshake and transport
-      '/socket.io': {
-        target: 'http://localhost:5001',
-        ws: true,
+        // Disable proxy buffering for SSE (text/event-stream) responses
+        // so tokens stream through immediately instead of arriving in batches.
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache'
+              proxyRes.headers['x-accel-buffering'] = 'no'
+            }
+          })
+        },
       },
     },
   },

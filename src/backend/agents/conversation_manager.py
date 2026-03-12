@@ -33,7 +33,7 @@ class ConversationManager:
         self._last_input_tokens: int = 0
         self._logger = logging.getLogger(__name__)
 
-        # Optional conversation logger for audit trail (injected by ws_chat)
+        # Optional conversation logger for audit trail (injected by ChatTask)
         self._conversation_logger: Optional[Any] = None
         self._conversation_id: Optional[str] = None
 

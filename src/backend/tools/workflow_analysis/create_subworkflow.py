@@ -57,9 +57,9 @@ def _run_subworkflow_builder(
     )
     response_text = ""
 
-    # Register as active task so handle_resume_task can reconnect after refresh.
-    # BackgroundBuilderCallbacks exposes the same interface as WsChatTask
-    # (done, conn_id, thinking_chunks, stream_buffer, task_id, current_workflow_id, user_id).
+    # Register as active task so resume can reconnect after refresh.
+    # BackgroundBuilderCallbacks exposes the same interface as ChatTask
+    # (done, thinking_chunks, stream_buffer, task_id, current_workflow_id, user_id).
     _task_registry.register(cb)
 
     # Acquire semaphore to limit concurrent builder threads
