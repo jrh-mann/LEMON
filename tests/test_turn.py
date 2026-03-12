@@ -181,8 +181,8 @@ class TestToolRecording:
             success=True, duration_ms=50,
         )
         assert len(turn.messages) == 1
-        assert turn.messages[0]["role"] == "tool"
-        assert turn.messages[0]["tool_call_id"] == "tc1"
+        assert turn.messages[0]["role"] == "user"
+        assert turn.messages[0]["content"][0]["tool_use_id"] == "tc1"
         assert len(turn.tool_calls) == 1
         assert turn.tool_calls[0] == {
             "tool": "add_node", "arguments": {"type": "start"}, "success": True,
@@ -196,14 +196,14 @@ class TestToolRecording:
             "tc2", "analyze_image", {}, {"success": True},
             success=True, content=image_blocks,
         )
-        assert turn.messages[0]["content"] is image_blocks
+        assert turn.messages[0]["content"][0]["content"] is image_blocks
 
     def test_add_skipped_tool(self):
         """Skipped tool adds message + structured record."""
         turn = make_turn()
         turn.add_skipped_tool("tc3", "add_connection", {"from": "n1", "to": "n2"})
         assert len(turn.messages) == 1
-        assert turn.messages[0]["role"] == "tool"
+        assert turn.messages[0]["role"] == "user"
         assert len(turn.tool_calls) == 1
         assert turn.tool_calls[0]["success"] is False
 
@@ -222,7 +222,7 @@ class TestToolRecording:
             success=True,
         )
         assert len(turn.messages) == 2
-        assert [m["role"] for m in turn.messages] == ["assistant", "tool"]
+        assert [m["role"] for m in turn.messages] == ["assistant", "user"]
 
 
 # ------------------------------------------------------------------
@@ -259,7 +259,7 @@ class TestCommit:
         turn.commit(cm)
         assert len(cm.history) == 4
         roles = [m["role"] for m in cm.history]
-        assert roles == ["user", "assistant", "tool", "assistant"]
+        assert roles == ["user", "assistant", "user", "assistant"]
         assert cm.history[3]["content"] == "Added the node."
 
     def test_commit_cancelled_with_partial(self):
@@ -312,7 +312,7 @@ class TestCommit:
         # Should preserve: user + assistant(tool_use) + tool + error
         assert len(cm.history) == 4
         roles = [m["role"] for m in cm.history]
-        assert roles == ["user", "assistant", "tool", "assistant"]
+        assert roles == ["user", "assistant", "user", "assistant"]
         assert "Error:" in cm.history[3]["content"]
 
     def test_commit_pending_is_noop(self):

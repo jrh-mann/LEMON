@@ -27,6 +27,11 @@ def _extract_system(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str,
 
 
 def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
+    """Convert internal content representation to Anthropic API content blocks.
+
+    Handles: text, image (base64), document (PDF), tool_result.
+    All content is stored in native Anthropic format — no OpenAI conversion needed.
+    """
     if isinstance(content, str):
         return [{"type": "text", "text": content}] if content else []
     if isinstance(content, list):
@@ -39,30 +44,13 @@ def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
                 text = part.get("text", "")
                 if text:
                     blocks.append({"type": "text", "text": text})
-            elif ptype == "image_url":
-                image = part.get("image_url") or {}
-                url = image.get("url", "")
-                if url.startswith("data:") and ";base64," in url:
-                    header, b64 = url.split(";base64,", 1)
-                    media_type = header.replace("data:", "") or "image/jpeg"
-                    blocks.append(
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": b64,
-                            },
-                        }
-                    )
-                else:
-                    logger.warning("Unsupported image_url for Anthropic: %s", url[:80])
             elif ptype == "image":
-                # Explicitly construct the image block to ensure clean structure
                 blocks.append({"type": "image", "source": part.get("source", {})})
             elif ptype == "document":
-                # Passthrough for Anthropic native PDF document content blocks
                 blocks.append({"type": "document", "source": part.get("source", {})})
+            elif ptype == "tool_result":
+                # Tool results are stored in native Anthropic format — pass through
+                blocks.append(part)
         return blocks
     fallback = json.dumps(content, ensure_ascii=True)
     return [{"type": "text", "text": fallback}] if fallback else []
@@ -76,30 +64,6 @@ def _to_anthropic_messages(
     for msg in rest:
         role = msg.get("role")
         content = msg.get("content", "")
-        if role == "tool":
-            tool_call_id = msg.get("tool_call_id") or msg.get("id") or ""
-            tool_result_block = {
-                "type": "tool_result",
-                "tool_use_id": tool_call_id,
-                "content": content if isinstance(content, (str, list)) else json.dumps(content, ensure_ascii=True),
-            }
-            # Merge into the previous user message if it already contains
-            # tool_result blocks (Anthropic requires all tool results from
-            # one batch in a single "user" message — consecutive user
-            # messages violate the alternating-role contract).
-            if (
-                converted
-                and converted[-1].get("role") == "user"
-                and isinstance(converted[-1].get("content"), list)
-                and converted[-1]["content"]
-                and converted[-1]["content"][0].get("type") == "tool_result"
-            ):
-                converted[-1]["content"].append(tool_result_block)
-            else:
-                converted.append(
-                    {"role": "user", "content": [tool_result_block]}
-                )
-            continue
         if role == "assistant" and msg.get("tool_calls"):
             blocks = []
             # Thinking blocks must precede text/tool_use per Anthropic API spec

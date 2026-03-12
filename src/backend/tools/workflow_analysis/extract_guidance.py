@@ -146,8 +146,12 @@ class ExtractGuidanceTool(Tool):
                 "content": [
                     {"type": "text", "text": _GUIDANCE_PROMPT},
                     {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{media_type};base64,{b64}"},
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64,
+                        },
                     },
                 ],
             },

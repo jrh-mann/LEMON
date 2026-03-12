@@ -31,7 +31,7 @@ class TestToolMessagePersistence:
             {"role": "assistant", "content": "", "tool_calls": [
                 {"id": "tc_1", "name": "list_workflows", "input": {}}
             ]},
-            {"role": "tool", "tool_call_id": "tc_1", "content": '{"workflows": [], "count": 0}'},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc_1", "content": '{"workflows": [], "count": 0}'}]},
         ]
         cm.save_turn("find workflows", "No workflows found.", tool_messages=tool_msgs)
 
@@ -39,7 +39,8 @@ class TestToolMessagePersistence:
         assert cm.history[0]["role"] == "user"
         assert cm.history[1]["role"] == "assistant"
         assert "tool_calls" in cm.history[1]
-        assert cm.history[2]["role"] == "tool"
+        assert cm.history[2]["role"] == "user"
+        assert cm.history[2]["content"][0]["type"] == "tool_result"
         assert cm.history[3] == {"role": "assistant", "content": "No workflows found."}
 
     def test_tool_messages_appear_in_build_messages(self):
@@ -49,7 +50,7 @@ class TestToolMessagePersistence:
             {"role": "assistant", "content": "", "tool_calls": [
                 {"id": "tc_1", "name": "add_node", "input": {"type": "start"}}
             ]},
-            {"role": "tool", "tool_call_id": "tc_1", "content": '{"success": true}'},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc_1", "content": '{"success": true}'}]},
         ]
         cm.save_turn("add a start node", "Added a start node.", tool_messages=tool_msgs)
 
@@ -61,7 +62,7 @@ class TestToolMessagePersistence:
         assert messages[1]["content"] == "add a start node"
         assert messages[2]["role"] == "assistant"
         assert "tool_calls" in messages[2]
-        assert messages[3]["role"] == "tool"
+        assert messages[3]["role"] == "user"
         assert messages[4]["role"] == "assistant"
         assert messages[4]["content"] == "Added a start node."
         assert messages[5]["role"] == "user"
@@ -75,12 +76,12 @@ class TestToolMessagePersistence:
             {"role": "assistant", "content": "", "tool_calls": [
                 {"id": "tc_1", "name": "list_workflows", "input": {}}
             ]},
-            {"role": "tool", "tool_call_id": "tc_1", "content": '{"count": 0}'},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc_1", "content": '{"count": 0}'}]},
             # Round 2: create subworkflow
             {"role": "assistant", "content": "", "tool_calls": [
                 {"id": "tc_2", "name": "create_subworkflow", "input": {"name": "BMI"}}
             ]},
-            {"role": "tool", "tool_call_id": "tc_2", "content": '{"success": true}'},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc_2", "content": '{"success": true}'}]},
         ]
         cm.save_turn("create BMI subworkflow", "Created BMI subworkflow.", tool_messages=tool_msgs)
 
@@ -146,16 +147,16 @@ class TestOrchestratorToolHistoryIntegration:
         # The key assertion: history must contain tool-use and tool-result messages
         history = orch.conversation.history
         roles = [m["role"] for m in history]
-        assert roles == ["user", "assistant", "tool", "assistant"], (
-            f"Expected [user, assistant(tool_use), tool(result), assistant(final)] "
+        assert roles == ["user", "assistant", "user", "assistant"], (
+            f"Expected [user, assistant(tool_use), user(tool_result), assistant(final)] "
             f"but got {roles}"
         )
         # Verify the assistant message has tool_calls
         assert "tool_calls" in history[1], "Second message should be assistant with tool_calls"
         assert history[1]["tool_calls"][0]["name"] == "get_current_workflow"
         # Verify the tool result message
-        assert history[2]["role"] == "tool"
-        assert history[2]["tool_call_id"] == "tc_001"
+        assert history[2]["role"] == "user"
+        assert history[2]["content"][0]["tool_use_id"] == "tc_001"
         # Verify final assistant text
         assert history[3]["role"] == "assistant"
         assert "empty" in history[3]["content"].lower()
@@ -219,7 +220,7 @@ class TestOrchestratorToolHistoryIntegration:
         roles = [m["role"] for m in non_system]
         # Expected: user(turn1), assistant(tool_use), tool(result), assistant(final),
         #           user(turn2)
-        assert roles == ["user", "assistant", "tool", "assistant", "user"], (
+        assert roles == ["user", "assistant", "user", "assistant", "user"], (
             f"Turn 2 messages should include tool history from turn 1, got roles: {roles}"
         )
         # The assistant message with tool_calls should reference get_current_workflow

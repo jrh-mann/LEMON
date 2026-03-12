@@ -150,9 +150,8 @@ class TestAnthropicListContent:
                 ],
             },
             {
-                "role": "tool",
-                "tool_call_id": "tc_1",
-                "content": image_content,  # List content — should pass through
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "tc_1", "content": image_content}],
             },
         ]
 
@@ -190,9 +189,8 @@ class TestAnthropicListContent:
                 ],
             },
             {
-                "role": "tool",
-                "tool_call_id": "tc_1",
-                "content": '{"success": true}',
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "tc_1", "content": '{"success": true}'}],
             },
         ]
 

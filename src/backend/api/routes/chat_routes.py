@@ -315,7 +315,16 @@ def register_chat_routes(
                 if isinstance(content, str) and content.startswith("[CANCELLED]"):
                     continue
 
-                if role == "user":
+                # Tool result messages are user messages with tool_result
+                # content blocks — skip them (internal to tool loop)
+                is_tool_result = (
+                    role == "user"
+                    and isinstance(content, list)
+                    and content
+                    and isinstance(content[0], dict)
+                    and content[0].get("type") == "tool_result"
+                )
+                if role == "user" and not is_tool_result:
                     if pending_user is not None:
                         messages.append(pending_user)
                         if pending_assistant is not None:

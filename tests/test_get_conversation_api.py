@@ -32,15 +32,15 @@ def _build_convo_with_tool_history(repo_root):
         {"role": "assistant", "content": "", "tool_calls": [
             {"id": "tc1", "name": "list_workflows", "input": {}}
         ]},
-        {"role": "tool", "tool_call_id": "tc1", "content": '{"count": 0}'},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc1", "content": '{"count": 0}'}]},
         {"role": "assistant", "content": "No BMI workflow found, creating one.", "tool_calls": [
             {"id": "tc2", "name": "add_node", "input": {"type": "start"}}
         ]},
-        {"role": "tool", "tool_call_id": "tc2", "content": '{"success": true}'},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc2", "content": '{"success": true}'}]},
         {"role": "assistant", "content": "", "tool_calls": [
             {"id": "tc3", "name": "add_node", "input": {"type": "end"}}
         ]},
-        {"role": "tool", "tool_call_id": "tc3", "content": '{"success": true}'},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc3", "content": '{"success": true}'}]},
         {"role": "assistant", "content": "Your BMI workflow is ready with start and end nodes."},
     ]
     return store, convo
@@ -66,7 +66,15 @@ class TestGetConversationCollapsing:
             role = msg.get("role", "assistant")
             content = msg.get("content", "")
 
-            if role == "user":
+            is_tool_result = (
+                role == "user"
+                and isinstance(content, list)
+                and content
+                and isinstance(content[0], dict)
+                and content[0].get("type") == "tool_result"
+            )
+
+            if role == "user" and not is_tool_result:
                 if pending_user is not None:
                     messages.append(pending_user)
                     if pending_assistant is not None:
@@ -76,7 +84,7 @@ class TestGetConversationCollapsing:
             elif role == "assistant":
                 if content:
                     pending_assistant = {"role": "assistant", "content": content}
-            # Skip tool
+            # Skip tool results
 
         if pending_user is not None:
             messages.append(pending_user)
@@ -100,12 +108,12 @@ class TestGetConversationCollapsing:
             # Turn 1
             {"role": "user", "content": "Add a start node"},
             {"role": "assistant", "content": "", "tool_calls": [{"id": "tc1"}]},
-            {"role": "tool", "tool_call_id": "tc1", "content": "ok"},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc1", "content": "ok"}]},
             {"role": "assistant", "content": "Added start node."},
             # Turn 2
             {"role": "user", "content": "Add an end node"},
             {"role": "assistant", "content": "", "tool_calls": [{"id": "tc2"}]},
-            {"role": "tool", "tool_call_id": "tc2", "content": "ok"},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc2", "content": "ok"}]},
             {"role": "assistant", "content": "Added end node."},
         ]
 
@@ -117,7 +125,16 @@ class TestGetConversationCollapsing:
         for msg in convo.orchestrator.conversation.history:
             role = msg.get("role", "assistant")
             content = msg.get("content", "")
-            if role == "user":
+
+            is_tool_result = (
+                role == "user"
+                and isinstance(content, list)
+                and content
+                and isinstance(content[0], dict)
+                and content[0].get("type") == "tool_result"
+            )
+
+            if role == "user" and not is_tool_result:
                 if pending_user is not None:
                     messages.append(pending_user)
                     if pending_assistant is not None:

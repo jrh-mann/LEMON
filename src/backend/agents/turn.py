@@ -215,10 +215,15 @@ class Turn:
         else:
             msg_content = str(result)
 
+        # Native Anthropic format: tool results are user messages with
+        # tool_result content blocks
         self.messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": msg_content,
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": tool_call_id,
+                "content": msg_content,
+            }],
         })
 
         # Structured record for frontend
@@ -253,9 +258,12 @@ class Turn:
             "error": f"Skipped {name} — previous tool failed.",
         }
         self.messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": json.dumps(skip_data),
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": tool_call_id,
+                "content": json.dumps(skip_data),
+            }],
         })
         self.tool_calls.append({
             "tool": name,

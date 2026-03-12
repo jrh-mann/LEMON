@@ -355,10 +355,15 @@ class Orchestrator:
                     # Image blocks pass through directly; otherwise json.dumps
                     raw_content = result.data.get("content")
                     tool_content = raw_content if isinstance(raw_content, list) else json.dumps(result.data)
+                    # Native Anthropic format: tool results are user messages
+                    # with tool_result content blocks
                     tool_msg = {
-                        "role": "tool",
-                        "tool_call_id": tc.get("id"),
-                        "content": tool_content,
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tc.get("id"),
+                            "content": tool_content,
+                        }],
                     }
                     messages.append(tool_msg)
 
@@ -395,7 +400,14 @@ class Orchestrator:
                 sname = skipped.get("name")
                 sargs = skipped.get("input") or {}
                 sp = {"success": False, "skipped": True, "error": f"Skipped {sname} — previous tool failed."}
-                skip_msg = {"role": "tool", "tool_call_id": skipped.get("id"), "content": json.dumps(sp)}
+                skip_msg = {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": skipped.get("id"),
+                        "content": json.dumps(sp),
+                    }],
+                }
                 messages.append(skip_msg)
                 if turn:
                     turn.add_skipped_tool(skipped.get("id"), sname, sargs)
