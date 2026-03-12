@@ -21,7 +21,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backend.api.conversations import ConversationStore
-from src.backend.api.ws_chat import WsChatTask
+from src.backend.api.chat_task import ChatTask
+from src.backend.api.sse import EventSink
 from src.backend.storage.workflows import WorkflowStore
 from uuid import uuid4
 from src.backend.agents.system_prompt import build_system_prompt
@@ -58,15 +59,14 @@ def _make_task(
     *,
     current_workflow_id: str | None = None,
     conversation_id: str = "conv_test",
-) -> WsChatTask:
-    """Build a minimal WsChatTask with real stores but mocked registry."""
-    task = WsChatTask(
-        registry=MagicMock(),
+) -> ChatTask:
+    """Build a minimal ChatTask with real stores but a no-op EventSink."""
+    task = ChatTask(
+        sink=EventSink(),
         conversation_store=convo_store,
         repo_root=Path("."),
         workflow_store=workflow_store,
         user_id=user_id,
-        conn_id="test_conn",
         task_id="task_test",
         message="hello",
         conversation_id=conversation_id,

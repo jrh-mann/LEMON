@@ -23,7 +23,8 @@ class TestImagePathResolution:
 
     def test_save_uploaded_files_produces_absolute_paths(self, tmp_path: Path):
         """After _save_uploaded_files, each saved path must be absolute."""
-        from src.backend.api.ws_chat import WsChatTask
+        from src.backend.api.chat_task import ChatTask
+        from src.backend.api.sse import EventSink
         from src.backend.storage.workflows import WorkflowStore
 
         # Create a minimal 1x1 white PNG as a data URL
@@ -38,18 +39,16 @@ class TestImagePathResolution:
         )
         data_url = "data:image/png;base64," + base64.b64encode(png_bytes).decode()
 
-        # Build a WsChatTask with repo_root set to tmp_path
-        registry_mock = MagicMock()
+        # Build a ChatTask with repo_root set to tmp_path
         conv_store_mock = MagicMock()
         wf_store = WorkflowStore(tmp_path / ".lemon" / "workflows.sqlite")
 
-        task = WsChatTask(
-            registry=registry_mock,
+        task = ChatTask(
+            sink=EventSink(),
             conversation_store=conv_store_mock,
             repo_root=tmp_path,
             workflow_store=wf_store,
             user_id="test-user",
-            conn_id="test-conn",
             task_id="test-task",
             message="hello",
             conversation_id=None,
@@ -79,31 +78,36 @@ class TestImagePathResolution:
 
 
 class TestReasoningWiring:
-    """Verify thinking_budget parameter is wired through the LLM call chain."""
+    """Verify thinking parameter is wired through the LLM call chain."""
 
-    def test_call_llm_with_tools_accepts_thinking_budget(self):
-        """call_llm_with_tools must accept thinking_budget and on_thinking params."""
-        from src.backend.llm.client import call_llm_with_tools
+    def test_call_llm_accepts_thinking_and_effort(self):
+        """call_llm must accept thinking (bool), effort, and on_thinking params."""
+        from src.backend.llm.client import call_llm
 
-        sig = inspect.signature(call_llm_with_tools)
-        assert "thinking_budget" in sig.parameters, (
-            "call_llm_with_tools is missing thinking_budget parameter"
+        sig = inspect.signature(call_llm)
+        assert "thinking" in sig.parameters, (
+            "call_llm is missing thinking parameter"
+        )
+        assert "effort" in sig.parameters, (
+            "call_llm is missing effort parameter"
         )
         assert "on_thinking" in sig.parameters, (
-            "call_llm_with_tools is missing on_thinking parameter"
+            "call_llm is missing on_thinking parameter"
         )
+        # effort defaults to "high"
+        assert sig.parameters["effort"].default == "high"
 
-    def test_orchestrator_respond_accepts_thinking_budget(self):
-        """orchestrator.respond() must accept thinking_budget param."""
+    def test_orchestrator_respond_accepts_thinking(self):
+        """orchestrator.respond() must accept thinking param."""
         from src.backend.agents.orchestrator import Orchestrator
 
         sig = inspect.signature(Orchestrator.respond)
-        assert "thinking_budget" in sig.parameters, (
-            "Orchestrator.respond is missing thinking_budget parameter"
+        assert "thinking" in sig.parameters, (
+            "Orchestrator.respond is missing thinking parameter"
         )
 
-    def test_thinking_budget_forwarded_to_llm(self):
-        """Orchestrator.respond must forward thinking_budget to call_llm."""
+    def test_thinking_forwarded_to_llm(self):
+        """Orchestrator.respond must forward thinking=True to call_llm."""
         from src.backend.agents.orchestrator_factory import build_orchestrator
         from src.backend.llm.client import LLMResponse
 
@@ -116,23 +120,21 @@ class TestReasoningWiring:
             return LLMResponse(text="I'm a response")
 
         with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_llm):
-            orch.respond("test message", thinking_budget=8000)
+            orch.respond("test message", thinking=True)
 
-        assert "thinking_budget" in captured_kwargs, (
-            "thinking_budget not forwarded to call_llm"
+        assert "thinking" in captured_kwargs, (
+            "thinking not forwarded to call_llm"
         )
-        assert captured_kwargs["thinking_budget"] == 8000
+        assert captured_kwargs["thinking"] is True
 
-    def test_ws_chat_passes_thinking_budget(self):
-        """WsChatTask.run must pass thinking_budget to orchestrator.respond()."""
-        # Instead of running the full socket flow, verify the source code
-        # contains thinking_budget in the respond() call
-        import ast
-        from src.backend.api import ws_chat
+    def test_ws_chat_passes_thinking(self):
+        """ChatTask.run must pass thinking=True to orchestrator.respond()."""
+        # Verify the source code contains thinking= in the respond() call
+        from src.backend.api import chat_task
 
-        source = inspect.getsource(ws_chat.WsChatTask.run)
-        assert "thinking_budget" in source, (
-            "WsChatTask.run does not pass thinking_budget to orchestrator.respond()"
+        source = inspect.getsource(chat_task.ChatTask.run)
+        assert "thinking=" in source, (
+            "ChatTask.run does not pass thinking to orchestrator.respond()"
         )
 
     def test_on_thinking_forwarded_to_llm(self):
@@ -152,21 +154,24 @@ class TestReasoningWiring:
             thinking_chunks.append(chunk)
 
         with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_llm):
-            orch.respond("test", thinking_budget=5000, on_thinking=my_thinking)
+            orch.respond("test", thinking=True, on_thinking=my_thinking)
 
         assert captured_kwargs.get("on_thinking") is my_thinking
 
     def test_stream_thinking_emits_chat_thinking(self):
-        """WsChatTask.stream_thinking must emit chat_thinking event."""
-        from src.backend.api.ws_chat import WsChatTask
+        """ChatTask.stream_thinking must emit chat_thinking event via the sink."""
+        from src.backend.api.chat_task import ChatTask
+        from src.backend.api.sse import EventSink
 
-        task = WsChatTask(
-            registry=MagicMock(),
+        mock_sink = MagicMock(spec=EventSink)
+        mock_sink.is_closed = False
+
+        task = ChatTask(
+            sink=mock_sink,
             conversation_store=MagicMock(),
             repo_root=Path("/tmp"),
             workflow_store=MagicMock(),
             user_id="u1",
-            conn_id="c1",
             task_id="t1",
             message="hi",
             conversation_id=None,
@@ -177,23 +182,26 @@ class TestReasoningWiring:
 
         task.stream_thinking("Analyzing the workflow...")
 
-        task.registry.send_to_sync.assert_called_once_with(
-            "c1",
+        # ChatTask._emit calls sink.push(event, payload)
+        mock_sink.push.assert_called_once_with(
             "chat_thinking",
             {"chunk": "Analyzing the workflow...", "task_id": "t1"},
         )
 
     def test_stream_thinking_skips_empty(self):
         """stream_thinking should not emit for empty chunks."""
-        from src.backend.api.ws_chat import WsChatTask
+        from src.backend.api.chat_task import ChatTask
+        from src.backend.api.sse import EventSink
 
-        task = WsChatTask(
-            registry=MagicMock(),
+        mock_sink = MagicMock(spec=EventSink)
+        mock_sink.is_closed = False
+
+        task = ChatTask(
+            sink=mock_sink,
             conversation_store=MagicMock(),
             repo_root=Path("/tmp"),
             workflow_store=MagicMock(),
             user_id="u1",
-            conn_id="c1",
             task_id="t1",
             message="hi",
             conversation_id=None,
@@ -203,11 +211,11 @@ class TestReasoningWiring:
         )
 
         task.stream_thinking("")
-        task.registry.send_to_sync.assert_not_called()
+        mock_sink.push.assert_not_called()
 
-    def test_thinking_payload_added_when_budget_set(self):
-        """call_llm_with_tools must add thinking payload when budget is provided."""
-        from src.backend.llm.client import call_llm_with_tools
+    def test_thinking_payload_added_when_enabled(self):
+        """call_llm must add adaptive thinking payload when thinking=True."""
+        from src.backend.llm.client import call_llm
 
         # Patch the Anthropic client to capture the payload
         captured_payload = {}
@@ -220,7 +228,6 @@ class TestReasoningWiring:
             def __iter__(self):
                 return iter([])
             def get_final_message(self):
-                # Return a minimal message-like object
                 return MagicMock(content=[], usage=MagicMock(input_tokens=0, output_tokens=0), model="test")
 
         class FakeMessages:
@@ -232,13 +239,12 @@ class TestReasoningWiring:
         fake_client.messages = FakeMessages()
 
         with patch("src.backend.llm.client.get_anthropic_client", return_value=fake_client), \
-             patch("src.backend.llm.client.get_anthropic_model", return_value="claude-sonnet-4-20250514"), \
-             patch("src.backend.llm.client.load_env"), \
+             patch("src.backend.llm.client.get_anthropic_model", return_value="claude-opus-4-6"), \
              patch("src.backend.llm.client._record_tokens"):
             try:
-                call_llm_with_tools(
+                call_llm(
                     [{"role": "user", "content": "test"}],
-                    thinking_budget=5000,
+                    thinking=True,
                 )
             except Exception:
                 pass  # May fail on response parsing, that's OK — we just need the payload
@@ -246,4 +252,10 @@ class TestReasoningWiring:
         assert "thinking" in captured_payload, (
             "thinking key not added to Anthropic API payload"
         )
-        assert captured_payload["thinking"]["budget_tokens"] == 5000
+        assert captured_payload["thinking"] == {"type": "adaptive"}
+
+        # Effort parameter should always be present (default "high")
+        assert "output" in captured_payload, (
+            "output key not added to Anthropic API payload"
+        )
+        assert captured_payload["output"] == {"effort": "high"}

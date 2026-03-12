@@ -845,11 +845,13 @@ class TestWsVariableSyncOnEditTools:
     Variables tab stays in sync without waiting for a WORKFLOW_INPUT_TOOL."""
 
     def _make_task(self):
-        """Build a minimal WsChatTask with mocked registry and convo."""
+        """Build a minimal ChatTask with a mock EventSink and convo."""
         from unittest.mock import Mock, MagicMock
-        from src.backend.api.ws_chat import WsChatTask
+        from src.backend.api.chat_task import ChatTask
+        from src.backend.api.sse import EventSink
 
-        registry = MagicMock()
+        mock_sink = MagicMock(spec=EventSink)
+        mock_sink.is_closed = False
         convo = MagicMock()
         # Orchestrator's workflow_analysis property returns variables/outputs
         convo.orchestrator.workflow_analysis = {
@@ -857,13 +859,12 @@ class TestWsVariableSyncOnEditTools:
             "outputs": [],
         }
 
-        task = WsChatTask(
-            registry=registry,
+        task = ChatTask(
+            sink=mock_sink,
             conversation_store=MagicMock(),
             repo_root=MagicMock(),
             workflow_store=MagicMock(),
             user_id="test_user",
-            conn_id="test_conn",
             task_id="task_1",
             message="test",
             conversation_id=None,
@@ -872,11 +873,11 @@ class TestWsVariableSyncOnEditTools:
             analysis=None,
         )
         task.convo = convo
-        return task, registry
+        return task, mock_sink
 
     def test_analysis_updated_emitted_for_add_node_with_new_variables(self):
         """add_node creating a calc node should emit analysis_updated."""
-        task, registry = self._make_task()
+        task, mock_sink = self._make_task()
         result = {
             "success": True,
             "action": "add_node",
@@ -889,14 +890,14 @@ class TestWsVariableSyncOnEditTools:
         task.on_tool_event("tool_complete", "add_node", {}, result)
 
         # Should emit both workflow_update AND analysis_updated
-        # send_to_sync(conn_id, event, payload) — event is args[1]
-        events = [call.args[1] for call in registry.send_to_sync.call_args_list]
+        # sink.push(event, payload) — event is args[0]
+        events = [call.args[0] for call in mock_sink.push.call_args_list]
         assert "workflow_update" in events
         assert "analysis_updated" in events
 
     def test_analysis_updated_emitted_for_delete_node_with_removed_variables(self):
         """delete_node removing a calc node should emit analysis_updated."""
-        task, registry = self._make_task()
+        task, mock_sink = self._make_task()
         result = {
             "success": True,
             "action": "delete_node",
@@ -907,13 +908,13 @@ class TestWsVariableSyncOnEditTools:
         task.on_tool_event("tool_start", "delete_node", {"node_id": "n1"}, None)
         task.on_tool_event("tool_complete", "delete_node", {}, result)
 
-        events = [call.args[1] for call in registry.send_to_sync.call_args_list]
+        events = [call.args[0] for call in mock_sink.push.call_args_list]
         assert "workflow_update" in events
         assert "analysis_updated" in events
 
     def test_no_analysis_updated_for_edit_tool_without_variable_changes(self):
         """add_node for a process node (no variable changes) should NOT emit analysis_updated."""
-        task, registry = self._make_task()
+        task, mock_sink = self._make_task()
         result = {
             "success": True,
             "action": "add_node",
@@ -923,13 +924,13 @@ class TestWsVariableSyncOnEditTools:
         task.on_tool_event("tool_start", "add_node", {"type": "process"}, None)
         task.on_tool_event("tool_complete", "add_node", {}, result)
 
-        events = [call.args[1] for call in registry.send_to_sync.call_args_list]
+        events = [call.args[0] for call in mock_sink.push.call_args_list]
         assert "workflow_update" in events
         assert "analysis_updated" not in events
 
     def test_analysis_updated_payload_has_variables_and_outputs(self):
         """analysis_updated should carry the current variables and outputs."""
-        task, registry = self._make_task()
+        task, mock_sink = self._make_task()
         result = {
             "success": True,
             "action": "add_node",
@@ -940,14 +941,14 @@ class TestWsVariableSyncOnEditTools:
         task.on_tool_event("tool_start", "add_node", {"type": "calculation"}, None)
         task.on_tool_event("tool_complete", "add_node", {}, result)
 
-        # Find the analysis_updated emit call
-        # send_to_sync(conn_id, event, payload) — event is args[1], payload is args[2]
+        # Find the analysis_updated push call
+        # sink.push(event, payload) — event is args[0], payload is args[1]
         analysis_calls = [
-            call for call in registry.send_to_sync.call_args_list
-            if call.args[1] == "analysis_updated"
+            call for call in mock_sink.push.call_args_list
+            if call.args[0] == "analysis_updated"
         ]
         assert len(analysis_calls) == 1
-        payload = analysis_calls[0].args[2]
+        payload = analysis_calls[0].args[1]
         assert "variables" in payload
         assert "outputs" in payload
         assert "task_id" in payload
@@ -955,7 +956,7 @@ class TestWsVariableSyncOnEditTools:
     def test_modify_node_with_both_new_and_removed_emits_analysis_updated(self):
         """modify_node renaming a calc output (both new_variables and removed_variable_ids)
         should emit analysis_updated."""
-        task, registry = self._make_task()
+        task, mock_sink = self._make_task()
         result = {
             "success": True,
             "action": "modify_node",
@@ -967,6 +968,6 @@ class TestWsVariableSyncOnEditTools:
         task.on_tool_event("tool_start", "modify_node", {"node_id": "n1"}, None)
         task.on_tool_event("tool_complete", "modify_node", {}, result)
 
-        events = [call.args[1] for call in registry.send_to_sync.call_args_list]
+        events = [call.args[0] for call in mock_sink.push.call_args_list]
         assert "workflow_update" in events
         assert "analysis_updated" in events

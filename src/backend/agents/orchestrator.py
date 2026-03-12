@@ -60,7 +60,7 @@ class Orchestrator:
         }
         self.conversation = ConversationManager(context_limit=200_000)
 
-        # Session context — set by ws_chat before calling respond()
+        # Session context — set by ChatTask before calling respond()
         self.workflow_store: Optional[Any] = None
         self.user_id: Optional[str] = None
         self.current_workflow_id: Optional[str] = None
@@ -71,7 +71,7 @@ class Orchestrator:
         self.repo_root: Optional[Any] = None
         self.event_sink: Optional[Any] = None
 
-    # --- Workflow state views (used by ws_chat, tools, tests) ---
+    # --- Workflow state views (used by ChatTask, tools, tests) ---
 
     @property
     def current_workflow(self) -> Dict[str, Any]:
@@ -335,9 +335,9 @@ class Orchestrator:
                 if is_cancelled():
                     return finalize_cancel()
 
-                fn = tc.get("function") or {}
-                tool_name = fn.get("name")
-                args = _parse_args(fn.get("arguments") or "{}")
+                # Tool calls are native Anthropic format: {id, name, input: dict}
+                tool_name = tc.get("name")
+                args = tc.get("input") or {}
 
                 try:
                     if on_tool_event:
@@ -392,9 +392,8 @@ class Orchestrator:
 
             # Inject skipped-tool placeholders
             for skipped in skipped_calls:
-                sfn = skipped.get("function") or {}
-                sname = sfn.get("name")
-                sargs = _parse_args(sfn.get("arguments") or "{}")
+                sname = skipped.get("name")
+                sargs = skipped.get("input") or {}
                 sp = {"success": False, "skipped": True, "error": f"Skipped {sname} — previous tool failed."}
                 skip_msg = {"role": "tool", "tool_call_id": skipped.get("id"), "content": json.dumps(sp)}
                 messages.append(skip_msg)
@@ -462,18 +461,6 @@ class Orchestrator:
 
 
 # --- Module helpers ---
-
-def _parse_args(text: Any) -> Dict[str, Any]:
-    """Parse tool arguments from the LLM response.
-
-    Raises ValueError on malformed JSON so the tool loop reports
-    the error back to the LLM instead of silently using empty args.
-    """
-    if isinstance(text, dict):
-        return text
-    if isinstance(text, str):
-        return json.loads(text)  # raises JSONDecodeError (subclass of ValueError)
-    raise ValueError(f"Expected str or dict for tool args, got {type(text).__name__}")
 
 
 def _build_user_content(user_message: str, files: List[Dict[str, Any]]) -> Any:

@@ -170,7 +170,7 @@ def register_chat_routes(
 
         return JSONResponse({"ok": True})
 
-    @router.post("/api/chat/resume")
+    @router.post("/api/chat/resume", response_model=None)
     async def resume_chat_task(
         request: Request,
         user: AuthUser = Depends(require_auth),

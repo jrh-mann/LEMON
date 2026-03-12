@@ -41,7 +41,7 @@ class TestRemainingModulesImport:
         "src.backend.agents.system_prompt",
         "src.backend.tools.schema_gen",
         "src.backend.api.conversations",
-        "src.backend.api.ws_chat",
+        "src.backend.api.chat_task",
         "src.backend.api.response_utils",
         "src.backend.api.tool_summaries",
         "src.backend.tools",

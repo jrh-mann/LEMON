@@ -311,13 +311,6 @@ class TestPDFInjection:
 class TestDeadCodeRemoval:
     """Verify dead code has been cleaned up."""
 
-    def test_workflow_synced_not_emitted(self):
-        """handle_sync_workflow should NOT emit workflow_synced."""
-        from src.backend.api.ws_chat import handle_sync_workflow
-        import inspect
-        source = inspect.getsource(handle_sync_workflow)
-        assert "workflow_synced" not in source
-
     def test_agent_handlers_no_question_or_complete(self):
         """agentHandlers.ts should not register agent_question or agent_complete."""
         handler_path = Path(

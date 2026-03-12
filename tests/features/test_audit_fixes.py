@@ -13,36 +13,6 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# C-1: Reconnect session hijacking — ConnectionRegistry stores user_id
-# ---------------------------------------------------------------------------
-
-class TestConnectionRegistryOwnership:
-    """Verify ConnectionRegistry stores and enforces user_id ownership."""
-
-    def _make_registry(self):
-        """Create a ConnectionRegistry with a mock sio server."""
-        from src.backend.api.ws_registry import ConnectionRegistry
-        mock_sio = MagicMock()
-        return ConnectionRegistry(mock_sio)
-
-    def test_set_user_stores_user_id(self):
-        reg = self._make_registry()
-        reg.set_user("sid-1", "user-alice")
-        assert reg.get_user_id("sid-1") == "user-alice"
-
-    def test_get_user_id_returns_none_for_unknown(self):
-        reg = self._make_registry()
-        assert reg.get_user_id("nonexistent") is None
-
-    def test_remove_user(self):
-        reg = self._make_registry()
-        reg.set_user("sid-1", "user-alice")
-        assert reg.get_user_id("sid-1") == "user-alice"
-        reg.remove_user("sid-1")
-        assert reg.get_user_id("sid-1") is None
-
-
-# ---------------------------------------------------------------------------
 # H-3: ConversationStore thread safety
 # ---------------------------------------------------------------------------
 

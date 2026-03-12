@@ -106,10 +106,8 @@ class TestOrchestratorThinkingForwarding:
         # Patch LLM calls so orchestrator invokes analyze_workflow tool
         fake_tool_call = {
             "id": "call_1",
-            "function": {
-                "name": "fake_thinking_tool",
-                "arguments": "{}",
-            },
+            "name": "fake_thinking_tool",
+            "input": {},
         }
         # First LLM call returns a tool call; second returns final text
         with patch("src.backend.agents.orchestrator.call_llm") as mock_llm:
@@ -142,21 +140,22 @@ class TestOrchestratorThinkingForwarding:
 # ---------------------------------------------------------------------------
 
 class TestWsChatThinkingEmission:
-    """Verify on_tool_event('tool_thinking', ...) emits chat_thinking over WS."""
+    """Verify on_tool_event('tool_thinking', ...) emits chat_thinking over SSE."""
 
     def _make_task(self) -> Any:
-        """Build a minimal WsChatTask with mocked registry."""
-        from src.backend.api.ws_chat import WsChatTask
+        """Build a minimal ChatTask with a mock EventSink."""
+        from src.backend.api.chat_task import ChatTask
+        from src.backend.api.sse import EventSink
 
-        mock_registry = MagicMock()
+        mock_sink = MagicMock(spec=EventSink)
+        mock_sink.is_closed = False
         mock_convo_store = MagicMock()
-        task = WsChatTask(
-            registry=mock_registry,
+        task = ChatTask(
+            sink=mock_sink,
             conversation_store=mock_convo_store,
             repo_root=Path("/tmp"),
             workflow_store=MagicMock(),
             user_id="test_user",
-            conn_id="test_conn",
             task_id="task_123",
             message="test",
             conversation_id="conv_1",
@@ -174,5 +173,5 @@ class TestWsChatThinkingEmission:
         with patch.object(task, "is_cancelled", return_value=True):
             task.on_tool_event("tool_complete", "add_node", {}, {"success": True})
 
-        task.registry.send_to_sync.assert_not_called()
+        task.sink.push.assert_not_called()
 
