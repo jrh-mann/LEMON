@@ -16,13 +16,13 @@ from pathlib import Path
 
 import pytest
 
-from ..storage.workflows import WorkflowStore
-from ..tools.workflow_analysis.create_subworkflow import CreateSubworkflowTool
-from ..tools.workflow_edit.helpers import (
+from src.backend.storage.workflows import WorkflowStore
+from src.backend.tools.workflow_analysis.create_subworkflow import CreateSubworkflowTool
+from src.backend.tools.workflow_edit.helpers import (
     get_subworkflow_output_type,
     validate_subprocess_node,
 )
-from ..tools.workflow_analysis.update_subworkflow import UpdateSubworkflowTool
+from src.backend.tools.workflow_analysis.update_subworkflow import UpdateSubworkflowTool
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def user_id():
 @pytest.fixture
 def repo_root():
     """Repo root for tool construction."""
-    return Path(__file__).resolve().parents[3]  # src/backend/tests -> project root
+    return Path(__file__).resolve().parents[2]  # tests/tools -> project root
 
 
 @pytest.fixture

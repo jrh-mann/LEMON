@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from ..utils.uploads import save_annotations, load_annotations, _annotations_path_for
+from src.backend.utils.uploads import save_annotations, load_annotations, _annotations_path_for
 
 
 # ─── Fixtures ────────────────────────────────────────────

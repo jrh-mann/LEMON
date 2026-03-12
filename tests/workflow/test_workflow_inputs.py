@@ -23,7 +23,7 @@ class TestWorkflowVariableManagement:
     def test_add_workflow_variable_basic(self, orchestrator_with_workflow):
         """Test adding a simple workflow variable."""
         orch = orchestrator_with_workflow
-        
+
         result = orch.run_tool("add_workflow_variable", {
             "name": "Patient Age",
             "type": "number",
@@ -48,7 +48,7 @@ class TestWorkflowVariableManagement:
     def test_add_workflow_variable_with_enum(self, orchestrator_with_workflow):
         """Test adding an enum variable."""
         orch = orchestrator_with_workflow
-        
+
         result = orch.run_tool("add_workflow_variable", {
             "name": "Patient Gender",
             "type": "enum",
@@ -62,7 +62,7 @@ class TestWorkflowVariableManagement:
     def test_add_workflow_variable_with_range(self, orchestrator_with_workflow):
         """Test adding a number variable with range constraints."""
         orch = orchestrator_with_workflow
-        
+
         result = orch.run_tool("add_workflow_variable", {
             "name": "Blood Glucose",
             "type": "number",
@@ -76,7 +76,7 @@ class TestWorkflowVariableManagement:
     def test_add_duplicate_variable_fails(self, orchestrator_with_workflow):
         """Test that adding duplicate variable (case-insensitive) fails."""
         orch = orchestrator_with_workflow
-        
+
         # Add first variable
         result1 = orch.run_tool("add_workflow_variable", {
             "name": "Patient Age", "type": "number"
@@ -100,7 +100,7 @@ class TestWorkflowVariableManagement:
     def test_list_workflow_variables(self, orchestrator_with_workflow):
         """Test listing all registered variables."""
         orch = orchestrator_with_workflow
-        
+
         # Add multiple variables
         orch.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
         orch.run_tool("add_workflow_variable", {"name": "Blood Glucose", "type": "number"})
@@ -121,7 +121,7 @@ class TestWorkflowVariableManagement:
     def test_remove_workflow_variable(self, orchestrator_with_workflow):
         """Test removing a workflow variable."""
         orch = orchestrator_with_workflow
-        
+
         # Add variable
         orch.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
         assert len(orch.workflow["variables"]) == 1
@@ -164,9 +164,9 @@ class TestWorkflowVariableManagement:
 
         # Try to remove variable WITHOUT force (should fail)
         result = orch.run_tool("remove_workflow_variable", {"name": "Patient Age"})
-        
+
         print(f"\n[DEBUG] Remove without force result: {json.dumps(result.data, indent=2)}")
-        
+
         assert not result.success
         assert "referenced by 2 node(s)" in result.error
         assert "force=true" in result.error
@@ -297,7 +297,7 @@ class TestDecisionNodeConditions:
     def test_add_decision_node_with_condition(self, orchestrator_with_workflow):
         """Test adding a decision node that references a variable via condition."""
         orch = orchestrator_with_workflow
-        
+
         # Register variable first
         result1 = orch.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
         assert result1.success
@@ -327,7 +327,7 @@ class TestDecisionNodeConditions:
     def test_add_decision_node_without_condition_fails(self, orchestrator_with_workflow):
         """Test that adding a decision node without condition fails."""
         orch = orchestrator_with_workflow
-        
+
         # Try to add decision node without condition
         result = orch.run_tool("add_node", {
             "type": "decision",
@@ -344,7 +344,7 @@ class TestDecisionNodeConditions:
     def test_add_decision_node_with_invalid_variable_fails(self, orchestrator_with_workflow):
         """Test that referencing non-existent variable in condition fails."""
         orch = orchestrator_with_workflow
-        
+
         # Try to reference non-existent variable
         result = orch.run_tool("add_node", {
             "type": "decision",
@@ -366,7 +366,7 @@ class TestDecisionNodeConditions:
     def test_batch_edit_with_conditions(self, orchestrator_with_workflow):
         """Test batch_edit_workflow with decision conditions."""
         orch = orchestrator_with_workflow
-        
+
         # Register variable first
         result1 = orch.run_tool("add_workflow_variable", {"name": "Patient Age", "type": "number"})
         assert result1.success
@@ -440,7 +440,7 @@ class TestVariableValidation:
     def test_add_variable_missing_name(self, orchestrator_with_workflow):
         """Test that missing name is rejected."""
         orch = orchestrator_with_workflow
-        
+
         result = orch.run_tool("add_workflow_variable", {"type": "number"})
 
         assert not result.success
@@ -449,7 +449,7 @@ class TestVariableValidation:
     def test_add_variable_invalid_type(self, orchestrator_with_workflow):
         """Test that invalid type is rejected."""
         orch = orchestrator_with_workflow
-        
+
         result = orch.run_tool("add_workflow_variable", {"name": "Test", "type": "invalid_type"})
 
         assert not result.success
@@ -458,7 +458,7 @@ class TestVariableValidation:
     def test_enum_variable_requires_values(self, orchestrator_with_workflow):
         """Test that enum type requires enum_values."""
         orch = orchestrator_with_workflow
-        
+
         result = orch.run_tool("add_workflow_variable", {"name": "Test", "type": "enum"})
 
         assert not result.success

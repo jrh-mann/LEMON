@@ -30,13 +30,13 @@ from uuid import uuid4
 
 import pytest
 
-from ..agents.orchestrator import Orchestrator
-from ..agents.orchestrator_factory import build_orchestrator
-from ..storage.workflows import WorkflowStore
+from src.backend.agents.orchestrator import Orchestrator
+from src.backend.agents.orchestrator_factory import build_orchestrator
+from src.backend.storage.workflows import WorkflowStore
 
 
 def _repo_root() -> Path:
-    return Path(__file__).parent.parent.parent.parent
+    return Path(__file__).parent.parent.parent
 
 
 class AtomicTestSession:
@@ -72,7 +72,7 @@ class AtomicTestSession:
         self.orchestrator.sync_workflow(lambda: self.workflow_state)
 
         # Execute
-        from ..agents.turn import Turn
+        from src.backend.agents.turn import Turn
         turn = Turn(message, "test")
         turn.start()
         try:

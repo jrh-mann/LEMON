@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from ..tools.workflow_input import AddWorkflowVariableTool
+from src.backend.tools.workflow_input import AddWorkflowVariableTool
 
 
 class TestVariableDoubleAppendBug:

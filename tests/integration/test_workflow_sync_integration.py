@@ -17,12 +17,12 @@ from uuid import uuid4
 
 import pytest
 
-from ..agents.orchestrator_factory import build_orchestrator
-from ..api.conversations import ConversationStore
+from src.backend.agents.orchestrator_factory import build_orchestrator
+from src.backend.api.conversations import ConversationStore
 
 
 def _repo_root() -> Path:
-    return Path(__file__).parent.parent.parent.parent
+    return Path(__file__).parent.parent.parent
 
 
 @pytest.fixture
