@@ -143,59 +143,31 @@ def _to_anthropic_messages(
 
 
 def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Parse an Anthropic API response into (text, tool_calls, thinking_blocks).
+    """Parse an Anthropic SDK response into (text, tool_calls, thinking_blocks).
 
-    Extracts text, tool_use, and thinking content blocks from the response.
-    Thinking blocks are returned as full dicts (including signature) so they
-    can be replayed in the conversation history for subsequent tool-loop calls.
+    Input is always an SDK Message object from stream.get_final_message().
+    Content blocks are Pydantic models (TextBlock, ToolUseBlock, ThinkingBlock)
+    so we access attributes directly — no dict fallback needed.
     """
-    content_blocks = getattr(message, "content", []) or []
     text_parts: List[str] = []
     tool_calls: List[Dict[str, Any]] = []
     thinking_blocks: List[Dict[str, Any]] = []
-    for block in content_blocks:
-        # Parentheses required: without them `A or B if C else D` parses as
-        # `(A or B) if C else D`, returning None for non-dict SDK objects.
-        btype = getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)
-        if btype == "thinking":
-            # Preserve full thinking block including signature for API replay
-            if isinstance(block, dict):
-                thinking_blocks.append(block)
-            else:
-                blk: Dict[str, Any] = {"type": "thinking"}
-                for attr in ("thinking", "signature"):
-                    val = getattr(block, attr, None)
-                    if val is not None:
-                        blk[attr] = val
-                if blk.get("thinking"):
-                    thinking_blocks.append(blk)
-        elif btype == "text":
-            text = getattr(block, "text", None) if not isinstance(block, dict) else block.get("text")
-            if text:
-                text_parts.append(text)
-        elif btype == "tool_use":
-            # Return native Anthropic format: {id, name, input: dict}
-            name = getattr(block, "name", None) if not isinstance(block, dict) else block.get("name")
-            tool_id = getattr(block, "id", None) if not isinstance(block, dict) else block.get("id")
-            tool_input = getattr(block, "input", None) if not isinstance(block, dict) else block.get("input")
-            tool_calls.append(
-                {
-                    "id": tool_id,
-                    "name": name,
-                    "input": tool_input if isinstance(tool_input, dict) else {},
-                }
-            )
-    # Defensive dedup — get_final_message() should already be clean,
-    # but guard against edge cases.
-    if tool_calls:
-        merged: List[Dict[str, Any]] = []
-        seen: set[str] = set()
-        for call in tool_calls:
-            call_id = call.get("id")
-            key = f"id:{call_id}" if call_id else f"sig:{call.get('name', '')}"
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(call)
-        tool_calls = merged
+    for block in message.content or []:
+        if block.type == "thinking":
+            # Preserve full block including signature for API replay
+            if block.thinking:
+                thinking_blocks.append({
+                    "type": "thinking",
+                    "thinking": block.thinking,
+                    "signature": block.signature,
+                })
+        elif block.type == "text":
+            if block.text:
+                text_parts.append(block.text)
+        elif block.type == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "input": block.input or {},
+            })
     return "".join(text_parts), tool_calls, thinking_blocks
