@@ -9,7 +9,7 @@ import {
   pauseWorkflowExecution,
   resumeWorkflowExecution,
   stopWorkflowExecution,
-} from '../api/socket'
+} from '../api/socketActions'
 import WorkflowBrowser from './WorkflowBrowser'
 import type { WorkflowVariable } from '../types'
 

@@ -3,7 +3,7 @@ import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { cancelChatTask, sendChatMessage } from '../api/socket'
+import { cancelChatTask, sendChatMessage } from '../api/socketActions'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
@@ -138,6 +138,27 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       scrollToBottom()
     }
   }, [isStreaming, scrollToBottom])
+
+  // Heartbeat watchdog — detect stale tasks when no backend events arrive
+  // for 15s. Backend sends heartbeats every 5s, so 15s = 3 missed beats.
+  // Clears streaming state so the user isn't stuck on "Thinking..." forever.
+  useEffect(() => {
+    if (!isStreaming || !activeWorkflowId) return
+    const HEARTBEAT_TIMEOUT_MS = 15_000
+    const interval = setInterval(() => {
+      const c = useChatStore.getState().conversations[activeWorkflowId]
+      if (!c?.isStreaming) return  // streaming ended naturally
+      const lastBeat = c.lastHeartbeatAt
+      if (lastBeat > 0 && Date.now() - lastBeat > HEARTBEAT_TIMEOUT_MS) {
+        console.warn('[Chat] Heartbeat timeout — clearing stale streaming state')
+        const cs = useChatStore.getState()
+        cs.finalizeStream(activeWorkflowId)
+        cs.setCurrentTaskId(activeWorkflowId, null)
+        useUIStore.getState().setError('Connection to backend lost — please try again')
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [isStreaming, activeWorkflowId])
 
   // Auto-scroll the thinking stream container
   useEffect(() => {

@@ -16,7 +16,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { transformFlowchartFromBackend } from '../utils/canvas'
 import { hydrateWorkflowDetail } from '../utils/workflowHydration'
-import { sendChatMessage } from '../api/socket'
+import { sendChatMessage } from '../api/socketActions'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
 
@@ -77,8 +77,11 @@ export default function WorkflowPage() {
             loadedWorkflowIdRef.current = id
         }
 
-        // Set activeWorkflowId early so sendUserMessage routes to the right conversation
+        // Set activeWorkflowId early so sendUserMessage routes to the right conversation.
+        // Also sync workflowStore so sendChatMessage picks up the correct workflow ID
+        // (it reads workflowStore.currentWorkflow?.id before chatStore.activeWorkflowId).
         useChatStore.getState().setActiveWorkflowId(id)
+        setCurrentWorkflowId(id)
 
         // 1. Play Home Exit animation
         setHomeExited(true)
@@ -190,15 +193,12 @@ export default function WorkflowPage() {
                     const needsResume = !conv?.isStreaming && !conv?.streamingContent
 
                     if (needsResume) {
-                        // Page refresh — socket just reconnected, need to re-subscribe
+                        // Page refresh — reconnect to the running task's SSE stream.
+                        // resumeTask uses fetch/SSE, so no connection wait needed.
                         cs.setStreaming(workflowId, true)
                         cs.setProcessingStatus(workflowId, 'Reconnecting...')
-                        import('../api/socket').then(({ resumeTask, waitForConnection }) => {
-                            waitForConnection().then(() => {
-                                if (isActive) resumeTask(workflowId)
-                            }).catch(() => {
-                                console.warn('[WorkflowPage] Socket connection timeout — falling back to poll')
-                            })
+                        import('../api/socketActions').then(({ resumeTask }) => {
+                            if (isActive) resumeTask(workflowId)
                         })
                     }
                     // else: SPA navigation — events are already flowing, no resume needed

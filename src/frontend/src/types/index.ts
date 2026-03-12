@@ -700,39 +700,6 @@ export interface ApiError {
   error: string
 }
 
-// ============ WebSocket Event Types ============
-
-export interface SocketConnectEvent {
-  session_id: string
-}
-
-export interface SocketChatEvent {
-  session_id: string
-  message: string
-  conversation_id?: string
-  files?: PendingFile[]
-  task_id?: string
-}
-
-export interface SocketChatResponse {
-  response: string
-  conversation_id: string
-  tool_calls: ToolCall[]
-  task_id?: string
-  workflow_id?: string  // Present when event comes from a background builder
-  cancelled?: boolean
-}
-
-// NOTE: SocketAgentQuestion and SocketAgentComplete were removed —
-// the backend never emits these events (vestigial from prior subagent architecture).
-
-export interface SocketAgentError {
-  task_id?: string
-  error: string
-  /** Transient errors (e.g. rate limits) show as toasts only, not chat messages */
-  transient?: boolean
-}
-
 // ============ UI State Types ============
 
 export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running' | 'code_refining' | 'done'
