@@ -18,12 +18,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
+import anthropic
+
 from .anthropic import (
     _convert_openai_tools_to_anthropic,
     _parse_anthropic_response,
     _to_anthropic_messages,
 )
-from .env import get_anthropic_client, get_anthropic_model, load_env
+from .env import get_anthropic_client, get_anthropic_model
 from ..utils.tokens import record_token_usage
 from ..utils.cancellation import CancellationError
 
@@ -31,6 +33,9 @@ logger = logging.getLogger("backend.llm")
 
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = [2, 5]
+# Rate limit retries use longer delays — the API typically says "wait 60s"
+_RATE_LIMIT_MAX_RETRIES = 3
+_RATE_LIMIT_BACKOFF = [30, 60, 60]
 
 
 @dataclass
@@ -49,7 +54,7 @@ def call_llm(
     on_delta: Optional[Callable[[str], None]] = None,
     on_thinking: Optional[Callable[[str], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
-    thinking_budget: Optional[int] = None,
+    thinking: bool = False,
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
 ) -> LLMResponse:
@@ -62,13 +67,20 @@ def call_llm(
         on_delta: Streaming callback for text chunks. None = collect internally.
         on_thinking: Callback for extended thinking chunks.
         should_cancel: Polling function — returns True to abort.
-        thinking_budget: Token budget for extended thinking. None = disabled.
+        thinking: Enable adaptive thinking (Opus 4.6). False = disabled.
         caller: Tag for token usage tracking.
         request_tag: Sub-tag for token usage tracking.
     """
-    load_env()
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
+
+    # Wrap system prompt with cache_control so the API can reuse the
+    # ~2000-token prompt across tool-loop calls in the same turn.
+    system_payload = (
+        [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if system
+        else []
+    )
 
     # Build Anthropic API payload
     if tool_choice is None and tools:
@@ -82,7 +94,7 @@ def call_llm(
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
         "max_tokens": 128000,
-        "system": system,
+        "system": system_payload,
         "messages": converted,
     }
     if tool_payload:
@@ -93,8 +105,8 @@ def call_llm(
             payload["tool_choice"] = {"type": choice_map[tool_choice]}
         else:
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
-    if thinking_budget is not None:
-        payload["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+    if thinking:
+        payload["thinking"] = {"type": "adaptive"}
 
     # Accumulation state for streaming
     text_chunks: List[str] = []
@@ -124,7 +136,9 @@ def call_llm(
 
     start = time.perf_counter()
     request_id = uuid.uuid4().hex
-    message = _retry_api_call(_stream_events, on_retry=_on_retry)
+    message = _retry_api_call(
+        _stream_events, on_retry=_on_retry, should_cancel=should_cancel,
+    )
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
 
@@ -161,55 +175,6 @@ def call_llm(
 
     usage = _extract_usage(message)
     return LLMResponse(text=text, tool_calls=tool_calls, usage=usage)
-
-
-# ------------------------------------------------------------------
-# Backwards-compatible wrappers (thin shims for existing callers).
-# These will be removed once all callers migrate to call_llm().
-# ------------------------------------------------------------------
-
-def call_llm_with_tools(
-    messages: List[Dict[str, Any]],
-    *,
-    tools: Optional[List[Dict[str, Any]]] = None,
-    tool_choice: Optional[str] = None,
-    max_completion_tokens: int = 128000,
-    on_delta: Optional[Callable[[str], None]] = None,
-    caller: Optional[str] = None,
-    request_tag: Optional[str] = None,
-    should_cancel: Optional[Callable[[], bool]] = None,
-    thinking_budget: Optional[int] = None,
-    on_thinking: Optional[Callable[[str], None]] = None,
-) -> tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
-    """Legacy wrapper — returns (text, tool_calls, usage) tuple."""
-    resp = call_llm(
-        messages, tools=tools, tool_choice=tool_choice,
-        on_delta=on_delta, on_thinking=on_thinking,
-        should_cancel=should_cancel, thinking_budget=thinking_budget,
-        caller=caller, request_tag=request_tag,
-    )
-    return resp.text, resp.tool_calls, resp.usage
-
-
-def call_llm_stream(
-    messages: List[Dict[str, Any]],
-    *,
-    max_completion_tokens: int = 128000,
-    response_format: Optional[Dict[str, Any]] = None,
-    on_delta: Callable[[str], None],
-    caller: Optional[str] = None,
-    request_tag: Optional[str] = None,
-    should_cancel: Optional[Callable[[], bool]] = None,
-    thinking_budget: Optional[int] = None,
-    on_thinking: Optional[Callable[[str], None]] = None,
-) -> str:
-    """Legacy wrapper — returns text only."""
-    resp = call_llm(
-        messages, on_delta=on_delta, on_thinking=on_thinking,
-        should_cancel=should_cancel, thinking_budget=thinking_budget,
-        caller=caller, request_tag=request_tag,
-    )
-    return resp.text
 
 
 # ------------------------------------------------------------------
@@ -341,34 +306,97 @@ def _merge_tool_calls(
     return merged
 
 
+class LLMQuotaError(RuntimeError):
+    """Raised when the API quota or rate limit is exceeded after retries.
+
+    Provides a user-friendly message instead of raw API error text.
+    """
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    """Check if an exception is a hard quota/rate limit error."""
+    return isinstance(exc, anthropic.RateLimitError)
+
+
 def _retry_api_call(
     fn: Callable[[], Any],
     *,
     on_retry: Optional[Callable[[int, str], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Any:
-    """Retry an API call on transient errors."""
+    """Retry an API call on transient errors including rate limits.
+
+    Rate limit errors (429) are retried with longer backoff (30-60s) since
+    the API typically recovers within a minute. Other transient errors
+    (timeout, connection, server) use shorter backoff (2-5s).
+    """
+    rate_limit_attempts = 0
+
     for attempt in range(_MAX_RETRIES):
         try:
             return fn()
         except CancellationError:
             raise
         except Exception as exc:
-            exc_name = type(exc).__name__
-            is_retryable = any(
-                kw in exc_name.lower()
-                for kw in ("timeout", "rate", "overloaded", "server", "connection", "api")
+            # Rate limit: retryable with longer backoff
+            if _is_quota_error(exc):
+                rate_limit_attempts += 1
+                if rate_limit_attempts >= _RATE_LIMIT_MAX_RETRIES:
+                    logger.warning(
+                        "API rate limit exceeded after %d retries: %s",
+                        rate_limit_attempts, exc,
+                    )
+                    raise LLMQuotaError(
+                        "API rate limit exceeded after retrying. "
+                        "Please wait a moment and try again."
+                    ) from exc
+                delay = _RATE_LIMIT_BACKOFF[
+                    min(rate_limit_attempts - 1, len(_RATE_LIMIT_BACKOFF) - 1)
+                ]
+                logger.warning(
+                    "Rate limited (attempt %d/%d), retrying in %ds",
+                    rate_limit_attempts, _RATE_LIMIT_MAX_RETRIES, delay,
+                )
+                if on_retry:
+                    on_retry(attempt + 1, f"Rate limited, retrying in {delay}s")
+                # Check for cancellation during rate limit wait so user
+                # isn't stuck waiting 60s with no way to abort.
+                _interruptible_sleep(delay, should_cancel)
+                continue
+
+            # Other transient errors: timeout, connection, server
+            is_retryable = isinstance(
+                exc,
+                (anthropic.APITimeoutError, anthropic.APIConnectionError,
+                 anthropic.InternalServerError),
             )
             if not is_retryable or attempt == _MAX_RETRIES - 1:
                 raise
             delay = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+            exc_name = type(exc).__name__
             logger.warning(
                 "API call failed (attempt %d/%d), retrying in %ds: %s: %s",
                 attempt + 1, _MAX_RETRIES, delay, exc_name, exc,
             )
             if on_retry:
                 on_retry(attempt + 1, f"{exc_name}: {exc}")
-            time.sleep(delay)
+            _interruptible_sleep(delay, should_cancel)
     raise RuntimeError("Retry loop exited unexpectedly")
+
+
+def _interruptible_sleep(
+    seconds: float,
+    should_cancel: Optional[Callable[[], bool]] = None,
+) -> None:
+    """Sleep in 1-second increments, checking for cancellation each tick."""
+    for _ in range(int(seconds)):
+        if should_cancel and should_cancel():
+            raise CancellationError("Cancelled during retry backoff.")
+        time.sleep(1)
+    # Sleep any fractional remainder
+    remainder = seconds - int(seconds)
+    if remainder > 0:
+        time.sleep(remainder)
 
 
 def _close_stream(stream: Any) -> None:

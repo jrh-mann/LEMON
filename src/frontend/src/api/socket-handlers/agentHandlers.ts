@@ -57,7 +57,8 @@ export function registerAgentHandlers(socket: Socket): void {
     }
   })
 
-  // Agent error -- route to the appropriate workflow conversation
+  // Agent error -- route to the appropriate workflow conversation.
+  // Transient errors (rate limits) show as toasts only — no chat message.
   socket.on('agent_error', (data: SocketAgentError) => {
     console.error('[SIO] agent_error:', data)
     const chatStore = useChatStore.getState()
@@ -73,6 +74,12 @@ export function registerAgentHandlers(socket: Socket): void {
     }
     chatStore.clearPendingQuestion()
     useWorkflowStore.getState().setPlan([])
+
+    // Transient errors (rate limits) — toast only, no permanent chat message
+    if (data.transient) {
+      uiStore.setError(data.error)
+      return
+    }
 
     addAssistantMessage(`Error: ${data.error}`, [], workflowId || undefined)
     uiStore.setError(data.error)

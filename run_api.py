@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """Run the LEMON API server with uvicorn."""
 
+import logging
 import os
+
+# Configure Python logging BEFORE any app imports so all loggers inherit it.
+# Without this, backend.api / backend.llm loggers have no handler and are silent.
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(levelname)-8s %(name)s: %(message)s",
+)
 
 os.environ.setdefault("LEMON_LOG_PREFIX", "backend")
 

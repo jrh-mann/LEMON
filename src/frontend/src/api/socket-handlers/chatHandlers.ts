@@ -65,18 +65,38 @@ export function registerChatHandlers(socket: Socket): void {
     useUIStore.getState().clearError()
     const taskId = data.task_id
 
+    // Always clear streaming state — every chat_response signals the task
+    // is done. Early returns below prevent duplicate messages but must NOT
+    // leave isStreaming stuck, which blocks the send button.
+    const clearStreaming = () => {
+      chatStore.setStreaming(workflowId, false)
+      chatStore.setProcessingStatus(workflowId, null)
+      chatStore.setCurrentTaskId(workflowId, null)
+    }
+
+    // Handle cancellation ack BEFORE shouldIgnoreTask — the task is already
+    // marked cancelled by handleStop, so shouldIgnoreTask would drop this
+    // event and the cleanup (clearing currentTaskId etc.) would never run.
+    if (data.cancelled) {
+      console.log('[SIO] chat_response: cancelled ack, cleaning up only')
+      clearStreaming()
+      return
+    }
+
     // Drop events for cancelled or stale tasks. When the user clicks Stop,
     // handleStop calls markTaskCancelled + finalizeStream before the backend
     // acks. If we don't drop the ack here, the response text gets added as
-    // a duplicate message.
+    // a duplicate message. Still clear streaming so the UI isn't stuck.
     if (taskId && shouldIgnoreTask(taskId, workflowId)) {
       console.log('[SIO] chat_response DROPPED: task ignored', taskId)
+      clearStreaming()
       return
     }
     if (taskId) {
       const conv = chatStore.conversations[workflowId]
       if (conv?.currentTaskId && taskId !== conv.currentTaskId) {
         console.log('[SIO] chat_response DROPPED: stale task', taskId, 'vs', conv.currentTaskId)
+        clearStreaming()
         return
       }
     }
@@ -90,17 +110,6 @@ export function registerChatHandlers(socket: Socket): void {
       }
       _processedResponses.add(taskId)
       setTimeout(() => _processedResponses.delete(taskId), 60_000)
-    }
-
-    // If this is a cancellation ack from the backend, just clean up state
-    // without adding any messages — the frontend already finalized the
-    // stream when the user clicked Stop.
-    if (data.cancelled) {
-      console.log('[SIO] chat_response: cancelled ack, cleaning up only')
-      chatStore.setStreaming(workflowId, false)
-      chatStore.setProcessingStatus(workflowId, null)
-      chatStore.setCurrentTaskId(workflowId, null)
-      return
     }
 
     // Check if there's streamed content to finalize before calling finalizeStream.

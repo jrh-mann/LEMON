@@ -220,7 +220,7 @@ class Orchestrator:
         on_tool_event: Optional[
             Callable[[str, str, Dict[str, Any], Optional[Dict[str, Any]]], None]
         ] = None,
-        thinking_budget: Optional[int] = None,
+        thinking: bool = False,
         on_thinking: Optional[Callable[[str], None]] = None,
     ) -> str:
         """Run one conversation turn: user message → LLM → tools → response.
@@ -278,7 +278,7 @@ class Orchestrator:
                 on_delta=on_delta if stream else None,
                 caller="orchestrator", request_tag="initial",
                 should_cancel=should_cancel,
-                thinking_budget=thinking_budget, on_thinking=on_thinking,
+                thinking=thinking, on_thinking=on_thinking,
             )
             raw, tool_calls = resp.text, resp.tool_calls
             if resp.usage:
@@ -423,7 +423,7 @@ class Orchestrator:
                     on_delta=on_delta if stream else None,
                     caller="orchestrator", request_tag="post_tool",
                     should_cancel=should_cancel,
-                    thinking_budget=thinking_budget, on_thinking=on_thinking,
+                    thinking=thinking, on_thinking=on_thinking,
                 )
                 raw, tool_calls = resp.text, resp.tool_calls
                 self.conversation.update_token_estimate(resp.usage.get("input_tokens", 0))

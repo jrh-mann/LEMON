@@ -279,9 +279,15 @@ class Turn:
             )
             if self.messages:
                 conversation_manager.history.extend(self.messages)
-            conversation_manager.history.append(
-                {"role": "assistant", "content": self.final_text}
-            )
+            # Embed structured tool_calls on the final assistant message so
+            # get_conversation can read them directly instead of reconstructing
+            # from ConversationLogger with fragile index-based matching.
+            final_msg: Dict[str, Any] = {
+                "role": "assistant", "content": self.final_text,
+            }
+            if self.tool_calls:
+                final_msg["tool_calls_meta"] = list(self.tool_calls)
+            conversation_manager.history.append(final_msg)
 
         elif self.status == TurnStatus.CANCELLED:
             conversation_manager.history.append(

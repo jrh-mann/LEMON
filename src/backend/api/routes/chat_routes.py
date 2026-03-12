@@ -191,50 +191,28 @@ def register_chat_routes(
         # through to the persistent ConversationLogger instead.
         convo = conversation_store.get(conversation_id)
         if convo and convo.orchestrator.conversation.history:
-            # Build a lookup of tool_calls per assistant response from
-            # the audit trail so we can attach them to messages.  The
-            # in-memory history only has plain text; the conversation
-            # logger has the structured tool_call entries.
-            assistant_tool_calls: Dict[int, list] = {}
-            if conversation_logger:
-                entries = conversation_logger.get_conversation_timeline(
-                    conversation_id,
-                    entry_types=["user_message", "assistant_response", "tool_call"],
-                )
-                pending_tools: list[dict] = []
-                assistant_seq = 0  # counts assistant msgs seen
-                for entry in entries:
-                    etype = entry["entry_type"]
-                    if etype == "tool_call":
-                        pending_tools.append({
-                            "tool": entry.get("tool_name", ""),
-                            "arguments": {},
-                            "success": bool(entry.get("tool_success", 1)),
-                        })
-                    elif etype == "user_message":
-                        pending_tools = []
-                    elif etype == "assistant_response":
-                        if pending_tools:
-                            assistant_tool_calls[assistant_seq] = pending_tools
-                            pending_tools = []
-                        assistant_seq += 1
-
             # Collapse history into user + final-assistant per turn.
             # The history now includes intermediate assistant messages from
             # tool rounds, but the frontend's streaming already concatenated
             # all text into one message. Returning intermediates would cause
             # duplicates in mergeBackendMessages. Instead, return only the
             # LAST assistant response per turn (matches ConversationLogger).
+            #
+            # Tool calls are embedded directly on the final assistant message
+            # in history (via Turn.commit() → tool_calls_meta), so we don't
+            # need index-based reconstruction from ConversationLogger.
             messages = []
-            assistant_idx = 0
-            # Pending turn state: accumulates tool_calls across tool rounds
             pending_user: dict | None = None
             pending_assistant: dict | None = None
-            pending_all_tools: list = []
 
             for idx, msg in enumerate(convo.orchestrator.conversation.history):
                 role = msg.get("role", "assistant")
                 content = msg.get("content", "")
+
+                # Skip [CANCELLED] markers — these are internal LLM context
+                # signals added by Turn.commit(), not displayable messages.
+                if isinstance(content, str) and content.startswith("[CANCELLED]"):
+                    continue
 
                 if role == "user":
                     # Flush previous turn
@@ -250,19 +228,19 @@ def register_chat_routes(
                         "tool_calls": [],
                     }
                     pending_assistant = None
-                    pending_all_tools = []
                 elif role == "assistant":
-                    tc = assistant_tool_calls.get(assistant_idx, [])
-                    assistant_idx += 1
-                    pending_all_tools.extend(tc)
+                    # Read tool_calls directly from history message
+                    # (embedded by Turn.commit via tool_calls_meta).
+                    tc = msg.get("tool_calls_meta", [])
                     if content:
-                        # Keep updating to the latest assistant with content
+                        # Keep updating to the latest assistant with content.
+                        # The final message in each turn has tool_calls_meta.
                         pending_assistant = {
                             "id": f"{conversation_id}_{idx}",
                             "role": "assistant",
                             "content": content,
                             "timestamp": utc_now(),
-                            "tool_calls": list(pending_all_tools),
+                            "tool_calls": tc,
                         }
                 # Skip role == "tool"
 

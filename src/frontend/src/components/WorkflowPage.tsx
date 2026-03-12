@@ -138,7 +138,12 @@ export default function WorkflowPage() {
             const history = await getConversationHistory(convId)
             if (!history?.messages?.length) return
             const backendMessages = history.messages
-                .filter(m => m.role === 'user' || m.role === 'assistant')
+                .filter(m =>
+                    (m.role === 'user' || m.role === 'assistant') &&
+                    // Skip [CANCELLED] markers — internal LLM context signals,
+                    // not displayable messages.
+                    !m.content?.startsWith('[CANCELLED]')
+                )
                 .map(m => ({
                     id: m.id,
                     role: m.role as 'user' | 'assistant',

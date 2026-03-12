@@ -632,7 +632,7 @@ class WsChatTask:
                 allow_tools=True,
                 should_cancel=self.is_cancelled,
                 on_tool_event=self.on_tool_event,
-                thinking_budget=50_000,
+                thinking=True,
                 on_thinking=self.stream_thinking,
             )
 
@@ -670,7 +670,17 @@ class WsChatTask:
                 turn.fail(str(exc))
                 if self.convo:
                     turn.commit(self.convo.orchestrator.conversation)
-            self.emit_error(str(exc))
+            # Surface a user-friendly message for known error types.
+            # Rate limit errors are transient — show as toast, not chat message.
+            from ..llm.client import LLMQuotaError
+            if isinstance(exc, LLMQuotaError):
+                self._emit("agent_error", {
+                    "task_id": self.task_id,
+                    "error": str(exc),
+                    "transient": True,
+                })
+            else:
+                self.emit_error(f"Something went wrong: {type(exc).__name__}. Please try again.")
 
         finally:
             self.done.set()
@@ -787,9 +797,14 @@ def handle_cancel_task(
     task_id = payload.get("task_id")
     if not isinstance(task_id, str) or not task_id.strip():
         return
-    _task_registry.cancel(task_id)
+    task = _task_registry.cancel(task_id)
     if _task_registry.mark_notified(task_id):
-        registry.send_to_sync(conn_id, "chat_cancelled", {"task_id": task_id})
+        # Include workflow_id so the frontend can resolve the correct
+        # conversation without falling back to activeWorkflowId.
+        cancel_payload: Dict[str, Any] = {"task_id": task_id}
+        if task and task.current_workflow_id:
+            cancel_payload["workflow_id"] = task.current_workflow_id
+        registry.send_to_sync(conn_id, "chat_cancelled", cancel_payload)
 
 
 def handle_sync_workflow(

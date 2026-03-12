@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger("backend.llm")
 
@@ -37,7 +38,22 @@ def load_env() -> None:
         os.environ.setdefault(key, value)
 
 
+# Singleton client — created once, reused across all call_llm() invocations.
+# max_retries=0 disables SDK built-in retry so our custom _retry_api_call()
+# in client.py handles retries with cancel-awareness and LLMQuotaError fast-fail.
+_client: Optional[AnthropicFoundry] = None
+
+
 def get_anthropic_client() -> AnthropicFoundry:
+    """Return a cached AnthropicFoundry client (singleton).
+
+    First call loads .env and creates the client. Subsequent calls return
+    the same instance, reusing the underlying HTTP connection pool.
+    """
+    global _client
+    if _client is not None:
+        return _client
+
     load_env()
     api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("API_KEY")
     endpoint = os.environ.get("ANTHROPIC_ENDPOINT") or os.environ.get("ENDPOINT")
@@ -48,7 +64,16 @@ def get_anthropic_client() -> AnthropicFoundry:
     normalized_endpoint = endpoint.strip().rstrip("/") + "/"
     if "anthropic" not in normalized_endpoint.lower():
         normalized_endpoint = normalized_endpoint + "anthropic/"
-    return AnthropicFoundry(api_key=api_key, base_url=normalized_endpoint)
+    _client = AnthropicFoundry(
+        api_key=api_key, base_url=normalized_endpoint, max_retries=0,
+    )
+    return _client
+
+
+def _reset_client() -> None:
+    """Reset the singleton client. For testing only."""
+    global _client
+    _client = None
 
 
 def get_anthropic_model() -> str:

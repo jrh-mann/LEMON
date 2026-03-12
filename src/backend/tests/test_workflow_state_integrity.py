@@ -20,12 +20,14 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import pytest
 
 from ..agents.orchestrator import Orchestrator
 from ..agents.orchestrator_factory import build_orchestrator
 from ..agents.turn import Turn
+from ..storage.workflows import WorkflowStore
 
 
 def _repo_root() -> Path:
@@ -65,9 +67,17 @@ class WorkflowTestSession:
         self.orchestrator.tools.execute = wrapped_execute
 
     def set_initial_workflow(self, workflow: Dict[str, Any]) -> None:
-        """Set initial workflow state for testing."""
+        """Set initial workflow state (in-memory + DB)."""
         self.workflow_state = copy.deepcopy(workflow)
         self.orchestrator.current_workflow = copy.deepcopy(workflow)
+        # Persist to DB so tools (which load from DB) see the same state
+        if self.orchestrator.workflow_store and self.orchestrator.current_workflow_id:
+            self.orchestrator.workflow_store.update_workflow(
+                self.orchestrator.current_workflow_id,
+                self.orchestrator.user_id,
+                nodes=workflow.get("nodes", []),
+                edges=workflow.get("edges", []),
+            )
 
     def respond(self, message: str, **kwargs) -> str:
         """
@@ -295,9 +305,24 @@ class WorkflowTestSession:
 
 
 @pytest.fixture
-def orchestrator() -> Orchestrator:
-    """Create orchestrator with real tools and LLM."""
-    return build_orchestrator(_repo_root())
+def orchestrator(tmp_path) -> Orchestrator:
+    """Create orchestrator with real tools, LLM, and DB-backed workflow store."""
+    orch = build_orchestrator(_repo_root())
+    # Wire up a real SQLite workflow store — tools require DB context
+    db_path = tmp_path / "test_workflows.sqlite"
+    workflow_store = WorkflowStore(db_path)
+    test_user_id = f"test_user_{uuid4().hex[:8]}"
+    workflow_id = f"wf_test_{uuid4().hex[:8]}"
+    workflow_store.create_workflow(
+        workflow_id=workflow_id, user_id=test_user_id,
+        name="Test Workflow", description="State integrity test workflow",
+        output_type="string", is_draft=False,
+    )
+    orch.workflow_store = workflow_store
+    orch.user_id = test_user_id
+    orch.current_workflow_id = workflow_id
+    orch.refresh_workflow_from_db()
+    return orch
 
 
 @pytest.fixture

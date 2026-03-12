@@ -729,6 +729,8 @@ export interface SocketChatResponse {
 export interface SocketAgentError {
   task_id?: string
   error: string
+  /** Transient errors (e.g. rate limits) show as toasts only, not chat messages */
+  transient?: boolean
 }
 
 // ============ UI State Types ============

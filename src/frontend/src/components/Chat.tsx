@@ -224,7 +224,11 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       markTaskCancelled(currentTaskId)
     }
     if (activeWorkflowId) {
-      useChatStore.getState().finalizeStream(activeWorkflowId)
+      const cs = useChatStore.getState()
+      cs.finalizeStream(activeWorkflowId)
+      // Clear currentTaskId immediately so the UI isn't stuck waiting
+      // for the backend's chat_cancelled ack to clear it.
+      cs.setCurrentTaskId(activeWorkflowId, null)
     }
     setPlan([])
     textareaRef.current?.focus()
