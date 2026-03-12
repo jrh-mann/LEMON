@@ -455,10 +455,7 @@ class Orchestrator:
 
         # --- Assemble final response ---
         if asked_question:
-            # Use LLM's text if it said something before calling ask_question,
-            # otherwise a short placeholder so the turn isn't empty (empty-content
-            # assistant messages get dropped by get_conversation on reload).
-            final_text = raw or "Waiting for your answer..."
+            final_text = raw or ""
         else:
             final_text = raw or (_summarize(tool_results) if tool_results else "")
             if tool_results and not final_text.strip():
