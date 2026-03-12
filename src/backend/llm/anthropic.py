@@ -56,53 +56,52 @@ def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
     return [{"type": "text", "text": fallback}] if fallback else []
 
 
+def _build_message_blocks(msg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build Anthropic API content blocks for a single message.
+
+    Handles thinking blocks (assistant), text/image/document/tool_result content,
+    and tool_use blocks (assistant with tool_calls).
+    """
+    role = msg.get("role")
+    blocks: List[Dict[str, Any]] = []
+    # Thinking blocks must precede all other content per Anthropic API spec
+    if role == "assistant":
+        blocks.extend(msg.get("thinking_blocks") or [])
+    # Convert content (text, images, tool_results, etc.)
+    blocks.extend(_to_anthropic_blocks(msg.get("content", "")))
+    # Tool calls stored as {id, name, input} — add "type": "tool_use" for API
+    for call in (msg.get("tool_calls") or []):
+        blocks.append({
+            "type": "tool_use",
+            "id": call.get("id") or "",
+            "name": call.get("name"),
+            "input": call.get("input") or {},
+        })
+    return blocks
+
+
 def _to_anthropic_messages(
     messages: List[Dict[str, Any]],
 ) -> Tuple[str, List[Dict[str, Any]]]:
+    """Convert internal message history to Anthropic API format.
+
+    Extracts system messages, builds content blocks for each message,
+    and merges consecutive same-role messages (e.g. batched tool results).
+    """
     system, rest = _extract_system(messages)
     converted: List[Dict[str, Any]] = []
     for msg in rest:
         role = msg.get("role")
-        content = msg.get("content", "")
-        if role == "assistant" and msg.get("tool_calls"):
-            blocks = []
-            # Thinking blocks must precede text/tool_use per Anthropic API spec
-            for tb in (msg.get("thinking_blocks") or []):
-                blocks.append(tb)
-            blocks.extend(_to_anthropic_blocks(content))
-            # Tool calls are already in native Anthropic format {id, name, input}
-            # — just add the "type": "tool_use" wrapper for the API content block.
-            for call in msg.get("tool_calls") or []:
-                blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": call.get("id") or "",
-                        "name": call.get("name"),
-                        "input": call.get("input") if isinstance(call.get("input"), dict) else {},
-                    }
-                )
-            if blocks:
-                converted.append({"role": "assistant", "content": blocks})
+        if role not in {"user", "assistant"}:
             continue
-        if role in {"user", "assistant"}:
-            blocks = []
-            # Thinking blocks precede text in assistant messages
-            if role == "assistant":
-                for tb in (msg.get("thinking_blocks") or []):
-                    blocks.append(tb)
-            blocks.extend(_to_anthropic_blocks(content))
-            if not blocks:
-                # Empty content — use placeholder to preserve alternation
-                blocks = [{"type": "text", "text": "(empty)"}]
-            # Merge consecutive same-role messages instead of creating duplicates
-            if converted and converted[-1].get("role") == role:
-                existing = converted[-1].get("content", [])
-                if isinstance(existing, list):
-                    existing.extend(blocks)
-                else:
-                    converted[-1]["content"] = [{"type": "text", "text": existing}] + blocks
-            else:
-                converted.append({"role": role, "content": blocks})
+        blocks = _build_message_blocks(msg)
+        if not blocks:
+            blocks = [{"type": "text", "text": "(empty)"}]
+        # Merge consecutive same-role messages (e.g. batched tool results)
+        if converted and converted[-1]["role"] == role:
+            converted[-1]["content"].extend(blocks)
+        else:
+            converted.append({"role": role, "content": blocks})
     return system, converted
 
 
