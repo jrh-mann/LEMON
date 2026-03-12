@@ -62,7 +62,7 @@ def call_llm(
     """Unified LLM call. Handles text, streaming, and tool use.
 
     Args:
-        messages: Conversation messages (system/user/assistant/tool).
+        messages: Conversation messages (system/user/assistant).
         tools: Tool schemas (Anthropic function-calling format). None = no tools.
         tool_choice: "auto", "any", "none", or a specific tool name.
         on_delta: Streaming callback for text chunks. None = collect internally.
@@ -93,10 +93,10 @@ def call_llm(
     if tool_payload:
         payload["tools"] = tool_payload
     if tool_choice:
-        choice_map = {"none": "none", "any": "any", "auto": "auto"}
-        if tool_choice in choice_map:
-            payload["tool_choice"] = {"type": choice_map[tool_choice]}
+        if tool_choice in {"none", "any", "auto"}:
+            payload["tool_choice"] = {"type": tool_choice}
         else:
+            # Specific tool name — force the model to call it
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
     if thinking:
         payload["thinking"] = {"type": "adaptive"}
@@ -179,31 +179,21 @@ def _handle_stream_event(
 ) -> None:
     """Process a single streaming event — forward text and thinking deltas.
 
+    Events are SDK Pydantic objects (direct attribute access).
     Tool calls come from get_final_message() after streaming completes,
     so we only handle text_delta and thinking_delta here.
     """
-    event_type = getattr(event, "type", "")
-
-    if event_type == "content_block_delta":
-        delta = getattr(event, "delta", None)
-        if not delta:
-            return
-        delta_type = getattr(delta, "type", None)
-        if delta_type is None and isinstance(delta, dict):
-            delta_type = delta.get("type")
-
-        if delta_type == "thinking_delta" and on_thinking:
-            thinking_text = getattr(delta, "thinking", None)
-            if thinking_text:
-                on_thinking(thinking_text)
-        elif delta_type == "text_delta":
-            text = getattr(delta, "text", None)
-            if text is None and isinstance(delta, dict):
-                text = delta.get("text")
-            if text:
-                text_chunks.append(text)
-                if on_delta:
-                    on_delta(text)
+    if event.type != "content_block_delta":
+        return
+    delta = event.delta
+    if delta.type == "thinking_delta" and on_thinking:
+        if delta.thinking:
+            on_thinking(delta.thinking)
+    elif delta.type == "text_delta":
+        if delta.text:
+            text_chunks.append(delta.text)
+            if on_delta:
+                on_delta(delta.text)
 
 
 class LLMQuotaError(RuntimeError):
@@ -304,29 +294,24 @@ def _interruptible_sleep(
 
 
 def _close_stream(stream: Any) -> None:
-    close = getattr(stream, "close", None)
-    if callable(close):
-        try:
-            close()
-        except Exception:
-            logger.debug("Failed to close LLM stream", exc_info=True)
+    try:
+        stream.close()
+    except Exception:
+        logger.debug("Failed to close LLM stream", exc_info=True)
 
 
 def _extract_usage(message: Any) -> Dict[str, Any]:
-    usage = getattr(message, "usage", None)
-    if usage is None and isinstance(message, dict):
-        usage = message.get("usage")
+    """Extract token usage from an SDK Message object.
+
+    The SDK returns usage as a Pydantic Usage object with typed attributes.
+    """
+    usage = message.usage
     if usage is None:
         return {}
-
-    def _get(f: str) -> Optional[int]:
-        val = usage.get(f) if isinstance(usage, dict) else getattr(usage, f, None)
-        return int(val) if isinstance(val, int) else None
-
     result: Dict[str, Any] = {}
     for key in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
-        val = _get(key)
-        if val is not None:
+        val = getattr(usage, key, None)
+        if isinstance(val, int):
             result[key] = val
     inp = result.get("input_tokens", 0)
     out = result.get("output_tokens", 0)
@@ -348,9 +333,7 @@ def _record_tokens(
     elapsed_ms: float,
     tool_names: Optional[List[str]] = None,
 ) -> None:
-    provider_id = getattr(message, "id", None)
-    if provider_id is None and isinstance(message, dict):
-        provider_id = message.get("id")
+    provider_id = message.id
     entry = {
         "request_id": request_id,
         "provider_message_id": provider_id,
