@@ -255,7 +255,7 @@ class TestReasoningWiring:
         assert captured_payload["thinking"] == {"type": "adaptive"}
 
         # Effort parameter should always be present (default "high")
-        assert "output" in captured_payload, (
-            "output key not added to Anthropic API payload"
+        assert "output_config" in captured_payload, (
+            "output_config key not added to Anthropic API payload"
         )
-        assert captured_payload["output"] == {"effort": "high"}
+        assert captured_payload["output_config"] == {"effort": "high"}

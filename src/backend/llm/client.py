@@ -94,7 +94,7 @@ def call_llm(
     if thinking:
         payload["thinking"] = {"type": "adaptive"}
     if effort:
-        payload["output"] = {"effort": effort}
+        payload["output_config"] = {"effort": effort}
 
     # Text accumulation for on_delta streaming callback and cancel recovery.
     # Tool calls come from get_final_message() — no streaming assembly needed.
