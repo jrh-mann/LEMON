@@ -181,39 +181,8 @@ class TestSetWorkflowOutputConstant:
 # 3. Retry message off-by-one
 # ---------------------------------------------------------------------------
 
-class TestRetryMessageFormat:
-    """Verify _notify_retry_stream uses correct attempt numbering."""
-
-    def test_first_retry_shows_1(self):
-        """First retry (attempt=1) should display '1/3', not '2/3'."""
-        from src.backend.llm.client import _MAX_RETRIES
-
-        chunks: List[str] = []
-
-        def mock_on_delta(text: str) -> None:
-            chunks.append(text)
-
-        # Simulate the retry callback as defined in call_llm_stream
-        def _notify_retry_stream(attempt: int, msg: str) -> None:
-            mock_on_delta(f"\n\n*Retrying ({attempt}/{_MAX_RETRIES})...*\n\n")
-
-        _notify_retry_stream(1, "timeout")
-        assert f"1/{_MAX_RETRIES}" in chunks[0]
-
-    def test_second_retry_shows_2(self):
-        """Second retry (attempt=2) should display '2/3'."""
-        from src.backend.llm.client import _MAX_RETRIES
-
-        chunks: List[str] = []
-
-        def mock_on_delta(text: str) -> None:
-            chunks.append(text)
-
-        def _notify_retry_stream(attempt: int, msg: str) -> None:
-            mock_on_delta(f"\n\n*Retrying ({attempt}/{_MAX_RETRIES})...*\n\n")
-
-        _notify_retry_stream(2, "timeout")
-        assert f"2/{_MAX_RETRIES}" in chunks[0]
+# Retry tests removed — SDK handles retries natively (max_retries=2),
+# custom _retry_api_call / _MAX_RETRIES no longer exist in client.py.
 
 
 # ---------------------------------------------------------------------------
