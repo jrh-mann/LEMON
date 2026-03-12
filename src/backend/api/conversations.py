@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -110,21 +111,42 @@ class ConversationStore:
         """Reload conversation history from ConversationLogger into the orchestrator.
 
         Called when a known conversation_id is not in memory — typically after
-        a backend restart. Reads user/assistant messages from the persistent
-        SQLite log and injects them so the LLM has prior context.
+        a backend restart. Reads user/assistant messages and tool calls from
+        the persistent SQLite log. Tool calls are attached as tool_calls_meta
+        on assistant messages so get_conversation can display them.
         """
         try:
             entries = self._conversation_logger.get_conversation_timeline(
-                convo.id, entry_types=["user_message", "assistant_response"],
+                convo.id,
+                entry_types=["user_message", "assistant_response", "tool_call"],
             )
             if not entries:
                 return
-            history = []
+            history: list[dict] = []
+            pending_tool_calls: list[dict] = []
             for entry in entries:
-                role = "user" if entry["entry_type"] == "user_message" else "assistant"
-                content = entry.get("content", "")
-                if content:
-                    history.append({"role": role, "content": content})
+                etype = entry["entry_type"]
+                if etype == "tool_call":
+                    # Collect tool calls between user message and assistant response
+                    tool_args = entry.get("tool_arguments")
+                    pending_tool_calls.append({
+                        "tool": entry.get("tool_name", ""),
+                        "arguments": json.loads(tool_args) if tool_args else {},
+                        "success": bool(entry.get("tool_success", 1)),
+                    })
+                elif etype == "user_message":
+                    pending_tool_calls = []
+                    content = entry.get("content", "")
+                    if content:
+                        history.append({"role": "user", "content": content})
+                elif etype == "assistant_response":
+                    content = entry.get("content", "")
+                    if content:
+                        msg: dict = {"role": "assistant", "content": content}
+                        if pending_tool_calls:
+                            msg["tool_calls_meta"] = pending_tool_calls
+                            pending_tool_calls = []
+                        history.append(msg)
             if history:
                 convo.orchestrator.conversation.history = history
                 logger.info(

@@ -373,9 +373,10 @@ def register_chat_routes(
                 for entry in entries:
                     etype = entry["entry_type"]
                     if etype == "tool_call":
+                        tool_args = entry.get("tool_arguments")
                         pending_tool_calls.append({
                             "tool": entry.get("tool_name", ""),
-                            "arguments": {},
+                            "arguments": json.loads(tool_args) if tool_args else {},
                             "success": bool(entry.get("tool_success", 1)),
                         })
                     elif etype == "user_message":

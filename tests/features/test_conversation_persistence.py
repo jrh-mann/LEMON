@@ -82,6 +82,43 @@ class TestConversationReload:
         # Should have empty history — no reload attempted for auto-generated IDs
         assert convo.orchestrator.conversation.history == []
 
+    def test_reload_preserves_tool_calls_meta(self, repo_root, conversation_logger):
+        """tool_calls_meta is reconstructed from tool_call entries on reload.
+
+        After a backend restart, _reload_history must attach tool call records
+        to assistant messages as tool_calls_meta so the frontend can display
+        the 'Tools (N)' disclosure.
+        """
+        conv_id = "conv_test_tool_meta"
+        conversation_logger.ensure_conversation(
+            conv_id, user_id="u1", workflow_id="wf1", model="test",
+        )
+        conversation_logger.log_user_message(conv_id, "Add two nodes")
+        # Tool calls happen between user message and assistant response
+        conversation_logger.log_tool_call(
+            conv_id, "add_node", {"label": "Start"}, {"success": True}, True, 50.0,
+        )
+        conversation_logger.log_tool_call(
+            conv_id, "add_node", {"label": "End"}, {"success": True}, True, 40.0,
+        )
+        conversation_logger.log_assistant_response(conv_id, "Added two nodes.")
+
+        store = ConversationStore(repo_root, conversation_logger=conversation_logger)
+        convo = store.get_or_create(conv_id)
+
+        history = convo.orchestrator.conversation.history
+        assert len(history) == 2  # user + assistant
+        assistant_msg = history[1]
+        assert assistant_msg["role"] == "assistant"
+        assert "tool_calls_meta" in assistant_msg
+        tc = assistant_msg["tool_calls_meta"]
+        assert len(tc) == 2
+        assert tc[0]["tool"] == "add_node"
+        assert tc[0]["arguments"] == {"label": "Start"}
+        assert tc[0]["success"] is True
+        assert tc[1]["tool"] == "add_node"
+        assert tc[1]["arguments"] == {"label": "End"}
+
     def test_reload_survives_logger_error(self, repo_root, conversation_logger):
         """If the logger throws during reload, the conversation still works (empty history)."""
         store = ConversationStore(repo_root, conversation_logger=conversation_logger)
