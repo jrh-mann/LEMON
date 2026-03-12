@@ -262,6 +262,23 @@ def run_sample(
             )
             llm_response = orchestrator.respond(**respond_kwargs)
 
+            # Refinement passes — follow-up messages with full tool access.
+            for i, msg in enumerate(scaffold.refinement_messages):
+                if llm_response.startswith("LLM error:"):
+                    break  # Don't refine a failed extraction.
+                logger.info(
+                    "Refinement %d/%d: sample=%s",
+                    i + 1, len(scaffold.refinement_messages), sample.name,
+                )
+                refine_kwargs: Dict[str, Any] = {
+                    "user_message": msg,
+                    "allow_tools": True,
+                    "on_tool_event": on_tool_event,
+                }
+                if scaffold.thinking_budget is not None:
+                    refine_kwargs["thinking_budget"] = scaffold.thinking_budget
+                llm_response = orchestrator.respond(**refine_kwargs)
+
             # Detect orchestrator-swallowed errors (returns "LLM error: ..."
             # instead of raising).
             if llm_response.startswith("LLM error:"):
