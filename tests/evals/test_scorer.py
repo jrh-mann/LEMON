@@ -293,6 +293,7 @@ class TestScoreResult:
         expected_keys = {
             "score_overall", "score_variables", "score_nodes",
             "score_topology", "score_conditions", "score_outputs",
+            "score_functional",
         }
         assert set(d.keys()) == expected_keys
 

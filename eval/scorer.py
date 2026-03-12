@@ -1,11 +1,12 @@
 """Scorer: compare extracted workflows against golden solutions.
 
-Scores across 5 dimensions:
-  1. Variables  — input variable recall + type accuracy
-  2. Nodes      — node recall + type accuracy
-  3. Topology   — edge recall + label accuracy (via node mapping)
+Scores across 6 dimensions:
+  1. Variables   — input variable recall + type accuracy
+  2. Nodes       — node recall + type accuracy
+  3. Topology    — edge recall + label accuracy (via node mapping)
   4. Conditions  — decision node comparator + value accuracy
-  5. Outputs    — end node output_value similarity
+  5. Outputs     — end node output_value similarity
+  6. Functional  — execution-based routing agreement (same inputs → same end node)
 
 Usage (standalone):
     python -m eval.scorer eval/logs/20260312T*.json
@@ -45,24 +46,26 @@ class DimensionScore:
 
 @dataclass
 class ScoreResult:
-    """Complete scoring result across all 5 dimensions."""
+    """Complete scoring result across all 6 dimensions."""
 
     variables: DimensionScore
     nodes: DimensionScore
     topology: DimensionScore
     conditions: DimensionScore
     outputs: DimensionScore
+    functional: DimensionScore
 
     @property
     def overall(self) -> float:
-        """Simple average of all 5 dimension scores."""
+        """Simple average of all 6 dimension scores."""
         return (
             self.variables.score
             + self.nodes.score
             + self.topology.score
             + self.conditions.score
             + self.outputs.score
-        ) / 5
+            + self.functional.score
+        ) / 6
 
     def summary_dict(self) -> Dict[str, Any]:
         """Flat dict for CSV/JSON serialization."""
@@ -73,6 +76,7 @@ class ScoreResult:
             "score_topology": round(self.topology.score, 3),
             "score_conditions": round(self.conditions.score, 3),
             "score_outputs": round(self.outputs.score, 3),
+            "score_functional": round(self.functional.score, 3),
         }
 
 
@@ -504,9 +508,21 @@ def score(golden: Dict[str, Any], extracted: Dict[str, Any]) -> ScoreResult:
     Returns:
         ScoreResult with per-dimension scores and overall average.
     """
+    from .functional import functional_score
+
     g_nodes = golden.get("nodes", [])
     e_nodes = extracted.get("nodes", [])
     node_map = _build_node_map(g_nodes, e_nodes)
+
+    # Functional scoring: execute both workflows with same inputs.
+    func_result = functional_score(golden, extracted)
+    func_dim = DimensionScore(
+        name="functional",
+        score=func_result.score,
+        matched=func_result.cases_matched,
+        total=func_result.cases_tested,
+        detail=func_result.detail,
+    )
 
     return ScoreResult(
         variables=_score_variables(golden, extracted),
@@ -514,6 +530,7 @@ def score(golden: Dict[str, Any], extracted: Dict[str, Any]) -> ScoreResult:
         topology=_score_topology(golden, extracted, node_map),
         conditions=_score_conditions(golden, extracted, node_map),
         outputs=_score_outputs(golden, extracted, node_map),
+        functional=func_dim,
     )
 
 
@@ -587,7 +604,7 @@ def _cli_main() -> None:
         print(f"\n{log_path.name}")
         print(f"  Sample: {sample}  Model: {model}")
         for dim in [result.variables, result.nodes, result.topology,
-                     result.conditions, result.outputs]:
+                     result.conditions, result.outputs, result.functional]:
             print(f"  {dim.name:<12} {dim.score:5.1%}  ({dim.matched}/{dim.total})")
         print(f"  {'OVERALL':<12} {result.overall:5.1%}")
 
@@ -598,16 +615,17 @@ def _cli_main() -> None:
 
     # Summary table.
     if len(results) > 1:
-        print(f"\n{'='*100}")
+        print(f"\n{'='*106}")
         print(f"{'File':<65} {'Vars':>5} {'Node':>5} {'Topo':>5} "
-              f"{'Cond':>5} {'Out':>5} {'AVG':>5}")
-        print("-" * 100)
+              f"{'Cond':>5} {'Out':>5} {'Func':>5} {'AVG':>5}")
+        print("-" * 106)
         for r in results:
             print(
                 f"{r['file']:<65} "
                 f"{r['score_variables']:>5.0%} {r['score_nodes']:>5.0%} "
                 f"{r['score_topology']:>5.0%} {r['score_conditions']:>5.0%} "
-                f"{r['score_outputs']:>5.0%} {r['score_overall']:>5.0%}"
+                f"{r['score_outputs']:>5.0%} {r['score_functional']:>5.0%} "
+                f"{r['score_overall']:>5.0%}"
             )
         avg = sum(r["score_overall"] for r in results) / len(results)
         print(f"\n  Grand Average: {avg:.1%} across {len(results)} runs")

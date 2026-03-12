@@ -144,7 +144,7 @@ def _print_result(result: EvalResult) -> None:
             f"  SCORE: {s.overall:.0%} "
             f"(vars={s.variables.score:.0%} nodes={s.nodes.score:.0%} "
             f"topo={s.topology.score:.0%} cond={s.conditions.score:.0%} "
-            f"out={s.outputs.score:.0%})"
+            f"out={s.outputs.score:.0%} func={s.functional.score:.0%})"
         )
     if result.error:
         print(f"  Error: {result.error}")
@@ -153,10 +153,10 @@ def _print_result(result: EvalResult) -> None:
 def _print_summary_table(results: List[EvalResult]) -> None:
     """Print a summary table of all results."""
     has_scores = any(r.scores for r in results)
-    score_header = " Vars% Node% Topo% Cond%  Out%   AVG" if has_scores else ""
+    score_header = " Vars% Node% Topo% Cond%  Out% Func%   AVG" if has_scores else ""
     print(f"\n{'Model':<10} {'Sample':<22} {'Run':<10} {'Nodes':>5} {'Edges':>5} "
           f"{'Vars':>4} {'Tools':>5} {'Cost':>8} {'Time':>6} {'St':<3}{score_header}")
-    print("-" * (95 + (38 if has_scores else 0)))
+    print("-" * (95 + (44 if has_scores else 0)))
     for r in results:
         status = "ERR" if r.error else "OK"
         line = (
@@ -174,7 +174,8 @@ def _print_summary_table(results: List[EvalResult]) -> None:
             line += (
                 f" {s.variables.score:>4.0%} {s.nodes.score:>4.0%} "
                 f"{s.topology.score:>4.0%} {s.conditions.score:>4.0%} "
-                f"{s.outputs.score:>4.0%} {s.overall:>5.0%}"
+                f"{s.outputs.score:>4.0%} {s.functional.score:>4.0%} "
+                f"{s.overall:>5.0%}"
             )
         print(line)
 
@@ -263,12 +264,16 @@ def main() -> None:
         sys.exit(1)
 
     # Select scaffold.
-    if args.no_thinking:
-        scaffold = NO_THINKING_SCAFFOLD
-    elif args.refine:
+    if args.refine:
         scaffold = REFINEMENT_SCAFFOLD
+    elif args.no_thinking:
+        scaffold = NO_THINKING_SCAFFOLD
     else:
         scaffold = DEFAULT_SCAFFOLD
+    # Override thinking budget if --no-thinking is combined with --refine.
+    if args.no_thinking and scaffold.thinking_budget is not None:
+        from dataclasses import replace
+        scaffold = replace(scaffold, thinking_budget=None)
 
     # Run.
     run_eval(
