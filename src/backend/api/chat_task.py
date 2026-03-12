@@ -238,6 +238,9 @@ class ChatTask:
             if cancelled:
                 entry["interrupted"] = True
             self.executed_tools.append(entry)
+            # Real-time progress so the user sees which tool is running
+            if not cancelled:
+                self.emit_progress("tool_start", f"Running {tool}...", tool=tool)
         if event == "tool_complete":
             if isinstance(result, dict) and result.get("skipped"):
                 return
@@ -445,10 +448,12 @@ class ChatTask:
         tool_calls = extract_tool_calls(response_text, include_result=False)
         if not tool_calls and self.executed_tools:
             tool_calls = self.executed_tools
-        summary = summarize_response(response_text) if tool_calls else ""
         if self.convo:
             self.convo.updated_at = utc_now()
-        response_field = summary if tool_calls else ("" if self.did_stream else response_text)
+        # If content was already streamed via chat_stream events, don't send it
+        # again in chat_response — the frontend already has it in streamingContent.
+        # Only include response text when nothing was streamed (e.g. legacy sync endpoint).
+        response_field = "" if self.did_stream else response_text
         if not response_field and not self.did_stream and not cancelled:
             logger.warning(
                 "Emitting empty chat_response (no stream, no text, no tools) task=%s",

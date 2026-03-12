@@ -139,12 +139,12 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }, [isStreaming, scrollToBottom])
 
-  // Heartbeat watchdog — detect stale tasks when no backend events arrive
-  // for 15s. Backend sends heartbeats every 5s, so 15s = 3 missed beats.
+  // Heartbeat watchdog — detect stale tasks when no backend events arrive.
+  // Timeout is 60s to survive API rate-limit retries (429 retry-after can be ~50s).
   // Clears streaming state so the user isn't stuck on "Thinking..." forever.
   useEffect(() => {
     if (!isStreaming || !activeWorkflowId) return
-    const HEARTBEAT_TIMEOUT_MS = 15_000
+    const HEARTBEAT_TIMEOUT_MS = 60_000
     const interval = setInterval(() => {
       const c = useChatStore.getState().conversations[activeWorkflowId]
       if (!c?.isStreaming) return  // streaming ended naturally
@@ -598,27 +598,11 @@ function MessageBubble({
           __html: isUser || isSystem ? message.content : renderMarkdown(message.content),
         }}
       />
-      {message.tool_calls.length > 0 &&
-        (message.tool_calls.length > 3 ? (
-          <details className="tool-call-disclosure">
-            <summary className="tool-call-summary">
-              Tools ({message.tool_calls.length})
-            </summary>
-            <div className="tool-calls">
-              {message.tool_calls.map((tc, idx) => (
-                <div
-                  key={idx}
-                  className={`tool-call ${devMode ? 'clickable' : ''} ${tc.success === false ? 'failed' : ''}`}
-                  onClick={() => handleToolClick(tc)}
-                  title={devMode ? 'Click to inspect tool call' : undefined}
-                >
-                  <span className="tool-name">{tc.tool}</span>
-                  {tc.success === false && <span className="tool-failed-badge">✗</span>}
-                </div>
-              ))}
-            </div>
-          </details>
-        ) : (
+      {message.tool_calls.length > 0 && (
+        <details className="tool-call-disclosure" open>
+          <summary className="tool-call-summary">
+            Tools ({message.tool_calls.length})
+          </summary>
           <div className="tool-calls">
             {message.tool_calls.map((tc, idx) => (
               <div
@@ -632,7 +616,8 @@ function MessageBubble({
               </div>
             ))}
           </div>
-        ))}
+        </details>
+      )}
     </div>
   )
 }
