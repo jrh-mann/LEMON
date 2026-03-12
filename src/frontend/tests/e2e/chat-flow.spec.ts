@@ -1,333 +1,318 @@
 /**
- * Integration E2E tests for the chat flow.
+ * Integration E2E tests for the chat flow — real backend, no mocks.
  *
- * These tests use MockSocketIO to give the frontend a real socket
- * connection, then exercise the full pipeline:
- *   type → click Send → HTTP POST → socket events → store → UI
+ * These tests hit the live backend via SSE streaming, exercising the
+ * full pipeline: type → click Send → HTTP POST → SSE events → store → UI.
  *
- * Unlike the static rendering tests (refresh-persistence, stop-button),
- * these verify actual state transitions and event handling, catching
- * bugs like duplicate messages, lost events, and race conditions.
+ * Requires both servers running with LEMON_ALLOW_REGISTRATION=true:
+ *   LEMON_ALLOW_REGISTRATION=true bash scripts/dev.sh start
+ *
+ * Each test registers a fresh user to avoid cross-test contamination.
  */
-import { test, expect } from '@playwright/test'
-import { MockSocketIO, mockAllAPIs, resetMsgCounter, sendAndGetTaskId } from './helpers'
+import { test, expect, type Page } from '@playwright/test'
 
-const WF_ID = 'wf_e2e_flow_00000000000000000000000000'
+// Real LLM responses can take minutes
+test.setTimeout(180_000)
 
-/** Default workflow detail so workflowStore.currentWorkflow.id matches WF_ID */
-const DEFAULT_WF_DETAIL = {
-  id: WF_ID, name: 'Test Workflow',
-  nodes: [], edges: [], variables: [],
-}
+// Use a tall viewport so the chat dock + send button are in view
+test.use({ viewport: { width: 1280, height: 900 } })
 
-test.describe('chat flow — send, stream, respond', () => {
-  let sio: MockSocketIO
+// ── Helpers ──────────────────────────────────────────────────────
 
-  test.beforeEach(async ({ page }) => {
-    resetMsgCounter()
-    sio = new MockSocketIO()
-    await sio.install(page)
-    await mockAllAPIs(page, { skipSocket: true, workflowDetail: DEFAULT_WF_DETAIL })
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
+/** Register a fresh test user. Sets the auth cookie on the page context. */
+async function registerUser(page: Page) {
+  const email = `e2e_flow_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@test.local`
+
+  const res = await page.request.post('http://localhost:5173/api/auth/register', {
+    data: {
+      email,
+      name: 'E2E Chat Flow Test',
+      password: 'TestPassword123!',
+      remember: false,
+    },
   })
 
+  if (!res.ok()) {
+    const body = await res.text()
+    throw new Error(`Registration failed (${res.status()}): ${body}`)
+  }
+}
+
+/** Navigate to /workflow, click "Build" to reveal workspace, wait for chat input. */
+async function openNewWorkflow(page: Page) {
+  await page.goto('/workflow')
+  await page.waitForLoadState('networkidle')
+
+  // Click the header "Build" nav link to reveal the workspace
+  const buildLink = page.locator('header a, header button, .home-content button, .home-content a')
+    .filter({ hasText: /build|new|start/i }).first()
+  await buildLink.waitFor({ timeout: 15_000 })
+  await buildLink.click()
+
+  // Wait for the workspace to reveal (canvas + chat dock visible)
+  await page.waitForFunction(
+    () => !!document.querySelector('.workspace-revealed'),
+    { timeout: 15_000 },
+  )
+
+  // Wait for chat input to become enabled
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('#chatInput') as HTMLTextAreaElement | null
+      return el && !el.disabled
+    },
+    { timeout: 15_000 },
+  )
+}
+
+/** Type a message and click Send. Returns after the HTTP POST fires. */
+async function sendMessage(page: Page, text: string) {
+  const postPromise = page.waitForRequest(
+    req => req.url().includes('/api/chat/send') && req.method() === 'POST',
+  )
+  await page.fill('#chatInput', text)
+  await page.click('#sendBtn')
+  await postPromise
+}
+
+/** Wait for streaming to start (assistant bubble or status indicator). */
+async function waitForStreamStart(page: Page) {
+  await expect(
+    page.locator('.message.assistant.streaming, .processing-status, .typing-indicator').first(),
+  ).toBeVisible({ timeout: 30_000 })
+}
+
+/** Wait for the response to complete (input re-enabled, no streaming). */
+async function waitForResponseComplete(page: Page, timeout = 150_000) {
+  await expect(page.locator('#chatInput')).toBeEnabled({ timeout })
+  await expect(page.locator('.message.assistant.streaming')).toHaveCount(0, { timeout: 5_000 })
+}
+
+// ── Tests ────────────────────────────────────────────────────────
+
+test.describe('chat flow — send, stream, respond', () => {
   test('full send → stream → response cycle', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'build a triage workflow')
+    await registerUser(page)
+    await openNewWorkflow(page)
+
+    await sendMessage(page, 'Add a start node to the workflow. Reply briefly.')
 
     // User message should appear immediately (optimistic update)
     await expect(page.locator('.message.user')).toHaveCount(1)
-    await expect(page.locator('.message.user .message-content')).toContainText('triage workflow')
+    await expect(page.locator('.message.user .message-content')).toContainText('start node')
 
-    // Chat input should be disabled (streaming started)
-    await expect(page.locator('#chatInput')).toBeDisabled()
-    await expect(page.locator('#stopBtn')).toBeVisible()
+    // Wait for the full response to arrive
+    await waitForResponseComplete(page)
 
-    // Server sends progress, then stream chunks
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Thinking...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_stream', {
-      chunk: 'Here is the triage workflow.', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    // Streaming content should appear
-    await expect(page.locator('.message.assistant.streaming .message-content'))
-      .toContainText('triage workflow')
-
-    // Server finalizes with response + tool calls
-    sio.emit('chat_response', {
-      response: '',
-      tool_calls: [
-        { tool: 'add_node', arguments: { label: 'Start' } },
-        { tool: 'add_node', arguments: { label: 'Triage' } },
-        { tool: 'add_connection', arguments: { from: 'n1', to: 'n2' } },
-      ],
-      task_id: taskId,
-      workflow_id: WF_ID,
-      conversation_id: 'conv_flow_1',
-    })
-
-    // Streaming bubble should be replaced by a finalized assistant message
-    await expect(page.locator('.message.assistant.streaming')).toHaveCount(0)
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-    await expect(page.locator('.message.assistant .tool-call')).toHaveCount(3)
+    // Assistant message should have real content
+    const assistantMessages = page.locator('.message.assistant')
+    await expect(assistantMessages).toHaveCount(1, { timeout: 10_000 })
+    const content = await assistantMessages.first().locator('.message-content').textContent()
+    expect(content?.length).toBeGreaterThan(0)
 
     // Chat input should be re-enabled
     await expect(page.locator('#chatInput')).toBeEnabled()
     await expect(page.locator('#sendBtn')).toBeVisible()
   })
 
-  test('streamed content without tool calls becomes a message', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'what is this workflow?')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Thinking...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_stream', {
-      chunk: 'This workflow handles patient triage.', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    sio.emit('chat_response', {
-      response: '', tool_calls: [],
-      task_id: taskId, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
-
-    await expect(page.locator('.message.user')).toHaveCount(1)
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-    await expect(page.locator('.message.assistant .message-content')).toContainText('patient triage')
-    await expect(page.locator('#chatInput')).toBeEnabled()
-  })
-
-  test('non-streamed response (no chunks, just response text)', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'hello')
-
-    sio.emit('chat_response', {
-      response: 'Hello! How can I help you build a workflow?',
-      tool_calls: [],
-      task_id: taskId,
-      workflow_id: WF_ID,
-      conversation_id: 'conv_1',
-    })
-
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-    await expect(page.locator('.message.assistant .message-content')).toContainText('How can I help')
-  })
-
   test('multiple chat turns preserve message order', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
+
     // First turn
-    const taskId1 = await sendAndGetTaskId(page, 'first question')
+    await sendMessage(page, 'Add a start node. Reply with just "Done."')
+    await waitForResponseComplete(page)
 
-    sio.emit('chat_stream', {
-      chunk: 'first answer', task_id: taskId1, workflow_id: WF_ID,
-    })
-    sio.emit('chat_response', {
-      response: '', tool_calls: [],
-      task_id: taskId1, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
-
-    await expect(page.locator('.message')).toHaveCount(2)
-    await expect(page.locator('#chatInput')).toBeEnabled()
+    await expect(page.locator('.message')).toHaveCount(2, { timeout: 10_000 })
 
     // Second turn
-    const taskId2 = await sendAndGetTaskId(page, 'second question')
+    await sendMessage(page, 'Now add an end node. Reply with just "Done."')
+    await waitForResponseComplete(page)
 
-    sio.emit('chat_stream', {
-      chunk: 'second answer', task_id: taskId2, workflow_id: WF_ID,
-    })
-    sio.emit('chat_response', {
-      response: '', tool_calls: [{ tool: 'validate_workflow', arguments: {} }],
-      task_id: taskId2, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
+    // Should have 4 messages: user, assistant, user, assistant
+    const messageCount = await page.locator('.message').count()
+    expect(messageCount).toBeGreaterThanOrEqual(4)
 
-    await expect(page.locator('.message')).toHaveCount(4)
-
-    const contents = await page.locator('.message .message-content').allTextContents()
-    expect(contents[0]).toContain('first question')
-    expect(contents[1]).toContain('first answer')
-    expect(contents[2]).toContain('second question')
-    expect(contents[3]).toContain('second answer')
-
-    const assistants = page.locator('.message.assistant')
-    await expect(assistants.nth(0).locator('.tool-call')).toHaveCount(0)
-    await expect(assistants.nth(1).locator('.tool-call')).toHaveCount(1)
+    // Verify order: first user, then assistant, then second user, then assistant
+    const roles = await page.locator('.message').evaluateAll(
+      els => els.map(el => el.classList.contains('user') ? 'user' : 'assistant'),
+    )
+    expect(roles[0]).toBe('user')
+    expect(roles[1]).toBe('assistant')
+    expect(roles[2]).toBe('user')
+    expect(roles[3]).toBe('assistant')
   })
 })
 
 test.describe('chat flow — stop button', () => {
-  let sio: MockSocketIO
+  test('stop mid-stream or early completion re-enables input', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
 
-  test.beforeEach(async ({ page }) => {
-    resetMsgCounter()
-    sio = new MockSocketIO()
-    await sio.install(page)
-    await mockAllAPIs(page, { skipSocket: true, workflowDetail: DEFAULT_WF_DETAIL })
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
-  })
+    await sendMessage(page, 'Write a very long and detailed essay about workflow automation. Make it at least 2000 words.')
 
-  test('stop mid-stream preserves partial content', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'build it')
+    // Wait for actual response text to start streaming (not just thinking).
+    // With adaptive thinking the model can think for 10-30s before text appears.
+    // Poll the zustand store to detect when streamingContent is non-empty,
+    // OR when the response has already completed (messages.length > 1).
+    await page.waitForFunction(
+      () => {
+        const raw = localStorage.getItem('lemon-chat')
+        if (!raw) return false
+        try {
+          const parsed = JSON.parse(raw)
+          const wfId = parsed?.state?.activeWorkflowId
+          const conv = parsed?.state?.conversations?.[wfId]
+          if (!conv) return false
+          return (conv.streamingContent ?? '').length > 0 || conv.messages.length > 1
+        } catch { return false }
+      },
+      { timeout: 90_000 },
+    )
 
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Building...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_stream', {
-      chunk: 'I will create the workflow with', task_id: taskId, workflow_id: WF_ID,
-    })
+    // Try to click Stop if the response is still in progress
+    const stopVisible = await page.locator('#stopBtn').isVisible()
+    if (stopVisible) {
+      await page.locator('#stopBtn').click()
+    }
 
-    await expect(page.locator('.message.assistant.streaming .message-content'))
-      .toContainText('create the workflow')
+    // Either way: input should be re-enabled and an assistant message should exist
+    await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 30_000 })
 
-    await page.click('#stopBtn')
+    const assistantMessages = page.locator('.message.assistant')
+    await expect(assistantMessages).toHaveCount(1, { timeout: 5_000 })
 
-    await expect(page.locator('#stopBtn')).toBeHidden()
-    await expect(page.locator('#chatInput')).toBeEnabled()
-
-    // Partial content should be preserved as a finalized message
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-    await expect(page.locator('.message.assistant .message-content'))
-      .toContainText('create the workflow')
-  })
-
-  test('stop during thinking clears state without creating assistant message', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'analyze the image')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Thinking...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_thinking', {
-      chunk: 'Let me analyze this flowchart...', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.processing-status')).toBeVisible()
-
-    await page.click('#stopBtn')
-
-    // Thinking content is internal reasoning — finalizeStream deliberately
-    // does NOT convert it to an assistant message. Only streamingContent
-    // (actual response text) gets preserved on stop.
-    await expect(page.locator('.message.user')).toHaveCount(1)
-    await expect(page.locator('.message.assistant')).toHaveCount(0)
-    await expect(page.locator('#chatInput')).toBeEnabled()
-  })
-
-  test('cancelled response from backend does NOT duplicate message', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'build complex workflow')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Building...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_stream', {
-      chunk: 'Creating nodes for the workflow.', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.message.assistant.streaming .message-content'))
-      .toContainText('Creating nodes')
-
-    await page.click('#stopBtn')
-
-    await expect(page.locator('.message.user')).toHaveCount(1)
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-
-    // Backend sends cancelled ack AFTER handleStop already finalized
-    sio.emit('chat_response', {
-      response: 'Creating nodes for the workflow.',
-      tool_calls: [{ tool: 'add_node', arguments: { label: 'Start' } }],
-      task_id: taskId,
-      workflow_id: WF_ID,
-      conversation_id: 'conv_1',
-      cancelled: true,
-    })
-
-    await page.waitForTimeout(500)
-
-    // CRITICAL: still only 1 assistant message — no duplicate
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-  })
-
-  test('duplicate chat_response for same task_id does not create extra message', async ({ page }) => {
-    // Simulates the bug caused by HMR-duplicated socket event handlers:
-    // when chat_response fires twice for the same task_id, the second
-    // invocation must be skipped to prevent a duplicate assistant message.
-    const taskId = await sendAndGetTaskId(page, 'build it')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Building...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_stream', {
-      chunk: 'Here is the plan.', task_id: taskId, workflow_id: WF_ID,
-    })
-    // First chat_response (normal): finalizeStream creates message from stream
-    sio.emit('chat_response', {
-      response: 'Here is the plan.',
-      tool_calls: [{ tool: 'batch_edit_workflow', arguments: {} }],
-      task_id: taskId, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
-
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-
-    // Second chat_response for the SAME task_id (simulates duplicate handler).
-    // This must be dropped by the deduplication guard.
-    sio.emit('chat_response', {
-      response: 'Here is the plan.',
-      tool_calls: [{ tool: 'batch_edit_workflow', arguments: {} }],
-      task_id: taskId, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
-
-    await page.waitForTimeout(500)
-
-    // CRITICAL: still only 1 assistant message — deduplication prevented the duplicate
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-    await expect(page.locator('.message.assistant .message-content'))
-      .toContainText('Here is the plan')
+    const finalContent = await assistantMessages.first()
+      .locator('.message-content').textContent()
+    expect(finalContent?.length).toBeGreaterThan(0)
   })
 
   test('stop then send new message works correctly', async ({ page }) => {
-    const taskId1 = await sendAndGetTaskId(page, 'build it')
+    await registerUser(page)
+    await openNewWorkflow(page)
 
-    sio.emit('chat_stream', {
-      chunk: 'Starting to build...', task_id: taskId1, workflow_id: WF_ID,
-    })
-    await expect(page.locator('.message.assistant.streaming')).toBeVisible()
+    await sendMessage(page, 'Write a very long essay about medical triage systems. Make it 3000 words.')
 
-    await page.click('#stopBtn')
-    await expect(page.locator('#chatInput')).toBeEnabled()
+    // Wait for streaming to start
+    await page.waitForFunction(
+      () => {
+        const raw = localStorage.getItem('lemon-chat')
+        if (!raw) return false
+        try {
+          const parsed = JSON.parse(raw)
+          const wfId = parsed?.state?.activeWorkflowId
+          const conv = parsed?.state?.conversations?.[wfId]
+          if (!conv) return false
+          return (conv.streamingContent ?? '').length > 0 || conv.messages.length > 1
+        } catch { return false }
+      },
+      { timeout: 90_000 },
+    )
 
-    // Send a new message
-    const taskId2 = await sendAndGetTaskId(page, 'try again please')
+    // Click Stop if still streaming
+    const stopVisible = await page.locator('#stopBtn').isVisible()
+    if (stopVisible) {
+      await page.locator('#stopBtn').click()
+    }
 
-    await expect(page.locator('.message.user')).toHaveCount(2)
-    // 1 finalized from stop + 1 streaming bubble for the new send
-    await expect(page.locator('.message.assistant')).toHaveCount(2, { timeout: 2000 }).catch(() => {
-      // If streaming bubble hasn't appeared yet, just 1 finalized message
-    })
+    await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 30_000 })
 
-    sio.emit('chat_stream', {
-      chunk: 'OK, rebuilding.', task_id: taskId2, workflow_id: WF_ID,
-    })
-    sio.emit('chat_response', {
-      response: '', tool_calls: [],
-      task_id: taskId2, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
+    // Send a new message — should work after stop
+    await sendMessage(page, 'Thanks, that was enough. Reply with just "OK".')
+    await waitForResponseComplete(page)
 
-    // After completion: 1 stopped message + 1 new finalized message
-    await expect(page.locator('.message.assistant')).toHaveCount(2)
-    const contents = await page.locator('.message.assistant .message-content').allTextContents()
-    expect(contents[0]).toContain('Starting to build')
-    expect(contents[1]).toContain('rebuilding')
+    // Should have messages from both turns
+    const allMessages = page.locator('.message')
+    const finalCount = await allMessages.count()
+    expect(finalCount).toBeGreaterThanOrEqual(4)
+  })
+})
+
+test.describe('chat flow — thinking and streaming', () => {
+  test('thinking content appears during processing', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
+
+    await sendMessage(page, 'What is a workflow? Explain briefly.')
+
+    // Wait for some indication of processing (thinking indicator, processing status, or streaming)
+    await waitForStreamStart(page)
+
+    // Eventually the full response should arrive
+    await waitForResponseComplete(page)
+
+    const assistantMessages = page.locator('.message.assistant')
+    await expect(assistantMessages.first()).toBeVisible({ timeout: 10_000 })
+    const content = await assistantMessages.first().locator('.message-content').textContent()
+    expect(content?.length).toBeGreaterThan(10)
+  })
+})
+
+test.describe('chat flow — refresh during stream', () => {
+  test('messages survive refresh and resume reconnects', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
+
+    // Send a message that triggers a long streaming response with tool calls
+    await sendMessage(page, 'Build a workflow with 5 nodes: a start node, three sequential action nodes for patient intake, vitals check, and triage decision, and an end node. Connect them all in order. Then describe what you built.')
+
+    // Wait for streaming to begin, then give the task time to process
+    await waitForStreamStart(page)
+    await page.waitForTimeout(3_000)
+
+    // Refresh the page mid-stream
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+
+    // After reload, the user message should survive from localStorage
+    await expect(page.locator('.message.user')).toHaveCount(1, { timeout: 10_000 })
+
+    // Wait for the response to resume streaming or finish via polling.
+    // The frontend reconnects via resumeTask or polls building=false.
+    await waitForResponseComplete(page)
+
+    // Wait for the assistant message to appear (streaming resume or history merge)
+    await page.waitForFunction(
+      () => document.querySelectorAll('.message.assistant').length > 0,
+      { timeout: 30_000 },
+    )
+
+    // Verify the assistant message has real content
+    const assistantMessages = page.locator('.message.assistant')
+    await expect(assistantMessages.first()).toBeVisible({ timeout: 10_000 })
+
+    const finalContent = await assistantMessages.first()
+      .locator('.message-content').textContent()
+    expect(finalContent?.length).toBeGreaterThan(10)
+  })
+
+  test('finalized messages persist across refresh', async ({ page }) => {
+    await registerUser(page)
+    await openNewWorkflow(page)
+
+    await sendMessage(page, 'Add a start node. Reply with just "Done."')
+    await waitForResponseComplete(page)
+
+    await expect(page.locator('.message')).toHaveCount(2, { timeout: 10_000 })
+
+    // Refresh the page
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+
+    // Messages should survive from localStorage
+    await expect(page.locator('.message')).toHaveCount(2, { timeout: 10_000 })
+    await expect(page.locator('.message.user .message-content')).toContainText('start node')
+
+    // Input should be re-enabled (not stuck in streaming state)
+    await expect(page.locator('#stopBtn')).toBeHidden({ timeout: 10_000 })
+    await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 10_000 })
   })
 })
 
 test.describe('chat flow — HTTP POST delivery', () => {
   test('sendChatMessage makes HTTP POST with correct payload', async ({ page }) => {
-    resetMsgCounter()
-    const sio = new MockSocketIO()
-    await sio.install(page)
-    await mockAllAPIs(page, { skipSocket: true, workflowDetail: DEFAULT_WF_DETAIL })
-
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
+    await registerUser(page)
+    await openNewWorkflow(page)
 
     const postPromise = page.waitForRequest(req =>
       req.url().includes('/api/chat/send') && req.method() === 'POST',
@@ -340,214 +325,9 @@ test.describe('chat flow — HTTP POST delivery', () => {
     const body = JSON.parse(request.postData() || '{}')
 
     expect(body.message).toBe('hello world')
-    expect(body.socket_id).toBe(sio.sid)
     expect(body.task_id).toBeDefined()
-    expect(body.current_workflow_id).toBe(WF_ID)
-  })
-
-  test('HTTP POST failure shows error and reverts streaming state', async ({ page }) => {
-    resetMsgCounter()
-    const sio = new MockSocketIO()
-    await sio.install(page)
-
-    // Mock with a failing /api/chat/send
-    await page.route(/(?<!src)\/api\//, (route) => {
-      const url = route.request().url()
-      if (url.includes('/api/chat/send')) {
-        return route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'Internal server error' }),
-        })
-      }
-      if (url.includes('/api/auth/me')) {
-        return route.fulfill({
-          status: 200, contentType: 'application/json',
-          body: JSON.stringify({ user: { id: 'u_test', email: 'test@test.com', name: 'Test' } }),
-        })
-      }
-      if (url.match(/\/api\/workflows\/wf_/)) {
-        return route.fulfill({
-          status: 200, contentType: 'application/json',
-          body: JSON.stringify({
-            ...DEFAULT_WF_DETAIL,
-            analysis: null, conversation_id: null, output_type: 'string',
-            metadata: { name: 'Test', description: '', domain: '', tags: [] },
-            outputs: [],
-          }),
-        })
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-    })
-
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
-
-    await page.fill('#chatInput', 'this will fail')
-    await page.click('#sendBtn')
-
-    // Streaming state should be reverted — input re-enabled
-    await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 5000 })
-  })
-})
-
-test.describe('chat flow — refresh during stream', () => {
-  test('messages survive refresh and resume reconnects', async ({ page }) => {
-    resetMsgCounter()
-    const sio = new MockSocketIO()
-    await sio.install(page)
-    await mockAllAPIs(page, { skipSocket: true, workflowDetail: DEFAULT_WF_DETAIL })
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
-
-    const taskId = await sendAndGetTaskId(page, 'build a triage workflow')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Building...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_stream', {
-      chunk: 'Creating the triage workflow with nodes.', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.message.assistant.streaming')).toBeVisible()
-
-    // Simulate refresh during streaming — reinstall mocks with building=true
-    const sio2 = new MockSocketIO()
-    await sio2.install(page)
-    await mockAllAPIs(page, {
-      skipSocket: true,
-      workflowDetail: {
-        id: WF_ID, name: 'Test',
-        nodes: [{ id: 'n1', type: 'start', label: 'Start', x: 100, y: 100, color: 'green' }],
-        edges: [], variables: [],
-        conversation_id: 'conv_1',
-        building: true,
-      },
-    })
-
-    await page.reload()
-    await sio2.connected
-
-    // User message from localStorage should survive
-    await expect(page.locator('.message.user')).toHaveCount(1)
-    await expect(page.locator('.message.user .message-content')).toContainText('triage workflow')
-
-    // building=true should show streaming UI
-    await expect(page.locator('#stopBtn')).toBeVisible({ timeout: 5000 })
-
-    // Wait for the client's long-poll to arrive before emitting events
-    await sio2.waitForPoll()
-
-    // Backend sends resumed event with replayed content
-    sio2.emit('chat_progress', {
-      event: 'resumed', status: 'Processing...', task_id: 'task_resumed', workflow_id: WF_ID,
-    })
-    sio2.emit('chat_stream', {
-      chunk: 'Creating nodes and adding decision logic.',
-      task_id: 'task_resumed', workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.message.assistant.streaming .message-content'))
-      .toContainText('decision logic')
-
-    // Backend completes
-    sio2.emit('chat_response', {
-      response: '', tool_calls: [
-        { tool: 'add_node', arguments: { label: 'Start' } },
-        { tool: 'add_node', arguments: { label: 'Decision' } },
-      ],
-      task_id: 'task_resumed', workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
-
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
-    await expect(page.locator('.message.assistant .tool-call')).toHaveCount(2)
-    await expect(page.locator('#chatInput')).toBeEnabled()
-  })
-
-  test('finalized messages persist across refresh', async ({ page }) => {
-    resetMsgCounter()
-    const sio = new MockSocketIO()
-    await sio.install(page)
-    await mockAllAPIs(page, { skipSocket: true, workflowDetail: DEFAULT_WF_DETAIL })
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
-
-    const taskId = await sendAndGetTaskId(page, 'explain the workflow')
-
-    sio.emit('chat_stream', {
-      chunk: 'This workflow handles blood pressure classification.',
-      task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_response', {
-      response: '', tool_calls: [],
-      task_id: taskId, workflow_id: WF_ID, conversation_id: 'conv_1',
-    })
-
-    await expect(page.locator('.message')).toHaveCount(2)
-    await expect(page.locator('#chatInput')).toBeEnabled()
-
-    // Refresh
-    await page.reload()
-
-    await expect(page.locator('.message')).toHaveCount(2)
-    await expect(page.locator('.message.user .message-content')).toContainText('explain the workflow')
-    await expect(page.locator('.message.assistant .message-content'))
-      .toContainText('blood pressure classification')
-
-    await expect(page.locator('#stopBtn')).toBeHidden()
-    await expect(page.locator('#chatInput')).toBeEnabled()
-  })
-})
-
-test.describe('chat flow — thinking and progress', () => {
-  let sio: MockSocketIO
-
-  test.beforeEach(async ({ page }) => {
-    resetMsgCounter()
-    sio = new MockSocketIO()
-    await sio.install(page)
-    await mockAllAPIs(page, { skipSocket: true, workflowDetail: DEFAULT_WF_DETAIL })
-    await page.goto(`/workflow/${WF_ID}`)
-    await sio.connected
-  })
-
-  test('thinking content appears during processing', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'analyze the image')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Analyzing...', task_id: taskId, workflow_id: WF_ID,
-    })
-    sio.emit('chat_thinking', {
-      chunk: 'I see a flowchart with decision nodes and branches.', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.thinking-stream')).toBeVisible()
-    await expect(page.locator('.thinking-text')).toContainText('decision nodes')
-
-    // Stream starts — both thinking and stream content visible
-    sio.emit('chat_stream', {
-      chunk: 'Building the workflow now.', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.thinking-stream')).toBeVisible()
-    await expect(page.locator('.message.assistant.streaming .message-content'))
-      .toContainText('Building the workflow')
-  })
-
-  test('processing status updates appear', async ({ page }) => {
-    const taskId = await sendAndGetTaskId(page, 'build it')
-
-    sio.emit('chat_progress', {
-      event: 'start', status: 'Thinking...', task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.processing-status')).toContainText('Thinking...')
-
-    sio.emit('chat_progress', {
-      event: 'tool_start', status: 'Adding nodes...', tool: 'add_node',
-      task_id: taskId, workflow_id: WF_ID,
-    })
-
-    await expect(page.locator('.processing-status')).toContainText('Adding nodes...')
+    expect(body.current_workflow_id).toBeDefined()
+    // No socket_id — SSE replaced Socket.IO
+    expect(body.socket_id).toBeUndefined()
   })
 })

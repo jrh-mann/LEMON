@@ -56,7 +56,7 @@ async function openNewWorkflow(page: Page) {
     { timeout: 15_000 },
   )
 
-  // Wait for Socket.IO to connect and chat input to become enabled
+  // Wait for chat input to become enabled
   await page.waitForFunction(
     () => {
       const el = document.querySelector('#chatInput') as HTMLTextAreaElement | null

@@ -1,18 +1,17 @@
 /**
- * Shared E2E test helpers — API mocking, mock Socket.IO, types.
+ * Shared E2E test helpers — API mocking, localStorage seeding, types.
  *
  * Two modes of testing:
  *
  * 1. **Static rendering tests** — seed localStorage, mock all APIs, verify
  *    that components render the seeded state correctly. Use buildChatStorage()
- *    + seedAndLoad(). Socket.IO is dead (default mockAllAPIs behavior).
+ *    + seedAndLoad(). No backend needed.
  *
- * 2. **Integration flow tests** — use MockSocketIO to give the frontend a
- *    real socket connection. Type in the chat input, click send, inject
- *    socket events from the "server", and verify the full state management
- *    pipeline: handleSend → HTTP POST → socket events → store → UI.
+ * 2. **Integration flow tests** — hit the real backend. Register a user,
+ *    open a workflow, send messages via the chat input, and verify real
+ *    SSE streaming responses arrive and update the UI.
  */
-import type { Page, Route } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -105,153 +104,6 @@ export interface WorkflowSummaryPayload {
   building?: boolean
 }
 
-// ── Mock Socket.IO Server ───────────────────────────────────────
-//
-// Speaks the real engine.io v4 / socket.io v4 polling protocol so
-// the frontend's socket.io-client actually connects. Tests call
-// sio.emit() to inject events; the frontend processes them through
-// the same chatHandlers / agentHandlers code that runs in production.
-
-export class MockSocketIO {
-  /** Session ID used for the engine.io and namespace connection. */
-  readonly sid: string
-  /** Resolves when the client has completed the socket handshake. */
-  readonly connected: Promise<void>
-
-  private _connectedResolve: (() => void) | null = null
-  private _handshakeComplete = false
-  private _packets: string[] = []
-  /** Pending long-poll: route + resolver to unblock the handler. */
-  private _pendingPoll: { route: Route; resolve: () => void } | null = null
-
-  constructor() {
-    this.sid = `test_${Math.random().toString(36).slice(2, 10)}`
-    this.connected = new Promise(resolve => { this._connectedResolve = resolve })
-  }
-
-  /**
-   * Install the mock Socket.IO polling transport on the page.
-   * Must be called BEFORE page.goto() and BEFORE mockAllAPIs().
-   * Pass `skipSocket: true` to mockAllAPIs so it doesn't clobber this.
-   *
-   * Long-poll handling: When no packets are queued, the route handler
-   * returns a Promise that stays pending until emit() pushes data.
-   * This keeps Playwright's route handler "alive" so we can call
-   * route.fulfill() later without it being considered already handled.
-   */
-  async install(page: Page) {
-    await page.route(/\/socket\.io\//, (route) => {
-      const url = route.request().url()
-      const method = route.request().method()
-      const hasSid = url.includes('sid=')
-      // Check if the sid in the URL belongs to this mock instance.
-      // After page.reload(), stale requests from the old connection may
-      // arrive with a different sid — pass those to the next handler.
-      const isOurSid = hasSid && url.includes(`sid=${this.sid}`)
-      if (hasSid && !isOurSid) {
-        return route.fallback()
-      }
-
-      // Engine.IO open handshake (first GET, no sid)
-      if (method === 'GET' && !hasSid) {
-        return route.fulfill({
-          status: 200,
-          contentType: 'text/plain',
-          body: `0${JSON.stringify({
-            sid: this.sid,
-            upgrades: [],
-            pingInterval: 25000,
-            pingTimeout: 60000,
-            maxPayload: 1000000,
-          })}`,
-        })
-      }
-
-      // Client POST (sends namespace CONNECT packet, pong, etc.)
-      if (method === 'POST') {
-        return route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' })
-      }
-
-      // Client GET with sid — polling for data
-      if (method === 'GET' && hasSid) {
-        if (!this._handshakeComplete) {
-          // First poll after open: return Socket.IO namespace connect ack.
-          // This makes socket.connected=true and socket.id=sid.
-          this._handshakeComplete = true
-          this._connectedResolve?.()
-          return route.fulfill({
-            status: 200,
-            contentType: 'text/plain',
-            body: `40{"sid":"${this.sid}"}`,
-          })
-        }
-
-        // Subsequent polls: flush queued packets or hold for long-polling.
-        if (this._packets.length > 0) {
-          return this._flush(route)
-        }
-
-        // No data yet — return a Promise that keeps the handler alive.
-        // emit() will resolve it when data is available, triggering the flush.
-        return new Promise<void>((resolve) => {
-          this._pendingPoll = { route, resolve }
-        })
-      }
-
-      // Fallback
-      route.fulfill({ status: 200, contentType: 'text/plain', body: '' })
-    })
-  }
-
-  /**
-   * Wait until a long-poll GET is waiting (i.e. the client is ready
-   * to receive events). Useful after page reload / socket reconnect.
-   */
-  async waitForPoll(timeoutMs = 5000): Promise<void> {
-    if (this._pendingPoll) return
-    const start = Date.now()
-    while (!this._pendingPoll && Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, 50))
-    }
-    if (!this._pendingPoll) throw new Error('MockSocketIO: no poll arrived within timeout')
-  }
-
-  /**
-   * Emit a Socket.IO event to the connected client.
-   * Uses microtask batching so multiple synchronous emit() calls
-   * are delivered together in a single poll response.
-   */
-  emit(event: string, data: unknown) {
-    // Socket.IO packet: 4 = engine.io MESSAGE, 2 = socket.io EVENT
-    this._packets.push(`42${JSON.stringify([event, data])}`)
-    this._scheduleFlush()
-  }
-
-  private _flushScheduled = false
-
-  /** Schedule a microtask to flush all queued packets to the pending poll. */
-  private _scheduleFlush() {
-    if (this._flushScheduled) return
-    if (!this._pendingPoll) return // No poll waiting — packets queue until next poll arrives
-    this._flushScheduled = true
-    Promise.resolve().then(async () => {
-      this._flushScheduled = false
-      if (this._pendingPoll && this._packets.length > 0) {
-        const { route, resolve } = this._pendingPoll
-        this._pendingPoll = null
-        await this._flush(route) // Wait for Playwright to deliver the response
-        resolve() // Then unblock the route handler
-      }
-    })
-  }
-
-  private _flush(route: Route): Promise<void> {
-    // engine.io v4 separates multiple packets with \x1e (record separator)
-    const body = this._packets.splice(0).join('\x1e')
-    return route.fulfill({ status: 200, contentType: 'text/plain', body })
-  }
-}
-
 // ── API Mocking ──────────────────────────────────────────────────
 
 export interface MockAPIOverrides {
@@ -270,9 +122,6 @@ export interface MockAPIOverrides {
   }
   /** Conversation history: GET /api/chat/:id */
   chatMessages?: MessagePayload[]
-  /** When true, don't install a dead Socket.IO mock.
-   *  Use this with MockSocketIO for integration tests. */
-  skipSocket?: boolean
   /** Callback for POST /api/chat/send — receives the parsed body.
    *  Defaults to returning {ok: true}. */
   onChatSend?: (body: Record<string, unknown>) => void
@@ -368,13 +217,6 @@ export async function mockAllAPIs(page: Page, overrides?: MockAPIOverrides) {
       body: '{}',
     })
   })
-
-  // Socket.IO polling — dead by default unless skipSocket is set
-  if (!overrides?.skipSocket) {
-    await page.route(/\/socket\.io\//, (route) =>
-      route.fulfill({ status: 200, contentType: 'text/plain', body: '' }),
-    )
-  }
 }
 
 // ── localStorage Seeding ─────────────────────────────────────────
@@ -459,7 +301,7 @@ export function resetMsgCounter() {
  * Fill the chat input, click Send, and return the task_id that the
  * frontend generated. Uses Playwright's waitForRequest to capture
  * the HTTP POST body so the test can include the correct task_id
- * in subsequent socket events.
+ * in subsequent assertions.
  */
 export async function sendAndGetTaskId(page: Page, text: string): Promise<string> {
   const postPromise = page.waitForRequest(req =>

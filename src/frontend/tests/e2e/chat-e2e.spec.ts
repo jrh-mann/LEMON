@@ -70,10 +70,10 @@ async function waitForResponseComplete(page: Page, timeout = 90_000) {
 
 test.describe('chat E2E — live backend', () => {
   test('simple text response arrives via streaming', async ({ page }) => {
-    // Capture socket events for diagnostics
-    const sioLogs: string[] = []
+    // Capture SSE events for diagnostics
+    const sseLogs: string[] = []
     page.on('console', msg => {
-      if (msg.text().includes('[SIO]')) sioLogs.push(msg.text())
+      if (msg.text().includes('[SSE]')) sseLogs.push(msg.text())
     })
 
     await registerUser(page)
