@@ -141,7 +141,9 @@ class ConversationStore:
                         history.append({"role": "user", "content": content})
                 elif etype == "assistant_response":
                     content = entry.get("content", "")
-                    if content:
+                    # Keep assistant messages with content OR pending tool calls
+                    # (ask_question can produce empty-content with tools)
+                    if content or pending_tool_calls:
                         msg: dict = {"role": "assistant", "content": content}
                         if pending_tool_calls:
                             msg["tool_calls_meta"] = pending_tool_calls

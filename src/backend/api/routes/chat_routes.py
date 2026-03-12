@@ -339,7 +339,9 @@ def register_chat_routes(
                     pending_assistant = None
                 elif role == "assistant":
                     tc = msg.get("tool_calls_meta", [])
-                    if content:
+                    # Keep assistant messages with content OR tool_calls_meta
+                    # (ask_question can produce empty-content messages with tools)
+                    if content or tc:
                         pending_assistant = {
                             "id": f"{conversation_id}_{idx}",
                             "role": "assistant",

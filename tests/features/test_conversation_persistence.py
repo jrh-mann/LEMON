@@ -119,6 +119,35 @@ class TestConversationReload:
         assert tc[1]["tool"] == "add_node"
         assert tc[1]["arguments"] == {"label": "End"}
 
+    def test_reload_preserves_empty_content_with_tools(self, repo_root, conversation_logger):
+        """Assistant messages with empty content but tool calls are preserved.
+
+        The ask_question tool can produce turns where the LLM returns only
+        tool calls with no text. These must not be dropped on reload.
+        """
+        conv_id = "conv_test_empty_content"
+        conversation_logger.ensure_conversation(
+            conv_id, user_id="u1", workflow_id="wf1", model="test",
+        )
+        conversation_logger.log_user_message(conv_id, "Tell me about this")
+        conversation_logger.log_tool_call(
+            conv_id, "ask_question", {"questions": []},
+            {"success": True, "action": "question_asked"}, True, 10.0,
+        )
+        # Empty content — LLM only returned tool calls, no text
+        conversation_logger.log_assistant_response(conv_id, "")
+
+        store = ConversationStore(repo_root, conversation_logger=conversation_logger)
+        convo = store.get_or_create(conv_id)
+
+        history = convo.orchestrator.conversation.history
+        assert len(history) == 2  # user + assistant (not dropped!)
+        assistant_msg = history[1]
+        assert assistant_msg["role"] == "assistant"
+        assert "tool_calls_meta" in assistant_msg
+        assert len(assistant_msg["tool_calls_meta"]) == 1
+        assert assistant_msg["tool_calls_meta"][0]["tool"] == "ask_question"
+
     def test_reload_survives_logger_error(self, repo_root, conversation_logger):
         """If the logger throws during reload, the conversation still works (empty history)."""
         store = ConversationStore(repo_root, conversation_logger=conversation_logger)
