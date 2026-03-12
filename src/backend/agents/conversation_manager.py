@@ -23,7 +23,7 @@ class ConversationManager:
     """
 
     # Compact when input tokens exceed this % of the context limit.
-    _COMPACTION_THRESHOLD_PCT = 70
+    _COMPACTION_THRESHOLD_PCT = 90
     # Rough chars-per-token estimate for pre-flight token counting.
     _CHARS_PER_TOKEN = 4
 

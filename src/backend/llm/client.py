@@ -92,8 +92,16 @@ def call_llm(
             # Specific tool name — force the model to call it
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
     if thinking:
-        payload["thinking"] = {"type": "adaptive"}
-    if effort:
+        model = payload["model"]
+        # Opus 4.6 / Sonnet 4.6: adaptive thinking (no budget_tokens)
+        # Older models (Sonnet 4.5, etc.): explicit budget_tokens required
+        if "opus-4-6" in model or "sonnet-4-6" in model:
+            payload["thinking"] = {"type": "adaptive"}
+        else:
+            payload["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+    # effort parameter only supported on Opus 4.5+, Opus 4.6, Sonnet 4.6
+    model = payload["model"]
+    if effort and ("opus" in model or "sonnet-4-6" in model):
         payload["output_config"] = {"effort": effort}
 
     # Text accumulation for on_delta streaming callback and cancel recovery.

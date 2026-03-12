@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Run the LEMON API server with uvicorn."""
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import logging
 import os
 

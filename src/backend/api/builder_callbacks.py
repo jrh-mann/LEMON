@@ -171,6 +171,45 @@ class BackgroundBuilderCallbacks:
         if self.cancelled:
             return
 
+    def swap_sink(self, new_sink: EventSink) -> None:
+        """Swap the event sink for resume after page refresh.
+
+        Replays accumulated thinking + stream content to the new sink,
+        then routes all future events through it. Closes the old sink.
+        """
+        # Signal reconnection
+        new_sink.push("chat_progress", {
+            "event": "resumed",
+            "status": "Processing...",
+            "task_id": self.task_id or "",
+            "workflow_id": self.workflow_id,
+        })
+        # Replay accumulated thinking
+        if self.thinking_chunks:
+            new_sink.push("chat_thinking", {
+                "chunk": "".join(self.thinking_chunks),
+                "task_id": self.task_id or "",
+                "workflow_id": self.workflow_id,
+            })
+        # Replay accumulated stream content
+        if self.stream_buffer:
+            new_sink.push("chat_stream", {
+                "chunk": self.stream_buffer,
+                "task_id": self.task_id or "",
+                "workflow_id": self.workflow_id,
+            })
+        # Replay last workflow state so canvas syncs
+        if self.orchestrator is not None:
+            new_sink.push("workflow_state_updated", {
+                "workflow_id": self.workflow_id,
+                "workflow": self.orchestrator.current_workflow,
+                "analysis": self.orchestrator.workflow_analysis,
+            })
+        # Swap: close old sink, install new one
+        old_sink = self.sink
+        self.sink = new_sink
+        old_sink.close()
+
     def emit_response(self, response_text: str) -> None:
         """Emit chat_response with workflow_id tag — signals build complete."""
         # Flush any remaining tool summaries before the final response
