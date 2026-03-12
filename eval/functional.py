@@ -249,8 +249,8 @@ def _translate_inputs(
 ) -> Dict[str, Any]:
     """Translate golden-keyed inputs to extracted variable IDs.
 
-    Also provides default values for extracted variables that don't
-    exist in the golden (extra variables the LLM invented).
+    Returns the base translated dict WITHOUT extra variable defaults.
+    Extra variables are handled separately by _extra_var_combos().
     """
     translated: Dict[str, Any] = {}
 
@@ -260,29 +260,56 @@ def _translate_inputs(
         if e_id:
             translated[e_id] = value
 
-    # Fill in defaults for extracted variables not covered by the golden.
+    return translated
+
+
+def _extra_var_combos(
+    var_map: Dict[str, str],
+    extracted: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Generate all value combinations for extracted variables that don't
+    exist in the golden (extra variables the LLM invented).
+
+    Returns a list of dicts, each mapping extra_var_id → value.
+    If there are no extra variables, returns [{}] (one empty combo).
+    Used to give the extracted workflow the benefit of the doubt —
+    we try all combos and count a test case as matching if ANY works.
+    """
     mapped_e_ids = set(var_map.values())
+    extra_vars: Dict[str, List[Any]] = {}
+
     for var in extracted.get("variables", []):
         var_id = var["id"]
-        if var_id in translated or var_id in mapped_e_ids:
+        if var_id in mapped_e_ids:
             continue
-        # Provide a type-appropriate default so execution doesn't fail
-        # on missing inputs.
-        var_type = var.get("type", "string")
         source = var.get("source", "input")
         if source not in ("input",):
             continue  # Skip derived variables.
+        var_type = var.get("type", "string")
         if var_type == "bool":
-            translated[var_id] = False
+            extra_vars[var_id] = [True, False]
         elif var_type == "number":
-            translated[var_id] = 0
+            # Use 0 as default — extra number vars are rare and usually
+            # don't affect routing as strongly as enums/bools.
+            extra_vars[var_id] = [0]
         elif var_type == "enum":
             enum_vals = var.get("enum_values", [])
-            translated[var_id] = enum_vals[0] if enum_vals else "unknown"
+            extra_vars[var_id] = list(enum_vals) if enum_vals else ["unknown"]
         else:
-            translated[var_id] = ""
+            extra_vars[var_id] = [""]
 
-    return translated
+    if not extra_vars:
+        return [{}]
+
+    # Combinatorial product of extra variables (small: typically 1-3 vars).
+    var_ids = list(extra_vars.keys())
+    value_lists = [extra_vars[vid] for vid in var_ids]
+    combos = list(itertools.product(*value_lists))
+
+    return [
+        {var_ids[i]: combo[i] for i in range(len(var_ids))}
+        for combo in combos
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -432,8 +459,12 @@ def functional_score(
         )
 
     # Pre-compute mappings between golden and extracted.
-    end_map = _build_end_node_map(golden, extracted)
     var_map = _build_variable_map(golden, extracted)
+
+    # Generate all value combinations for extra variables (ones the
+    # extracted workflow has that the golden doesn't). We try all combos
+    # and count a test case as matched if ANY combo routes correctly.
+    extra_combos = _extra_var_combos(var_map, extracted)
 
     cases_tested = 0
     cases_matched = 0
@@ -443,9 +474,6 @@ def functional_score(
 
     for case in test_cases:
         g_end_id, g_end_label, g_ok = _execute_workflow(golden, case)
-        # Translate golden variable IDs to extracted IDs before executing.
-        e_case = _translate_inputs(case, var_map, extracted)
-        e_end_id, e_end_label, e_ok = _execute_workflow(extracted, e_case)
 
         if not g_ok:
             # Golden itself failed — exclude from scoring.
@@ -455,27 +483,47 @@ def functional_score(
 
         cases_tested += 1
 
-        if not e_ok:
-            # Extracted failed but golden succeeded — counts as mismatch.
+        # Translate golden variable IDs to extracted IDs.
+        e_base = _translate_inputs(case, var_map, extracted)
+
+        # Try all combinations of extra variable values. Count as match
+        # if ANY combination routes to a semantically equivalent end node.
+        best_match = False
+        best_e_label: Optional[str] = None
+        any_succeeded = False
+
+        for extra in extra_combos:
+            e_case = {**e_base, **extra}
+            e_end_id, e_end_label, e_ok = _execute_workflow(extracted, e_case)
+
+            if not e_ok:
+                continue
+            any_succeeded = True
+            best_e_label = e_end_label
+
+            # Compare end node labels (not mapped IDs) — golden workflows
+            # often duplicate end nodes (e.g. 4 "Send LLTA" nodes for
+            # different pathways), so strict ID matching is too harsh.
+            label_sim = _fuzzy_ratio(g_end_label or "", e_end_label or "")
+            if label_sim >= _END_NODE_MATCH_THRESHOLD:
+                best_match = True
+                best_e_label = e_end_label
+                break  # Found a match, no need to try more combos.
+
+        if best_match:
+            cases_matched += 1
+            details.append(
+                f"  OK    both→{g_end_label} | inputs={_compact_inputs(case)}"
+            )
+        elif not any_succeeded:
             extracted_failed += 1
             details.append(
                 f"  FAIL  extracted failed | golden→{g_end_label} | "
                 f"inputs={_compact_inputs(case)}"
             )
-            continue
-
-        # Both succeeded — check if they reached the same (mapped) end node.
-        # The extracted end node should map to the same golden end node.
-        expected_extracted_id = end_map.get(g_end_id)
-
-        if expected_extracted_id and e_end_id == expected_extracted_id:
-            cases_matched += 1
-            details.append(
-                f"  OK    both→{g_end_label} | inputs={_compact_inputs(case)}"
-            )
         else:
             details.append(
-                f"  FAIL  golden→{g_end_label} vs extracted→{e_end_label} | "
+                f"  FAIL  golden→{g_end_label} vs extracted→{best_e_label} | "
                 f"inputs={_compact_inputs(case)}"
             )
 

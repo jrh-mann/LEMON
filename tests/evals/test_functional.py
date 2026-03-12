@@ -10,6 +10,7 @@ from eval.functional import (
     _build_end_node_map,
     _build_variable_map,
     _execute_workflow,
+    _extra_var_combos,
     _extract_thresholds,
     _flatten_conditions,
     _generate_test_cases,
@@ -256,8 +257,9 @@ class TestTranslateInputs:
         assert translated["v_001"] is True
         assert translated["v_002"] == 15
 
-    def test_fills_defaults_for_extra_vars(self):
-        """Extra extracted variables not in golden should get default values."""
+    def test_extra_vars_not_in_translate(self):
+        """Extra variables are NOT included in _translate_inputs — they're
+        handled separately by _extra_var_combos."""
         extracted = {
             "variables": [
                 {"id": "v_001", "name": "Has A", "type": "bool", "source": "input"},
@@ -268,7 +270,39 @@ class TestTranslateInputs:
         case = {"var_a_bool": True}
         translated = _translate_inputs(case, var_map, extracted)
         assert translated["v_001"] is True
-        assert translated["v_extra"] == 0  # Default for unmapped number.
+        assert "v_extra" not in translated  # Handled by _extra_var_combos.
+
+
+class TestExtraVarCombos:
+    def test_no_extra_vars(self):
+        """No extra variables → single empty combo."""
+        var_map = {"g1": "e1"}
+        extracted = {"variables": [{"id": "e1", "name": "X", "type": "bool", "source": "input"}]}
+        combos = _extra_var_combos(var_map, extracted)
+        assert combos == [{}]
+
+    def test_extra_bool(self):
+        """Extra bool variable → [True, False] combos."""
+        var_map = {}  # No golden vars mapped.
+        extracted = {"variables": [
+            {"id": "v_extra", "name": "Extra", "type": "bool", "source": "input"},
+        ]}
+        combos = _extra_var_combos(var_map, extracted)
+        assert len(combos) == 2
+        values = {c["v_extra"] for c in combos}
+        assert values == {True, False}
+
+    def test_extra_enum(self):
+        """Extra enum variable → one combo per enum value."""
+        var_map = {}
+        extracted = {"variables": [
+            {"id": "v_extra", "name": "Extra", "type": "enum", "source": "input",
+             "enum_values": ["A", "B", "C"]},
+        ]}
+        combos = _extra_var_combos(var_map, extracted)
+        assert len(combos) == 3
+        values = {c["v_extra"] for c in combos}
+        assert values == {"A", "B", "C"}
 
 
 # ---------------------------------------------------------------------------
