@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import anthropic
-import httpx
 
 from .anthropic import (
     _parse_anthropic_response,
@@ -29,12 +28,6 @@ from ..utils.tokens import record_token_usage
 from ..utils.cancellation import CancellationError
 
 logger = logging.getLogger("backend.llm")
-
-_MAX_RETRIES = 3
-_RETRY_BACKOFF = [2, 5]
-# Rate limit retries use longer delays — the API typically says "wait 60s"
-_RATE_LIMIT_MAX_RETRIES = 3
-_RATE_LIMIT_BACKOFF = [30, 60, 60]
 
 
 @dataclass
@@ -107,30 +100,24 @@ def call_llm(
     # Tool calls come from get_final_message() — no streaming assembly needed.
     text_chunks: List[str] = []
 
-    def _stream_events() -> Any:
-        """Stream the API response, forwarding text/thinking deltas."""
-        with client.messages.stream(**payload) as stream:
-            for event in stream:
-                if should_cancel and should_cancel():
-                    _close_stream(stream)
-                    raise CancellationError("LLM streaming cancelled.")
-                _handle_stream_event(
-                    event, text_chunks,
-                    on_delta=on_delta, on_thinking=on_thinking,
-                )
+    start = time.perf_counter()
+    request_id = uuid.uuid4().hex
+
+    # Stream the API response, forwarding text/thinking deltas.
+    # SDK handles retries for 429/5xx automatically (max_retries=2).
+    with client.messages.stream(**payload) as stream:
+        for event in stream:
             if should_cancel and should_cancel():
                 _close_stream(stream)
                 raise CancellationError("LLM streaming cancelled.")
-            return stream.get_final_message()
-
-    def _on_retry(attempt: int, msg: str) -> None:
-        text_chunks.clear()
-
-    start = time.perf_counter()
-    request_id = uuid.uuid4().hex
-    message = _retry_api_call(
-        _stream_events, on_retry=_on_retry, should_cancel=should_cancel,
-    )
+            _handle_stream_event(
+                event, text_chunks,
+                on_delta=on_delta, on_thinking=on_thinking,
+            )
+        if should_cancel and should_cancel():
+            _close_stream(stream)
+            raise CancellationError("LLM streaming cancelled.")
+        message = stream.get_final_message()
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
 
@@ -194,103 +181,6 @@ def _handle_stream_event(
             text_chunks.append(delta.text)
             if on_delta:
                 on_delta(delta.text)
-
-
-class LLMQuotaError(RuntimeError):
-    """Raised when the API quota or rate limit is exceeded after retries.
-
-    Provides a user-friendly message instead of raw API error text.
-    """
-
-
-def _is_quota_error(exc: Exception) -> bool:
-    """Check if an exception is a hard quota/rate limit error."""
-    return isinstance(exc, anthropic.RateLimitError)
-
-
-def _retry_api_call(
-    fn: Callable[[], Any],
-    *,
-    on_retry: Optional[Callable[[int, str], None]] = None,
-    should_cancel: Optional[Callable[[], bool]] = None,
-) -> Any:
-    """Retry an API call on transient errors including rate limits.
-
-    Rate limit errors (429) are retried with longer backoff (30-60s) since
-    the API typically recovers within a minute. Other transient errors
-    (timeout, connection, server) use shorter backoff (2-5s).
-    """
-    rate_limit_attempts = 0
-
-    for attempt in range(_MAX_RETRIES):
-        try:
-            return fn()
-        except CancellationError:
-            raise
-        except Exception as exc:
-            # Rate limit: retryable with longer backoff
-            if _is_quota_error(exc):
-                rate_limit_attempts += 1
-                if rate_limit_attempts >= _RATE_LIMIT_MAX_RETRIES:
-                    logger.warning(
-                        "API rate limit exceeded after %d retries: %s",
-                        rate_limit_attempts, exc,
-                    )
-                    raise LLMQuotaError(
-                        "API rate limit exceeded after retrying. "
-                        "Please wait a moment and try again."
-                    ) from exc
-                delay = _RATE_LIMIT_BACKOFF[
-                    min(rate_limit_attempts - 1, len(_RATE_LIMIT_BACKOFF) - 1)
-                ]
-                logger.warning(
-                    "Rate limited (attempt %d/%d), retrying in %ds",
-                    rate_limit_attempts, _RATE_LIMIT_MAX_RETRIES, delay,
-                )
-                if on_retry:
-                    on_retry(attempt + 1, f"Rate limited, retrying in {delay}s")
-                # Check for cancellation during rate limit wait so user
-                # isn't stuck waiting 60s with no way to abort.
-                _interruptible_sleep(delay, should_cancel)
-                continue
-
-            # Other transient errors: timeout, connection, server.
-            # With max_retries=0 on the SDK client, raw httpx transport
-            # exceptions (ConnectTimeout, ReadTimeout, etc.) propagate
-            # unwrapped — catch those too so we actually retry.
-            is_retryable = isinstance(
-                exc,
-                (anthropic.APITimeoutError, anthropic.APIConnectionError,
-                 anthropic.InternalServerError,
-                 httpx.TimeoutException, httpx.ConnectError),
-            )
-            if not is_retryable or attempt == _MAX_RETRIES - 1:
-                raise
-            delay = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
-            exc_name = type(exc).__name__
-            logger.warning(
-                "API call failed (attempt %d/%d), retrying in %ds: %s: %s",
-                attempt + 1, _MAX_RETRIES, delay, exc_name, exc,
-            )
-            if on_retry:
-                on_retry(attempt + 1, f"{exc_name}: {exc}")
-            _interruptible_sleep(delay, should_cancel)
-    raise RuntimeError("Retry loop exited unexpectedly")
-
-
-def _interruptible_sleep(
-    seconds: float,
-    should_cancel: Optional[Callable[[], bool]] = None,
-) -> None:
-    """Sleep in 1-second increments, checking for cancellation each tick."""
-    for _ in range(int(seconds)):
-        if should_cancel and should_cancel():
-            raise CancellationError("Cancelled during retry backoff.")
-        time.sleep(1)
-    # Sleep any fractional remainder
-    remainder = seconds - int(seconds)
-    if remainder > 0:
-        time.sleep(remainder)
 
 
 def _close_stream(stream: Any) -> None:

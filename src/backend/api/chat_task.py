@@ -19,6 +19,8 @@ from threading import Event
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+import anthropic
+
 from .common import utc_now
 from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls, summarize_response
@@ -609,8 +611,7 @@ class ChatTask:
                 turn.fail(str(exc))
                 if self.convo:
                     turn.commit(self.convo.orchestrator.conversation)
-            from ..llm.client import LLMQuotaError
-            if isinstance(exc, LLMQuotaError):
+            if isinstance(exc, anthropic.RateLimitError):
                 self._emit("agent_error", {
                     "task_id": self.task_id,
                     "error": str(exc),

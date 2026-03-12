@@ -170,16 +170,14 @@ class TestTokenLogRotation:
 # ---------------------------------------------------------------------------
 
 class TestRetryStreamPollution:
-    """Verify retry notifications don't call on_delta."""
+    """Verify retry notifications don't pollute the user stream."""
 
-    def test_retry_callback_logs_instead_of_streaming(self):
-        """Retry notifications use logger.warning, not on_delta."""
+    def test_no_retry_text_injected_into_stream(self):
+        """SDK handles retries internally — no retry text in on_delta."""
         import inspect
         from src.backend.llm import client
 
         source = inspect.getsource(client)
-        # _retry_api_call uses logger.warning for retries
-        assert "def _retry_api_call" in source
         # The bad pattern (injecting retry text into the user stream) must be gone
         assert 'on_delta(f"\\n\\n*Retrying' not in source
 
