@@ -29,8 +29,7 @@ def _run_subworkflow_updater(
     workflow_store: Any,
     user_id: str,
     build_history: list,
-    ws_registry: Any,
-    conn_id: str,
+    sink: Any,
 ) -> None:
     """Background thread: update a subworkflow using a fresh orchestrator
     pre-loaded with the previous build conversation.
@@ -42,18 +41,17 @@ def _run_subworkflow_updater(
         workflow_store: WorkflowStore instance for DB access
         user_id: Owner user ID
         build_history: Previous builder conversation to pre-load
-        ws_registry: ConnectionRegistry for emitting events (can be None)
-        conn_id: Connection ID for emitting events (can be None)
+        sink: EventSink for emitting SSE events to the parent chat stream
     """
     # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
     from ...api.builder_callbacks import BackgroundBuilderCallbacks
-    from ...api.ws_chat import _task_registry
+    from ...api.task_registry import task_registry as _task_registry
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
     # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
     bg_task_id = f"bg_{uuid4().hex[:8]}"
     cb = BackgroundBuilderCallbacks(
-        ws_registry, conn_id, workflow_id,
+        sink, workflow_id,
         user_id=user_id, task_id=bg_task_id,
     )
     response_text = ""
@@ -71,8 +69,7 @@ def _run_subworkflow_updater(
             orchestrator.user_id = user_id
             orchestrator.current_workflow_id = workflow_id
             orchestrator.repo_root = repo_root
-            orchestrator.ws_registry = ws_registry
-            orchestrator.conn_id = conn_id
+            orchestrator.event_sink = sink
             cb.orchestrator = orchestrator
 
             # Pre-load the previous builder's conversation so the LLM has
@@ -139,8 +136,8 @@ def _run_subworkflow_updater(
                     workflow_id, inner_exc,
                 )
             # Notify frontend so it can clear the "Building..." state
-            if ws_registry and conn_id:
-                ws_registry.send_to_sync(conn_id, "build_error", {
+            if sink:
+                sink.push("build_error", {
                     "workflow_id": workflow_id,
                     "error": str(exc),
                 })
@@ -151,11 +148,8 @@ def _run_subworkflow_updater(
             cb.done.set()
             _task_registry.unregister(cb)
             # Notify frontend for library badge refresh
-            if ws_registry and conn_id:
-                ws_registry.send_to_sync(
-                    conn_id, "subworkflow_ready",
-                    {"workflow_id": workflow_id},
-                )
+            if sink:
+                sink.push("subworkflow_ready", {"workflow_id": workflow_id})
 
 
 class UpdateSubworkflowTool(Tool):
@@ -251,13 +245,12 @@ class UpdateSubworkflowTool(Tool):
         )
 
         # --- Spawn background updater thread ---
-        ws_registry = session_state.get("ws_registry")
-        conn_id = session_state.get("conn_id")
+        sink = session_state.get("event_sink")
 
         # Notify frontend that this subworkflow is being rebuilt so the
         # library page can show the "Building..." badge
-        if ws_registry and conn_id:
-            ws_registry.send_to_sync(conn_id, "subworkflow_building", {
+        if sink:
+            sink.push("subworkflow_building", {
                 "workflow_id": workflow_id,
                 "name": workflow.name,
                 "building": True,
@@ -267,7 +260,7 @@ class UpdateSubworkflowTool(Tool):
             target=_run_subworkflow_updater,
             args=(
                 workflow_id, updater_prompt, repo_root, workflow_store,
-                user_id, workflow.build_history, ws_registry, conn_id,
+                user_id, workflow.build_history, sink,
             ),
             daemon=True,
             name=f"subworkflow-updater-{workflow_id}",

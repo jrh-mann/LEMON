@@ -1,12 +1,11 @@
 """Reusable callback class for background subworkflow builders.
 
-Emits the same chat_* events as WsChatTask, but tags each event with
+Emits the same chat_* events as ChatTask, but tags each event with
 `workflow_id`. The frontend routes ALL events to chatStore.conversations[workflow_id]
 -- both normal orchestrator chats and background builder chats use the same
 per-workflow conversation map. No separate build buffer system.
 
-All emit calls go through registry.send_to_sync() which dispatches to
-the python-socketio AsyncServer for thread-safe async bridging.
+All emit calls go through EventSink.push() which queues events for SSE streaming.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from ..tools.constants import WORKFLOW_EDIT_TOOLS
 from .tool_summaries import ToolSummaryTracker
-from .ws_registry import ConnectionRegistry
+from .sse import EventSink
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +25,18 @@ class BackgroundBuilderCallbacks:
     """Emit chat_* events for a background builder, tagged with workflow_id.
 
     Used by create_subworkflow and update_subworkflow to provide the same
-    rich event stream as the main orchestrator's WsChatTask.
+    rich event stream as the main orchestrator's ChatTask.
     """
 
     def __init__(
         self,
-        ws_registry: ConnectionRegistry,
-        conn_id: str,
+        sink: EventSink,
         workflow_id: str,
         user_id: str = "",
         orchestrator: Any | None = None,
         task_id: str | None = None,
     ) -> None:
-        self.ws_registry = ws_registry
-        self.conn_id = conn_id
+        self.sink = sink
         self.workflow_id = workflow_id
         self.user_id = user_id
         self.orchestrator = orchestrator
@@ -47,30 +44,25 @@ class BackgroundBuilderCallbacks:
         self.cancelled = False
         self.executed_tools: List[Dict[str, Any]] = []
         # ToolSummaryTracker injects inline markdown summaries (e.g. "> Added a workflow node.")
-        # between tool rounds — matches WsChatTask behavior for visual structure in the stream.
+        # between tool rounds — matches ChatTask behavior for visual structure in the stream.
         self.tool_summary = ToolSummaryTracker()
         # Resume-compatible fields: handle_resume_task reads these to replay
         # accumulated content and re-route events after a page refresh.
-        # Matches the interface of WsChatTask so builders are resumable.
+        # Matches the interface of ChatTask so builders are resumable.
         self.done = threading.Event()
         self.thinking_chunks: List[str] = []
         self.stream_buffer: str = ""
         # TaskRegistry-compatible fields: the unified registry uses these to
-        # index, purge stale entries, and support conn_id mutation on resume.
+        # index, purge stale entries, and support resume.
         import time
         self.current_workflow_id = workflow_id
         self._created_at = time.monotonic()
         self._cancelled = False  # registry's cached cancel flag
         self._notified = False
-        self._conn_lock = threading.Lock()
-        self._consecutive_send_failures = 0
-        self._first_failure_time: float | None = None
 
     def _emit(self, event: str, payload: dict) -> None:
-        """Emit via registry (sync, from background thread)."""
-        if not self.ws_registry or not self.conn_id:
-            return
-        self.ws_registry.send_to_sync(self.conn_id, event, payload)
+        """Push an event to the SSE stream."""
+        self.sink.push(event, payload)
 
     def stream_chunk(self, chunk: str) -> None:
         """Emit chat_stream with workflow_id tag."""

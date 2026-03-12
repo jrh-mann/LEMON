@@ -32,8 +32,7 @@ def _run_subworkflow_builder(
     repo_root: Any,
     workflow_store: Any,
     user_id: str,
-    ws_registry: Any,
-    conn_id: str,
+    sink: Any,
 ) -> None:
     """Background thread: build a subworkflow using a fresh orchestrator.
 
@@ -43,18 +42,17 @@ def _run_subworkflow_builder(
         repo_root: Path to repo root for tool construction
         workflow_store: WorkflowStore instance for DB access
         user_id: Owner user ID
-        ws_registry: ConnectionRegistry for emitting events (can be None)
-        conn_id: Connection ID for emitting events (can be None)
+        sink: EventSink for emitting SSE events to the parent chat stream
     """
     # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
     from ...api.builder_callbacks import BackgroundBuilderCallbacks
-    from ...api.ws_chat import _task_registry
+    from ...api.task_registry import task_registry as _task_registry
 
     # Set up unified callbacks — emits same chat_* events as main orchestrator,
     # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
     bg_task_id = f"bg_{uuid4().hex[:8]}"
     cb = BackgroundBuilderCallbacks(
-        ws_registry, conn_id, workflow_id,
+        sink, workflow_id,
         user_id=user_id, task_id=bg_task_id,
     )
     response_text = ""
@@ -77,8 +75,7 @@ def _run_subworkflow_builder(
             # Pass full context so the background builder can emit progress events
             # and spawn nested subworkflows (which need repo_root to build_orchestrator)
             orchestrator.repo_root = repo_root
-            orchestrator.ws_registry = ws_registry
-            orchestrator.conn_id = conn_id
+            orchestrator.event_sink = sink
 
             logger.info(
                 "Background builder started for subworkflow %s: %s",
@@ -143,8 +140,8 @@ def _run_subworkflow_builder(
                     workflow_id, inner_exc,
                 )
             # Notify frontend so it can clear the "Building..." state
-            if ws_registry and conn_id:
-                ws_registry.send_to_sync(conn_id, "build_error", {
+            if sink:
+                sink.push("build_error", {
                     "workflow_id": workflow_id,
                     "error": str(exc),
                 })
@@ -155,11 +152,8 @@ def _run_subworkflow_builder(
             cb.done.set()
             _task_registry.unregister(cb)
             # Notify frontend for library badge refresh
-            if ws_registry and conn_id:
-                ws_registry.send_to_sync(
-                    conn_id, "subworkflow_ready",
-                    {"workflow_id": workflow_id},
-                )
+            if sink:
+                sink.push("subworkflow_ready", {"workflow_id": workflow_id})
 
 
 class CreateSubworkflowTool(Tool):
@@ -342,13 +336,12 @@ class CreateSubworkflowTool(Tool):
         )
 
         # --- Spawn background builder thread ---
-        ws_registry = session_state.get("ws_registry")
-        conn_id = session_state.get("conn_id")
+        sink = session_state.get("event_sink")
 
         # Notify frontend that a new subworkflow was created so the library
         # page can auto-refresh and show the "Building..." badge
-        if ws_registry and conn_id:
-            ws_registry.send_to_sync(conn_id, "subworkflow_created", {
+        if sink:
+            sink.push("subworkflow_created", {
                 "workflow_id": workflow_id,
                 "name": name_clean,
                 "building": True,
@@ -356,7 +349,7 @@ class CreateSubworkflowTool(Tool):
 
         thread = threading.Thread(
             target=_run_subworkflow_builder,
-            args=(workflow_id, builder_prompt, repo_root, workflow_store, user_id, ws_registry, conn_id),
+            args=(workflow_id, builder_prompt, repo_root, workflow_store, user_id, sink),
             daemon=True,
             name=f"subworkflow-builder-{workflow_id}",
         )

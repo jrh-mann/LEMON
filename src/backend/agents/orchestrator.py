@@ -69,8 +69,7 @@ class Orchestrator:
         self.uploaded_files: List[Dict[str, Any]] = []
         self._guidance: List[Dict[str, Any]] = []
         self.repo_root: Optional[Any] = None
-        self.ws_registry: Optional[Any] = None
-        self.conn_id: Optional[str] = None
+        self.event_sink: Optional[Any] = None
 
     # --- Workflow state views (used by ws_chat, tools, tests) ---
 
@@ -163,8 +162,7 @@ class Orchestrator:
                 "workflow_store": self.workflow_store,
                 "user_id": self.user_id,
                 "repo_root": self.repo_root,
-                "ws_registry": self.ws_registry,
-                "conn_id": self.conn_id,
+                "event_sink": self.event_sink,
             },
         )
         result = _normalize_tool_result(tool_name, data)
@@ -281,6 +279,7 @@ class Orchestrator:
                 thinking=thinking, on_thinking=on_thinking,
             )
             raw, tool_calls = resp.text, resp.tool_calls
+            thinking_blocks = resp.thinking_blocks  # Preserve for tool loop replay
             if resp.usage:
                 self.conversation.update_token_estimate(resp.usage.get("input_tokens", 0))
             if is_cancelled():
@@ -316,12 +315,18 @@ class Orchestrator:
             if turn:
                 turn.begin_tool_execution()
 
+            # In-flight message includes thinking blocks for API replay
             asst_msg = {"role": "assistant", "content": raw or "", "tool_calls": tool_calls}
+            if thinking_blocks:
+                asst_msg["thinking_blocks"] = thinking_blocks
             messages.append(asst_msg)
+
+            # Persisted message strips thinking (ephemeral for tool loop only)
+            persist_msg = {"role": "assistant", "content": raw or "", "tool_calls": tool_calls}
             if turn:
-                turn.add_assistant_tool_use(asst_msg)
+                turn.add_assistant_tool_use(persist_msg)
             else:
-                turn_tool_messages.append(asst_msg)
+                turn_tool_messages.append(persist_msg)
 
             # Execute each tool in the batch
             tool_failure = None
@@ -426,6 +431,7 @@ class Orchestrator:
                     thinking=thinking, on_thinking=on_thinking,
                 )
                 raw, tool_calls = resp.text, resp.tool_calls
+                thinking_blocks = resp.thinking_blocks
                 self.conversation.update_token_estimate(resp.usage.get("input_tokens", 0))
             except CancellationError:
                 return finalize_cancel()
