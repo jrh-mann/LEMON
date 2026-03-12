@@ -26,6 +26,8 @@ interface UIState {
   isLoading: boolean
   loadingMessage: string | null
   error: string | null
+  // Socket connection state — true when disconnected (non-intentional)
+  isDisconnected: boolean
 
   // Canvas zoom
   zoom: number
@@ -63,6 +65,7 @@ interface UIState {
   setLoading: (loading: boolean, message?: string | null) => void
   setError: (error: string | null) => void
   clearError: () => void
+  setDisconnected: (disconnected: boolean) => void
 
   // Canvas
   setZoom: (zoom: number) => void
@@ -111,6 +114,7 @@ export const useUIStore = create<UIState>((set) => ({
   isLoading: false,
   loadingMessage: null,
   error: null,
+  isDisconnected: false,
   zoom: 1,
   chatHeight: 280,
   devMode: (() => { try { return localStorage.getItem('devMode') === 'true' } catch { return false } })(),
@@ -147,6 +151,8 @@ export const useUIStore = create<UIState>((set) => ({
   setError: (error) => set({ error }),
 
   clearError: () => set({ error: null }),
+
+  setDisconnected: (disconnected) => set({ isDisconnected: disconnected }),
 
   // Canvas
   setZoom: (zoom) =>
@@ -209,6 +215,7 @@ export const useUIStore = create<UIState>((set) => ({
       isLoading: false,
       loadingMessage: null,
       error: null,
+      isDisconnected: false,
       zoom: 1,
       chatHeight: 280,
       workspaceRevealed: false,

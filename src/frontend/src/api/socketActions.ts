@@ -42,32 +42,39 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       const chatStore = useChatStore.getState()
       useUIStore.getState().clearError()
 
+      // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
+      const targetWf = data.workflow_id || workflowId
+
       // Assign task_id on first progress event
-      if (data.task_id && !chatStore.conversations[workflowId]?.currentTaskId &&
+      if (data.task_id && !chatStore.conversations[targetWf]?.currentTaskId &&
           (data.event === 'start' || data.event === 'resumed')) {
-        chatStore.setCurrentTaskId(workflowId, data.task_id)
+        chatStore.setCurrentTaskId(targetWf, data.task_id)
       }
 
       if (data.status) {
-        chatStore.setProcessingStatus(workflowId, data.status)
+        chatStore.setProcessingStatus(targetWf, data.status)
       }
-      chatStore.touchHeartbeat(workflowId)
+      chatStore.touchHeartbeat(targetWf)
     },
 
     'chat_thinking': (data: any) => {
-      useChatStore.getState().appendThinkingContent(workflowId, data.chunk || '')
-      useChatStore.getState().touchHeartbeat(workflowId)
+      // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
+      const targetWf = data.workflow_id || workflowId
+      useChatStore.getState().appendThinkingContent(targetWf, data.chunk || '')
+      useChatStore.getState().touchHeartbeat(targetWf)
     },
 
     'chat_stream': (data: any) => {
       const chatStore = useChatStore.getState()
+      // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
+      const targetWf = data.workflow_id || workflowId
       // Assign task_id on first stream chunk if not yet set
-      if (data.task_id && !chatStore.conversations[workflowId]?.currentTaskId) {
-        chatStore.setCurrentTaskId(workflowId, data.task_id)
+      if (data.task_id && !chatStore.conversations[targetWf]?.currentTaskId) {
+        chatStore.setCurrentTaskId(targetWf, data.task_id)
       }
-      chatStore.setStreaming(workflowId, true)
-      chatStore.appendStreamContent(workflowId, data.chunk || '')
-      chatStore.touchHeartbeat(workflowId)
+      chatStore.setStreaming(targetWf, true)
+      chatStore.appendStreamContent(targetWf, data.chunk || '')
+      chatStore.touchHeartbeat(targetWf)
     },
 
     'chat_response': (data: any) => {
@@ -75,11 +82,14 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       const chatStore = useChatStore.getState()
       useUIStore.getState().clearError()
 
+      // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
+      const targetWf = data.workflow_id || workflowId
+
       // Always clear streaming state
       const clearStreaming = () => {
-        chatStore.setStreaming(workflowId, false)
-        chatStore.setProcessingStatus(workflowId, null)
-        chatStore.setCurrentTaskId(workflowId, null)
+        chatStore.setStreaming(targetWf, false)
+        chatStore.setProcessingStatus(targetWf, null)
+        chatStore.setCurrentTaskId(targetWf, null)
       }
 
       if (data.cancelled) {
@@ -88,16 +98,16 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
         return
       }
 
-      const hadStreamContent = !!(chatStore.conversations[workflowId]?.streamingContent)
-      chatStore.finalizeStream(workflowId, data.tool_calls)
-      chatStore.setCurrentTaskId(workflowId, null)
+      const hadStreamContent = !!(chatStore.conversations[targetWf]?.streamingContent)
+      chatStore.finalizeStream(targetWf, data.tool_calls)
+      chatStore.setCurrentTaskId(targetWf, null)
 
       if (!hadStreamContent && (data.response || data.tool_calls?.length)) {
-        addAssistantMessage(data.response || '', data.tool_calls, workflowId)
+        addAssistantMessage(data.response || '', data.tool_calls, targetWf)
       }
 
       if (data.conversation_id) {
-        chatStore.setConversationId(workflowId, data.conversation_id)
+        chatStore.setConversationId(targetWf, data.conversation_id)
       }
 
       useWorkflowStore.getState().setPlan([])
@@ -118,12 +128,13 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
     'chat_cancelled': (data: any) => {
       console.log('[SSE] chat_cancelled:', data)
       const chatStore = useChatStore.getState()
+      const targetWf = data.workflow_id || workflowId
       if (data.task_id) {
         chatStore.markTaskCancelled(data.task_id)
       }
-      chatStore.setStreaming(workflowId, false)
-      chatStore.setProcessingStatus(workflowId, null)
-      chatStore.setCurrentTaskId(workflowId, null)
+      chatStore.setStreaming(targetWf, false)
+      chatStore.setProcessingStatus(targetWf, null)
+      chatStore.setCurrentTaskId(targetWf, null)
       useWorkflowStore.getState().setPlan([])
     },
 
@@ -323,13 +334,14 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
     'agent_error': (data: any) => {
       console.error('[SSE] agent_error:', data)
       const chatStore = useChatStore.getState()
-      chatStore.setStreaming(workflowId, false)
-      chatStore.setProcessingStatus(workflowId, null)
-      chatStore.setCurrentTaskId(workflowId, null)
+      const targetWf = data.workflow_id || workflowId
+      chatStore.setStreaming(targetWf, false)
+      chatStore.setProcessingStatus(targetWf, null)
+      chatStore.setCurrentTaskId(targetWf, null)
       if (data.transient) {
         useUIStore.getState().setError(data.error || 'An error occurred')
       } else {
-        addAssistantMessage(data.error || 'An error occurred', [], workflowId)
+        addAssistantMessage(data.error || 'An error occurred', [], targetWf)
       }
     },
 

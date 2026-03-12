@@ -1,7 +1,52 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, type StateStorage } from 'zustand/middleware'
 import type { Message, ToolCall } from '../types'
 import { useWorkflowStore } from './workflowStore'
+
+// Max messages persisted per conversation. Older messages are trimmed on save
+// to keep localStorage usage bounded and prevent quota-exceeded errors.
+const MAX_PERSISTED_MESSAGES = 100
+
+// Resilient localStorage wrapper — catches quota errors so the app keeps
+// working even when storage is full.  On quota failure it evicts the
+// oldest conversations from the persisted blob and retries once.
+const resilientStorage: StateStorage = {
+  getItem: (name: string) => localStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    try {
+      localStorage.setItem(name, value)
+    } catch (e) {
+      // QuotaExceededError — evict old data and retry once
+      console.warn('[chatStore] localStorage quota exceeded, evicting old conversations')
+      try {
+        const existing = localStorage.getItem(name)
+        if (existing) {
+          const parsed = JSON.parse(existing)
+          const convs = parsed?.state?.conversations
+          if (convs && typeof convs === 'object') {
+            // Keep only the 3 most recently-touched conversations
+            const entries = Object.entries(convs) as [string, any][]
+            const sorted = entries.sort((a, b) => {
+              const lastA = a[1]?.messages?.at(-1)?.timestamp ?? ''
+              const lastB = b[1]?.messages?.at(-1)?.timestamp ?? ''
+              return lastB.localeCompare(lastA)
+            })
+            parsed.state.conversations = Object.fromEntries(sorted.slice(0, 3))
+            localStorage.setItem(name, JSON.stringify(parsed))
+            return  // successfully evicted + saved
+          }
+        }
+        // Fallback: just remove the key entirely so the app can continue
+        localStorage.removeItem(name)
+      } catch {
+        // If even eviction fails, remove the key so the app doesn't stay broken
+        try { localStorage.removeItem(name) } catch { /* give up */ }
+      }
+      console.warn('[chatStore] Storage eviction complete — app will continue without persisted chat')
+    }
+  },
+  removeItem: (name: string) => localStorage.removeItem(name),
+}
 
 // Shape of a single inline question from the ask_question tool
 type PendingQuestion = { question: string; options: { label: string; value: string }[] }
@@ -17,6 +62,7 @@ export interface ConversationState {
   processingStatus: string | null
   currentTaskId: string | null
   contextUsagePct: number  // 0-100, percentage of context window used
+  lastHeartbeatAt: number  // Date.now() of last backend event, 0 when idle
 }
 
 // Default empty conversation for new entries
@@ -29,6 +75,7 @@ const emptyConversation: ConversationState = {
   processingStatus: null,
   currentTaskId: null,
   contextUsagePct: 0,
+  lastHeartbeatAt: 0,
 }
 
 interface ChatState {
@@ -57,6 +104,8 @@ interface ChatState {
   appendThinkingContent: (workflowId: string, content: string) => void
   setProcessingStatus: (workflowId: string, status: string | null) => void
   setContextUsage: (workflowId: string, pct: number) => void
+  // Record that a backend event arrived — used by the heartbeat watchdog to detect stale tasks
+  touchHeartbeat: (workflowId: string) => void
   // Finalize streaming: convert accumulated streamContent into a Message with tool_calls
   finalizeStream: (workflowId: string, toolCalls?: ToolCall[]) => void
 
@@ -176,6 +225,9 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   setContextUsage: (workflowId, pct) =>
     set((state) => updateConv(state, workflowId, { contextUsagePct: pct })),
 
+  touchHeartbeat: (workflowId) =>
+    set((state) => updateConv(state, workflowId, { lastHeartbeatAt: Date.now() })),
+
   // Finalize streaming: convert streamContent into a Message, clear streaming state.
   // Only uses actual streamed response text — thinkingContent is internal reasoning
   // and must never appear as a chat message (e.g. when user cancels during thinking).
@@ -277,7 +329,9 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
     }),
 }), {
   name: 'lemon-chat',
-  // Only persist durable state — skip transient streaming/processing fields
+  storage: resilientStorage,
+  // Only persist durable state — skip transient streaming/processing fields.
+  // Trim messages to MAX_PERSISTED_MESSAGES to prevent localStorage bloat.
   partialize: (state) => ({
     activeWorkflowId: state.activeWorkflowId,
     pendingQuestions: state.pendingQuestions,
@@ -285,7 +339,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
       Object.entries(state.conversations).map(([wfId, conv]) => [
         wfId,
         {
-          messages: conv.messages,
+          messages: conv.messages.slice(-MAX_PERSISTED_MESSAGES),
           conversationId: conv.conversationId,
           // Reset transient fields so they don't leak across sessions
           isStreaming: false,
@@ -294,6 +348,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
           processingStatus: null,
           currentTaskId: null,
           contextUsagePct: conv.contextUsagePct,
+          lastHeartbeatAt: 0,
         } satisfies ConversationState,
       ]),
     ),
