@@ -21,7 +21,7 @@ from .dataset import Sample, load_dataset
 from .harness import EvalResult, run_sample
 from .log import save_result, save_summary_csv
 from .models import MODELS, resolve_model
-from .scaffold import DEFAULT_SCAFFOLD, NO_THINKING_SCAFFOLD, Scaffold
+from .scaffold import DEFAULT_SCAFFOLD, NO_THINKING_SCAFFOLD, REFINEMENT_SCAFFOLD, Scaffold
 
 logger = logging.getLogger("eval.run")
 
@@ -217,6 +217,10 @@ def main() -> None:
         help="Disable extended thinking (default: enabled at 50k, matching frontend)",
     )
     parser.add_argument(
+        "--refine", action="store_true",
+        help="Enable refinement pass after initial extraction (review + simplify)",
+    )
+    parser.add_argument(
         "--log-dir", type=str, default=str(_LOG_DIR),
         help=f"Log directory (default: {_LOG_DIR})",
     )
@@ -259,7 +263,12 @@ def main() -> None:
         sys.exit(1)
 
     # Select scaffold.
-    scaffold = NO_THINKING_SCAFFOLD if args.no_thinking else DEFAULT_SCAFFOLD
+    if args.no_thinking:
+        scaffold = NO_THINKING_SCAFFOLD
+    elif args.refine:
+        scaffold = REFINEMENT_SCAFFOLD
+    else:
+        scaffold = DEFAULT_SCAFFOLD
 
     # Run.
     run_eval(
