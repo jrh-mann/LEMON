@@ -146,7 +146,7 @@ class TestAnthropicListContent:
                 "role": "assistant",
                 "content": "",
                 "tool_calls": [
-                    {"id": "tc_1", "type": "function", "function": {"name": "view_image", "arguments": "{}"}}
+                    {"id": "tc_1", "name": "view_image", "input": {}}
                 ],
             },
             {
@@ -186,7 +186,7 @@ class TestAnthropicListContent:
                 "role": "assistant",
                 "content": "",
                 "tool_calls": [
-                    {"id": "tc_1", "type": "function", "function": {"name": "add_node", "arguments": "{}"}}
+                    {"id": "tc_1", "name": "add_node", "input": {}}
                 ],
             },
             {

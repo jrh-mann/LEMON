@@ -1,6 +1,6 @@
 """Tests for auto-generated Anthropic tool schemas.
 
-Verifies that every registered tool produces a valid Anthropic function-calling
+Verifies that every registered tool produces a valid native Anthropic tool
 schema, and that the generated schemas have the required structure.
 """
 
@@ -30,7 +30,7 @@ def schemas(registry):
 def test_all_tools_have_schemas(registry, schemas):
     """Every tool in the registry should produce exactly one schema."""
     tool_names = {t.name for t in registry.all_tools()}
-    schema_names = {s["function"]["name"] for s in schemas}
+    schema_names = {s["name"] for s in schemas}
     assert tool_names == schema_names, (
         f"Mismatch between tools and schemas.\n"
         f"Missing schemas: {tool_names - schema_names}\n"
@@ -44,19 +44,16 @@ def test_schema_count(registry, schemas):
 
 
 def test_schema_has_required_fields(schemas):
-    """Each schema must have the Anthropic function-calling structure."""
+    """Each schema must have the native Anthropic tool structure."""
     for schema in schemas:
-        name = schema.get("function", {}).get("name", "<unknown>")
-        assert schema.get("type") == "function", f"{name}: missing type='function'"
-        func = schema.get("function")
-        assert func is not None, f"{name}: missing 'function' key"
-        assert isinstance(func.get("name"), str) and func["name"], f"{name}: missing function name"
-        assert isinstance(func.get("description"), str) and func["description"], f"{name}: empty description"
-        params = func.get("parameters")
-        assert isinstance(params, dict), f"{name}: parameters must be a dict"
-        assert params.get("type") == "object", f"{name}: parameters.type must be 'object'"
-        assert isinstance(params.get("properties"), dict), f"{name}: parameters.properties must be a dict"
-        assert isinstance(params.get("required"), list), f"{name}: parameters.required must be a list"
+        name = schema.get("name", "<unknown>")
+        assert isinstance(schema.get("name"), str) and schema["name"], f"{name}: missing name"
+        assert isinstance(schema.get("description"), str) and schema["description"], f"{name}: empty description"
+        input_schema = schema.get("input_schema")
+        assert isinstance(input_schema, dict), f"{name}: input_schema must be a dict"
+        assert input_schema.get("type") == "object", f"{name}: input_schema.type must be 'object'"
+        assert isinstance(input_schema.get("properties"), dict), f"{name}: input_schema.properties must be a dict"
+        assert isinstance(input_schema.get("required"), list), f"{name}: input_schema.required must be a list"
 
 
 def test_schema_parameter_types(schemas):
@@ -64,8 +61,8 @@ def test_schema_parameter_types(schemas):
     omitted for union-typed params (oneOf/anyOf) and untyped params (description-only,
     like add_node's 'output' which accepts any JSON value)."""
     for schema in schemas:
-        name = schema["function"]["name"]
-        properties = schema["function"]["parameters"]["properties"]
+        name = schema["name"]
+        properties = schema["input_schema"]["properties"]
         for param_name, param_def in properties.items():
             # Properties with oneOf/anyOf don't need a top-level "type"
             if "oneOf" in param_def or "anyOf" in param_def:
@@ -86,9 +83,9 @@ def test_schema_parameter_types(schemas):
 def test_required_params_exist_in_properties(schemas):
     """All params listed in 'required' must exist in 'properties'."""
     for schema in schemas:
-        name = schema["function"]["name"]
-        props = schema["function"]["parameters"]["properties"]
-        required = schema["function"]["parameters"]["required"]
+        name = schema["name"]
+        props = schema["input_schema"]["properties"]
+        required = schema["input_schema"]["required"]
         for req in required:
             assert req in props, (
                 f"{name}: required param '{req}' not found in properties"
@@ -99,15 +96,14 @@ def test_individual_tool_to_anthropic_schema(registry):
     """Each tool's to_anthropic_schema() should produce valid output."""
     for tool in registry.all_tools():
         schema = tool.to_anthropic_schema()
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == tool.name
-        assert schema["function"]["description"] == tool.description
+        assert schema["name"] == tool.name
+        assert schema["description"] == tool.description
 
 
 def test_add_node_has_condition_schema(schemas):
     """add_node should have a condition property with oneOf for simple/compound."""
-    add_node = next(s for s in schemas if s["function"]["name"] == "add_node")
-    props = add_node["function"]["parameters"]["properties"]
+    add_node = next(s for s in schemas if s["name"] == "add_node")
+    props = add_node["input_schema"]["properties"]
     assert "condition" in props, "add_node missing 'condition' property"
     condition = props["condition"]
     assert "oneOf" in condition, "add_node.condition should have oneOf"
@@ -116,8 +112,8 @@ def test_add_node_has_condition_schema(schemas):
 
 def test_add_node_has_calculation_schema(schemas):
     """add_node should have a calculation property with nested operator/operands."""
-    add_node = next(s for s in schemas if s["function"]["name"] == "add_node")
-    props = add_node["function"]["parameters"]["properties"]
+    add_node = next(s for s in schemas if s["name"] == "add_node")
+    props = add_node["input_schema"]["properties"]
     assert "calculation" in props, "add_node missing 'calculation' property"
     calc = props["calculation"]
     assert calc.get("type") == "object"
@@ -129,8 +125,8 @@ def test_add_node_has_calculation_schema(schemas):
 
 def test_add_node_type_has_enum(schemas):
     """add_node's type parameter should have an enum."""
-    add_node = next(s for s in schemas if s["function"]["name"] == "add_node")
-    type_prop = add_node["function"]["parameters"]["properties"]["type"]
+    add_node = next(s for s in schemas if s["name"] == "add_node")
+    type_prop = add_node["input_schema"]["properties"]["type"]
     assert "enum" in type_prop, "add_node.type should have enum"
     assert "decision" in type_prop["enum"]
     assert "subprocess" in type_prop["enum"]
@@ -138,8 +134,8 @@ def test_add_node_type_has_enum(schemas):
 
 def test_batch_edit_operations_has_items(schemas):
     """batch_edit_workflow's operations should have items schema."""
-    batch = next(s for s in schemas if s["function"]["name"] == "batch_edit_workflow")
-    ops = batch["function"]["parameters"]["properties"]["operations"]
+    batch = next(s for s in schemas if s["name"] == "batch_edit_workflow")
+    ops = batch["input_schema"]["properties"]["operations"]
     assert ops.get("type") == "array"
     assert "items" in ops, "operations should have items schema"
     assert ops["items"].get("type") == "object"
@@ -147,15 +143,15 @@ def test_batch_edit_operations_has_items(schemas):
 
 def test_create_subworkflow_output_type_has_enum(schemas):
     """create_subworkflow's output_type should have enum."""
-    cs = next(s for s in schemas if s["function"]["name"] == "create_subworkflow")
-    ot = cs["function"]["parameters"]["properties"]["output_type"]
+    cs = next(s for s in schemas if s["name"] == "create_subworkflow")
+    ot = cs["input_schema"]["properties"]["output_type"]
     assert "enum" in ot, "create_subworkflow.output_type should have enum"
     assert set(ot["enum"]) == {"string", "number", "bool", "json"}
 
 
 def test_list_workflows_has_limit_constraints(schemas):
     """list_workflows_in_library's limit parameter should have min/max."""
-    lw = next(s for s in schemas if s["function"]["name"] == "list_workflows_in_library")
-    limit = lw["function"]["parameters"]["properties"]["limit"]
+    lw = next(s for s in schemas if s["name"] == "list_workflows_in_library")
+    limit = lw["input_schema"]["properties"]["limit"]
     assert limit.get("minimum") == 1
     assert limit.get("maximum") == 100

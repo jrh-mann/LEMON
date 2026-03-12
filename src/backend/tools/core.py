@@ -100,16 +100,16 @@ class Tool:
         raise NotImplementedError
 
     def to_anthropic_schema(self) -> Dict[str, Any]:
-        """Generate Anthropic function-calling schema from this tool's metadata.
+        """Generate native Anthropic tool schema from this tool's metadata.
 
         Returns a dict in the format expected by the Anthropic API:
-        ``{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}``
+        ``{"name": ..., "description": ..., "input_schema": ...}``
 
-        If ``_schema_override`` is set, it is used as-is for the parameters
+        If ``_schema_override`` is set, it is used as-is for the input_schema
         property.  Otherwise, the schema is auto-generated from ``self.parameters``.
         """
         if self._schema_override is not None:
-            params_schema = self._schema_override
+            input_schema = self._schema_override
         else:
             properties: Dict[str, Any] = {}
             required: List[str] = []
@@ -117,19 +117,16 @@ class Tool:
                 properties[param.name] = param.to_json_schema()
                 if param.required:
                     required.append(param.name)
-            params_schema = {
+            input_schema = {
                 "type": "object",
                 "properties": properties,
                 "required": required,
             }
 
         return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": params_schema,
-            },
+            "name": self.name,
+            "description": self.description,
+            "input_schema": input_schema,
         }
 
 

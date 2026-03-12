@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger("backend.llm")
 
@@ -68,26 +68,6 @@ def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
     return [{"type": "text", "text": fallback}] if fallback else []
 
 
-def _convert_openai_tools_to_anthropic(
-    tools: Optional[List[Dict[str, Any]]],
-) -> List[Dict[str, Any]]:
-    if not tools:
-        return []
-    converted: List[Dict[str, Any]] = []
-    for tool in tools:
-        fn = tool.get("function") if isinstance(tool, dict) else None
-        if not fn:
-            continue
-        converted.append(
-            {
-                "name": fn.get("name"),
-                "description": fn.get("description") or "",
-                "input_schema": fn.get("parameters") or {"type": "object", "properties": {}},
-            }
-        )
-    return converted
-
-
 def _to_anthropic_messages(
     messages: List[Dict[str, Any]],
 ) -> Tuple[str, List[Dict[str, Any]]]:
@@ -121,31 +101,32 @@ def _to_anthropic_messages(
                 )
             continue
         if role == "assistant" and msg.get("tool_calls"):
-            blocks = _to_anthropic_blocks(content)
+            blocks = []
+            # Thinking blocks must precede text/tool_use per Anthropic API spec
+            for tb in (msg.get("thinking_blocks") or []):
+                blocks.append(tb)
+            blocks.extend(_to_anthropic_blocks(content))
+            # Tool calls are already in native Anthropic format {id, name, input}
+            # — just add the "type": "tool_use" wrapper for the API content block.
             for call in msg.get("tool_calls") or []:
-                fn = call.get("function") or {}
-                name = fn.get("name")
-                args_text = fn.get("arguments") or "{}"
-                if isinstance(args_text, str):
-                    try:
-                        args = json.loads(args_text)
-                    except json.JSONDecodeError:
-                        args = {}
-                else:
-                    args = args_text
                 blocks.append(
                     {
                         "type": "tool_use",
                         "id": call.get("id") or "",
-                        "name": name,
-                        "input": args if isinstance(args, dict) else {},
+                        "name": call.get("name"),
+                        "input": call.get("input") if isinstance(call.get("input"), dict) else {},
                     }
                 )
             if blocks:
                 converted.append({"role": "assistant", "content": blocks})
             continue
         if role in {"user", "assistant"}:
-            blocks = _to_anthropic_blocks(content)
+            blocks = []
+            # Thinking blocks precede text in assistant messages
+            if role == "assistant":
+                for tb in (msg.get("thinking_blocks") or []):
+                    blocks.append(tb)
+            blocks.extend(_to_anthropic_blocks(content))
             if not blocks:
                 # Empty content — use placeholder to preserve alternation
                 blocks = [{"type": "text", "text": "(empty)"}]
@@ -161,80 +142,60 @@ def _to_anthropic_messages(
     return system, converted
 
 
-def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]], str]:
-    """Parse an Anthropic API response into (text, tool_calls, thinking_text).
+def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Parse an Anthropic API response into (text, tool_calls, thinking_blocks).
 
     Extracts text, tool_use, and thinking content blocks from the response.
+    Thinking blocks are returned as full dicts (including signature) so they
+    can be replayed in the conversation history for subsequent tool-loop calls.
     """
     content_blocks = getattr(message, "content", []) or []
     text_parts: List[str] = []
     tool_calls: List[Dict[str, Any]] = []
-    thinking_parts: List[str] = []
+    thinking_blocks: List[Dict[str, Any]] = []
     for block in content_blocks:
         # Parentheses required: without them `A or B if C else D` parses as
         # `(A or B) if C else D`, returning None for non-dict SDK objects.
         btype = getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)
         if btype == "thinking":
-            # Extended thinking content block
-            thinking = getattr(block, "thinking", None) if not isinstance(block, dict) else block.get("thinking")
-            if thinking:
-                thinking_parts.append(thinking)
+            # Preserve full thinking block including signature for API replay
+            if isinstance(block, dict):
+                thinking_blocks.append(block)
+            else:
+                blk: Dict[str, Any] = {"type": "thinking"}
+                for attr in ("thinking", "signature"):
+                    val = getattr(block, attr, None)
+                    if val is not None:
+                        blk[attr] = val
+                if blk.get("thinking"):
+                    thinking_blocks.append(blk)
         elif btype == "text":
             text = getattr(block, "text", None) if not isinstance(block, dict) else block.get("text")
             if text:
                 text_parts.append(text)
         elif btype == "tool_use":
+            # Return native Anthropic format: {id, name, input: dict}
             name = getattr(block, "name", None) if not isinstance(block, dict) else block.get("name")
             tool_id = getattr(block, "id", None) if not isinstance(block, dict) else block.get("id")
             tool_input = getattr(block, "input", None) if not isinstance(block, dict) else block.get("input")
-            try:
-                args_text = json.dumps(tool_input or {}, ensure_ascii=True)
-            except (TypeError, ValueError):
-                args_text = "{}"
             tool_calls.append(
                 {
                     "id": tool_id,
-                    "type": "function",
-                    "function": {"name": name, "arguments": args_text},
+                    "name": name,
+                    "input": tool_input if isinstance(tool_input, dict) else {},
                 }
             )
-    raw_tool_calls = getattr(message, "tool_calls", None)
-    if raw_tool_calls is None and isinstance(message, dict):
-        raw_tool_calls = message.get("tool_calls")
-    if isinstance(raw_tool_calls, list):
-        for call in raw_tool_calls:
-            if not isinstance(call, dict):
-                continue
-            if call.get("function"):
-                tool_calls.append(call)
-                continue
-            name = call.get("name")
-            args_text = call.get("arguments", "{}")
-            if isinstance(args_text, dict):
-                try:
-                    args_text = json.dumps(args_text, ensure_ascii=True)
-                except (TypeError, ValueError):
-                    args_text = "{}"
-            tool_calls.append(
-                {
-                    "id": call.get("id"),
-                    "type": "function",
-                    "function": {"name": name, "arguments": args_text},
-                }
-            )
+    # Defensive dedup — get_final_message() should already be clean,
+    # but guard against edge cases.
     if tool_calls:
         merged: List[Dict[str, Any]] = []
         seen: set[str] = set()
         for call in tool_calls:
             call_id = call.get("id")
-            if call_id:
-                key = f"id:{call_id}"
-            else:
-                fn = call.get("function") or {}
-                key = f"sig:{fn.get('name','')}:{fn.get('arguments','')}"
+            key = f"id:{call_id}" if call_id else f"sig:{call.get('name', '')}"
             if key in seen:
                 continue
             seen.add(key)
             merged.append(call)
         tool_calls = merged
-    return "".join(text_parts), tool_calls, "".join(thinking_parts)
+    return "".join(text_parts), tool_calls, thinking_blocks

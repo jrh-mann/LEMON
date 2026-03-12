@@ -10,7 +10,6 @@ Returns an LLMResponse dataclass with text, tool_calls, and usage.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 import uuid
@@ -19,9 +18,9 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import anthropic
+import httpx
 
 from .anthropic import (
-    _convert_openai_tools_to_anthropic,
     _parse_anthropic_response,
     _to_anthropic_messages,
 )
@@ -43,6 +42,7 @@ class LLMResponse:
     """Result of a call_llm() invocation."""
     text: str
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    thinking_blocks: List[Dict[str, Any]] = field(default_factory=list)
     usage: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -55,6 +55,7 @@ def call_llm(
     on_thinking: Optional[Callable[[str], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
     thinking: bool = False,
+    effort: str = "high",
     caller: Optional[str] = None,
     request_tag: Optional[str] = None,
 ) -> LLMResponse:
@@ -68,28 +69,20 @@ def call_llm(
         on_thinking: Callback for extended thinking chunks.
         should_cancel: Polling function — returns True to abort.
         thinking: Enable adaptive thinking (Opus 4.6). False = disabled.
+        effort: Thinking effort level ("low", "medium", "high", "max"). Default "high".
         caller: Tag for token usage tracking.
         request_tag: Sub-tag for token usage tracking.
     """
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
 
-    # Wrap system prompt with cache_control so the API can reuse the
-    # ~2000-token prompt across tool-loop calls in the same turn.
-    system_payload = (
-        [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-        if system
-        else []
-    )
+    system_payload = [{"type": "text", "text": system}] if system else []
 
     # Build Anthropic API payload
     if tool_choice is None and tools:
         tool_choice = "auto"
-    tool_payload = (
-        _convert_openai_tools_to_anthropic(tools)
-        if tools and tool_choice != "none"
-        else []
-    )
+    # Tools are already in native Anthropic format from to_anthropic_schema()
+    tool_payload = tools if tools and tool_choice != "none" else []
 
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
@@ -107,21 +100,22 @@ def call_llm(
             payload["tool_choice"] = {"type": "tool", "name": tool_choice}
     if thinking:
         payload["thinking"] = {"type": "adaptive"}
+    if effort:
+        payload["output"] = {"effort": effort}
 
-    # Accumulation state for streaming
+    # Text accumulation for on_delta streaming callback and cancel recovery.
+    # Tool calls come from get_final_message() — no streaming assembly needed.
     text_chunks: List[str] = []
-    tool_blocks: Dict[int, Dict[str, Any]] = {}
-    tool_block_order: List[int] = []
 
     def _stream_events() -> Any:
-        """Stream the API response, accumulating text and tool blocks."""
+        """Stream the API response, forwarding text/thinking deltas."""
         with client.messages.stream(**payload) as stream:
             for event in stream:
                 if should_cancel and should_cancel():
                     _close_stream(stream)
                     raise CancellationError("LLM streaming cancelled.")
                 _handle_stream_event(
-                    event, text_chunks, tool_blocks, tool_block_order,
+                    event, text_chunks,
                     on_delta=on_delta, on_thinking=on_thinking,
                 )
             if should_cancel and should_cancel():
@@ -131,8 +125,6 @@ def call_llm(
 
     def _on_retry(attempt: int, msg: str) -> None:
         text_chunks.clear()
-        tool_blocks.clear()
-        tool_block_order.clear()
 
     start = time.perf_counter()
     request_id = uuid.uuid4().hex
@@ -142,19 +134,17 @@ def call_llm(
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info("Anthropic streaming completed ms=%.1f messages=%d", elapsed_ms, len(messages))
 
-    # Parse the final message for text, tool_calls, and thinking
-    parsed_text, parsed_tool_calls, parsed_thinking = _parse_anthropic_response(message)
-    if parsed_thinking and on_thinking:
-        on_thinking(parsed_thinking)
-
-    # Merge streamed tool blocks with parsed tool calls (deduplicating by ID)
-    tool_calls = _merge_tool_calls(tool_blocks, tool_block_order, parsed_tool_calls)
+    # Parse the final message for text, tool_calls, and thinking.
+    # get_final_message() returns complete, deduplicated content — no merge needed.
+    # NOTE: do NOT re-emit parsed_thinking via on_thinking — the streaming
+    # event loop already delivered thinking chunks in real time.
+    text, tool_calls, parsed_thinking_blocks = _parse_anthropic_response(message)
 
     # Record token usage for observability
     tool_names = list(dict.fromkeys(
-        (call.get("function") or {}).get("name", "")
+        call.get("name", "")
         for call in tool_calls
-        if (call.get("function") or {}).get("name")
+        if call.get("name")
     ))
     _record_tokens(
         request_id=request_id, message=message, model=payload["model"],
@@ -164,7 +154,6 @@ def call_llm(
         tool_names=tool_names,
     )
 
-    text = "".join(text_chunks) if text_chunks else parsed_text
     if not text.strip() and not tool_calls:
         stop = getattr(message, "stop_reason", None) or "unknown"
         logger.warning(
@@ -174,7 +163,7 @@ def call_llm(
         )
 
     usage = _extract_usage(message)
-    return LLMResponse(text=text, tool_calls=tool_calls, usage=usage)
+    return LLMResponse(text=text, tool_calls=tool_calls, thinking_blocks=parsed_thinking_blocks, usage=usage)
 
 
 # ------------------------------------------------------------------
@@ -184,35 +173,18 @@ def call_llm(
 def _handle_stream_event(
     event: Any,
     text_chunks: List[str],
-    tool_blocks: Dict[int, Dict[str, Any]],
-    tool_block_order: List[int],
     *,
     on_delta: Optional[Callable[[str], None]],
     on_thinking: Optional[Callable[[str], None]],
 ) -> None:
-    """Process a single streaming event from the Anthropic API."""
+    """Process a single streaming event — forward text and thinking deltas.
+
+    Tool calls come from get_final_message() after streaming completes,
+    so we only handle text_delta and thinking_delta here.
+    """
     event_type = getattr(event, "type", "")
 
-    if event_type == "content_block_start":
-        block = getattr(event, "content_block", None)
-        block_type = getattr(block, "type", None)
-        if block_type is None and isinstance(block, dict):
-            block_type = block.get("type")
-        if block_type == "tool_use":
-            idx = _get_event_index(event)
-            if idx is None:
-                idx = max(tool_blocks.keys(), default=-1) + 1
-            _get_attr = lambda b, k: getattr(b, k, None) if not isinstance(b, dict) else b.get(k)
-            if idx not in tool_blocks:
-                tool_blocks[idx] = {
-                    "id": _get_attr(block, "id"),
-                    "name": _get_attr(block, "name"),
-                    "input": _get_attr(block, "input"),
-                    "buffer": "",
-                }
-                tool_block_order.append(idx)
-
-    elif event_type == "content_block_delta":
+    if event_type == "content_block_delta":
         delta = getattr(event, "delta", None)
         if not delta:
             return
@@ -224,17 +196,7 @@ def _handle_stream_event(
             thinking_text = getattr(delta, "thinking", None)
             if thinking_text:
                 on_thinking(thinking_text)
-        elif delta_type == "input_json_delta":
-            idx = _get_event_index(event)
-            if idx is not None:
-                block = tool_blocks.get(int(idx))
-                if block is not None:
-                    partial = getattr(delta, "partial_json", None)
-                    if partial is None and isinstance(delta, dict):
-                        partial = delta.get("partial_json")
-                    if partial:
-                        block["buffer"] += partial
-        else:
+        elif delta_type == "text_delta":
             text = getattr(delta, "text", None)
             if text is None and isinstance(delta, dict):
                 text = delta.get("text")
@@ -242,68 +204,6 @@ def _handle_stream_event(
                 text_chunks.append(text)
                 if on_delta:
                     on_delta(text)
-
-    elif event_type == "content_block_stop":
-        idx = _get_event_index(event)
-        if idx is not None:
-            block = tool_blocks.get(int(idx))
-            if block is not None and block.get("buffer"):
-                try:
-                    block["input"] = json.loads(block["buffer"])
-                except json.JSONDecodeError:
-                    pass
-
-
-def _get_event_index(event: Any) -> Optional[int]:
-    """Extract the content block index from a streaming event."""
-    for attr in ("index", "content_block_index"):
-        val = getattr(event, attr, None)
-        if val is None and isinstance(event, dict):
-            val = event.get(attr)
-        if val is not None:
-            return int(val)
-    return None
-
-
-def _merge_tool_calls(
-    streamed_blocks: Dict[int, Dict[str, Any]],
-    block_order: List[int],
-    parsed_calls: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Merge streamed tool blocks with parsed tool calls, deduplicating."""
-    recovered: List[Dict[str, Any]] = []
-    if streamed_blocks:
-        for idx in (block_order or sorted(streamed_blocks.keys())):
-            block = streamed_blocks.get(idx)
-            if not block or not block.get("name"):
-                continue
-            try:
-                args_text = json.dumps(block.get("input") or {}, ensure_ascii=True)
-            except (TypeError, ValueError):
-                args_text = "{}"
-            recovered.append({
-                "id": block.get("id"),
-                "type": "function",
-                "function": {"name": block["name"], "arguments": args_text},
-            })
-
-    if not recovered:
-        return parsed_calls
-
-    # Deduplicate by ID or signature
-    merged: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    for call in recovered + parsed_calls:
-        call_id = call.get("id")
-        if call_id:
-            key = f"id:{call_id}"
-        else:
-            fn = call.get("function") or {}
-            key = f"sig:{fn.get('name', '')}:{fn.get('arguments', '')}"
-        if key not in seen:
-            seen.add(key)
-            merged.append(call)
-    return merged
 
 
 class LLMQuotaError(RuntimeError):
@@ -364,11 +264,15 @@ def _retry_api_call(
                 _interruptible_sleep(delay, should_cancel)
                 continue
 
-            # Other transient errors: timeout, connection, server
+            # Other transient errors: timeout, connection, server.
+            # With max_retries=0 on the SDK client, raw httpx transport
+            # exceptions (ConnectTimeout, ReadTimeout, etc.) propagate
+            # unwrapped — catch those too so we actually retry.
             is_retryable = isinstance(
                 exc,
                 (anthropic.APITimeoutError, anthropic.APIConnectionError,
-                 anthropic.InternalServerError),
+                 anthropic.InternalServerError,
+                 httpx.TimeoutException, httpx.ConnectError),
             )
             if not is_retryable or attempt == _MAX_RETRIES - 1:
                 raise

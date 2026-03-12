@@ -166,7 +166,7 @@ class TestToolRecording:
         """Assistant tool_use message is stored in turn.messages."""
         turn = make_turn()
         msg = {"role": "assistant", "content": "", "tool_calls": [
-            {"id": "tc1", "function": {"name": "add_node", "arguments": "{}"}}
+            {"id": "tc1", "name": "add_node", "input": {}}
         ]}
         turn.add_assistant_tool_use(msg)
         assert len(turn.messages) == 1
@@ -213,7 +213,7 @@ class TestToolRecording:
         # Assistant requests tool
         turn.add_assistant_tool_use({
             "role": "assistant", "content": "",
-            "tool_calls": [{"id": "tc1", "function": {"name": "list_workflows", "arguments": "{}"}}],
+            "tool_calls": [{"id": "tc1", "name": "list_workflows", "input": {}}],
         })
         # Tool returns result
         turn.add_tool_result(
@@ -250,7 +250,7 @@ class TestCommit:
         turn.begin_tool_execution()
         turn.add_assistant_tool_use({
             "role": "assistant", "content": "",
-            "tool_calls": [{"id": "tc1", "function": {"name": "add_node", "arguments": "{}"}}],
+            "tool_calls": [{"id": "tc1", "name": "add_node", "input": {}}],
         })
         turn.add_tool_result("tc1", "add_node", {}, {"success": True}, success=True)
         turn.begin_llm_call()
@@ -303,7 +303,7 @@ class TestCommit:
         turn.begin_tool_execution()
         turn.add_assistant_tool_use({
             "role": "assistant", "content": "",
-            "tool_calls": [{"id": "tc1", "function": {"name": "add_node", "arguments": "{}"}}],
+            "tool_calls": [{"id": "tc1", "name": "add_node", "input": {}}],
         })
         turn.add_tool_result("tc1", "add_node", {}, {"success": True}, success=True)
         turn.fail("Tool error (modify_node): not found")

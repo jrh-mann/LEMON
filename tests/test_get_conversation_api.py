@@ -30,15 +30,15 @@ def _build_convo_with_tool_history(repo_root):
     convo.orchestrator.conversation.history = [
         {"role": "user", "content": "Create a BMI workflow"},
         {"role": "assistant", "content": "", "tool_calls": [
-            {"id": "tc1", "function": {"name": "list_workflows", "arguments": "{}"}}
+            {"id": "tc1", "name": "list_workflows", "input": {}}
         ]},
         {"role": "tool", "tool_call_id": "tc1", "content": '{"count": 0}'},
         {"role": "assistant", "content": "No BMI workflow found, creating one.", "tool_calls": [
-            {"id": "tc2", "function": {"name": "add_node", "arguments": '{"type":"start"}'}}
+            {"id": "tc2", "name": "add_node", "input": {"type": "start"}}
         ]},
         {"role": "tool", "tool_call_id": "tc2", "content": '{"success": true}'},
         {"role": "assistant", "content": "", "tool_calls": [
-            {"id": "tc3", "function": {"name": "add_node", "arguments": '{"type":"end"}'}}
+            {"id": "tc3", "name": "add_node", "input": {"type": "end"}}
         ]},
         {"role": "tool", "tool_call_id": "tc3", "content": '{"success": true}'},
         {"role": "assistant", "content": "Your BMI workflow is ready with start and end nodes."},

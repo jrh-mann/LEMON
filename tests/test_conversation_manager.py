@@ -29,7 +29,7 @@ class TestToolMessagePersistence:
         cm = ConversationManager()
         tool_msgs = [
             {"role": "assistant", "content": "", "tool_calls": [
-                {"id": "tc_1", "function": {"name": "list_workflows", "arguments": "{}"}}
+                {"id": "tc_1", "name": "list_workflows", "input": {}}
             ]},
             {"role": "tool", "tool_call_id": "tc_1", "content": '{"workflows": [], "count": 0}'},
         ]
@@ -47,7 +47,7 @@ class TestToolMessagePersistence:
         cm = ConversationManager()
         tool_msgs = [
             {"role": "assistant", "content": "", "tool_calls": [
-                {"id": "tc_1", "function": {"name": "add_node", "arguments": '{"type": "start"}'}}
+                {"id": "tc_1", "name": "add_node", "input": {"type": "start"}}
             ]},
             {"role": "tool", "tool_call_id": "tc_1", "content": '{"success": true}'},
         ]
@@ -73,12 +73,12 @@ class TestToolMessagePersistence:
         tool_msgs = [
             # Round 1: check library
             {"role": "assistant", "content": "", "tool_calls": [
-                {"id": "tc_1", "function": {"name": "list_workflows", "arguments": "{}"}}
+                {"id": "tc_1", "name": "list_workflows", "input": {}}
             ]},
             {"role": "tool", "tool_call_id": "tc_1", "content": '{"count": 0}'},
             # Round 2: create subworkflow
             {"role": "assistant", "content": "", "tool_calls": [
-                {"id": "tc_2", "function": {"name": "create_subworkflow", "arguments": '{"name": "BMI"}'}}
+                {"id": "tc_2", "name": "create_subworkflow", "input": {"name": "BMI"}}
             ]},
             {"role": "tool", "tool_call_id": "tc_2", "content": '{"success": true}'},
         ]
@@ -121,11 +121,8 @@ class TestOrchestratorToolHistoryIntegration:
                     text="",
                     tool_calls=[{
                         "id": "tc_001",
-                        "type": "function",
-                        "function": {
-                            "name": "get_current_workflow",
-                            "arguments": "{}",
-                        },
+                        "name": "get_current_workflow",
+                        "input": {},
                     }],
                     usage={"input_tokens": 1000},
                 )
@@ -155,7 +152,7 @@ class TestOrchestratorToolHistoryIntegration:
         )
         # Verify the assistant message has tool_calls
         assert "tool_calls" in history[1], "Second message should be assistant with tool_calls"
-        assert history[1]["tool_calls"][0]["function"]["name"] == "get_current_workflow"
+        assert history[1]["tool_calls"][0]["name"] == "get_current_workflow"
         # Verify the tool result message
         assert history[2]["role"] == "tool"
         assert history[2]["tool_call_id"] == "tc_001"
@@ -182,8 +179,8 @@ class TestOrchestratorToolHistoryIntegration:
                     text="",
                     tool_calls=[{
                         "id": "tc_add",
-                        "type": "function",
-                        "function": {"name": "get_current_workflow", "arguments": "{}"},
+                        "name": "get_current_workflow",
+                        "input": {},
                     }],
                     usage={"input_tokens": 1000},
                 )
@@ -228,4 +225,4 @@ class TestOrchestratorToolHistoryIntegration:
         # The assistant message with tool_calls should reference get_current_workflow
         tool_use_msg = non_system[1]
         assert "tool_calls" in tool_use_msg
-        assert tool_use_msg["tool_calls"][0]["function"]["name"] == "get_current_workflow"
+        assert tool_use_msg["tool_calls"][0]["name"] == "get_current_workflow"
