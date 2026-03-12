@@ -7,6 +7,12 @@ Also provides the orchestrator_with_workflow fixture used by integration,
 workflow, and feature tests that exercise orchestrator.run_tool().
 """
 
+# Load .env before anything else so tests that hit the real API
+# (e.g. test_workflow_state_integrity, test_atomic_operations) get
+# ANTHROPIC_API_KEY, ANTHROPIC_ENDPOINT, etc.
+from dotenv import load_dotenv
+load_dotenv()
+
 import pytest
 import tempfile
 from pathlib import Path
