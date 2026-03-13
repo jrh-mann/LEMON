@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState, useEffect, type ChangeEvent } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { generateNodeId } from '../utils/canvas'
-import type { FlowNodeType, FlowNode } from '../types'
+import type { FlowNodeType } from '../types'
 import DevToolsPanel from './DevToolsPanel'
 
 interface BlockConfig {
@@ -69,10 +69,9 @@ const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 0
 
 export default function Palette() {
-  const { addNode, flowchart, setFlowchart, setAnalysis } = useWorkflowStore()
+  const { addNode, flowchart, setFlowchart } = useWorkflowStore()
   const { openModal, devMode } = useUIStore()
   const dragDataRef = useRef<BlockConfig | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [paletteMode, setPaletteMode] = useState<'build' | 'dev'>('build')
 
   // Resizable sidebar state
@@ -364,14 +363,7 @@ export default function Palette() {
               </div>
 
               <div className="sidebar-section">
-                <p className="eyebrow">IMPORT</p>
-                <button
-                  className="ghost full-width"
-                  onClick={() => setShowJsonInput(true)}
-                  title="Import flowchart from JSON"
-                >
-                  Import JSON
-                </button>
+                <p className="eyebrow">EXAMPLES</p>
                 <button
                   className="ghost full-width"
                   onClick={() => {
@@ -397,7 +389,6 @@ export default function Palette() {
                     setFlowchart(sampleFlowchart)
                   }}
                   title="Load a sample flowchart to test frontend rendering"
-                  style={{ marginTop: '8px' }}
                 >
                   Load Example
                 </button>
@@ -407,66 +398,6 @@ export default function Palette() {
             <DevToolsPanel />
           )}
 
-          {/* Hidden file input for JSON upload */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: 'none' }}
-            onChange={handleFileUpload}
-          />
-
-          {/* JSON Input Modal */}
-          {showJsonInput && (
-            <div className="json-modal-overlay" onClick={() => setShowJsonInput(false)}>
-              <div className="json-modal" onClick={(e) => e.stopPropagation()}>
-                <h3>Import Workflow JSON</h3>
-                <p className="muted small">Upload a JSON file or paste JSON below</p>
-
-                {/* File upload button */}
-                <button
-                  className="ghost full-width file-upload-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  Choose JSON File
-                </button>
-
-                <div className="import-divider">
-                  <span>or paste JSON</span>
-                </div>
-
-                <textarea
-                  value={jsonText}
-                  onChange={(e) => {
-                    setJsonText(e.target.value)
-                    setJsonError(null)
-                  }}
-                  placeholder={`{
-  "flowchart": {
-    "nodes": [
-      {"id": "n1", "type": "start", "label": "Start", "x": 400, "y": 100},
-      {"id": "n2", "type": "decision", "label": "Check?", "x": 400, "y": 220}
-    ],
-    "edges": [
-      {"from": "n1", "to": "n2", "label": ""}
-    ]
-  }
-}`}
-                  rows={10}
-                />
-                {jsonError && <p className="error-text">{jsonError}</p>}
-                <div className="json-modal-actions">
-                  <button className="ghost" onClick={() => setShowJsonInput(false)}>Cancel</button>
-                  <button className="primary" onClick={handleJsonImport} disabled={!jsonText.trim()}>Import</button>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
     </aside>
