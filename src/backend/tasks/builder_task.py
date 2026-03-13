@@ -49,6 +49,9 @@ class BuilderTask:
     done: Event = field(default_factory=Event)
     thinking_chunks: List[str] = field(default_factory=list)
     stream_buffer: str = ""
+    # Stored so swap_sink can replay it — the original emit goes to an
+    # unread sink, so late-connecting clients would miss the instructions.
+    _user_message: Optional[str] = None
 
     # --- Tool tracking ---
     executed_tools: List[Dict[str, Any]] = field(default_factory=list)
@@ -133,7 +136,12 @@ class BuilderTask:
         self._emit("chat_thinking", {"chunk": chunk, "task_id": self.task_id})
 
     def emit_user_message(self, content: str) -> None:
-        """Emit the initial builder prompt so the frontend shows it."""
+        """Emit the initial builder prompt so the frontend shows it.
+
+        Also stores the content so swap_sink can replay it for late-connecting
+        clients (the user navigates to the subworkflow after the event was emitted).
+        """
+        self._user_message = content
         self._emit("build_user_message", {"content": content})
 
     def emit_progress(self, status: str, event: str = "update") -> None:
@@ -226,6 +234,11 @@ class BuilderTask:
             "task_id": self.task_id,
             "workflow_id": self.workflow_id,
         })
+        # NOTE: build_user_message is NOT replayed here. WorkflowPage shows
+        # the brief via metadata.description during builds, and
+        # syncConversationMessages loads it from the conversation logger
+        # after completion. Replaying here would create a duplicate.
+        #
         # Replay accumulated thinking
         if self.thinking_chunks:
             new_sink.push("chat_thinking", {

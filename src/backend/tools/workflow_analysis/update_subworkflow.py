@@ -36,6 +36,7 @@ def _run_subworkflow_updater(
     task: Any,
     build_depth: int = 1,
     conversation_logger: Any = None,
+    conversation_id: str | None = None,
 ) -> None:
     """Background thread: update a subworkflow using a fresh orchestrator
     pre-loaded with the previous build conversation.
@@ -103,9 +104,9 @@ def _run_subworkflow_updater(
             workflow_id, len(build_history), instructions[:100],
         )
 
-        # Generate a conversation_id — same path as regular workflows.
-        from uuid import uuid4 as _uuid4
-        conv_id = f"conv_{_uuid4().hex}"
+        # Reuse the workflow's existing conversation_id so the update
+        # appends to the same chat thread (continuous conversation).
+        conv_id = conversation_id or f"conv_{uuid4().hex}"
 
         if conversation_logger:
             try:
@@ -320,7 +321,7 @@ class UpdateSubworkflowTool(Tool):
             args=(
                 workflow_id, updater_prompt, repo_root, workflow_store,
                 user_id, workflow.build_history, builder,
-                child_depth, parent_conv_logger,
+                child_depth, parent_conv_logger, workflow.conversation_id,
             ),
             daemon=True,
             name=f"subworkflow-updater-{workflow_id}",

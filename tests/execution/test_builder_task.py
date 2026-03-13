@@ -206,6 +206,22 @@ class TestBuilderTaskResume:
         stream_event = next(e for n, e in events if n == "chat_stream")
         assert stream_event["chunk"] == "partial response"
 
+    def test_swap_sink_does_not_replay_user_message(self):
+        """swap_sink must NOT replay build_user_message — WorkflowPage recovery
+        and syncConversationMessages handle it. Replaying would duplicate."""
+        old_sink = EventSink()
+        task = BuilderTask(sink=old_sink, workflow_id="wf_1", user_id="u1", task_id="t1")
+
+        task.emit_user_message("Build a BMI calculator")
+        _drain_events(old_sink)
+
+        new_sink = EventSink()
+        task.swap_sink(new_sink)
+
+        events = _drain_events(new_sink)
+        user_msg_events = [(n, e) for n, e in events if n == "build_user_message"]
+        assert len(user_msg_events) == 0
+
     def test_swap_sink_replays_workflow_state(self):
         """swap_sink replays workflow state when orchestrator is attached."""
         old_sink = EventSink()
