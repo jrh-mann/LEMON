@@ -58,7 +58,7 @@ def _run_subworkflow_builder(
         build_depth: Nesting depth — child builders inherit parent's depth + 1.
                      create_subworkflow rejects if this exceeds MAX_BUILD_DEPTH.
     """
-    from ...api.task_registry import task_registry as _task_registry
+    from ...tasks.registry import task_registry as _task_registry
 
     response_text = ""
 
@@ -74,7 +74,7 @@ def _run_subworkflow_builder(
         )
         task.emit_response("")
         task.done.set()
-        from ...api.task_registry import task_registry as _reg
+        from ...tasks.registry import task_registry as _reg
         _reg.unregister(task)
         task.sink.close()
         try:
@@ -392,9 +392,9 @@ class CreateSubworkflowTool(Tool):
 
         # --- Create independent builder task with its own EventSink ---
         # Deferred import to avoid circular imports (builder_task → tools.constants)
-        from ...api.builder_task import BuilderTask
-        from ...api.sse import EventSink
-        from ...api.task_registry import task_registry as _task_registry
+        from ...tasks.builder_task import BuilderTask
+        from ...tasks.sse import EventSink
+        from ...tasks.registry import task_registry as _task_registry
 
         builder_sink = EventSink()
         bg_task_id = f"bg_{uuid4().hex[:8]}"

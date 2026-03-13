@@ -54,7 +54,7 @@ def _run_subworkflow_updater(
         task: BuilderTask — owns its own EventSink, provides callbacks
         build_depth: Nesting depth — child builders inherit parent's depth + 1.
     """
-    from ...api.task_registry import task_registry as _task_registry
+    from ...tasks.registry import task_registry as _task_registry
 
     response_text = ""
 
@@ -70,7 +70,7 @@ def _run_subworkflow_updater(
         )
         task.emit_response("")
         task.done.set()
-        from ...api.task_registry import task_registry as _reg
+        from ...tasks.registry import task_registry as _reg
         _reg.unregister(task)
         task.sink.close()
         try:
@@ -284,9 +284,9 @@ class UpdateSubworkflowTool(Tool):
         )
 
         # --- Create independent builder task with its own EventSink ---
-        from ...api.builder_task import BuilderTask
-        from ...api.sse import EventSink
-        from ...api.task_registry import task_registry as _task_registry
+        from ...tasks.builder_task import BuilderTask
+        from ...tasks.sse import EventSink
+        from ...tasks.registry import task_registry as _task_registry
 
         builder_sink = EventSink()
         bg_task_id = f"bg_{uuid4().hex[:8]}"

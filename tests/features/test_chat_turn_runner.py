@@ -12,7 +12,7 @@ Covers:
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 
-from src.backend.api.chat_turn_runner import ChatRuntimePorts, TurnResult, run_turn
+from src.backend.tasks.chat_turn_runner import ChatRuntimePorts, TurnResult, run_turn
 from src.backend.agents.turn import TurnStatus
 from src.backend.utils.cancellation import CancellationError
 
@@ -49,7 +49,7 @@ def _make_convo(*, respond_return="Hello!"):
 # ── Happy path ───────────────────────────────────────────
 
 class TestHappyPath:
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_returns_completed_result(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.CALLING_LLM
@@ -70,7 +70,7 @@ class TestHappyPath:
         assert result.input_tokens == 100
         assert result.output_tokens == 50
 
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_calls_respond_with_correct_kwargs(self, MockTurn):
         convo = _make_convo()
         ports = _make_ports()
@@ -92,7 +92,7 @@ class TestHappyPath:
         assert kwargs.kwargs["thinking"] is True
         assert kwargs.kwargs["allow_tools"] is True
 
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_turn_complete_and_commit_called(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.CALLING_LLM
@@ -113,7 +113,7 @@ class TestHappyPath:
 # ── Cancellation ─────────────────────────────────────────
 
 class TestCancellation:
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_returns_cancelled_result(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.CALLING_LLM
@@ -134,7 +134,7 @@ class TestCancellation:
         mock_turn.cancel.assert_called_once_with(["streamed so far"])
         mock_turn.commit.assert_called_once()
 
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_skips_cancel_if_already_terminal(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.COMPLETED
@@ -157,7 +157,7 @@ class TestCancellation:
 # ── Generic failure ──────────────────────────────────────
 
 class TestFailure:
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_returns_failed_result(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.CALLING_LLM
@@ -182,7 +182,7 @@ class TestFailure:
 # ── Audit logging ────────────────────────────────────────
 
 class TestAuditLogging:
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_ensures_conversation_in_audit_db(self, MockTurn):
         convo = _make_convo()
         ports = _make_ports()
@@ -197,7 +197,7 @@ class TestAuditLogging:
             "conv-test", user_id="u1", workflow_id="wf-1", model="claude-sonnet-4-6",
         )
 
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_passes_file_meta_to_turn_start(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.CALLING_LLM
@@ -215,7 +215,7 @@ class TestAuditLogging:
             file_meta=[{"name": "img.png", "file_type": "image"}],
         )
 
-    @patch("src.backend.api.chat_turn_runner.Turn")
+    @patch("src.backend.tasks.chat_turn_runner.Turn")
     def test_no_file_meta_when_no_files(self, MockTurn):
         mock_turn = MockTurn.return_value
         mock_turn.status = TurnStatus.CALLING_LLM

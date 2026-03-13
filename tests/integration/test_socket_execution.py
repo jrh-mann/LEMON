@@ -5,7 +5,7 @@ from unittest.mock import Mock, MagicMock, patch
 from threading import Event
 import time
 
-from src.backend.api.execution_task import (
+from src.backend.tasks.execution_task import (
     SteppedExecutionTask,
     StoppedExecutionError,
     register_execution as _register_execution,
@@ -16,7 +16,7 @@ from src.backend.api.execution_task import (
     _is_execution_paused,
     _clear_execution,
 )
-from src.backend.api.sse import EventSink
+from src.backend.tasks.sse import EventSink
 
 
 class TestExecutionStateManagement:

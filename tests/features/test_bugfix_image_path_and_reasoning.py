@@ -23,8 +23,8 @@ class TestImagePathResolution:
 
     def test_save_uploaded_files_produces_absolute_paths(self, tmp_path: Path):
         """After _save_uploaded_files, each saved path must be absolute."""
-        from src.backend.api.chat_task import ChatTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.chat_task import ChatTask
+        from src.backend.tasks.sse import EventSink
         from src.backend.storage.workflows import WorkflowStore
 
         # Create a minimal 1x1 white PNG as a data URL
@@ -130,7 +130,7 @@ class TestReasoningWiring:
     def test_ws_chat_passes_thinking(self):
         """ChatTask.run must pass thinking=True to orchestrator.respond()."""
         # Verify the source code contains thinking= in the respond() call
-        from src.backend.api import chat_task
+        from src.backend.tasks import chat_task
 
         source = inspect.getsource(chat_task.ChatTask.run)
         assert "thinking=" in source, (
@@ -160,8 +160,8 @@ class TestReasoningWiring:
 
     def test_stream_thinking_emits_chat_thinking(self):
         """ChatTask.stream_thinking must emit chat_thinking event via the sink."""
-        from src.backend.api.chat_task import ChatTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.chat_task import ChatTask
+        from src.backend.tasks.sse import EventSink
 
         mock_sink = MagicMock(spec=EventSink)
         mock_sink.is_closed = False
@@ -190,8 +190,8 @@ class TestReasoningWiring:
 
     def test_stream_thinking_skips_empty(self):
         """stream_thinking should not emit for empty chunks."""
-        from src.backend.api.chat_task import ChatTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.chat_task import ChatTask
+        from src.backend.tasks.sse import EventSink
 
         mock_sink = MagicMock(spec=EventSink)
         mock_sink.is_closed = False

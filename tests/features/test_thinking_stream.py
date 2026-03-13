@@ -134,13 +134,11 @@ class TestOrchestratorThinkingForwarding:
         assert thinking_events[1] == ("tool_thinking", "fake_thinking_tool", {"chunk": "the diagram "})
         assert thinking_events[2] == ("tool_thinking", "fake_thinking_tool", {"chunk": "structure..."})
 
-    def test_post_tool_llm_calls_suppress_thinking_stream(self):
-        """Post-tool LLM calls should NOT stream thinking to the frontend.
+    def test_post_tool_llm_calls_forward_thinking_stream(self):
+        """Post-tool LLM calls should stream thinking to the frontend.
 
-        With adaptive thinking on Opus 4.6, interleaved thinking from
-        multiple LLM calls in the tool loop would accumulate in the
-        frontend's reasoning section, mixing initial reasoning with
-        internal tool-result analysis. Only the initial call streams thinking.
+        Thinking renders inline as dimmed text so the user sees activity
+        while the model processes tool results.
         """
         orch = _make_orchestrator_with_fake_tool()
 
@@ -168,12 +166,12 @@ class TestOrchestratorThinkingForwarding:
                 on_thinking=capture_thinking,
             )
 
-        # Post-tool call should have on_thinking=None
+        # Both calls should forward on_thinking so the frontend shows activity
         assert mock_llm.call_count == 2
         _, initial_kwargs = mock_llm.call_args_list[0]
         _, post_tool_kwargs = mock_llm.call_args_list[1]
         assert initial_kwargs["on_thinking"] is capture_thinking
-        assert post_tool_kwargs["on_thinking"] is None
+        assert post_tool_kwargs["on_thinking"] is capture_thinking
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +183,8 @@ class TestWsChatThinkingEmission:
 
     def _make_task(self) -> Any:
         """Build a minimal ChatTask with a mock EventSink."""
-        from src.backend.api.chat_task import ChatTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.chat_task import ChatTask
+        from src.backend.tasks.sse import EventSink
 
         mock_sink = MagicMock(spec=EventSink)
         mock_sink.is_closed = False
@@ -210,9 +208,10 @@ class TestWsChatThinkingEmission:
         """tool events should not emit if the task is cancelled."""
         task = self._make_task()
 
-        # Mock is_cancelled to return True
-        with patch.object(task, "is_cancelled", return_value=True):
-            task.on_tool_event("tool_complete", "add_node", {}, {"success": True})
+        # Set the internal cancellation flag — projector holds a reference to
+        # the bound is_cancelled method, so patch.object won't intercept it.
+        task._cancelled = True
+        task.on_tool_event("tool_complete", "add_node", {}, {"success": True})
 
         task.sink.push.assert_not_called()
 

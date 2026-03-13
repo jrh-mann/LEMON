@@ -20,7 +20,7 @@ class TestConversationStoreThreadSafety:
     """Verify ConversationStore handles concurrent access safely."""
 
     def test_concurrent_get_or_create(self, tmp_path):
-        from src.backend.api.conversations import ConversationStore
+        from src.backend.tasks.conversations import ConversationStore
         store = ConversationStore(tmp_path)
         results = {}
         errors = []

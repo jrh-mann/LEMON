@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.backend.api.conversations import ConversationStore
+from src.backend.tasks.conversations import ConversationStore
 from src.backend.storage.conversation_log import ConversationLogger
 
 

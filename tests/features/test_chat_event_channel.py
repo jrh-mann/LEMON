@@ -12,8 +12,8 @@ Covers:
 import threading
 from unittest.mock import MagicMock, call
 
-from src.backend.api.chat_event_channel import ChatEventChannel
-from src.backend.api.sse import EventSink
+from src.backend.tasks.chat_event_channel import ChatEventChannel
+from src.backend.tasks.sse import EventSink
 
 
 def _make_channel(

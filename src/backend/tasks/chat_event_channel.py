@@ -10,7 +10,7 @@ import threading
 from typing import Any, Callable, Dict, List, Optional
 
 from .sse import EventSink
-from .task_registry import task_registry
+from .registry import task_registry
 
 
 class ChatEventChannel:

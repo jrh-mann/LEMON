@@ -20,9 +20,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backend.api.conversations import ConversationStore
-from src.backend.api.chat_task import ChatTask
-from src.backend.api.sse import EventSink
+from src.backend.tasks.conversations import ConversationStore
+from src.backend.tasks.chat_task import ChatTask
+from src.backend.tasks.sse import EventSink
 from src.backend.storage.workflows import WorkflowStore
 from uuid import uuid4
 from src.backend.agents.system_prompt import build_system_prompt

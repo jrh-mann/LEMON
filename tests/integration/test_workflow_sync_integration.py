@@ -18,7 +18,7 @@ from uuid import uuid4
 import pytest
 
 from src.backend.agents.orchestrator_factory import build_orchestrator
-from src.backend.api.conversations import ConversationStore
+from src.backend.tasks.conversations import ConversationStore
 
 
 def _repo_root() -> Path:

@@ -6,9 +6,9 @@ Registrable protocol for TaskRegistry, and supports resume via swap_sink.
 
 import queue as q
 
-from src.backend.api.builder_task import BuilderTask
-from src.backend.api.sse import EventSink
-from src.backend.api.task_registry import TaskRegistry
+from src.backend.tasks.builder_task import BuilderTask
+from src.backend.tasks.sse import EventSink
+from src.backend.tasks.registry import TaskRegistry
 
 
 class _OrchestratorStub:

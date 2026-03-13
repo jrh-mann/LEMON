@@ -7,7 +7,7 @@ share chat history or workflow data.
 
 import pytest
 from pathlib import Path
-from src.backend.api.conversations import ConversationStore, Conversation
+from src.backend.tasks.conversations import ConversationStore, Conversation
 
 
 class TestConversationIsolation:

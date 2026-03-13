@@ -3,7 +3,7 @@ from pathlib import Path
 
 def test_right_sidebar_shows_variable_panel_without_existing_analysis():
     content = Path("src/frontend/src/components/RightSidebar.tsx").read_text(encoding="utf-8")
-    assert "const effectiveAnalysis: WorkflowAnalysis = currentAnalysis ??" in content
+    assert "const effectiveAnalysis = currentAnalysis ??" in content
     assert ") : (" in content
     assert "currentAnalysis ? (" not in content
 

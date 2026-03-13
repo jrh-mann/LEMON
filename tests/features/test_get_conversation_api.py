@@ -12,7 +12,7 @@ import pytest
 
 from src.backend.agents.conversation_manager import ConversationManager
 from src.backend.agents.orchestrator_factory import build_orchestrator
-from src.backend.api.conversations import ConversationStore
+from src.backend.tasks.conversations import ConversationStore
 
 
 @pytest.fixture

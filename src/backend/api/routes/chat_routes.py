@@ -20,12 +20,12 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ..common import utc_now
-from ..conversations import ConversationStore
-from ..chat_task import ChatTask
+from ...tasks.conversations import ConversationStore
+from ...tasks.chat_task import ChatTask
 from ..deps import require_auth
 from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
-from ..sse import EventSink
-from ..task_registry import task_registry
+from ...tasks.sse import EventSink
+from ...tasks.registry import task_registry
 from ...agents.turn import Turn
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger

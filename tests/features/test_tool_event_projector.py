@@ -14,7 +14,7 @@ Covers:
 
 from unittest.mock import MagicMock, call
 
-from src.backend.api.tool_event_projector import ToolEventProjector
+from src.backend.tasks.tool_event_projector import ToolEventProjector
 
 
 def _make_projector(

@@ -14,7 +14,7 @@ from fastapi import FastAPI
 
 from .api.app import create_app
 from .api.common import repo_root
-from .api.conversations import ConversationStore
+from .tasks.conversations import ConversationStore
 from .api.frontend import register_frontend_routes
 from .api.routes import register_routes
 from .storage.auth import AuthStore

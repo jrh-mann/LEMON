@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from src.backend.api.task_registry import TaskRegistry
+from src.backend.tasks.registry import TaskRegistry
 
 
 class FakeTask:

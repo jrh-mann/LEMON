@@ -29,11 +29,11 @@ from .chat_session import (
     persist_conversation_metadata,
 )
 from .chat_turn_runner import ChatRuntimePorts, run_turn
-from .common import utc_now
+from ..api.common import utc_now
 from .conversations import Conversation, ConversationStore
-from .response_utils import extract_tool_calls
+from ..api.response_utils import extract_tool_calls
 from .sse import EventSink
-from .task_registry import task_registry
+from .registry import task_registry
 from .tool_event_projector import ToolEventProjector
 from ..agents.turn import TurnStatus
 from ..storage.conversation_log import ConversationLogger

@@ -847,8 +847,8 @@ class TestWsVariableSyncOnEditTools:
     def _make_task(self):
         """Build a minimal ChatTask with a mock EventSink and convo."""
         from unittest.mock import Mock, MagicMock
-        from src.backend.api.chat_task import ChatTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.chat_task import ChatTask
+        from src.backend.tasks.sse import EventSink
 
         mock_sink = MagicMock(spec=EventSink)
         mock_sink.is_closed = False

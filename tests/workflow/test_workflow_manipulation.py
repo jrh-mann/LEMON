@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from src.backend.api.conversations import ConversationStore
+from src.backend.tasks.conversations import ConversationStore
 
 
 class TestWorkflowManipulation:

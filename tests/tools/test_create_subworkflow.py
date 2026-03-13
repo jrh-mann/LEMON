@@ -506,9 +506,9 @@ class TestBuilderTimeout:
 
     def test_watchdog_cancels_after_timeout(self):
         """Watchdog sets _cancelled after timeout elapses."""
-        from src.backend.api.builder_task import BuilderTask, _BUILDER_TIMEOUT_SECONDS
-        from src.backend.api.sse import EventSink
-        import src.backend.api.builder_task as bt_module
+        from src.backend.tasks.builder_task import BuilderTask, _BUILDER_TIMEOUT_SECONDS
+        from src.backend.tasks.sse import EventSink
+        import src.backend.tasks.builder_task as bt_module
 
         # Temporarily set a short timeout for testing
         original_timeout = bt_module._BUILDER_TIMEOUT_SECONDS
@@ -539,8 +539,8 @@ class TestBuilderTimeout:
 
     def test_watchdog_does_not_cancel_when_done_quickly(self):
         """Watchdog does NOT cancel if the build finishes before timeout."""
-        from src.backend.api.builder_task import BuilderTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.builder_task import BuilderTask
+        from src.backend.tasks.sse import EventSink
 
         sink = EventSink()
         task = BuilderTask(
@@ -560,8 +560,8 @@ class TestBuilderTimeout:
 
     def test_builder_task_has_start_watchdog(self):
         """BuilderTask exposes start_watchdog() method."""
-        from src.backend.api.builder_task import BuilderTask
-        from src.backend.api.sse import EventSink
+        from src.backend.tasks.builder_task import BuilderTask
+        from src.backend.tasks.sse import EventSink
 
         sink = EventSink()
         task = BuilderTask(
@@ -587,7 +587,7 @@ class TestSemaphoreTimeout:
 
     def test_builder_timeout_constant_exists(self):
         """_BUILDER_TIMEOUT_SECONDS is defined in builder_task."""
-        from src.backend.api.builder_task import _BUILDER_TIMEOUT_SECONDS
+        from src.backend.tasks.builder_task import _BUILDER_TIMEOUT_SECONDS
         assert isinstance(_BUILDER_TIMEOUT_SECONDS, (int, float))
         assert _BUILDER_TIMEOUT_SECONDS > 0
 

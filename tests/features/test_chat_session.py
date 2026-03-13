@@ -12,7 +12,7 @@ Covers:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.backend.api.chat_session import (
+from src.backend.tasks.chat_session import (
     save_uploaded_files,
     sync_payload_workflow,
     ensure_workflow_persisted,
@@ -33,8 +33,8 @@ class TestSaveUploadedFiles:
         assert ok is True
         assert paths == []
 
-    @patch("src.backend.api.chat_session.save_uploaded_file")
-    @patch("src.backend.api.chat_session.lemon_data_dir")
+    @patch("src.backend.tasks.chat_session.save_uploaded_file")
+    @patch("src.backend.tasks.chat_session.lemon_data_dir")
     def test_saves_file_and_returns_paths(self, mock_data_dir, mock_save):
         mock_save.return_value = ("uploads/test.png", "image")
         mock_data_dir.return_value = Path("/tmp/data")
@@ -50,7 +50,7 @@ class TestSaveUploadedFiles:
         assert paths[0]["name"] == "test.png"
         assert paths[0]["file_type"] == "image"
 
-    @patch("src.backend.api.chat_session.save_uploaded_file")
+    @patch("src.backend.tasks.chat_session.save_uploaded_file")
     def test_emits_error_on_failure(self, mock_save):
         mock_save.side_effect = ValueError("bad data URL")
         emit_error = MagicMock()
@@ -95,7 +95,7 @@ class TestSyncPayloadWorkflow:
 # ── ensure_workflow_persisted ────────────────────────────
 
 class TestEnsureWorkflowPersisted:
-    @patch("src.backend.api.chat_session.persist_workflow_snapshot")
+    @patch("src.backend.tasks.chat_session.persist_workflow_snapshot")
     def test_persists_and_emits_created(self, mock_persist):
         mock_persist.return_value = (True, {"outputs": [], "output_type": "string"})
         convo = MagicMock()
@@ -115,7 +115,7 @@ class TestEnsureWorkflowPersisted:
         # Should set orchestrator workflow_id
         assert convo.orchestrator.current_workflow_id == "wf-1"
 
-    @patch("src.backend.api.chat_session.persist_workflow_snapshot")
+    @patch("src.backend.tasks.chat_session.persist_workflow_snapshot")
     def test_no_event_when_not_created(self, mock_persist):
         mock_persist.return_value = (False, {"outputs": [], "output_type": "string"})
         convo = MagicMock()
@@ -134,7 +134,7 @@ class TestEnsureWorkflowPersisted:
 # ── sync_orchestrator_from_convo ─────────────────────────
 
 class TestSyncOrchestratorFromConvo:
-    @patch("src.backend.api.chat_session.ensure_workflow_persisted")
+    @patch("src.backend.tasks.chat_session.ensure_workflow_persisted")
     def test_wires_up_orchestrator(self, mock_ensure):
         convo = MagicMock()
         sink = MagicMock()

@@ -18,7 +18,7 @@ from fastapi import FastAPI
 
 from typing import Optional
 
-from ..conversations import ConversationStore
+from ...tasks.conversations import ConversationStore
 from ...storage.auth import AuthStore
 from ...storage.conversation_log import ConversationLogger
 from ...storage.workflows import WorkflowStore

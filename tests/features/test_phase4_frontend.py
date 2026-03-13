@@ -14,7 +14,7 @@ class TestConversationWorkflowClean:
     """Verify Conversation.workflow no longer has tree/doubts."""
 
     def test_workflow_defaults(self):
-        from src.backend.api.conversations import Conversation
+        from src.backend.tasks.conversations import Conversation
         from src.backend.agents.orchestrator_factory import build_orchestrator
         from pathlib import Path
 
@@ -30,7 +30,7 @@ class TestConversationWorkflowClean:
         assert "outputs" in convo.workflow
 
     def test_workflow_analysis_view(self):
-        from src.backend.api.conversations import Conversation
+        from src.backend.tasks.conversations import Conversation
         from src.backend.agents.orchestrator_factory import build_orchestrator
         from pathlib import Path
 

@@ -19,8 +19,8 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ..deps import require_auth
-from ..sse import EventSink
-from ..execution_task import (
+from ...tasks.sse import EventSink
+from ...tasks.execution_task import (
     SteppedExecutionTask,
     register_execution,
     pause_execution,

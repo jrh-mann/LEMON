@@ -2,11 +2,11 @@
 
 from src.backend.api.routes.execution_routes import register_execution_routes
 from src.backend.api import routes as api_routes
-from src.backend.api.execution_task import (
+from src.backend.tasks.execution_task import (
     SteppedExecutionTask,
     register_execution,
 )
-from src.backend.api.sse import EventSink
+from src.backend.tasks.sse import EventSink
 from src.backend.storage.auth import AuthUser
 from src.backend.storage.workflows import WorkflowStore
 from fastapi import FastAPI

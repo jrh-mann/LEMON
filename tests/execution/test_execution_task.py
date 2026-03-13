@@ -15,8 +15,8 @@ import time
 
 import pytest
 
-from src.backend.api.sse import EventSink
-from src.backend.api.execution_task import (
+from src.backend.tasks.sse import EventSink
+from src.backend.tasks.execution_task import (
     SteppedExecutionTask,
     StoppedExecutionError,
     register_execution,

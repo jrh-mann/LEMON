@@ -40,10 +40,10 @@ class TestRemainingModulesImport:
         "src.backend.agents.orchestrator",
         "src.backend.agents.system_prompt",
         "src.backend.tools.schema_gen",
-        "src.backend.api.conversations",
-        "src.backend.api.chat_task",
+        "src.backend.tasks.conversations",
+        "src.backend.tasks.chat_task",
         "src.backend.api.response_utils",
-        "src.backend.api.tool_summaries",
+        "src.backend.tasks.tool_summaries",
         "src.backend.tools",
         "src.backend.tools.workflow_analysis",
         "src.backend.validation",
@@ -59,14 +59,14 @@ class TestNoStaleReferences:
     """Verify no stale references to deleted concepts in key modules."""
 
     def test_tool_summaries_no_analyze(self):
-        from src.backend.api.tool_summaries import TOOL_STATUS_MESSAGES, TOOL_FAILURE_MESSAGES
+        from src.backend.tasks.tool_summaries import TOOL_STATUS_MESSAGES, TOOL_FAILURE_MESSAGES
         assert "analyze_workflow" not in TOOL_STATUS_MESSAGES
         assert "publish_latest_analysis" not in TOOL_STATUS_MESSAGES
         assert "analyze_workflow" not in TOOL_FAILURE_MESSAGES
         assert "publish_latest_analysis" not in TOOL_FAILURE_MESSAGES
 
     def test_tool_summaries_has_new_tools(self):
-        from src.backend.api.tool_summaries import TOOL_STATUS_MESSAGES, TOOL_FAILURE_MESSAGES
+        from src.backend.tasks.tool_summaries import TOOL_STATUS_MESSAGES, TOOL_FAILURE_MESSAGES
         assert "view_image" in TOOL_STATUS_MESSAGES
         assert "update_plan" in TOOL_STATUS_MESSAGES
         assert "view_image" in TOOL_FAILURE_MESSAGES

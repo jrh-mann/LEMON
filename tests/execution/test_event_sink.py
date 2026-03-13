@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from src.backend.api.sse import EventSink
+from src.backend.tasks.sse import EventSink
 
 
 class TestEventSinkBasic:

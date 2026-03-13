@@ -51,6 +51,7 @@ export default function Canvas() {
     execution,  // Execution state for visual highlighting
     highlightedNodeId,  // Node pulsing from highlight_node tool
     currentAnalysis,
+    currentWorkflow,
   } = useWorkflowStore()
 
   const {
@@ -114,6 +115,14 @@ export default function Canvas() {
 
   // Track initial positions of selected nodes for group dragging
   const [dragStartPositions, setDragStartPositions] = useState<Map<string, { x: number; y: number }> | null>(null)
+
+  // Reset pan offset when switching workflows (SPA navigation).
+  // Without this, the old workflow's pan persists and the new workflow's
+  // nodes can be rendered outside the visible viewBox.
+  const workflowId = currentWorkflow?.id
+  useEffect(() => {
+    setPanOffset({ x: 0, y: 0 })
+  }, [workflowId])
 
   // Track last click for double-click detection on canvas
   const lastCanvasClickRef = useRef<{ time: number; x: number; y: number } | null>(null)
