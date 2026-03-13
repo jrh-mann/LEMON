@@ -141,75 +141,77 @@ export default function Header() {
   }, [setError, navigate])
 
   return (
-    <header className="app-header animate-slide-down-1">
-      <div className="logo" onClick={handleLogoClick} style={{ cursor: 'pointer', position: 'relative' }}>
-        <span className="logo-mark">L</span>
-        <span className="logo-text">LEMON</span>
-        {devMode && (
-          <span style={{
-            position: 'absolute',
-            top: 2,
-            right: -6,
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: 'var(--green)',
-            border: '2px solid var(--paper)',
-          }} />
-        )}
-      </div>
+    <>
+      <header className="app-header animate-slide-down-1">
+        <div className="logo" onClick={handleLogoClick} style={{ cursor: 'pointer', position: 'relative' }}>
+          <span className="logo-mark">L</span>
+          <span className="logo-text">LEMON</span>
+          {devMode && (
+            <span style={{
+              position: 'absolute',
+              top: 2,
+              right: -6,
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: 'var(--green)',
+              border: '2px solid var(--paper)',
+            }} />
+          )}
+        </div>
 
-      <div className="header-actions">
-        <button className="ghost" onClick={() => navigate('/library')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-          </svg>
-          Browse Library
-        </button>
+        <div className="header-actions">
+          <button className="ghost" onClick={() => navigate('/library')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+            </svg>
+            Browse Library
+          </button>
 
-        <button
-          className="primary"
-          disabled={!canExport}
-          onClick={() => openModal('save')}
-          title={canExport ? 'Save workflow to library' : 'No workflow to save'}
-        >
-          Save
-        </button>
+          <button
+            className="primary"
+            disabled={!canExport}
+            onClick={() => openModal('save')}
+            title={canExport ? 'Save workflow to library' : 'No workflow to save'}
+          >
+            Save
+          </button>
 
-        <button
-          className="ghost"
-          onClick={() => setShowJsonInput(true)}
-          title="Import workflow from JSON"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          Import
-        </button>
+          <button
+            className="ghost"
+            onClick={() => setShowJsonInput(true)}
+            title="Import workflow from JSON"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Import
+          </button>
 
-        <button
-          className="ghost"
-          disabled={!canExport}
-          onClick={() => navigate('/export')}
-          title={canExport ? 'Export workflow' : 'No workflow to export'}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Export
-        </button>
+          <button
+            className="ghost"
+            disabled={!canExport}
+            onClick={() => navigate('/export')}
+            title={canExport ? 'Export workflow' : 'No workflow to export'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export
+          </button>
 
-        <button className="ghost" onClick={handleLogout}>
-          Sign out
-        </button>
-      </div>
+          <button className="ghost" onClick={handleLogout}>
+            Sign out
+          </button>
+        </div>
+      </header>
 
-      {/* Hidden file input for JSON upload */}
+      {/* Hidden file input for JSON upload — outside header to avoid clipping */}
       <input
         ref={fileInputRef2}
         type="file"
@@ -218,7 +220,7 @@ export default function Header() {
         onChange={handleFileUpload}
       />
 
-      {/* JSON Import Modal */}
+      {/* JSON Import Modal — outside header so fixed overlay covers full viewport */}
       {showJsonInput && (
         <div className="json-modal-overlay" onClick={() => setShowJsonInput(false)}>
           <div className="json-modal" onClick={(e) => e.stopPropagation()}>
@@ -268,6 +270,6 @@ export default function Header() {
           </div>
         </div>
       )}
-    </header>
+    </>
   )
 }
