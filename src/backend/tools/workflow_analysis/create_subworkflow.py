@@ -126,19 +126,24 @@ def _run_subworkflow_builder(
                 "Background builder FAILED for subworkflow %s: %s",
                 workflow_id, exc, exc_info=True,
             )
-            # Clear building flag even on failure so the workflow isn't stuck
+            # Clear building flag and persist partial history so context
+            # survives cancel/failure. Without this, navigating back to the
+            # subworkflow shows an empty conversation.
             try:
+                update_kwargs: Dict[str, Any] = {"building": False}
+                if task.orchestrator is not None:
+                    partial_hist = task.orchestrator.conversation.history
+                    if len(partial_hist) > MAX_BUILD_HISTORY_MESSAGES:
+                        partial_hist = partial_hist[-MAX_BUILD_HISTORY_MESSAGES:]
+                    update_kwargs["build_history"] = partial_hist
                 workflow_store.update_workflow(
-                    workflow_id, user_id, building=False,
+                    workflow_id, user_id, **update_kwargs,
                 )
             except Exception as inner_exc:
                 logger.error(
                     "Failed to clear building flag for %s: %s",
                     workflow_id, inner_exc,
                 )
-            # build_error is emitted on the builder's own sink (via
-            # task.emit_response below) so the frontend sees it when
-            # connected to the builder's stream.
         finally:
             # Emit chat_response on builder's own sink to signal build completion
             task.emit_response(response_text)
