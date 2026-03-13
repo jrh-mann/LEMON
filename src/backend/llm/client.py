@@ -69,13 +69,38 @@ def call_llm(
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
 
-    system_payload = [{"type": "text", "text": system}] if system else []
+    # --- Prompt caching ---
+    # Add cache_control breakpoints so the API caches prefixes that are
+    # identical across calls.  In the tool loop the orchestrator makes
+    # many LLM calls with the same system + tools + growing message
+    # history.  Caching gives a 90% input-token discount on cache hits
+    # (5-minute TTL, 25% write premium on the first call).
+    #
+    # Breakpoints (each caches everything from the start up to itself):
+    #   1. System prompt   — stable across ALL calls in a session
+    #   2. Last tool schema — stable across ALL calls in a session
+    #   3. Last message     — stable within a tool-loop iteration
+    _CACHE = {"cache_control": {"type": "ephemeral"}}
+
+    system_payload = (
+        [{"type": "text", "text": system, **_CACHE}] if system else []
+    )
 
     # Build Anthropic API payload
     if tool_choice is None and tools:
         tool_choice = "auto"
     # Tools are already in native Anthropic format from to_anthropic_schema()
-    tool_payload = tools if tools and tool_choice != "none" else []
+    tool_payload = list(tools) if tools and tool_choice != "none" else []
+    if tool_payload:
+        # Mark last tool so system + all tool schemas are cached together
+        tool_payload[-1] = {**tool_payload[-1], **_CACHE}
+
+    # Mark last message's last content block so the conversation prefix
+    # is cached — only the newest exchange costs full input tokens.
+    if converted:
+        last_content = converted[-1].get("content")
+        if last_content:
+            last_content[-1] = {**last_content[-1], **_CACHE}
 
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
