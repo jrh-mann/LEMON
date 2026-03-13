@@ -12,6 +12,7 @@ stale-purge all work identically to ChatTask.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from threading import Event
@@ -22,6 +23,10 @@ from .tool_summaries import ToolSummaryTracker
 from ..tools.constants import WORKFLOW_EDIT_TOOLS
 
 logger = logging.getLogger(__name__)
+
+# Maximum wall-clock time a builder can run before being killed.
+# Same as ChatTask — prevents zombie builders from LLM hangs or tool deadlocks.
+_BUILDER_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass
@@ -60,6 +65,44 @@ class BuilderTask:
 
     def __post_init__(self) -> None:
         self.current_workflow_id = self.workflow_id
+
+    # --- Timeout watchdog ---
+
+    def start_watchdog(self) -> None:
+        """Spawn a daemon thread that kills this build after _BUILDER_TIMEOUT_SECONDS.
+
+        Must be called after construction — the background builder thread calls
+        this before starting the orchestrator. Same pattern as ChatTask.
+        """
+        t = threading.Thread(
+            target=self._timeout_watchdog,
+            daemon=True,
+            name=f"builder-watchdog-{self.task_id}",
+        )
+        t.start()
+
+    def _timeout_watchdog(self) -> None:
+        """Kill the build if it exceeds the wall-clock timeout.
+
+        Polls every 5 seconds. Sets _cancelled so the orchestrator's
+        should_cancel callback picks it up on the next LLM call or tool call.
+        """
+        start = time.monotonic()
+        while not self.done.is_set():
+            self.done.wait(5)
+            if self.done.is_set() or self.is_cancelled():
+                break
+            elapsed = time.monotonic() - start
+            if elapsed > _BUILDER_TIMEOUT_SECONDS:
+                logger.error(
+                    "Builder %s timed out (%.0fs > %.0fs) — cancelling",
+                    self.task_id, elapsed, _BUILDER_TIMEOUT_SECONDS,
+                )
+                self._cancelled = True
+                self._emit("chat_error", {
+                    "error": "Build timed out — the subworkflow was too complex.",
+                })
+                break
 
     # --- Event emission ---
 

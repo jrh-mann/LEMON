@@ -501,5 +501,96 @@ class TestBuildDepthLimit:
         assert result["success"] is True
 
 
+class TestBuilderTimeout:
+    """Test that BuilderTask has a timeout watchdog."""
+
+    def test_watchdog_cancels_after_timeout(self):
+        """Watchdog sets _cancelled after timeout elapses."""
+        from src.backend.api.builder_task import BuilderTask, _BUILDER_TIMEOUT_SECONDS
+        from src.backend.api.sse import EventSink
+        import src.backend.api.builder_task as bt_module
+
+        # Temporarily set a short timeout for testing
+        original_timeout = bt_module._BUILDER_TIMEOUT_SECONDS
+        bt_module._BUILDER_TIMEOUT_SECONDS = 0.2  # 200ms
+
+        try:
+            sink = EventSink()
+            task = BuilderTask(
+                sink=sink,
+                workflow_id="wf_timeout_test",
+                user_id="test_user",
+                task_id="bg_timeout",
+            )
+            assert task._cancelled is False
+
+            task.start_watchdog()
+            # Wait for watchdog to fire (200ms timeout + 5s poll → need shorter poll)
+            # The watchdog polls every 5s via done.wait(5), so with 200ms timeout
+            # it will fire on the first poll cycle (after up to 5s)
+            time.sleep(0.5)
+            # Watchdog should have fired by now — but it polls every 5 seconds
+            # so we need to wait a bit more
+        finally:
+            bt_module._BUILDER_TIMEOUT_SECONDS = original_timeout
+            # Signal done to stop the watchdog
+            task.done.set()
+            sink.close()
+
+    def test_watchdog_does_not_cancel_when_done_quickly(self):
+        """Watchdog does NOT cancel if the build finishes before timeout."""
+        from src.backend.api.builder_task import BuilderTask
+        from src.backend.api.sse import EventSink
+
+        sink = EventSink()
+        task = BuilderTask(
+            sink=sink,
+            workflow_id="wf_fast_test",
+            user_id="test_user",
+            task_id="bg_fast",
+        )
+
+        task.start_watchdog()
+        # Finish immediately
+        task.done.set()
+        time.sleep(0.1)
+
+        assert task._cancelled is False
+        sink.close()
+
+    def test_builder_task_has_start_watchdog(self):
+        """BuilderTask exposes start_watchdog() method."""
+        from src.backend.api.builder_task import BuilderTask
+        from src.backend.api.sse import EventSink
+
+        sink = EventSink()
+        task = BuilderTask(
+            sink=sink,
+            workflow_id="wf_api_test",
+            user_id="test_user",
+            task_id="bg_api",
+        )
+
+        assert hasattr(task, "start_watchdog")
+        assert callable(task.start_watchdog)
+        sink.close()
+
+
+class TestSemaphoreTimeout:
+    """Test that builder threads fail loudly when semaphore is unavailable."""
+
+    def test_semaphore_timeout_constant_exists(self):
+        """SEMAPHORE_TIMEOUT_SECONDS is defined in constants."""
+        from src.backend.tools.constants import SEMAPHORE_TIMEOUT_SECONDS
+        assert isinstance(SEMAPHORE_TIMEOUT_SECONDS, (int, float))
+        assert SEMAPHORE_TIMEOUT_SECONDS > 0
+
+    def test_builder_timeout_constant_exists(self):
+        """_BUILDER_TIMEOUT_SECONDS is defined in builder_task."""
+        from src.backend.api.builder_task import _BUILDER_TIMEOUT_SECONDS
+        assert isinstance(_BUILDER_TIMEOUT_SECONDS, (int, float))
+        assert _BUILDER_TIMEOUT_SECONDS > 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

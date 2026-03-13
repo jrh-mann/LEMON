@@ -92,6 +92,12 @@ import threading as _threading  # noqa: E402
 _MAX_CONCURRENT_BUILDERS = 5
 builder_semaphore = _threading.Semaphore(_MAX_CONCURRENT_BUILDERS)
 
+# Timeout for acquiring a semaphore slot. If all slots are held by slow/zombie
+# builders, new builders fail loudly after this many seconds instead of
+# blocking forever. Set to 30s — enough to wait for a slot to free up from
+# a finishing build, short enough to surface stuck builders quickly.
+SEMAPHORE_TIMEOUT_SECONDS = 30
+
 # Maximum build_history messages to persist in DB per workflow.
 # Prevents unbounded blob growth from long builder conversations.
 MAX_BUILD_HISTORY_MESSAGES = 100

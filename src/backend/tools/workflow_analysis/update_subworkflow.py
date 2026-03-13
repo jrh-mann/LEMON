@@ -21,7 +21,7 @@ from typing import Any, Dict
 from uuid import uuid4
 
 from ..core import Tool, ToolParameter, extract_session_deps
-from ..constants import builder_semaphore, MAX_BUILD_HISTORY_MESSAGES
+from ..constants import builder_semaphore, MAX_BUILD_HISTORY_MESSAGES, SEMAPHORE_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -57,99 +57,120 @@ def _run_subworkflow_updater(
 
     response_text = ""
 
-    # Acquire semaphore to limit concurrent builder threads
-    with builder_semaphore:
+    # Start timeout watchdog — kills the build after 300s wall-clock
+    task.start_watchdog()
+
+    # Acquire semaphore with timeout — fail loudly instead of blocking forever
+    # if all 5 slots are held by zombie threads or slow builds.
+    if not builder_semaphore.acquire(timeout=SEMAPHORE_TIMEOUT_SECONDS):
+        logger.error(
+            "Updater %s failed to acquire semaphore within %ds — all slots busy",
+            workflow_id, SEMAPHORE_TIMEOUT_SECONDS,
+        )
+        task.emit_response("")
+        task.done.set()
+        from ...api.task_registry import task_registry as _reg
+        _reg.unregister(task)
+        task.sink.close()
         try:
-            from ...agents.orchestrator_factory import build_orchestrator
+            workflow_store.update_workflow(workflow_id, user_id, building=False)
+        except Exception:
+            pass
+        return
 
-            orchestrator = build_orchestrator(repo_root)
-            orchestrator.workflow_store = workflow_store
-            orchestrator.user_id = user_id
-            orchestrator.current_workflow_id = workflow_id
-            orchestrator.repo_root = repo_root
-            # Builder's own sink — nested subworkflows will use this
-            orchestrator.event_sink = task.sink
-            # Propagate build depth so nested create_subworkflow is rejected
-            # if we're already at MAX_BUILD_DEPTH
-            orchestrator._build_depth = build_depth
-            task.orchestrator = orchestrator
+    try:
+        from ...agents.orchestrator_factory import build_orchestrator
 
-            # Pre-load the previous builder's conversation so the LLM has
-            # full context of how the workflow was originally built
-            orchestrator.conversation.history = list(build_history)
+        orchestrator = build_orchestrator(repo_root)
+        orchestrator.workflow_store = workflow_store
+        orchestrator.user_id = user_id
+        orchestrator.current_workflow_id = workflow_id
+        orchestrator.repo_root = repo_root
+        # Builder's own sink — nested subworkflows will use this
+        orchestrator.event_sink = task.sink
+        # Propagate build depth so nested create_subworkflow is rejected
+        # if we're already at MAX_BUILD_DEPTH
+        orchestrator._build_depth = build_depth
+        task.orchestrator = orchestrator
 
-            logger.info(
-                "Background updater started for subworkflow %s (history=%d messages): %s",
-                workflow_id, len(build_history), instructions[:100],
+        # Pre-load the previous builder's conversation so the LLM has
+        # full context of how the workflow was originally built
+        orchestrator.conversation.history = list(build_history)
+
+        logger.info(
+            "Background updater started for subworkflow %s (history=%d messages): %s",
+            workflow_id, len(build_history), instructions[:100],
+        )
+
+        # Emit the instructions as a user message so the frontend shows it
+        task.emit_user_message(instructions)
+        task.emit_progress("Updating workflow...", event="start")
+
+        # Run the orchestrator with the update instructions
+        from ...agents.turn import Turn
+        update_turn = Turn(instructions, f"bg_{workflow_id}")
+        update_turn.start()
+        try:
+            response_text = orchestrator.respond(
+                instructions, turn=update_turn, allow_tools=True,
+                stream=task.stream_chunk,
+                on_tool_event=task.on_tool_event,
+                should_cancel=task.is_cancelled,
+                thinking=True,
+                on_thinking=task.stream_thinking,
             )
-
-            # Emit the instructions as a user message so the frontend shows it
-            task.emit_user_message(instructions)
-            task.emit_progress("Updating workflow...", event="start")
-
-            # Run the orchestrator with the update instructions
-            from ...agents.turn import Turn
-            update_turn = Turn(instructions, f"bg_{workflow_id}")
-            update_turn.start()
-            try:
-                response_text = orchestrator.respond(
-                    instructions, turn=update_turn, allow_tools=True,
-                    stream=task.stream_chunk,
-                    on_tool_event=task.on_tool_event,
-                    should_cancel=task.is_cancelled,
-                    thinking=True,
-                    on_thinking=task.stream_thinking,
-                )
-                update_turn.complete(response_text)
-            except Exception as update_exc:
-                update_turn.fail(str(update_exc))
-                raise
-            finally:
-                update_turn.commit(orchestrator.conversation)
-
-            # Persist the updated conversation history and clear building flag.
-            # Cap history to prevent unbounded DB blob growth.
-            build_hist = orchestrator.conversation.history
-            if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
-                build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
-            workflow_store.update_workflow(
-                workflow_id, user_id,
-                building=False,
-                build_history=build_hist,
-            )
-
-            logger.info("Background updater finished for subworkflow %s", workflow_id)
-
-        except Exception as exc:
-            logger.error(
-                "Background updater FAILED for subworkflow %s: %s",
-                workflow_id, exc, exc_info=True,
-            )
-            # Clear building flag and persist partial history so context
-            # survives cancel/failure. Without this, navigating back to the
-            # subworkflow shows an empty conversation.
-            try:
-                update_kwargs: Dict[str, Any] = {"building": False}
-                if task.orchestrator is not None:
-                    partial_hist = task.orchestrator.conversation.history
-                    if len(partial_hist) > MAX_BUILD_HISTORY_MESSAGES:
-                        partial_hist = partial_hist[-MAX_BUILD_HISTORY_MESSAGES:]
-                    update_kwargs["build_history"] = partial_hist
-                workflow_store.update_workflow(
-                    workflow_id, user_id, **update_kwargs,
-                )
-            except Exception as inner_exc:
-                logger.error(
-                    "Failed to clear building flag for %s: %s",
-                    workflow_id, inner_exc,
-                )
+            update_turn.complete(response_text)
+        except Exception as update_exc:
+            update_turn.fail(str(update_exc))
+            raise
         finally:
-            # Emit chat_response on builder's own sink to signal completion
-            task.emit_response(response_text)
-            task.done.set()
-            _task_registry.unregister(task)
-            # Close the builder's own sink
-            task.sink.close()
+            update_turn.commit(orchestrator.conversation)
+
+        # Persist the updated conversation history and clear building flag.
+        # Cap history to prevent unbounded DB blob growth.
+        build_hist = orchestrator.conversation.history
+        if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
+            build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
+        workflow_store.update_workflow(
+            workflow_id, user_id,
+            building=False,
+            build_history=build_hist,
+        )
+
+        logger.info("Background updater finished for subworkflow %s", workflow_id)
+
+    except Exception as exc:
+        logger.error(
+            "Background updater FAILED for subworkflow %s: %s",
+            workflow_id, exc, exc_info=True,
+        )
+        # Clear building flag and persist partial history so context
+        # survives cancel/failure. Without this, navigating back to the
+        # subworkflow shows an empty conversation.
+        try:
+            update_kwargs: Dict[str, Any] = {"building": False}
+            if task.orchestrator is not None:
+                partial_hist = task.orchestrator.conversation.history
+                if len(partial_hist) > MAX_BUILD_HISTORY_MESSAGES:
+                    partial_hist = partial_hist[-MAX_BUILD_HISTORY_MESSAGES:]
+                update_kwargs["build_history"] = partial_hist
+            workflow_store.update_workflow(
+                workflow_id, user_id, **update_kwargs,
+            )
+        except Exception as inner_exc:
+            logger.error(
+                "Failed to clear building flag for %s: %s",
+                workflow_id, inner_exc,
+            )
+    finally:
+        # Release the semaphore slot so other builders can proceed
+        builder_semaphore.release()
+        # Emit chat_response on builder's own sink to signal completion
+        task.emit_response(response_text)
+        task.done.set()
+        _task_registry.unregister(task)
+        # Close the builder's own sink
+        task.sink.close()
 
 
 class UpdateSubworkflowTool(Tool):
