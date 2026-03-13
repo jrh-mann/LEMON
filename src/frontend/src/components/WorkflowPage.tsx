@@ -45,6 +45,9 @@ export default function WorkflowPage() {
     const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
+    // Ref for the build-completion poll interval — stored here so the
+    // useEffect cleanup can clear it on unmount (prevents leaked intervals).
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     // Trigger reveal with transition tracking
     const triggerReveal = useCallback(() => {
@@ -207,11 +210,14 @@ export default function WorkflowPage() {
                     // else: SPA navigation — events are already flowing, no resume needed
 
                     // Poll until the task completes, then fetch the final response.
-                    const pollInterval = setInterval(async () => {
+                    // Stored in ref so the useEffect cleanup can clear it on unmount.
+                    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+                    pollIntervalRef.current = setInterval(async () => {
                         try {
                             const fresh = await getWorkflow(workflowId)
                             if (!fresh.building) {
-                                clearInterval(pollInterval)
+                                clearInterval(pollIntervalRef.current!)
+                                pollIntervalRef.current = null
                                 const chatStore = useChatStore.getState()
                                 chatStore.setStreaming(workflowId, false)
                                 chatStore.setProcessingStatus(workflowId, null)
@@ -225,7 +231,8 @@ export default function WorkflowPage() {
                                 setAnalysis(hydrated.analysis)
                             }
                         } catch {
-                            clearInterval(pollInterval)
+                            clearInterval(pollIntervalRef.current!)
+                            pollIntervalRef.current = null
                         }
                     }, 2000)
                 }
@@ -323,7 +330,13 @@ export default function WorkflowPage() {
             }
         }
         loadWorkflow()
-        return () => { isActive = false }
+        return () => {
+            isActive = false
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current)
+                pollIntervalRef.current = null
+            }
+        }
     }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles])
 
     // Re-fetch workflow when a background subworkflow build completes.

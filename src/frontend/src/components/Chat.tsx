@@ -276,6 +276,33 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const startY = useRef(0)
   const startHeight = useRef(0)
 
+  // Document-level drag listeners managed via useEffect to guarantee cleanup
+  // on unmount — prevents leaked listeners if user navigates mid-drag.
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const delta = startY.current - e.clientY
+      const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
+      setChatHeight(newHeight)
+    }
+    const onMouseUp = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      if (isDragging.current) {
+        document.body.style.userSelect = ''
+        document.body.style.cursor = ''
+      }
+    }
+  }, [setChatHeight])
+
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     isDragging.current = true
@@ -283,23 +310,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     startHeight.current = chatHeight
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'ns-resize'
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging.current) return
-    const delta = startY.current - e.clientY
-    const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
-    setChatHeight(newHeight)
-  }
-
-  const handleMouseUp = () => {
-    isDragging.current = false
-    document.body.style.userSelect = ''
-    document.body.style.cursor = ''
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
   }
 
   const isCollapsed = chatHeight === 0
