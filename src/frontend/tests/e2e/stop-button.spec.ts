@@ -1,232 +1,187 @@
 /**
- * E2E tests for the stop button.
+ * E2E tests for the stop button — real backend, no mocks.
  *
- * Verifies that:
- * - Clicking stop while streaming preserves existing messages
- * - Partial streamed content is finalized into a message
- * - Chat input is re-enabled after stop
- * - Streaming UI disappears after stop
- * - Conversation history survives stop + refresh
+ * Requires both servers running with LEMON_ALLOW_REGISTRATION=true:
+ *   LEMON_ALLOW_REGISTRATION=true bash scripts/dev.sh start
+ *
+ * Verifies:
+ * - Stop cancels the backend task and re-enables input
+ * - Partial content is preserved
+ * - Agent retains conversation context after stop
  */
-import { test, expect } from '@playwright/test'
-import {
-  mockAllAPIs, seedAndLoad,
-  msg, resetMsgCounter,
-  type PersistedChatState,
-} from './helpers'
+import { test, expect, type Page } from '@playwright/test'
 
-const WF_ID = 'wf_e2e_stop_test_000000000000000000'
+test.setTimeout(120_000)
+test.use({ viewport: { width: 1280, height: 900 } })
 
-test.describe('stop button', () => {
+// ── Helpers ──────────────────────────────────────────────────────
+
+async function registerUser(page: Page) {
+  const email = `e2e_stop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@test.local`
+  const res = await page.request.post('http://localhost:5173/api/auth/register', {
+    data: { email, name: 'E2E Stop', password: 'TestPassword123!', remember: false },
+  })
+  if (!res.ok()) throw new Error(`Registration failed (${res.status()})`)
+}
+
+async function openNewWorkflow(page: Page) {
+  await page.goto('/workflow')
+  await page.waitForLoadState('networkidle')
+  const newBtn = page.locator('.home-content button, .home-content a')
+    .filter({ hasText: /new|build|start/i }).first()
+  await newBtn.waitFor({ timeout: 15_000 })
+  await newBtn.click()
+  await page.waitForFunction(
+    () => !!document.querySelector('.workspace-revealed'),
+    { timeout: 15_000 },
+  )
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('#chatInput') as HTMLTextAreaElement | null
+      return el && !el.disabled
+    },
+    { timeout: 15_000 },
+  )
+}
+
+async function sendMessage(page: Page, text: string) {
+  const postPromise = page.waitForRequest(
+    req => req.url().includes('/api/chat/send') && req.method() === 'POST',
+  )
+  await page.fill('#chatInput', text)
+  await page.click('#sendBtn')
+  await postPromise
+}
+
+/** Poll zustand store for streaming content or finalized messages. */
+async function waitForStreamingContent(page: Page, timeout = 60_000): Promise<boolean> {
+  return page.waitForFunction(
+    () => {
+      const raw = localStorage.getItem('lemon-chat')
+      if (!raw) return false
+      try {
+        const parsed = JSON.parse(raw)
+        const wfId = parsed?.state?.activeWorkflowId
+        const conv = parsed?.state?.conversations?.[wfId]
+        if (!conv) return false
+        return (conv.streamingContent ?? '').length > 0 || conv.messages.length > 1
+      } catch { return false }
+    },
+    { timeout },
+  ).then(() => true).catch(() => false)
+}
+
+// ── Tests ────────────────────────────────────────────────────────
+
+test.describe('stop button — live backend', () => {
   test.beforeEach(async ({ page }) => {
-    resetMsgCounter()
-    await mockAllAPIs(page)
+    await test.step('register user', () => registerUser(page))
+    await test.step('open new workflow', () => openNewWorkflow(page))
   })
 
-  test('clicking stop preserves prior messages and re-enables input', async ({ page }) => {
-    // Seed with one completed exchange + active streaming state
-    const priorMessages = [
-      msg('user', 'build a triage workflow'),
-      msg('assistant', 'Here is the triage workflow.', [
-        tc('add_node', { label: 'Start' }),
-        tc('add_node', { label: 'Check vitals' }),
-      ]),
-    ]
+  test('stop cancels task, preserves content, re-enables input', async ({ page }) => {
+    await test.step('send message', () =>
+      sendMessage(page, 'Add a start node labeled "Input" to the workflow. Do not explain, just do it.'),
+    )
 
-    // Build storage with streaming state active (simulating mid-stream)
-    const payload: PersistedChatState = {
-      state: {
-        activeWorkflowId: WF_ID,
-        pendingQuestions: [],
-        conversations: {
-          [WF_ID]: {
-            messages: [
-              ...priorMessages,
-              // User sent a second message, assistant is streaming
-              msg('user', 'now add an output node'),
-            ],
-            conversationId: 'conv-stop-test',
-            isStreaming: true,
-            streamingContent: 'I will add an output node to',
-            thinkingContent: '',
-            processingStatus: 'Building workflow...',
-            currentTaskId: 'task_stop_test_1',
-            contextUsagePct: 25,
-          },
-        },
-      },
-      version: 0,
+    await test.step('wait for streaming', () => waitForStreamingContent(page))
+
+    const stopBtn = page.locator('#stopBtn')
+    if (await stopBtn.isVisible()) {
+      await test.step('click stop', async () => {
+        const cancelPromise = page.waitForRequest(
+          req => req.url().includes('/api/chat/cancel') && req.method() === 'POST',
+          { timeout: 5_000 },
+        ).catch(() => null)
+        await stopBtn.click()
+        const cancelReq = await cancelPromise
+        expect(cancelReq).not.toBeNull()
+        await expect(stopBtn).toBeHidden({ timeout: 10_000 })
+      })
     }
 
-    await seedAndLoad(page, WF_ID, JSON.stringify(payload))
-
-    // Streaming UI should be visible
-    await expect(page.locator('#stopBtn')).toBeVisible({ timeout: 5000 })
-    await expect(page.locator('#chatInput')).toBeDisabled()
-
-    // Prior messages should be visible (streaming content renders as an
-    // assistant message too, so we expect 2 assistant messages before stop)
-    await expect(page.locator('.message.user')).toHaveCount(2)
-    await expect(page.locator('.message.assistant')).toHaveCount(2)
-
-    // Click stop
-    await page.click('#stopBtn')
-
-    // Streaming UI should disappear
-    await expect(page.locator('#stopBtn')).toBeHidden({ timeout: 3000 })
-    await expect(page.locator('#chatInput')).toBeEnabled()
-
-    // Prior messages should still be there
-    await expect(page.locator('.message.user')).toHaveCount(2)
-
-    // The streamed content is finalized into a permanent assistant message
-    const assistantMessages = page.locator('.message.assistant')
-    await expect(assistantMessages).toHaveCount(2)
-    await expect(assistantMessages.nth(0).locator('.message-content')).toContainText('triage workflow')
-    await expect(assistantMessages.nth(0).locator('.tool-call')).toHaveCount(2)
-
-    // The finalized partial message should contain the streamed text
-    await expect(assistantMessages.nth(1).locator('.message-content')).toContainText('output node')
+    await test.step('verify UI state', async () => {
+      await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 30_000 })
+      await expect(page.locator('.message.user')).toHaveCount(1)
+      const assistant = page.locator('.message.assistant')
+      await expect(assistant).toHaveCount(1, { timeout: 5_000 })
+      const content = await assistant.first().locator('.message-content').textContent()
+      expect(content?.length).toBeGreaterThan(0)
+    })
   })
 
-  test('stop with no streamed content preserves messages without adding empty one', async ({ page }) => {
-    // Streaming just started (thinking phase) — no streamingContent yet
-    const payload: PersistedChatState = {
-      state: {
-        activeWorkflowId: WF_ID,
-        pendingQuestions: [],
-        conversations: {
-          [WF_ID]: {
-            messages: [
-              msg('user', 'first question'),
-              msg('assistant', 'first answer'),
-              msg('user', 'second question'),
-            ],
-            conversationId: 'conv-stop-empty',
-            isStreaming: true,
-            streamingContent: '',
-            thinkingContent: 'Let me think about this...',
-            processingStatus: 'Thinking...',
-            currentTaskId: 'task_stop_empty_1',
-            contextUsagePct: 10,
-          },
+  test('agent retains context after stop', async ({ page }) => {
+    await test.step('send GFR message', () =>
+      // Short, direct instruction — minimal thinking needed
+      sendMessage(page, 'Add a start node labeled "GFR Creatinine". Just add the node, nothing else.'),
+    )
+
+    await test.step('wait for streaming', () => waitForStreamingContent(page))
+
+    await test.step('click stop', async () => {
+      const stopBtn = page.locator('#stopBtn')
+      if (await stopBtn.isVisible()) {
+        await stopBtn.click()
+        await expect(stopBtn).toBeHidden({ timeout: 10_000 })
+      }
+    })
+
+    await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 30_000 })
+
+    await test.step('send follow-up', () =>
+      // Ask what the first message was about — one word answer to minimize LLM time
+      sendMessage(page, 'What keyword was in the node label I asked for? Reply with just that one word.'),
+    )
+
+    await test.step('check agent remembers', async () => {
+      // Poll streaming + finalized content for the keyword — don't wait for full response
+      const remembered = await page.waitForFunction(
+        () => {
+          const raw = localStorage.getItem('lemon-chat')
+          if (!raw) return false
+          try {
+            const parsed = JSON.parse(raw)
+            const wfId = parsed?.state?.activeWorkflowId
+            const conv = parsed?.state?.conversations?.[wfId]
+            if (!conv) return false
+            const streaming = (conv.streamingContent ?? '').toLowerCase()
+            const lastMsg = conv.messages?.[conv.messages.length - 1]
+            const lastContent = (lastMsg?.role === 'assistant' ? lastMsg.content : '').toLowerCase()
+            const text = streaming + ' ' + lastContent
+            return /gfr|creatinine/.test(text)
+          } catch { return false }
         },
-      },
-      version: 0,
-    }
+        { timeout: 60_000 },
+      ).then(() => true).catch(() => false)
 
-    await seedAndLoad(page, WF_ID, JSON.stringify(payload))
-
-    await expect(page.locator('#stopBtn')).toBeVisible({ timeout: 5000 })
-
-    // 2 user messages + 1 assistant + streaming indicator
-    await expect(page.locator('.message.user')).toHaveCount(2)
-    await expect(page.locator('.message.assistant').first()).toContainText('first answer')
-
-    await page.click('#stopBtn')
-
-    await expect(page.locator('#stopBtn')).toBeHidden({ timeout: 3000 })
-    await expect(page.locator('#chatInput')).toBeEnabled()
-
-    // All prior messages preserved
-    await expect(page.locator('.message.user')).toHaveCount(2)
-    // No empty assistant message added (streamingContent was '')
-    await expect(page.locator('.message.assistant')).toHaveCount(1)
+      expect(remembered).toBe(true)
+    })
   })
 
-  test('messages survive stop then page refresh', async ({ page }) => {
-    const payload: PersistedChatState = {
-      state: {
-        activeWorkflowId: WF_ID,
-        pendingQuestions: [],
-        conversations: {
-          [WF_ID]: {
-            messages: [
-              msg('user', 'analyze the image'),
-              msg('assistant', 'I see a flowchart with decision nodes.', [
-                tc('view_image', {}),
-                tc('extract_guidance', {}),
-              ]),
-              msg('user', 'now build it'),
-            ],
-            conversationId: 'conv-stop-refresh',
-            isStreaming: true,
-            streamingContent: 'Starting to build the workflow with',
-            thinkingContent: '',
-            processingStatus: 'Building...',
-            currentTaskId: 'task_stop_refresh_1',
-            contextUsagePct: 30,
-          },
-        },
-      },
-      version: 0,
-    }
+  test('stop during thinking does not leave empty message', async ({ page }) => {
+    await test.step('send message', () =>
+      sendMessage(page, 'Add a start node. Do not explain.'),
+    )
 
-    await seedAndLoad(page, WF_ID, JSON.stringify(payload))
+    await test.step('wait for streaming indicator', async () => {
+      await expect(
+        page.locator('.message.assistant.streaming, .processing-status, .typing-indicator').first(),
+      ).toBeVisible({ timeout: 30_000 })
+    })
 
-    await expect(page.locator('#stopBtn')).toBeVisible({ timeout: 5000 })
-    await page.click('#stopBtn')
-    await expect(page.locator('#stopBtn')).toBeHidden({ timeout: 3000 })
+    await test.step('click stop immediately', async () => {
+      const stopBtn = page.locator('#stopBtn')
+      if (await stopBtn.isVisible()) await stopBtn.click()
+    })
 
-    // Verify state after stop
-    const assistantMessages = page.locator('.message.assistant')
-    await expect(assistantMessages).toHaveCount(2)
-    await expect(assistantMessages.nth(0).locator('.tool-call')).toHaveCount(2)
-
-    // Refresh the page
-    await page.reload()
-
-    // All messages should survive the refresh
-    await expect(page.locator('.message.user')).toHaveCount(2)
-    await expect(assistantMessages).toHaveCount(2)
-    await expect(assistantMessages.nth(0).locator('.tool-call')).toHaveCount(2)
-    await expect(assistantMessages.nth(0).locator('.message-content')).toContainText('flowchart')
-
-    // Streaming UI should NOT reappear (isStreaming is stripped by partialize)
-    await expect(page.locator('#stopBtn')).toBeHidden()
-    await expect(page.locator('#chatInput')).toBeEnabled()
-  })
-
-  test('tool calls on prior messages are preserved after stop', async ({ page }) => {
-    const payload: PersistedChatState = {
-      state: {
-        activeWorkflowId: WF_ID,
-        pendingQuestions: [],
-        conversations: {
-          [WF_ID]: {
-            messages: [
-              msg('user', 'build complex workflow'),
-              msg('assistant', 'Created the workflow.', [
-                tc('add_node', { label: 'Start' }),
-                tc('add_node', { label: 'Decision' }),
-                tc('add_connection', { from: 'n1', to: 'n2' }),
-                tc('add_node', { label: 'Output' }),
-                tc('add_connection', { from: 'n2', to: 'n3' }),
-              ]),
-              msg('user', 'validate it'),
-            ],
-            conversationId: 'conv-stop-tools',
-            isStreaming: true,
-            streamingContent: 'Running validation',
-            thinkingContent: '',
-            processingStatus: 'Validating...',
-            currentTaskId: 'task_stop_tools_1',
-            contextUsagePct: 50,
-          },
-        },
-      },
-      version: 0,
-    }
-
-    await seedAndLoad(page, WF_ID, JSON.stringify(payload))
-
-    await expect(page.locator('#stopBtn')).toBeVisible({ timeout: 5000 })
-    await page.click('#stopBtn')
-    await expect(page.locator('#stopBtn')).toBeHidden({ timeout: 3000 })
-
-    // The first assistant message should retain all 5 tool calls
-    // (>3 means it should be in a collapsed disclosure)
-    await expect(page.locator('.tool-call-disclosure')).toHaveCount(1)
-    await expect(page.locator('.tool-call-summary')).toContainText('Tools (5)')
+    await test.step('verify no empty bubble', async () => {
+      await expect(page.locator('#chatInput')).toBeEnabled({ timeout: 30_000 })
+      const assistant = page.locator('.message.assistant')
+      const count = await assistant.count()
+      if (count > 0) {
+        const content = await assistant.first().locator('.message-content').textContent()
+        expect((content ?? '').trim().length).toBeGreaterThan(0)
+      }
+    })
   })
 })

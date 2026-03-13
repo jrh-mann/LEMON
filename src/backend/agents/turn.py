@@ -301,6 +301,11 @@ class Turn:
             conversation_manager.history.append(
                 {"role": "user", "content": self.user_message}
             )
+            # Preserve tool context so LLM remembers what ran before cancel.
+            # Without this, completed tool calls (add_node, etc.) are lost
+            # and the model has no memory of what it just built.
+            if self.messages:
+                conversation_manager.history.extend(self.messages)
             if self.partial_text:
                 conversation_manager.history.append(
                     {"role": "assistant", "content": self.partial_text}
