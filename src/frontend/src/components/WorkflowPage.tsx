@@ -143,9 +143,12 @@ export default function WorkflowPage() {
             const backendMessages = history.messages
                 .filter(m =>
                     (m.role === 'user' || m.role === 'assistant') &&
+                    // Only keep messages with string content — tool-result
+                    // messages have array content (not displayable).
+                    typeof m.content === 'string' &&
                     // Skip [CANCELLED] markers — internal LLM context signals,
                     // not displayable messages.
-                    !m.content?.startsWith('[CANCELLED]')
+                    !m.content.startsWith('[CANCELLED]')
                 )
                 .map(m => ({
                     id: m.id,
@@ -350,8 +353,14 @@ export default function WorkflowPage() {
                 const existingConv = cs.conversations?.[workflowId]
                 if (workflowData.build_history?.length && !existingConv?.messages?.length) {
                     const historyMessages = workflowData.build_history
-                        .filter((msg: { role: string; content: string }) =>
-                            (msg.role === 'user' || msg.role === 'assistant') && msg.content)
+                        .filter((msg: { role: string; content: any }) =>
+                            // Only keep user/assistant messages with string content.
+                            // Tool-result messages have content as an array of objects
+                            // (e.g. [{type:"tool_result",...}]) — not displayable.
+                            (msg.role === 'user' || msg.role === 'assistant')
+                            && typeof msg.content === 'string'
+                            && msg.content.trim()
+                        )
                         .map(
                             (msg: { role: string; content: string }) => ({
                                 id: `bh_${crypto.randomUUID()}`,
