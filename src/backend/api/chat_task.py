@@ -22,14 +22,14 @@ from uuid import uuid4
 import anthropic
 
 from .chat_event_channel import ChatEventChannel
+from .chat_turn_runner import ChatRuntimePorts, TurnResult, run_turn
 from .common import utc_now
 from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls
 from .sse import EventSink
 from .task_registry import task_registry
 from .tool_event_projector import ToolEventProjector
-from ..agents.turn import Turn, TurnStatus
-from ..utils.cancellation import CancellationError
+from ..agents.turn import TurnStatus
 from ..utils.uploads import save_uploaded_file, save_annotations
 from ..utils.paths import lemon_data_dir
 from ..storage.conversation_log import ConversationLogger
@@ -420,19 +420,17 @@ class ChatTask:
     # --- Main run loop ---
 
     def run(self) -> None:
-        """Execute one chat turn: save files, sync state, call LLM, emit response.
+        """Execute one chat turn: bootstrap → run_turn → emit → cleanup.
 
-        Creates a Turn object that centralizes audit logging and history
-        persistence. The Turn's commit() is the single point where
-        ConversationManager.history is mutated.
+        Delegates the Turn lifecycle (create, respond, complete/cancel/fail)
+        to run_turn(). This method handles bootstrap, SSE emission, and
+        cleanup only.
         """
         self.emit_progress("start", "Thinking...")
         threading.Thread(target=self._timeout_watchdog, daemon=True).start()
 
-        turn: Optional[Turn] = None
-        response_text = ""
-
         try:
+            # --- Bootstrap ---
             self.convo = self.conversation_store.get_or_create(self.conversation_id)
             if not self._save_uploaded_files():
                 return
@@ -440,87 +438,55 @@ class ChatTask:
             self._sync_orchestrator_from_convo()
             self._persist_conversation_metadata()
 
-            # Create Turn — centralizes audit logging + history persistence
-            turn = Turn(
-                self.message, self.convo.id,
-                conversation_logger=self.conversation_logger,
-                task_id=self.task_id,
-            )
-            # Ensure conversation row exists in audit DB before Turn.start()
-            if self.conversation_logger:
-                try:
-                    self.conversation_logger.ensure_conversation(
-                        self.convo.id,
-                        user_id=self.user_id,
-                        workflow_id=self.current_workflow_id,
-                        model="claude-sonnet-4-6",
-                    )
-                except Exception:
-                    logger.error(
-                        "Failed to ensure conversation in audit DB: conv=%s",
-                        self.convo.id, exc_info=True,
-                    )
-
-            # File metadata for audit log
-            file_meta = [
-                {"name": f.get("name"), "file_type": f.get("file_type")}
-                for f in self.saved_file_paths
-            ] if self.saved_file_paths else None
-            turn.start(file_meta=file_meta)
-
-            response_text = self.convo.orchestrator.respond(
-                self.message,
-                turn=turn,
-                has_files=self.saved_file_paths if self.saved_file_paths else [],
-                stream=self.stream_chunk,
-                allow_tools=True,
-                should_cancel=self.is_cancelled,
+            # --- Execute turn ---
+            ports = ChatRuntimePorts(
+                stream_chunk=self.stream_chunk,
+                stream_thinking=self.stream_thinking,
                 on_tool_event=self.on_tool_event,
-                thinking=True,
-                on_thinking=self.stream_thinking,
+                is_cancelled=self.is_cancelled,
+                get_stream_buffer=lambda: self.stream_buffer,
+                conversation_logger=self.conversation_logger,
+            )
+            result = run_turn(
+                convo=self.convo,
+                message=self.message,
+                task_id=self.task_id,
+                user_id=self.user_id,
+                workflow_id=self.current_workflow_id,
+                saved_file_paths=self.saved_file_paths,
+                ports=ports,
             )
 
-            # Turn completed successfully
-            orch = self.convo.orchestrator
-            turn.complete(
-                response_text,
-                input_tokens=orch.conversation._last_input_tokens or 0,
-                output_tokens=getattr(orch, "_last_output_tokens", None) or 0,
-            )
-            turn.commit(orch.conversation)
+            # --- Post-turn emission ---
             self._log_thinking()
             self._sync_convo_from_orchestrator()
 
-            # Emit context window usage so the frontend can show an indicator
-            self._emit("context_status", {
-                "usage_pct": orch.conversation.context_usage_pct,
-                "input_tokens": orch.conversation._last_input_tokens,
-                "message_count": len(orch.conversation.history),
-            })
-            self._emit_response(response_text)
-
-        except CancellationError:
-            if turn and turn.status not in (TurnStatus.COMPLETED, TurnStatus.CANCELLED, TurnStatus.FAILED):
-                turn.cancel([self.stream_buffer] if self.stream_buffer else [])
-                turn.commit(self.convo.orchestrator.conversation)
-            response_text = turn.partial_text if turn else ""
-            self._emit_response(response_text, cancelled=True)
-            self.emit_cancelled()
+            if result.status == TurnStatus.COMPLETED:
+                self._emit("context_status", {
+                    "usage_pct": result.context_usage_pct,
+                    "input_tokens": result.input_tokens,
+                    "message_count": result.message_count,
+                })
+                self._emit_response(result.response_text)
+            elif result.cancelled:
+                self._emit_response(result.response_text, cancelled=True)
+                self.emit_cancelled()
+            elif result.status == TurnStatus.FAILED:
+                if isinstance(result.error, anthropic.RateLimitError):
+                    self._emit("agent_error", {
+                        "task_id": self.task_id,
+                        "error": str(result.error),
+                        "transient": True,
+                    })
+                else:
+                    self.emit_error(
+                        f"Something went wrong: {type(result.error).__name__}. Please try again."
+                    )
 
         except Exception as exc:
-            logger.exception("Chat task failed: task=%s", self.task_id)
-            if turn and turn.status not in (TurnStatus.COMPLETED, TurnStatus.CANCELLED, TurnStatus.FAILED):
-                turn.fail(str(exc))
-                if self.convo:
-                    turn.commit(self.convo.orchestrator.conversation)
-            if isinstance(exc, anthropic.RateLimitError):
-                self._emit("agent_error", {
-                    "task_id": self.task_id,
-                    "error": str(exc),
-                    "transient": True,
-                })
-            else:
-                self.emit_error(f"Something went wrong: {type(exc).__name__}. Please try again.")
+            # Bootstrap failures (file save, workflow persist, etc.)
+            logger.exception("Chat task bootstrap failed: task=%s", self.task_id)
+            self.emit_error(f"Something went wrong: {type(exc).__name__}. Please try again.")
 
         finally:
             self.done.set()
