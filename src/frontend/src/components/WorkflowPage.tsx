@@ -247,8 +247,10 @@ export default function WorkflowPage() {
                     // Filter to user/assistant with content (skip tool messages
                     // and empty assistant blocks from tool-use rounds).
                     const historyMessages = workflowData.build_history
-                        .filter((msg: { role: string; content: string }) =>
-                            (msg.role === 'user' || msg.role === 'assistant') && msg.content)
+                        .filter((msg: { role: string; content: unknown }) =>
+                            (msg.role === 'user' || msg.role === 'assistant')
+                            && typeof msg.content === 'string'
+                            && msg.content.trim())
                         .map((msg: { role: string; content: string }) => ({
                             id: `bh_${crypto.randomUUID()}`,
                             role: msg.role as 'user' | 'assistant',
