@@ -200,6 +200,73 @@ class TestConditionCompiler:
         with pytest.raises(CompilationError, match="Unknown comparator"):
             compiler.compile(condition, resolver)
 
+    # Compound condition tests
+    def test_compound_and(self, compiler, resolver):
+        condition = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_age_int", "comparator": "gte", "value": 18},
+                {"input_id": "var_active_bool", "comparator": "is_true", "value": True},
+            ],
+        }
+        result = compiler.compile(condition, resolver)
+        assert result == "(age >= 18 and active is True)"
+
+    def test_compound_or(self, compiler, resolver):
+        condition = {
+            "operator": "or",
+            "conditions": [
+                {"input_id": "var_name_string", "comparator": "str_eq", "value": "Admin"},
+                {"input_id": "var_active_bool", "comparator": "is_true", "value": True},
+            ],
+        }
+        result = compiler.compile(condition, resolver)
+        assert result == "(name.lower() == 'Admin'.lower() or active is True)"
+
+    def test_compound_three_conditions(self, compiler, resolver):
+        condition = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_age_int", "comparator": "gte", "value": 18},
+                {"input_id": "var_age_int", "comparator": "lt", "value": 65},
+                {"input_id": "var_active_bool", "comparator": "is_true", "value": True},
+            ],
+        }
+        result = compiler.compile(condition, resolver)
+        assert result == "(age >= 18 and age < 65 and active is True)"
+
+    def test_compound_invalid_operator(self, compiler, resolver):
+        condition = {
+            "operator": "xor",
+            "conditions": [
+                {"input_id": "var_age_int", "comparator": "gte", "value": 18},
+                {"input_id": "var_active_bool", "comparator": "is_true", "value": True},
+            ],
+        }
+        with pytest.raises(CompilationError, match="must be 'and' or 'or'"):
+            compiler.compile(condition, resolver)
+
+    def test_compound_too_few_conditions(self, compiler, resolver):
+        condition = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_age_int", "comparator": "gte", "value": 18},
+            ],
+        }
+        with pytest.raises(CompilationError, match="at least 2 items"):
+            compiler.compile(condition, resolver)
+
+    def test_compound_sub_condition_missing_input_id(self, compiler, resolver):
+        condition = {
+            "operator": "and",
+            "conditions": [
+                {"input_id": "var_age_int", "comparator": "gte", "value": 18},
+                {"comparator": "is_true", "value": True},
+            ],
+        }
+        with pytest.raises(CompilationError, match="missing 'input_id'"):
+            compiler.compile(condition, resolver)
+
 
 # --- PythonCodeGenerator Tests ---
 
@@ -376,6 +443,45 @@ class TestPythonCodeGenerator:
         assert any("left as a comment" in w.lower() for w in result.warnings)
         assert "# Subprocess: Credit Check" in result.code
         assert "# TODO: Implement call to subworkflow 'wf_credit'" in result.code
+
+    def test_compound_decision_workflow(self):
+        """Test a workflow with a compound (AND) decision condition."""
+        nodes = [
+            {"id": "node_start", "type": "start", "label": "Start"},
+            {
+                "id": "node_decision",
+                "type": "decision",
+                "label": "Eligible?",
+                "condition": {
+                    "operator": "and",
+                    "conditions": [
+                        {"input_id": "var_age_int", "comparator": "gte", "value": 18},
+                        {"input_id": "var_active_bool", "comparator": "is_true", "value": True},
+                    ],
+                },
+            },
+            {"id": "node_yes", "type": "end", "label": "Approved"},
+            {"id": "node_no", "type": "end", "label": "Rejected"},
+        ]
+        edges = [
+            {"from": "node_start", "to": "node_decision"},
+            {"from": "node_decision", "to": "node_yes", "label": "true"},
+            {"from": "node_decision", "to": "node_no", "label": "false"},
+        ]
+        variables = [
+            {"id": "var_age_int", "name": "Age", "type": "number", "source": "input"},
+            {"id": "var_active_bool", "name": "Active", "type": "bool", "source": "input"},
+        ]
+
+        generator = PythonCodeGenerator(
+            nodes=nodes, edges=edges, variables=variables, workflow_name="Eligibility"
+        )
+        result = generator.compile()
+
+        assert result.success
+        assert "(age >= 18 and active is True)" in result.code
+        assert "return 'Approved'" in result.code
+        assert "return 'Rejected'" in result.code
 
 
 # --- compile_workflow_to_python Convenience Function Tests ---

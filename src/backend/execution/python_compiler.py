@@ -242,15 +242,81 @@ class ConditionCompiler:
     ) -> str:
         """Compile a DecisionCondition to a Python expression.
 
+        Handles both simple conditions (input_id/comparator/value) and
+        compound conditions (operator + conditions array).
+
         Args:
-            condition: DecisionCondition dict with input_id, comparator, value, value2
+            condition: DecisionCondition dict — simple or compound.
             resolver: Variable name resolver
+
+        Returns:
+            Python expression string like 'age >= 18' or
+            '(age >= 18 and weight > 50)'
+
+        Raises:
+            CompilationError: If condition is invalid
+        """
+        # Compound condition: {operator: "and"/"or", conditions: [...]}
+        if 'operator' in condition:
+            return self._compile_compound(condition, resolver)
+
+        return self._compile_simple(condition, resolver)
+
+    def _compile_compound(
+        self,
+        condition: Dict[str, Any],
+        resolver: VariableNameResolver,
+    ) -> str:
+        """Compile a compound (AND/OR) condition to a Python expression.
+
+        Args:
+            condition: Dict with 'operator' and 'conditions' keys.
+            resolver: Variable name resolver.
+
+        Returns:
+            Python expression like '(age >= 18 and weight > 50)'
+
+        Raises:
+            CompilationError: If compound condition is malformed.
+        """
+        operator = condition.get('operator', '').lower()
+        if operator not in ('and', 'or'):
+            raise CompilationError(
+                f"Compound condition operator must be 'and' or 'or', got '{operator}'"
+            )
+
+        sub_conditions = condition.get('conditions')
+        if not isinstance(sub_conditions, list) or len(sub_conditions) < 2:
+            raise CompilationError(
+                "Compound condition requires a 'conditions' array with at least 2 items"
+            )
+
+        # Compile each sub-condition (nesting not supported)
+        parts = []
+        for i, sub in enumerate(sub_conditions):
+            if not isinstance(sub, dict):
+                raise CompilationError(f"conditions[{i}] must be a dict")
+            parts.append(self._compile_simple(sub, resolver))
+
+        joiner = f' {operator} '
+        return f'({joiner.join(parts)})'
+
+    def _compile_simple(
+        self,
+        condition: Dict[str, Any],
+        resolver: VariableNameResolver,
+    ) -> str:
+        """Compile a simple condition (input_id/comparator/value).
+
+        Args:
+            condition: Dict with input_id, comparator, value, and optional value2.
+            resolver: Variable name resolver.
 
         Returns:
             Python expression string like 'age >= 18'
 
         Raises:
-            CompilationError: If condition is invalid
+            CompilationError: If condition is invalid.
         """
         input_id = condition.get('input_id')
         comparator = condition.get('comparator')
@@ -715,12 +781,11 @@ class PythonCodeGenerator:
         try:
             condition_expr = self.condition_compiler.compile(condition, self.resolver)
         except CompilationError as e:
-            # Provide helpful error message with available variable IDs
+            # Provide helpful error message with the actual compilation error
             available_vars = list(self.resolver.id_to_python.keys())
-            input_id = condition.get('input_id', 'unknown')
             warning_msg = (
-                f"Decision '{node_label}' references variable '{input_id}' "
-                f"which is not defined. Available variables: {available_vars}"
+                f"Could not compile condition for decision '{node_label}': {e}. "
+                f"Available variables: {available_vars}"
             )
             self._warnings.append(warning_msg)
             self._add_line(f"# ERROR: {warning_msg}")
