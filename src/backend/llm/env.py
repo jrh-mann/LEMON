@@ -61,3 +61,49 @@ def get_anthropic_model() -> str:
     if not model:
         raise LLMConfigError("Missing ANTHROPIC_MODEL/CLAUDE_MODEL/AGENT.")
     return model
+
+
+# ---------------------------------------------------------------------------
+# OpenAI / Azure OpenAI helpers
+# ---------------------------------------------------------------------------
+
+# Prefixes that identify OpenAI-compatible models on Azure AI Foundry.
+# Prefixes/names routed to the OpenAI-compatible API path.
+_OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-", "deepseek-", "DeepSeek-", "kimi-", "llama4-", "Llama-")
+
+
+def is_openai_model(model_id: str) -> bool:
+    """Return True if *model_id* should be routed via the OpenAI API."""
+    return any(model_id.startswith(p) for p in _OPENAI_PREFIXES)
+
+
+def get_openai_client():
+    """Build an AzureOpenAI client for OpenAI-compatible models.
+
+    Prefers dedicated OPENAI_ENDPOINT/OPENAI_API_KEY env vars.
+    Falls back to deriving from the Anthropic endpoint (stripping /anthropic).
+    """
+    load_env()
+    try:
+        from openai import AzureOpenAI
+    except ImportError:
+        raise LLMConfigError("openai package is required for OpenAI models. Install with: pip install openai")
+
+    # Prefer dedicated OpenAI env vars, fall back to Anthropic vars.
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("API_KEY")
+    endpoint = os.environ.get("OPENAI_ENDPOINT") or os.environ.get("ANTHROPIC_ENDPOINT") or os.environ.get("ENDPOINT")
+    if not api_key:
+        raise LLMConfigError("Missing OPENAI_API_KEY/ANTHROPIC_API_KEY.")
+    if not endpoint:
+        raise LLMConfigError("Missing OPENAI_ENDPOINT/ANTHROPIC_ENDPOINT.")
+
+    # Strip /anthropic suffix if derived from Anthropic endpoint.
+    base = endpoint.strip().rstrip("/")
+    if base.lower().endswith("/anthropic"):
+        base = base[: -len("/anthropic")]
+
+    return AzureOpenAI(
+        azure_endpoint=base,
+        api_key=api_key,
+        api_version="2025-03-01-preview",
+    )

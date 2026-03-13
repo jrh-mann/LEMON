@@ -1,0 +1,82 @@
+[
+  {
+    "id": "9c797f69",
+    "type": "question",
+    "x": 766,
+    "y": 454,
+    "question": "For the LDL 2-2.5 range: Does it go to 'Repeat Lipids at 3 months' first and then reassess LDL (if >2.0 \u2192 Add Ezetimibe), or does LDL 2-2.5 go directly to Add Ezetimibe?",
+    "status": "pending"
+  },
+  {
+    "id": "1cfebbe5",
+    "type": "question",
+    "x": 912,
+    "y": 393,
+    "question": "After 'Initiate Inclisiran' and the 6-month check, if LDL is \u22642.0, is the outcome 'No Further Action'? The diagram doesn't show an explicit endpoint for this scenario.",
+    "status": "pending"
+  },
+  {
+    "id": "6139800a",
+    "type": "question",
+    "x": 158,
+    "y": 495,
+    "question": "The 'Primary/Secondary Treatment' yellow label near the 'Are They Optimised?' node \u2014 does this mean the optimisation criteria differ for Primary vs Secondary prevention at this point, or is it just informational?",
+    "status": "pending"
+  },
+  {
+    "id": "b455ad6b",
+    "type": "question",
+    "x": 766,
+    "y": 511,
+    "question": "The 'Repeat Lipids at 3 months' appears in both the LDL 2-2.5 path and the 'hasn't had 6 months Inclisiran' path. Are these the same node (creating a loop), or separate endpoints with similar labels?",
+    "status": "pending"
+  },
+  {
+    "id": "35ccb9e4",
+    "type": "question",
+    "x": 260,
+    "y": 475,
+    "question": "The 'Taking Lipid Lowering Therapy?' node: When the answer is 'No', it seems to go to 'Mark as No Further Action' at the bottom-left. But it also connects to 'Primary or Secondary Prevention?' on the right. Which is correct? It looks like No -> Primary/Secondary Prevention check, and the 'No Further Action' is for the 'Yes -> Optimised = Yes' path. Can you confirm?",
+    "status": "pending"
+  },
+  {
+    "id": "18c85231",
+    "type": "question",
+    "x": 680,
+    "y": 485,
+    "question": "For the LDL 2-2.5 path: After 'Repeat Lipids at 3 months', it shows 'LDL >2.0' going to 'Add in Ezetimibe'. What happens if LDL is \u22642.0 after repeating? Does it end as 'No Further Action'?",
+    "status": "pending"
+  },
+  {
+    "id": "efdff45d",
+    "type": "question",
+    "x": 248,
+    "y": 330,
+    "question": "The note says \"Normal\" is 5 or below (can vary clinic to clinic). Should I use \u22645 as the threshold for Normal cholesterol, or a different value?",
+    "status": "pending"
+  },
+  {
+    "id": "f711e94a",
+    "type": "question",
+    "x": 248,
+    "y": 410,
+    "question": "The \"Normal or Raised?\" node \u2014 is the \u22647.5 threshold a SECOND check (i.e. first check is Normal/Raised at \u22645, then a second check at \u22647.5 vs >7.5)? Or is it one decision with three bands: Normal (\u22645), Raised \u22647.5, and Raised >7.5?",
+    "status": "pending"
+  },
+  {
+    "id": "f6a7fd17",
+    "type": "question",
+    "x": 580,
+    "y": 638,
+    "question": "After \"Assess LDL\" \u2014 the LDL 2\u20132.5 branch sends an AccuRx message. Does this then end, or loop back somewhere?",
+    "status": "pending"
+  },
+  {
+    "id": "24b44bd1",
+    "type": "question",
+    "x": 760,
+    "y": 555,
+    "question": "After \"Repeat Lipids at 3 months\" \u2014 does this loop back to \"Assess LDL\" or to the very start of the workflow?",
+    "status": "pending"
+  }
+]

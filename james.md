@@ -1,0 +1,1 @@
+there's a delete button, olittle x, that when pressed just insta kills everything, i think there should be an are you sure popup, prior to deletion

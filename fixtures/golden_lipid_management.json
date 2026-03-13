@@ -1,0 +1,187 @@
+{
+  "_comment": "Golden solution for Lipid Results Management Guide. Core triage from initial cholesterol assessment through primary/secondary prevention pathways. The Ezetimibe/Inclisiran follow-up protocol (bottom-right of image) involves monitoring loops and is excluded — it is guidance for post-Inclisiran management, not part of the initial routing decision. 'Normal' cholesterol threshold is 5 or below (noted in image). Treatment optimisation criteria: >40% reduction in Non-HDL Cholesterol, Total Cholesterol <4.0, LDL ≤2, Non-HDL <2.6.",
+
+  "variables": [
+    {
+      "id": "var_under_specialist_clinic_bool",
+      "name": "Under Specialist Clinic",
+      "type": "bool",
+      "source": "input",
+      "description": "Patient is under specialist clinic. If not coded, assume no."
+    },
+    {
+      "id": "var_total_cholesterol_number",
+      "name": "Total Cholesterol",
+      "type": "number",
+      "source": "input",
+      "description": "Total cholesterol result. >7.5 = high path, ≤5 = normal, 5-7.5 = raised"
+    },
+    {
+      "id": "var_taking_lipid_lowering_therapy_bool",
+      "name": "Taking Lipid Lowering Therapy",
+      "type": "bool",
+      "source": "input",
+      "description": "Patient is currently taking lipid lowering therapy (raised cholesterol path)"
+    },
+    {
+      "id": "var_treatment_optimised_bool",
+      "name": "Treatment Optimised",
+      "type": "bool",
+      "source": "input",
+      "description": "Patient's current treatment is optimised (>40% Non-HDL reduction, Total Chol <4.0, LDL ≤2, Non-HDL <2.6)"
+    },
+    {
+      "id": "var_prevention_type_enum",
+      "name": "Prevention Type",
+      "type": "enum",
+      "source": "input",
+      "enum_values": ["Primary", "Secondary"],
+      "description": "Primary = no heart problem yet (no MI/Stroke). Secondary = known CHD, PAD, Ischaemic Stroke, CAD or MI"
+    },
+    {
+      "id": "var_qrisk_score_number",
+      "name": "QRISK Score",
+      "type": "number",
+      "source": "input",
+      "description": "QRISK2/3 cardiovascular risk score as percentage. Threshold: ≥10% = high risk"
+    },
+    {
+      "id": "var_taking_max_tolerated_statin_bool",
+      "name": "Taking Maximally Tolerated Statin",
+      "type": "bool",
+      "source": "input",
+      "description": "Patient is on maximally tolerated statin dose (secondary prevention path)"
+    },
+    {
+      "id": "var_ldl_level_number",
+      "name": "LDL Level",
+      "type": "number",
+      "source": "input",
+      "description": "LDL cholesterol level. ≤2 = no action, 2-2.5 = repeat lipids, ≥2.6 = initiate Inclisiran"
+    }
+  ],
+
+  "nodes": [
+    {"id": "start", "type": "start", "label": "Start", "x": 400, "y": 0},
+
+    {"id": "d_specialist", "type": "decision", "label": "Under Specialist Clinic?", "x": 400, "y": 100,
+     "condition": {"input_id": "var_under_specialist_clinic_bool", "comparator": "is_true"}},
+
+    {"id": "end_no_action_specialist", "type": "end", "label": "No Further Action (Specialist)", "x": 100, "y": 200,
+     "output_value": "No Further Action", "output_type": "string"},
+
+    {"id": "p_assess_cholesterol", "type": "process", "label": "Assess Total Cholesterol Result", "x": 400, "y": 200},
+
+    {"id": "d_chol_gt_7_5", "type": "decision", "label": "Total Cholesterol > 7.5?", "x": 400, "y": 300,
+     "condition": {"input_id": "var_total_cholesterol_number", "comparator": "gt", "value": 7.5}},
+
+    {"id": "d_optimised_high_chol", "type": "decision", "label": "Are They Optimised on Treatment? (High Cholesterol)", "x": 600, "y": 400,
+     "condition": {"input_id": "var_treatment_optimised_bool", "comparator": "is_true"}},
+
+    {"id": "end_refer_specialist", "type": "end", "label": "Refer to Specialist", "x": 800, "y": 500,
+     "output_value": "Refer to Specialist", "output_type": "string"},
+
+    {"id": "end_send_llta_high_chol", "type": "end", "label": "Send Lipid Lowering Therapy AccuRx (High Cholesterol)", "x": 600, "y": 500,
+     "output_value": "Send Lipid Lowering Therapy AccuRx with self booking link", "output_type": "string"},
+
+    {"id": "d_chol_normal", "type": "decision", "label": "Cholesterol Normal (≤ 5)?", "x": 400, "y": 400,
+     "condition": {"input_id": "var_total_cholesterol_number", "comparator": "lte", "value": 5}},
+
+    {"id": "end_mark_satisfactory", "type": "end", "label": "Mark as Satisfactory", "x": 200, "y": 500,
+     "output_value": "Mark as Satisfactory", "output_type": "string"},
+
+    {"id": "d_on_therapy", "type": "decision", "label": "Taking Lipid Lowering Therapy?", "x": 400, "y": 500,
+     "condition": {"input_id": "var_taking_lipid_lowering_therapy_bool", "comparator": "is_true"}},
+
+    {"id": "d_optimised_on_therapy", "type": "decision", "label": "Are They Optimised on Treatment? (On Therapy)", "x": 200, "y": 600,
+     "condition": {"input_id": "var_treatment_optimised_bool", "comparator": "is_true"}},
+
+    {"id": "end_no_action_optimised", "type": "end", "label": "No Further Action (Optimised)", "x": 50, "y": 700,
+     "output_value": "No Further Action", "output_type": "string"},
+
+    {"id": "end_send_llta_not_optimised", "type": "end", "label": "Send Lipid Lowering Therapy AccuRx (Not Optimised)", "x": 250, "y": 700,
+     "output_value": "Send Lipid Lowering Therapy AccuRx with self booking link", "output_type": "string"},
+
+    {"id": "d_prevention_type", "type": "decision", "label": "Primary or Secondary Prevention?", "x": 400, "y": 600,
+     "condition": {"input_id": "var_prevention_type_enum", "comparator": "enum_eq", "value": "Primary"}},
+
+    {"id": "p_calculate_qrisk", "type": "process", "label": "Calculate QRISK2/3", "x": 300, "y": 700},
+
+    {"id": "d_qrisk_high", "type": "decision", "label": "QRISK ≥ 10%?", "x": 300, "y": 800,
+     "condition": {"input_id": "var_qrisk_score_number", "comparator": "gte", "value": 10}},
+
+    {"id": "end_send_llta_qrisk", "type": "end", "label": "Send Lipid Lowering Therapy AccuRx (QRISK)", "x": 150, "y": 900,
+     "output_value": "Send Lipid Lowering Therapy AccuRx with self booking link", "output_type": "string"},
+
+    {"id": "end_high_chol_low_qrisk", "type": "end", "label": "Send High Cholesterol Low QRISK AccuRx", "x": 400, "y": 900,
+     "output_value": "Send High Cholesterol - Low QRISK AccuRx with self booking link", "output_type": "string"},
+
+    {"id": "d_max_statin", "type": "decision", "label": "Taking Maximally Tolerated Statin?", "x": 550, "y": 700,
+     "condition": {"input_id": "var_taking_max_tolerated_statin_bool", "comparator": "is_true"}},
+
+    {"id": "end_send_llta_no_statin", "type": "end", "label": "Send Lipid Lowering Therapy AccuRx (No Statin)", "x": 700, "y": 800,
+     "output_value": "Send Lipid Lowering Therapy AccuRx with self booking link", "output_type": "string"},
+
+    {"id": "p_assess_ldl", "type": "process", "label": "Assess LDL", "x": 550, "y": 800},
+
+    {"id": "d_ldl_le_2", "type": "decision", "label": "LDL ≤ 2?", "x": 550, "y": 900,
+     "condition": {"input_id": "var_ldl_level_number", "comparator": "lte", "value": 2}},
+
+    {"id": "end_no_action_ldl", "type": "end", "label": "No Further Action (LDL Controlled)", "x": 400, "y": 1000,
+     "output_value": "No Further Action", "output_type": "string"},
+
+    {"id": "d_ldl_gte_2_6", "type": "decision", "label": "LDL ≥ 2.6?", "x": 650, "y": 1000,
+     "condition": {"input_id": "var_ldl_level_number", "comparator": "gte", "value": 2.6}},
+
+    {"id": "end_initiate_inclisiran", "type": "end", "label": "Initiate Inclisiran", "x": 800, "y": 1100,
+     "output_value": "Initiate Inclisiran", "output_type": "string"},
+
+    {"id": "end_repeat_lipids", "type": "end", "label": "Repeat Lipids at 3 Months", "x": 550, "y": 1100,
+     "output_value": "Repeat Lipids at 3 months", "output_type": "string"}
+  ],
+
+  "edges": [
+    {"from": "start", "to": "d_specialist", "label": ""},
+
+    {"from": "d_specialist", "to": "end_no_action_specialist", "label": "true"},
+    {"from": "d_specialist", "to": "p_assess_cholesterol", "label": "false"},
+
+    {"from": "p_assess_cholesterol", "to": "d_chol_gt_7_5", "label": ""},
+
+    {"from": "d_chol_gt_7_5", "to": "d_optimised_high_chol", "label": "true"},
+    {"from": "d_chol_gt_7_5", "to": "d_chol_normal", "label": "false"},
+
+    {"from": "d_optimised_high_chol", "to": "end_refer_specialist", "label": "true"},
+    {"from": "d_optimised_high_chol", "to": "end_send_llta_high_chol", "label": "false"},
+
+    {"from": "d_chol_normal", "to": "end_mark_satisfactory", "label": "true"},
+    {"from": "d_chol_normal", "to": "d_on_therapy", "label": "false"},
+
+    {"from": "d_on_therapy", "to": "d_optimised_on_therapy", "label": "true"},
+    {"from": "d_on_therapy", "to": "d_prevention_type", "label": "false"},
+
+    {"from": "d_optimised_on_therapy", "to": "end_no_action_optimised", "label": "true"},
+    {"from": "d_optimised_on_therapy", "to": "end_send_llta_not_optimised", "label": "false"},
+
+    {"from": "d_prevention_type", "to": "p_calculate_qrisk", "label": "true"},
+    {"from": "d_prevention_type", "to": "d_max_statin", "label": "false"},
+
+    {"from": "p_calculate_qrisk", "to": "d_qrisk_high", "label": ""},
+    {"from": "d_qrisk_high", "to": "end_send_llta_qrisk", "label": "true"},
+    {"from": "d_qrisk_high", "to": "end_high_chol_low_qrisk", "label": "false"},
+
+    {"from": "d_max_statin", "to": "p_assess_ldl", "label": "true"},
+    {"from": "d_max_statin", "to": "end_send_llta_no_statin", "label": "false"},
+
+    {"from": "p_assess_ldl", "to": "d_ldl_le_2", "label": ""},
+    {"from": "d_ldl_le_2", "to": "end_no_action_ldl", "label": "true"},
+    {"from": "d_ldl_le_2", "to": "d_ldl_gte_2_6", "label": "false"},
+
+    {"from": "d_ldl_gte_2_6", "to": "end_initiate_inclisiran", "label": "true"},
+    {"from": "d_ldl_gte_2_6", "to": "end_repeat_lipids", "label": "false"}
+  ],
+
+  "outputs": [
+    {"id": "output_recommendation", "name": "Recommendation", "type": "string"}
+  ]
+}

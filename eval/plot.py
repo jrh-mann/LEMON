@@ -34,10 +34,11 @@ DIMENSIONS = ["variables", "nodes", "topology", "conditions", "outputs", "functi
 DIM_LABELS = ["Vars", "Nodes", "Topo", "Cond", "Out", "Func"]
 
 # Model display order and colours.
-MODEL_ORDER = ["haiku", "sonnet", "opus", "gpt54", "gpt_oss", "deepseek"]
+MODEL_ORDER = ["haiku", "sonnet45", "sonnet", "opus", "gpt54", "gpt_oss", "deepseek", "kimi", "llama4"]
 MODEL_COLOURS = {
-    "haiku": "#6BAED6", "sonnet": "#2171B5", "opus": "#08306B",
+    "haiku": "#6BAED6", "sonnet45": "#4292C6", "sonnet": "#2171B5", "opus": "#08306B",
     "gpt54": "#2CA02C", "gpt_oss": "#FF7F0E", "deepseek": "#D62728",
+    "kimi": "#9467BD", "llama4": "#E377C2",
 }
 
 

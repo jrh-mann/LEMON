@@ -4,6 +4,7 @@
 vision.md
 .azure/
 evals/results/
+eval/logs/
 data/
 
 diagram.png

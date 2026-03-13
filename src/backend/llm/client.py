@@ -23,14 +23,20 @@ from .anthropic import (
     _parse_anthropic_response,
     _to_anthropic_messages,
 )
-from .env import get_anthropic_client, get_anthropic_model, load_env
+from .env import get_anthropic_client, get_anthropic_model, get_openai_client, is_openai_model, load_env
+from .openai_helpers import (
+    _convert_tool_choice_to_openai,
+    _extract_openai_usage,
+    _parse_openai_response,
+    _to_openai_messages,
+)
 from ..utils.tokens import record_token_usage
 from ..utils.cancellation import CancellationError
 
 logger = logging.getLogger("backend.llm")
 
-_MAX_RETRIES = 3
-_RETRY_BACKOFF = [2, 5]
+_MAX_RETRIES = 5
+_RETRY_BACKOFF = [2, 5, 15, 30]  # escalating backoff for transient/connection errors
 
 
 @dataclass
@@ -39,6 +45,39 @@ class LLMResponse:
     text: str
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     usage: Dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Prompt caching helpers
+# ---------------------------------------------------------------------------
+
+
+def _cacheable_system(system_text: str) -> List[Dict[str, Any]]:
+    """Convert system prompt string to a cached content block list.
+
+    Anthropic prompt caching requires system to be a list of blocks.
+    The last block gets cache_control so the entire system prompt is cached.
+    """
+    if not system_text:
+        return []
+    return [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
+
+
+def _mark_first_user_cache(messages: List[Dict[str, Any]]) -> None:
+    """Add cache_control to the last block of the first user message.
+
+    The first user message typically contains the image (large payload).
+    Caching it avoids re-tokenizing the image on every subsequent turn.
+    Mutates messages in place.
+    """
+    for msg in messages:
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, list) and content:
+            # Mark the last block of the first user message.
+            content[-1]["cache_control"] = {"type": "ephemeral"}
+        return  # Only mark the first user message.
 
 
 def call_llm(
@@ -67,6 +106,16 @@ def call_llm(
         request_tag: Sub-tag for token usage tracking.
     """
     load_env()
+
+    # Route OpenAI-compatible models (gpt-*, o1-*, o3-*, o4-*) to the OpenAI path.
+    model = get_anthropic_model()
+    if is_openai_model(model):
+        return _call_openai(
+            model, messages, tools=tools, tool_choice=tool_choice,
+            on_delta=on_delta, should_cancel=should_cancel,
+            caller=caller, request_tag=request_tag,
+        )
+
     client = get_anthropic_client()
     system, converted = _to_anthropic_messages(messages)
 
@@ -79,10 +128,20 @@ def call_llm(
         else []
     )
 
+    model = get_anthropic_model()
+    # Haiku and Sonnet 4.5 support max 64k output; newer models support 128k.
+    max_tokens = 64000 if ("haiku" in model or "sonnet-4-5" in model) else 128000
+
+    # Prompt caching: cache the system prompt and the first user message
+    # (which contains the large image). Subsequent turns in the same
+    # conversation reuse the cached prefix instead of re-tokenizing.
+    system_blocks = _cacheable_system(system)
+    _mark_first_user_cache(converted)
+
     payload: Dict[str, Any] = {
-        "model": get_anthropic_model(),
-        "max_tokens": 128000,
-        "system": system,
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system_blocks,
         "messages": converted,
     }
     if tool_payload:
@@ -161,6 +220,149 @@ def call_llm(
 
     usage = _extract_usage(message)
     return LLMResponse(text=text, tool_calls=tool_calls, usage=usage)
+
+
+# ------------------------------------------------------------------
+# OpenAI / Azure OpenAI streaming path
+# ------------------------------------------------------------------
+
+
+def _call_openai(
+    model: str,
+    messages: List[Dict[str, Any]],
+    *,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[str] = None,
+    on_delta: Optional[Callable[[str], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    caller: Optional[str] = None,
+    request_tag: Optional[str] = None,
+) -> LLMResponse:
+    """Call an OpenAI-compatible model via Azure OpenAI.
+
+    Handles streaming, tool calling, and cancellation.
+    Converts messages from internal format to OpenAI chat format.
+    """
+    client = get_openai_client()
+    converted = _to_openai_messages(messages)
+
+    # Build OpenAI payload.
+    if tool_choice is None and tools:
+        tool_choice = "auto"
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": converted,
+        # Cap output tokens to leave room for input within context window.
+        # Most models support 128K context; smaller models may have less.
+        "max_completion_tokens": 16384,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if tools and tool_choice != "none":
+        payload["tools"] = tools
+    openai_tc = _convert_tool_choice_to_openai(tool_choice)
+    if openai_tc is not None:
+        payload["tool_choice"] = openai_tc
+
+    # Accumulation state.
+    text_chunks: List[str] = []
+    # Tool calls keyed by index, each with id/name/arguments buffer.
+    tool_acc: Dict[int, Dict[str, Any]] = {}
+    usage_data: Dict[str, Any] = {}
+
+    def _stream_openai() -> None:
+        """Stream the OpenAI response, accumulating text and tool calls."""
+        nonlocal usage_data
+        stream = client.chat.completions.create(**payload)
+        for chunk in stream:
+            if should_cancel and should_cancel():
+                raise CancellationError("LLM streaming cancelled.")
+            if not chunk.choices:
+                # Usage-only chunk at end of stream.
+                if chunk.usage:
+                    usage_data = _extract_openai_usage(chunk)
+                continue
+            delta = chunk.choices[0].delta
+            if delta is None:
+                continue
+            # Text content.
+            if delta.content:
+                text_chunks.append(delta.content)
+                if on_delta:
+                    on_delta(delta.content)
+            # Tool call deltas.
+            if delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index
+                    if idx not in tool_acc:
+                        tool_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tc_delta.id:
+                        tool_acc[idx]["id"] = tc_delta.id
+                    if tc_delta.function:
+                        if tc_delta.function.name:
+                            tool_acc[idx]["name"] = tc_delta.function.name
+                        if tc_delta.function.arguments:
+                            tool_acc[idx]["arguments"] += tc_delta.function.arguments
+
+    def _on_retry(attempt: int, msg: str) -> None:
+        text_chunks.clear()
+        tool_acc.clear()
+
+    start = time.perf_counter()
+    request_id = uuid.uuid4().hex
+    _retry_api_call(_stream_openai, on_retry=_on_retry)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info("OpenAI streaming completed ms=%.1f model=%s messages=%d", elapsed_ms, model, len(messages))
+
+    # Build tool_calls list from accumulated deltas.
+    tool_calls: List[Dict[str, Any]] = []
+    for idx in sorted(tool_acc.keys()):
+        tc = tool_acc[idx]
+        if tc["name"]:
+            tool_calls.append({
+                "id": tc["id"],
+                "type": "function",
+                "function": {"name": tc["name"], "arguments": tc["arguments"] or "{}"},
+            })
+
+    # Record token usage.
+    tool_names = [
+        (call.get("function") or {}).get("name", "")
+        for call in tool_calls
+        if (call.get("function") or {}).get("name")
+    ]
+    # Build a mock message object for _record_tokens (needs .id and .usage).
+    _mock_msg = {"id": request_id, "usage": None}
+    entry = {
+        "request_id": request_id,
+        "provider_message_id": request_id,
+        "model": model,
+        "caller": caller or "unknown",
+        "request_tag": request_tag or "",
+        "function": "call_llm",
+        "streaming": True,
+        "tool_choice": tool_choice or "",
+        "tool_count": len(tools) if tools else 0,
+        "tools": tool_names,
+        "message_count": len(messages),
+        "elapsed_ms": round(elapsed_ms, 2),
+        "usage": usage_data,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        record_token_usage(entry)
+    except Exception as exc:
+        logger.warning("Failed to record token usage: %s", exc)
+
+    text = "".join(text_chunks)
+    if not text.strip() and not tool_calls:
+        logger.warning(
+            "call_llm (OpenAI) returned empty text with no tool calls "
+            "(caller=%s, tag=%s, messages=%d)",
+            caller, request_tag, len(messages),
+        )
+
+    return LLMResponse(text=text, tool_calls=tool_calls, usage=usage_data)
 
 
 # ------------------------------------------------------------------

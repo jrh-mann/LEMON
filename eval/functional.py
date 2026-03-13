@@ -48,6 +48,24 @@ class FunctionalScore:
     detail: str = ""  # human-readable per-case breakdown
 
 
+@dataclass(frozen=True)
+class VarMapping:
+    """A single golden→extracted variable mapping, possibly cross-type."""
+
+    extracted_id: str
+    needs_conversion: bool  # True when golden_type != extracted_type
+    golden_type: str
+    extracted_type: str
+
+
+@dataclass(frozen=True)
+class ThresholdInfo:
+    """A condition threshold extracted from a golden variable's decision node."""
+
+    comparator: str  # "lte", "gt", "gte", etc.
+    value: float
+
+
 # ---------------------------------------------------------------------------
 # Test case generation
 # ---------------------------------------------------------------------------
@@ -80,6 +98,60 @@ def _extract_thresholds(golden: Dict[str, Any]) -> Dict[str, List[float]]:
                 thresholds.setdefault(input_id, []).append(float(value2))
 
     return thresholds
+
+
+def _build_threshold_map(golden: Dict[str, Any]) -> Dict[str, ThresholdInfo]:
+    """For each variable, extract the first condition comparator+value.
+
+    Used for cross-type number→bool conversion: given a golden numeric
+    value, we apply the threshold to determine True/False for the
+    extracted bool variable.
+
+    Returns {variable_id: ThresholdInfo} (first threshold per variable).
+    """
+    threshold_map: Dict[str, ThresholdInfo] = {}
+
+    for node in golden.get("nodes", []):
+        cond = node.get("condition")
+        if not cond:
+            continue
+        for sc in _flatten_conditions(cond):
+            input_id = sc.get("input_id", "")
+            comparator = sc.get("comparator", "")
+            value = sc.get("value")
+            # Only numeric comparators with a concrete value.
+            if (
+                input_id
+                and input_id not in threshold_map
+                and comparator in ("lt", "lte", "gt", "gte", "eq", "neq")
+                and isinstance(value, (int, float))
+            ):
+                threshold_map[input_id] = ThresholdInfo(
+                    comparator=comparator, value=float(value)
+                )
+
+    return threshold_map
+
+
+def _apply_threshold(actual: float, comparator: str, threshold: float) -> bool:
+    """Convert a numeric value to bool using a condition threshold.
+
+    E.g. _apply_threshold(47, "lte", 48) → True  (47 <= 48)
+         _apply_threshold(49, "lte", 48) → False (49 <= 48 is False)
+    """
+    if comparator == "lt":
+        return actual < threshold
+    if comparator == "lte":
+        return actual <= threshold
+    if comparator == "gt":
+        return actual > threshold
+    if comparator == "gte":
+        return actual >= threshold
+    if comparator == "eq":
+        return actual == threshold
+    if comparator == "neq":
+        return actual != threshold
+    return False
 
 
 def _flatten_conditions(cond: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -190,19 +262,23 @@ def _word_overlap(a: str, b: str) -> float:
 def _build_variable_map(
     golden: Dict[str, Any],
     extracted: Dict[str, Any],
-) -> Dict[str, str]:
+) -> Dict[str, VarMapping]:
     """Map golden variable IDs to extracted variable IDs.
 
-    Returns {golden_var_id: extracted_var_id}.
-    Uses combined word-overlap + type match scoring to handle short names
-    and word-order differences (e.g. "Treatment Optimised" vs "Optimised
-    on Treatment").
+    Returns {golden_var_id: VarMapping}.
+    Allows cross-type mapping between number and bool (common when models
+    encode numeric thresholds as boolean "controlled?" variables). Other
+    cross-type pairs are still skipped.
     """
     g_vars = golden.get("variables", [])
     e_vars = extracted.get("variables", [])
 
     if not g_vars or not e_vars:
         return {}
+
+    # Allowed cross-type pairs: number ↔ bool (models often simplify
+    # numeric thresholds to booleans).
+    _CROSS_TYPE_ALLOWED = {("number", "bool"), ("bool", "number")}
 
     # Compute pairwise scores: combine word overlap, sequence match, and type.
     candidates: List[Tuple[int, int, float]] = []
@@ -217,25 +293,38 @@ def _build_variable_map(
             seq_sim = _fuzzy_ratio(g_name, e_name)
             # Best of both methods.
             name_sim = max(word_sim, seq_sim)
-            # Type must match — feeding a number to a bool variable causes
-            # execution errors. Skip type-mismatched pairs entirely.
-            if g_type != e_type:
+
+            if g_type == e_type:
+                # Same type: full bonus.
+                combined = name_sim + 0.2
+            elif (g_type, e_type) in _CROSS_TYPE_ALLOWED:
+                # Cross-type number↔bool: small bonus, need higher name sim.
+                combined = name_sim + 0.05
+            else:
+                # Other cross-type pairs: skip entirely.
                 continue
-            combined = name_sim + 0.2  # Type match bonus.
+
             candidates.append((gi, ei, combined))
 
     candidates.sort(key=lambda c: c[2], reverse=True)
 
     used_g: Set[int] = set()
     used_e: Set[int] = set()
-    var_map: Dict[str, str] = {}
+    var_map: Dict[str, VarMapping] = {}
 
     for gi, ei, score in candidates:
         if score < 0.5:
             break
         if gi in used_g or ei in used_e:
             continue
-        var_map[g_vars[gi]["id"]] = e_vars[ei]["id"]
+        gv = g_vars[gi]
+        ev = e_vars[ei]
+        var_map[gv["id"]] = VarMapping(
+            extracted_id=ev["id"],
+            needs_conversion=gv.get("type", "") != ev.get("type", ""),
+            golden_type=gv.get("type", ""),
+            extracted_type=ev.get("type", ""),
+        )
         used_g.add(gi)
         used_e.add(ei)
 
@@ -244,27 +333,53 @@ def _build_variable_map(
 
 def _translate_inputs(
     case: Dict[str, Any],
-    var_map: Dict[str, str],
+    var_map: Dict[str, VarMapping],
     extracted: Dict[str, Any],
+    threshold_map: Dict[str, ThresholdInfo],
 ) -> Dict[str, Any]:
     """Translate golden-keyed inputs to extracted variable IDs.
+
+    Handles cross-type conversion: when golden is number and extracted is
+    bool, uses the threshold from the golden's conditions to convert the
+    numeric value to True/False.
 
     Returns the base translated dict WITHOUT extra variable defaults.
     Extra variables are handled separately by _extra_var_combos().
     """
     translated: Dict[str, Any] = {}
 
-    # Map golden inputs → extracted IDs.
     for g_id, value in case.items():
-        e_id = var_map.get(g_id)
-        if e_id:
-            translated[e_id] = value
+        mapping = var_map.get(g_id)
+        if not mapping:
+            continue
+
+        if not mapping.needs_conversion:
+            # Same type: pass through unchanged.
+            translated[mapping.extracted_id] = value
+        elif mapping.golden_type == "number" and mapping.extracted_type == "bool":
+            # Number→bool: apply threshold to convert.
+            tinfo = threshold_map.get(g_id)
+            if tinfo and isinstance(value, (int, float)):
+                translated[mapping.extracted_id] = _apply_threshold(
+                    float(value), tinfo.comparator, tinfo.value
+                )
+            else:
+                # No threshold found — can't convert, skip this variable.
+                # It will be treated as unmapped (extra var handling).
+                pass
+        elif mapping.golden_type == "bool" and mapping.extracted_type == "number":
+            # Bool→number: rare (models simplify, not complicate).
+            # Map True→1, False→0 as best-effort.
+            translated[mapping.extracted_id] = 1 if value else 0
+        else:
+            # Other cross-type: pass through and hope for the best.
+            translated[mapping.extracted_id] = value
 
     return translated
 
 
 def _extra_var_combos(
-    var_map: Dict[str, str],
+    var_map: Dict[str, VarMapping],
     extracted: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
     """Generate all value combinations for extracted variables that don't
@@ -275,8 +390,12 @@ def _extra_var_combos(
     Used to give the extracted workflow the benefit of the doubt —
     we try all combos and count a test case as matching if ANY works.
     """
-    mapped_e_ids = set(var_map.values())
+    mapped_e_ids = {m.extracted_id for m in var_map.values()}
     extra_vars: Dict[str, List[Any]] = {}
+
+    # Extract thresholds from the extracted workflow's own conditions so
+    # extra number variables get meaningful boundary values instead of [0].
+    e_thresholds = _extract_thresholds(extracted)
 
     for var in extracted.get("variables", []):
         var_id = var["id"]
@@ -289,9 +408,15 @@ def _extra_var_combos(
         if var_type == "bool":
             extra_vars[var_id] = [True, False]
         elif var_type == "number":
-            # Use 0 as default — extra number vars are rare and usually
-            # don't affect routing as strongly as enums/bools.
-            extra_vars[var_id] = [0]
+            # Use boundary values from extracted's own conditions if available.
+            var_thresh = e_thresholds.get(var_id, [])
+            if var_thresh:
+                vals: Set[float] = set()
+                for t in var_thresh:
+                    vals.update([t - 0.1, t, t + 0.1])
+                extra_vars[var_id] = sorted(vals)
+            else:
+                extra_vars[var_id] = [0]
         elif var_type == "enum":
             enum_vals = var.get("enum_values", [])
             extra_vars[var_id] = list(enum_vals) if enum_vals else ["unknown"]
@@ -305,6 +430,11 @@ def _extra_var_combos(
     var_ids = list(extra_vars.keys())
     value_lists = [extra_vars[vid] for vid in var_ids]
     combos = list(itertools.product(*value_lists))
+
+    # Cap extra combos to prevent explosion when many extra vars exist.
+    if len(combos) > _MAX_CASES:
+        random.seed(42)
+        combos = random.sample(combos, _MAX_CASES)
 
     return [
         {var_ids[i]: combo[i] for i in range(len(var_ids))}
@@ -460,6 +590,8 @@ def functional_score(
 
     # Pre-compute mappings between golden and extracted.
     var_map = _build_variable_map(golden, extracted)
+    # Threshold map for cross-type number→bool conversion.
+    threshold_map = _build_threshold_map(golden)
 
     # Generate all value combinations for extra variables (ones the
     # extracted workflow has that the golden doesn't). We try all combos
@@ -483,8 +615,9 @@ def functional_score(
 
         cases_tested += 1
 
-        # Translate golden variable IDs to extracted IDs.
-        e_base = _translate_inputs(case, var_map, extracted)
+        # Translate golden variable IDs to extracted IDs (with cross-type
+        # conversion when needed).
+        e_base = _translate_inputs(case, var_map, extracted, threshold_map)
 
         # Try all combinations of extra variable values. Count as match
         # if ANY combination routes to a semantically equivalent end node.

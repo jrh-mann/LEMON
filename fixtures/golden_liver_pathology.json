@@ -1,0 +1,171 @@
+{
+  "_comment": "Golden solution for Liver Pathology Phased Work Up. Core triage path: Phase 2 bloods → FIB-4/NAFLD risk stratification → fibroscan → referral. Excludes additional testing details (liver USS, rare conditions, autoimmune screen) and the no_concern_after_review override — those only affect supplementary output text, not the primary triage decision.",
+
+  "variables": [
+    {
+      "id": "var_tests_normalise_or_notably_improve_bool",
+      "name": "Tests Normalise or Notably Improve",
+      "type": "bool",
+      "source": "input",
+      "description": "Phase 2 bloods (LFT, FBC, AST, GGT) normalise or show notable improvement"
+    },
+    {
+      "id": "var_months_with_abnormal_lfts_number",
+      "name": "Months With Abnormal LFTs",
+      "type": "number",
+      "source": "input",
+      "description": "Number of months findings have been present. Need >= 3 months to proceed past Phase 2"
+    },
+    {
+      "id": "var_sustained_or_worsening_abnormalities_bool",
+      "name": "Sustained or Worsening Abnormalities",
+      "type": "bool",
+      "source": "input",
+      "description": "ALT remains abnormal, worsens, and/or additional tests are abnormal too"
+    },
+    {
+      "id": "var_fib4_score_number",
+      "name": "FIB-4 Score",
+      "type": "number",
+      "source": "input",
+      "description": "FIB-4 fibrosis score from Phase 2 bloods. High >2.67, low <1.3 (or <2.0 if age >65)"
+    },
+    {
+      "id": "var_nafld_fibrosis_score_number",
+      "name": "NAFLD Fibrosis Score",
+      "type": "number",
+      "source": "input",
+      "description": "NAFLD fibrosis score. High >0.675 (F3-F4), low <-1.455 (F0-F2), indeterminate between"
+    },
+    {
+      "id": "var_age_number",
+      "name": "Age",
+      "type": "number",
+      "source": "input",
+      "description": "Patient age in years. Affects FIB-4 low-risk threshold: <1.3 if age <=65, <2.0 if age >65"
+    },
+    {
+      "id": "var_fibroscan_available_bool",
+      "name": "Fibroscan Available",
+      "type": "bool",
+      "source": "input",
+      "description": "Whether fibroscan is available for indeterminate fibrosis risk patients"
+    },
+    {
+      "id": "var_fibroscan_high_risk_bool",
+      "name": "Fibroscan High Risk",
+      "type": "bool",
+      "source": "input",
+      "description": "Fibroscan result indicates intermediate or high risk fibrosis"
+    }
+  ],
+
+  "nodes": [
+    {"id": "start", "type": "start", "label": "Start", "x": 400, "y": 0},
+
+    {"id": "p_phase2_bloods", "type": "process", "label": "Baseline & Phase 2 Bloods: LFT, FBC, AST, GGT", "x": 400, "y": 100},
+
+    {"id": "d_tests_normalise", "type": "decision", "label": "Tests Normalise or Notably Improve?", "x": 400, "y": 200,
+     "condition": {"input_id": "var_tests_normalise_or_notably_improve_bool", "comparator": "is_true"}},
+
+    {"id": "end_mark_normal", "type": "end", "label": "Mark as Normal / Satisfactory", "x": 700, "y": 200,
+     "output_value": "Mark as Normal / Satisfactory", "output_type": "string"},
+
+    {"id": "d_findings_gte_3mo", "type": "decision", "label": "Findings Present >= 3 Months?", "x": 400, "y": 300,
+     "condition": {"input_id": "var_months_with_abnormal_lfts_number", "comparator": "gte", "value": 3}},
+
+    {"id": "d_sustained_worsening", "type": "decision", "label": "Sustained or Worsening?", "x": 200, "y": 400,
+     "condition": {"input_id": "var_sustained_or_worsening_abnormalities_bool", "comparator": "is_true"}},
+
+    {"id": "end_recheck", "type": "end", "label": "Recheck Baseline Liver Profile", "x": 0, "y": 500,
+     "output_value": "Recheck Baseline Liver Profile in appropriate timeframe", "output_type": "string"},
+
+    {"id": "p_fib4_nafld", "type": "process", "label": "FIB-4 Score & NAFLD Fibrosis Score", "x": 400, "y": 500},
+
+    {"id": "d_fib4_high", "type": "decision", "label": "FIB-4 > 2.67? (High Risk)", "x": 400, "y": 600,
+     "condition": {"input_id": "var_fib4_score_number", "comparator": "gt", "value": 2.67}},
+
+    {"id": "end_refer_high_fib4", "type": "end", "label": "Refer to Secondary Care (FIB-4 High)", "x": 700, "y": 600,
+     "output_value": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal", "output_type": "string"},
+
+    {"id": "d_nafld_high", "type": "decision", "label": "NAFLD Score > 0.675? (F3-F4)", "x": 400, "y": 700,
+     "condition": {"input_id": "var_nafld_fibrosis_score_number", "comparator": "gt", "value": 0.675}},
+
+    {"id": "end_refer_high_nafld", "type": "end", "label": "Refer to Secondary Care (NAFLD High)", "x": 700, "y": 700,
+     "output_value": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal", "output_type": "string"},
+
+    {"id": "d_age_over_65", "type": "decision", "label": "Age > 65?", "x": 400, "y": 800,
+     "condition": {"input_id": "var_age_number", "comparator": "gt", "value": 65}},
+
+    {"id": "d_fib4_low_elderly", "type": "decision", "label": "FIB-4 < 2.0? (age > 65)", "x": 600, "y": 900,
+     "condition": {"input_id": "var_fib4_score_number", "comparator": "lt", "value": 2.0}},
+
+    {"id": "d_fib4_low_young", "type": "decision", "label": "FIB-4 < 1.3? (age ≤ 65)", "x": 200, "y": 900,
+     "condition": {"input_id": "var_fib4_score_number", "comparator": "lt", "value": 1.3}},
+
+    {"id": "d_nafld_low", "type": "decision", "label": "NAFLD Score < -1.455? (F0-F2)", "x": 200, "y": 900,
+     "condition": {"input_id": "var_nafld_fibrosis_score_number", "comparator": "lt", "value": -1.455}},
+
+    {"id": "end_annual_screening", "type": "end", "label": "Annual Screening", "x": 0, "y": 1000,
+     "output_value": "Manage risk factors and co-morbidities - Annual Screening", "output_type": "string"},
+
+    {"id": "d_fibroscan_available", "type": "decision", "label": "Fibroscan Available?", "x": 400, "y": 1000,
+     "condition": {"input_id": "var_fibroscan_available_bool", "comparator": "is_true"}},
+
+    {"id": "d_fibroscan_risk", "type": "decision", "label": "Fibroscan High Risk?", "x": 600, "y": 1100,
+     "condition": {"input_id": "var_fibroscan_high_risk_bool", "comparator": "is_true"}},
+
+    {"id": "end_refer_fibroscan", "type": "end", "label": "Refer to Secondary Care (Fibroscan)", "x": 800, "y": 1100,
+     "output_value": "Refer to Secondary Care once bloods are back, irrespective of diagnosis or if all tests normal", "output_type": "string"},
+
+    {"id": "end_phase4_bloods", "type": "end", "label": "Phase 4 Bloods", "x": 600, "y": 1200,
+     "output_value": "Phase 4 Bloods", "output_type": "string"},
+
+    {"id": "end_fibroscan_unavail", "type": "end", "label": "Fibroscan if Available", "x": 200, "y": 1100,
+     "output_value": "Fibroscan if available", "output_type": "string"}
+  ],
+
+  "edges": [
+    {"from": "start", "to": "p_phase2_bloods", "label": ""},
+    {"from": "p_phase2_bloods", "to": "d_tests_normalise", "label": ""},
+
+    {"from": "d_tests_normalise", "to": "end_mark_normal", "label": "true"},
+    {"from": "d_tests_normalise", "to": "d_findings_gte_3mo", "label": "false"},
+
+    {"from": "d_findings_gte_3mo", "to": "p_fib4_nafld", "label": "true"},
+    {"from": "d_findings_gte_3mo", "to": "d_sustained_worsening", "label": "false"},
+
+    {"from": "d_sustained_worsening", "to": "p_fib4_nafld", "label": "true"},
+    {"from": "d_sustained_worsening", "to": "end_recheck", "label": "false"},
+
+    {"from": "p_fib4_nafld", "to": "d_fib4_high", "label": ""},
+
+    {"from": "d_fib4_high", "to": "end_refer_high_fib4", "label": "true"},
+    {"from": "d_fib4_high", "to": "d_nafld_high", "label": "false"},
+
+    {"from": "d_nafld_high", "to": "end_refer_high_nafld", "label": "true"},
+    {"from": "d_nafld_high", "to": "d_age_over_65", "label": "false"},
+
+    {"from": "d_age_over_65", "to": "d_fib4_low_elderly", "label": "true"},
+    {"from": "d_age_over_65", "to": "d_fib4_low_young", "label": "false"},
+
+    {"from": "d_fib4_low_elderly", "to": "d_nafld_low", "label": "true"},
+    {"from": "d_fib4_low_elderly", "to": "d_fibroscan_available", "label": "false"},
+
+    {"from": "d_fib4_low_young", "to": "d_nafld_low", "label": "true"},
+    {"from": "d_fib4_low_young", "to": "d_fibroscan_available", "label": "false"},
+
+    {"from": "d_nafld_low", "to": "end_annual_screening", "label": "true"},
+    {"from": "d_nafld_low", "to": "d_fibroscan_available", "label": "false"},
+
+    {"from": "d_fibroscan_available", "to": "d_fibroscan_risk", "label": "true"},
+    {"from": "d_fibroscan_available", "to": "end_fibroscan_unavail", "label": "false"},
+
+    {"from": "d_fibroscan_risk", "to": "end_refer_fibroscan", "label": "true"},
+    {"from": "d_fibroscan_risk", "to": "end_phase4_bloods", "label": "false"}
+  ],
+
+  "outputs": [
+    {"id": "output_recommendation", "name": "Recommendation", "type": "string"}
+  ]
+}

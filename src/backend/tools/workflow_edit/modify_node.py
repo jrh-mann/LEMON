@@ -107,7 +107,19 @@ class ModifyNodeTool(WorkflowTool):
                         "type": "object",
                         "properties": {
                             "operator": {"type": "string", "enum": ["and", "or"]},
-                            "conditions": {"type": "array", "minItems": 2},
+                            "conditions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "variable": {"type": "string"},
+                                        "comparator": {"type": "string"},
+                                        "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                                    },
+                                    "required": ["variable", "comparator"],
+                                },
+                                "minItems": 2,
+                            },
                         },
                         "required": ["operator", "conditions"],
                     },

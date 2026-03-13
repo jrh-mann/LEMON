@@ -37,6 +37,11 @@ MODELS: Dict[str, ModelConfig] = {
         input_cost_per_mtok=3.00,
         output_cost_per_mtok=15.00,
     ),
+    "sonnet45": ModelConfig(
+        model_id="claude-sonnet-4-5",
+        input_cost_per_mtok=3.00,
+        output_cost_per_mtok=15.00,
+    ),
     "opus": ModelConfig(
         model_id="claude-opus-4-6",
         input_cost_per_mtok=5.00,
@@ -57,6 +62,16 @@ MODELS: Dict[str, ModelConfig] = {
         model_id="deepseek-v32",  # Azure deployment name
         input_cost_per_mtok=0.50,
         output_cost_per_mtok=2.00,
+    ),
+    "kimi": ModelConfig(
+        model_id="kimi-k25",  # Azure deployment name
+        input_cost_per_mtok=2.00,
+        output_cost_per_mtok=8.00,
+    ),
+    "llama4": ModelConfig(
+        model_id="llama4-maverick",  # Azure deployment name
+        input_cost_per_mtok=0.50,
+        output_cost_per_mtok=1.50,
     ),
 }
 

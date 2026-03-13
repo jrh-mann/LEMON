@@ -1,0 +1,26 @@
+[
+  {
+    "id": "6203ed6b",
+    "type": "question",
+    "x": 240,
+    "y": 300,
+    "question": "The note says 'Normal' is assumed to be Total Cholesterol \u22645 (can vary clinic to clinic). Should I use \u22645 as the threshold for 'Normal' vs 'Raised', or do you want a different value?",
+    "status": "pending"
+  },
+  {
+    "id": "d06fa0c8",
+    "type": "question",
+    "x": 760,
+    "y": 390,
+    "question": "After 'Repeat Lipids at 3 months', the arrow loops back up to 'LDL >2.0' check. Since workflows can't have loops, should I treat this as an end node ('Repeat Lipids at 3 months') and assume the user re-runs the workflow after retesting? Same question for the 'Has had 6 months of Inclisiran' loop.",
+    "status": "pending"
+  },
+  {
+    "id": "da810a76",
+    "type": "question",
+    "x": 155,
+    "y": 555,
+    "question": "The 'Are They Optimised on Treatment?' node appears twice - once for TC >7.5 path (Primary/Secondary Treatment) and once for the Raised + Taking Lipid Lowering Therapy path. The 'Yes' branch from the second one seems to feed into the Secondary prevention path. Can you confirm: when a patient is Raised + Taking Lipid Lowering + Optimised = Yes, should they go to 'Mark as No Further Action'?",
+    "status": "pending"
+  }
+]

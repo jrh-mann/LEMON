@@ -7,7 +7,11 @@ import pytest
 
 from eval.functional import (
     FunctionalScore,
+    ThresholdInfo,
+    VarMapping,
+    _apply_threshold,
     _build_end_node_map,
+    _build_threshold_map,
     _build_variable_map,
     _execute_workflow,
     _extra_var_combos,
@@ -169,6 +173,46 @@ class TestExtractThresholds:
         assert 20 in thresholds["var_y"]
 
 
+class TestBuildThresholdMap:
+    def test_extracts_first_threshold(self):
+        golden = {
+            "nodes": [
+                {"id": "d1", "type": "decision",
+                 "condition": {"input_id": "var_a", "comparator": "lte", "value": 48}},
+                {"id": "d2", "type": "decision",
+                 "condition": {"input_id": "var_a", "comparator": "gt", "value": 53}},
+            ],
+        }
+        tmap = _build_threshold_map(golden)
+        # Should keep the first threshold encountered (lte 48).
+        assert tmap["var_a"].comparator == "lte"
+        assert tmap["var_a"].value == 48.0
+
+    def test_ignores_bool_conditions(self):
+        golden = {
+            "nodes": [
+                {"id": "d1", "type": "decision",
+                 "condition": {"input_id": "var_b", "comparator": "is_true"}},
+            ],
+        }
+        tmap = _build_threshold_map(golden)
+        assert "var_b" not in tmap
+
+
+class TestApplyThreshold:
+    def test_lte(self):
+        assert _apply_threshold(47, "lte", 48) is True
+        assert _apply_threshold(49, "lte", 48) is False
+
+    def test_gt(self):
+        assert _apply_threshold(8.0, "gt", 7.5) is True
+        assert _apply_threshold(7.0, "gt", 7.5) is False
+
+    def test_gte(self):
+        assert _apply_threshold(10, "gte", 10) is True
+        assert _apply_threshold(9.9, "gte", 10) is False
+
+
 class TestFlattenConditions:
     def test_simple(self):
         cond = {"input_id": "x", "comparator": "gt", "value": 5}
@@ -232,15 +276,44 @@ class TestGenerateTestCases:
 class TestBuildVariableMap:
     def test_identical_names(self):
         var_map = _build_variable_map(MINIMAL_GOLDEN, _make_extracted_perfect())
-        assert var_map == {"var_a_bool": "v_001", "var_b_number": "v_002"}
+        assert var_map["var_a_bool"].extracted_id == "v_001"
+        assert var_map["var_b_number"].extracted_id == "v_002"
+        assert not var_map["var_a_bool"].needs_conversion
+        assert not var_map["var_b_number"].needs_conversion
 
-    def test_type_mismatch_excluded(self):
-        """Variables with different types should NOT be mapped."""
+    def test_cross_type_number_bool_mapped(self):
+        """Number↔bool cross-type pairs should map when names are similar."""
+        golden = {"variables": [
+            {"id": "g1", "name": "A1c After Metformin", "type": "number", "source": "input"},
+        ]}
+        extracted = {"variables": [
+            {"id": "e1", "name": "A1c Controlled on Metformin", "type": "bool", "source": "input"},
+        ]}
+        var_map = _build_variable_map(golden, extracted)
+        assert "g1" in var_map
+        assert var_map["g1"].extracted_id == "e1"
+        assert var_map["g1"].needs_conversion is True
+        assert var_map["g1"].golden_type == "number"
+        assert var_map["g1"].extracted_type == "bool"
+
+    def test_cross_type_low_name_sim_excluded(self):
+        """Cross-type pairs with very different names should NOT map."""
+        golden = {"variables": [
+            {"id": "g1", "name": "Patient Age", "type": "number", "source": "input"},
+        ]}
+        extracted = {"variables": [
+            {"id": "e1", "name": "Has Diabetes", "type": "bool", "source": "input"},
+        ]}
+        var_map = _build_variable_map(golden, extracted)
+        assert "g1" not in var_map
+
+    def test_enum_number_still_excluded(self):
+        """Enum↔number cross-type pairs should still be skipped."""
         golden = {"variables": [
             {"id": "g1", "name": "Score", "type": "number", "source": "input"},
         ]}
         extracted = {"variables": [
-            {"id": "e1", "name": "Score Controlled", "type": "bool", "source": "input"},
+            {"id": "e1", "name": "Score", "type": "enum", "source": "input"},
         ]}
         var_map = _build_variable_map(golden, extracted)
         assert "g1" not in var_map
@@ -251,11 +324,31 @@ class TestBuildVariableMap:
 
 class TestTranslateInputs:
     def test_translates_ids(self):
-        var_map = {"var_a_bool": "v_001", "var_b_number": "v_002"}
+        var_map = {
+            "var_a_bool": VarMapping("v_001", False, "bool", "bool"),
+            "var_b_number": VarMapping("v_002", False, "number", "number"),
+        }
         case = {"var_a_bool": True, "var_b_number": 15}
-        translated = _translate_inputs(case, var_map, _make_extracted_perfect())
+        translated = _translate_inputs(case, var_map, _make_extracted_perfect(), {})
         assert translated["v_001"] is True
         assert translated["v_002"] == 15
+
+    def test_cross_type_number_to_bool(self):
+        """Number→bool translation applies threshold from golden conditions."""
+        var_map = {
+            "g_score": VarMapping("e_controlled", True, "number", "bool"),
+        }
+        threshold_map = {"g_score": ThresholdInfo("lte", 48.0)}
+        # 47 <= 48 → True
+        translated = _translate_inputs(
+            {"g_score": 47}, var_map, {}, threshold_map
+        )
+        assert translated["e_controlled"] is True
+        # 49 <= 48 → False
+        translated = _translate_inputs(
+            {"g_score": 49}, var_map, {}, threshold_map
+        )
+        assert translated["e_controlled"] is False
 
     def test_extra_vars_not_in_translate(self):
         """Extra variables are NOT included in _translate_inputs — they're
@@ -266,9 +359,9 @@ class TestTranslateInputs:
                 {"id": "v_extra", "name": "Extra Var", "type": "number", "source": "input"},
             ],
         }
-        var_map = {"var_a_bool": "v_001"}
+        var_map = {"var_a_bool": VarMapping("v_001", False, "bool", "bool")}
         case = {"var_a_bool": True}
-        translated = _translate_inputs(case, var_map, extracted)
+        translated = _translate_inputs(case, var_map, extracted, {})
         assert translated["v_001"] is True
         assert "v_extra" not in translated  # Handled by _extra_var_combos.
 
@@ -276,7 +369,7 @@ class TestTranslateInputs:
 class TestExtraVarCombos:
     def test_no_extra_vars(self):
         """No extra variables → single empty combo."""
-        var_map = {"g1": "e1"}
+        var_map = {"g1": VarMapping("e1", False, "bool", "bool")}
         extracted = {"variables": [{"id": "e1", "name": "X", "type": "bool", "source": "input"}]}
         combos = _extra_var_combos(var_map, extracted)
         assert combos == [{}]
@@ -303,6 +396,25 @@ class TestExtraVarCombos:
         assert len(combos) == 3
         values = {c["v_extra"] for c in combos}
         assert values == {"A", "B", "C"}
+
+    def test_extra_number_uses_extracted_thresholds(self):
+        """Extra number vars should use boundary values from extracted conditions."""
+        var_map = {}
+        extracted = {
+            "variables": [
+                {"id": "v_score", "name": "Score", "type": "number", "source": "input"},
+            ],
+            "nodes": [
+                {"id": "d1", "type": "decision",
+                 "condition": {"input_id": "v_score", "comparator": "gt", "value": 10}},
+            ],
+        }
+        combos = _extra_var_combos(var_map, extracted)
+        values = {c["v_score"] for c in combos}
+        # Should include boundary values around threshold 10.
+        assert 9.9 in values
+        assert 10.0 in values
+        assert 10.1 in values
 
 
 # ---------------------------------------------------------------------------
