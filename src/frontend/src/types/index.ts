@@ -295,18 +295,8 @@ export interface WorkflowSummary {
   output_values: string[]
   created_at: string
   updated_at: string
-  // Peer review fields (optional for private workflows)
-  is_published?: boolean
-  review_status?: 'unreviewed' | 'reviewed'
-  net_votes?: number
-  published_at?: string
-  publisher_id?: string
-  user_vote?: number | null  // Current user's vote: +1, -1, or null
   building?: boolean  // True while a background orchestrator is building this workflow
 }
-
-// Peer review status type
-export type ReviewStatus = 'unreviewed' | 'reviewed'
 
 // ============ Unified Variable System ============
 // All workflow variables (user inputs, subprocess outputs, calculated values) are stored

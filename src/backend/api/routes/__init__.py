@@ -32,7 +32,6 @@ from .auth_routes import register_auth_routes
 from .chat_routes import register_chat_routes
 from .workflow_routes import register_workflow_routes
 from .search_routes import register_search_routes
-from .peer_review_routes import register_peer_review_routes
 from .dev_tools_routes import register_dev_tools_routes
 from .validation_routes import register_validation_routes
 from .execution_routes import register_execution_routes
@@ -86,9 +85,6 @@ def register_routes(
 
     # Search and domain listing
     register_search_routes(app, workflow_store=workflow_store)
-
-    # Peer review (public workflows, voting)
-    register_peer_review_routes(app, workflow_store=workflow_store)
 
     # Dev tools (list/execute tools)
     register_dev_tools_routes(
