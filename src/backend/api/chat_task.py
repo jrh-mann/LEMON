@@ -428,8 +428,9 @@ class ChatTask:
         self.convo.orchestrator.workflow_store = self.workflow_store
         self.convo.orchestrator.user_id = self.user_id
         self.convo.orchestrator.repo_root = self.repo_root
-        # Pass the EventSink so background builders (create_subworkflow, update_subworkflow)
-        # can emit events on the parent chat's SSE stream.
+        # Pass the EventSink so subworkflow tools can push fire-and-forget
+        # notifications (subworkflow_created, subworkflow_ready) to the
+        # parent's SSE stream. Builders create their own independent sinks.
         self.convo.orchestrator.event_sink = self.sink
         # Ensure the canvas workflow snapshot exists in the database
         self._ensure_workflow_persisted()
@@ -628,11 +629,9 @@ class ChatTask:
         finally:
             self.done.set()
             task_registry.unregister(self)
-            # Release our reference to the SSE stream. If background builders
-            # (create_subworkflow, update_subworkflow) acquired the sink, the
-            # stream stays open until they finish. Without this, the parent's
-            # close() would kill the stream while builders are still emitting.
-            self.sink.release()
+            # Close our SSE stream. Builder tasks have their own independent
+            # sinks so this won't affect them.
+            self.sink.close()
             # Clear building flag so the workflow doesn't appear stuck
             if self.current_workflow_id and self.workflow_store:
                 try:

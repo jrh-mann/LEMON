@@ -4,9 +4,8 @@ Provides EventSink — a thread-safe queue that bridges background task threads
 with FastAPI's StreamingResponse. The background thread pushes events via
 sink.push(), and FastAPI yields SSE-formatted lines via iteration.
 
-This replaces the Socket.IO ConnectionRegistry for chat and execution streaming.
-HTTP itself handles connection lifecycle — no heartbeat, no dead connection
-detection, no conn_id tracking needed.
+Each task (ChatTask, BuilderTask) owns its own EventSink. No sharing between
+tasks — this keeps lifecycle management simple (creator closes when done).
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from __future__ import annotations
 import json
 import logging
 import queue
-import threading
 from typing import Any, Dict, Iterator, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -35,32 +33,6 @@ class EventSink:
     def __init__(self) -> None:
         self._queue: queue.Queue[Optional[Tuple[str, Dict[str, Any]]]] = queue.Queue()
         self._closed = False
-        # Reference counting: the creator is the initial owner (ref_count=1).
-        # Background producers (subworkflow builders) call acquire() to keep
-        # the SSE stream alive after the parent ChatTask finishes.
-        self._ref_count = 1
-        self._ref_lock = threading.Lock()
-
-    def acquire(self) -> None:
-        """Add a producer reference — prevents close until all producers release.
-
-        Called by background builder threads that share this sink with the
-        parent ChatTask. Keeps the SSE stream alive after the parent finishes.
-        """
-        with self._ref_lock:
-            self._ref_count += 1
-
-    def release(self) -> None:
-        """Remove a producer reference — closes the sink when the last one releases.
-
-        The parent ChatTask calls this instead of close() so that background
-        builders sharing the sink can continue emitting events.
-        """
-        with self._ref_lock:
-            self._ref_count -= 1
-            should_close = self._ref_count <= 0
-        if should_close:
-            self.close()
 
     def push(self, event: str, data: Dict[str, Any]) -> None:
         """Push an event to the stream. No-ops silently if sink is closed."""
@@ -68,11 +40,7 @@ class EventSink:
             self._queue.put((event, data))
 
     def close(self) -> None:
-        """Force-close the stream regardless of ref count.
-
-        Used by swap_sink (resume after refresh) to terminate the old stream.
-        For normal completion, use release() instead.
-        """
+        """Close the stream. Sends a sentinel so the iterator stops yielding."""
         if not self._closed:
             self._closed = True
             self._queue.put(None)  # sentinel

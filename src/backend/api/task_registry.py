@@ -4,8 +4,8 @@ Indexes tasks by task_id (primary lookup) and (user_id, workflow_id)
 (for resume after page refresh). Handles cancellation signaling and
 stale entry purging.
 
-Shared by ChatTask (chat turns) and BackgroundBuilderCallbacks
-(subworkflow builds). Both push events via EventSink (SSE).
+Shared by ChatTask (chat turns) and BuilderTask (subworkflow builds).
+Each task owns its own EventSink (SSE).
 """
 
 from __future__ import annotations

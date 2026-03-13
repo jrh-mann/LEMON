@@ -6,6 +6,10 @@ a new subworkflow. The tool:
 2. Registers any declared input variables
 3. Spawns a background thread with a fresh Orchestrator to build the subworkflow
 4. Returns immediately so the main orchestrator can continue in parallel
+
+The builder runs as an independent task with its own EventSink — it does not share
+the parent ChatTask's SSE stream. The frontend connects to the builder's stream
+via POST /api/chat/resume when the user navigates to the subworkflow page.
 """
 
 from __future__ import annotations
@@ -32,7 +36,8 @@ def _run_subworkflow_builder(
     repo_root: Any,
     workflow_store: Any,
     user_id: str,
-    sink: Any,
+    task: Any,
+    notify_sink: Any,
 ) -> None:
     """Background thread: build a subworkflow using a fresh orchestrator.
 
@@ -42,45 +47,27 @@ def _run_subworkflow_builder(
         repo_root: Path to repo root for tool construction
         workflow_store: WorkflowStore instance for DB access
         user_id: Owner user ID
-        sink: EventSink for emitting SSE events to the parent chat stream
+        task: BuilderTask — owns its own EventSink, provides callbacks
+        notify_sink: Parent's EventSink for fire-and-forget notifications
+                     (subworkflow_ready, build_error). May be None or closed.
     """
-    # Import here to avoid circular imports (builder_callbacks → tools.constants → tools → this file)
-    from ...api.builder_callbacks import BackgroundBuilderCallbacks
     from ...api.task_registry import task_registry as _task_registry
 
-    # Set up unified callbacks — emits same chat_* events as main orchestrator,
-    # tagged with workflow_id so frontend routes them to chatStore.conversations[workflow_id]
-    bg_task_id = f"bg_{uuid4().hex[:8]}"
-    cb = BackgroundBuilderCallbacks(
-        sink, workflow_id,
-        user_id=user_id, task_id=bg_task_id,
-    )
     response_text = ""
-
-    # Acquire a reference on the shared EventSink so the parent ChatTask's
-    # release() doesn't close the SSE stream while we're still emitting events.
-    if sink is not None:
-        sink.acquire()
-
-    # Register as active task so resume can reconnect after refresh.
-    # BackgroundBuilderCallbacks exposes the same interface as ChatTask
-    # (done, thinking_chunks, stream_buffer, task_id, current_workflow_id, user_id).
-    _task_registry.register(cb)
 
     # Acquire semaphore to limit concurrent builder threads
     with builder_semaphore:
         try:
-            # Import here to avoid circular imports
             from ...agents.orchestrator_factory import build_orchestrator
 
             orchestrator = build_orchestrator(repo_root)
             orchestrator.workflow_store = workflow_store
             orchestrator.user_id = user_id
             orchestrator.current_workflow_id = workflow_id
-            # Pass full context so the background builder can emit progress events
-            # and spawn nested subworkflows (which need repo_root to build_orchestrator)
             orchestrator.repo_root = repo_root
-            orchestrator.event_sink = sink
+            # Builder's own sink — nested subworkflows will use this
+            orchestrator.event_sink = task.sink
+            task.orchestrator = orchestrator
 
             logger.info(
                 "Background builder started for subworkflow %s: %s",
@@ -88,24 +75,22 @@ def _run_subworkflow_builder(
             )
 
             # Emit the brief as a user message so the frontend shows it during streaming
-            cb.emit_user_message(brief)
-            cb.emit_progress("Building workflow...", event="start")
+            task.emit_user_message(brief)
+            task.emit_progress("Building workflow...", event="start")
 
-            # Run the orchestrator with the brief — it will use its tools to build
-            # the subworkflow autonomously (add_node, add_connection, etc.)
-            # Uses the same callback pattern as SocketChatTask.run()
-            # Turn wraps the build turn — no audit logger for background builds
+            # Run the orchestrator — it uses its tools to build the subworkflow
+            # autonomously (add_node, add_connection, etc.)
             from ...agents.turn import Turn
             build_turn = Turn(brief, f"bg_{workflow_id}")
             build_turn.start()
             try:
                 response_text = orchestrator.respond(
                     brief, turn=build_turn, allow_tools=True,
-                    stream=cb.stream_chunk,
-                    on_tool_event=cb.on_tool_event,
-                    should_cancel=cb.is_cancelled,
+                    stream=task.stream_chunk,
+                    on_tool_event=task.on_tool_event,
+                    should_cancel=task.is_cancelled,
                     thinking=True,
-                    on_thinking=cb.stream_thinking,
+                    on_thinking=task.stream_thinking,
                 )
                 build_turn.complete(response_text)
             except Exception as build_exc:
@@ -114,8 +99,7 @@ def _run_subworkflow_builder(
             finally:
                 build_turn.commit(orchestrator.conversation)
 
-            # Save the workflow to library and persist the builder's conversation
-            # history so the user can see how it was built and resume later.
+            # Persist the builder's conversation history and clear building flag.
             # Cap history to prevent unbounded DB blob growth.
             build_hist = orchestrator.conversation.history
             if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
@@ -144,23 +128,24 @@ def _run_subworkflow_builder(
                     "Failed to clear building flag for %s: %s",
                     workflow_id, inner_exc,
                 )
-            # Notify frontend so it can clear the "Building..." state
-            if sink:
-                sink.push("build_error", {
+            # Notify parent's SSE stream (if still open) so the frontend can
+            # clear the "Building..." state. No-ops if sink is closed.
+            if notify_sink:
+                notify_sink.push("build_error", {
                     "workflow_id": workflow_id,
                     "error": str(exc),
                 })
         finally:
-            # Always emit chat_response to signal build completion to frontend
-            cb.emit_response(response_text)
-            # Mark done and unregister so handle_resume_task knows the build finished
-            cb.done.set()
-            _task_registry.unregister(cb)
-            # Notify frontend for library badge refresh
-            if sink:
-                sink.push("subworkflow_ready", {"workflow_id": workflow_id})
-                # Release our reference — closes the SSE stream if we're the last producer
-                sink.release()
+            # Emit chat_response on builder's own sink to signal build completion
+            task.emit_response(response_text)
+            # Mark done and unregister so resume knows the build finished
+            task.done.set()
+            _task_registry.unregister(task)
+            # Notify parent's SSE stream (if still open) for library badge refresh
+            if notify_sink:
+                notify_sink.push("subworkflow_ready", {"workflow_id": workflow_id})
+            # Close the builder's own sink (ends the SSE stream or drains the queue)
+            task.sink.close()
 
 
 class CreateSubworkflowTool(Tool):
@@ -342,13 +327,30 @@ class CreateSubworkflowTool(Tool):
             f"When done, call set_workflow_output to declare the output."
         )
 
-        # --- Spawn background builder thread ---
-        sink = session_state.get("event_sink")
+        # --- Create independent builder task with its own EventSink ---
+        # Deferred import to avoid circular imports (builder_task → tools.constants)
+        from ...api.builder_task import BuilderTask
+        from ...api.sse import EventSink
+        from ...api.task_registry import task_registry as _task_registry
 
-        # Notify frontend that a new subworkflow was created so the library
-        # page can auto-refresh and show the "Building..." badge
-        if sink:
-            sink.push("subworkflow_created", {
+        builder_sink = EventSink()
+        bg_task_id = f"bg_{uuid4().hex[:8]}"
+        builder = BuilderTask(
+            sink=builder_sink,
+            workflow_id=workflow_id,
+            user_id=user_id,
+            task_id=bg_task_id,
+        )
+
+        # Register before thread spawn so resume can find it immediately
+        _task_registry.register(builder)
+
+        # Parent's sink — used for fire-and-forget notifications only
+        parent_sink = session_state.get("event_sink")
+
+        # Notify frontend that a new subworkflow was created
+        if parent_sink:
+            parent_sink.push("subworkflow_created", {
                 "workflow_id": workflow_id,
                 "name": name_clean,
                 "building": True,
@@ -356,7 +358,10 @@ class CreateSubworkflowTool(Tool):
 
         thread = threading.Thread(
             target=_run_subworkflow_builder,
-            args=(workflow_id, builder_prompt, repo_root, workflow_store, user_id, sink),
+            args=(
+                workflow_id, builder_prompt, repo_root, workflow_store,
+                user_id, builder, parent_sink,
+            ),
             daemon=True,
             name=f"subworkflow-builder-{workflow_id}",
         )
