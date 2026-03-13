@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -73,9 +74,32 @@ def run_eval(
 
     results: List[EvalResult] = []
 
+    # Run-level retry: if a run produces an error (e.g. network drop),
+    # wait and retry the whole run up to _RUN_RETRIES times.
+    _RUN_RETRIES = 3
+    _RUN_RETRY_BACKOFF = [60, 120, 180]  # seconds between retries
+
     def do_one(item: Tuple[Sample, str, str]) -> EvalResult:
         sample, model, run_id = item
         result = run_sample(sample, model, scaffold, run_id=run_id)
+
+        # Retry the whole run if it failed with a connection/network error.
+        attempt = 0
+        while (
+            result.error
+            and any(kw in result.error.lower() for kw in ("connect", "dns", "nodename", "network", "timeout", "ratelimit", "rate limit", "429"))
+            and attempt < _RUN_RETRIES
+        ):
+            delay = _RUN_RETRY_BACKOFF[min(attempt, len(_RUN_RETRY_BACKOFF) - 1)]
+            logger.warning(
+                "Run failed with network error, retrying in %ds (attempt %d/%d): %s",
+                delay, attempt + 1, _RUN_RETRIES, result.error,
+            )
+            print(f"  ⚠ Network error, waiting {delay}s before retry {attempt + 1}/{_RUN_RETRIES}...")
+            time.sleep(delay)
+            result = run_sample(sample, model, scaffold, run_id=run_id)
+            attempt += 1
+
         # Score against golden solution.
         if result.workflow.get("nodes") and sample.golden_path.exists():
             try:

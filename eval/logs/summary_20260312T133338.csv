@@ -1,0 +1,2 @@
+sample,model,run_id,num_nodes,num_edges,num_variables,num_tool_calls,llm_calls,input_tokens,output_tokens,total_tokens,cost_usd,wall_time_s,error,score_overall,score_variables,score_nodes,score_topology,score_conditions,score_outputs
+lipid_management,sonnet,1_695517,31,30,10,48,43,1482365,22789,1505154,4.7889,928.6,None,0.716,0.812,0.833,0.308,0.877,0.75

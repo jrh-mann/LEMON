@@ -1,0 +1,52 @@
+{
+  "sample_name": "lipid_management",
+  "model": "gpt_oss",
+  "model_id": "gpt-oss-120b",
+  "run_id": "3_2d7a35",
+  "error": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to gpt-oss-120b for gpt-oss-120b in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}",
+  "wall_time_s": 63.07,
+  "cost_usd": 0.0,
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 0,
+    "llm_calls": 0
+  },
+  "workflow": {
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "outputs": []
+  },
+  "tool_calls": [],
+  "llm_response": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to gpt-oss-120b for gpt-oss-120b in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}",
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Extract this workflow image into a structured workflow. Follow the Image-to-Workflow Protocol exactly."
+    },
+    {
+      "role": "assistant",
+      "content": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to gpt-oss-120b for gpt-oss-120b in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}"
+    }
+  ],
+  "scores": null,
+  "summary": {
+    "sample": "lipid_management",
+    "model": "gpt_oss",
+    "run_id": "3_2d7a35",
+    "num_nodes": 0,
+    "num_edges": 0,
+    "num_variables": 0,
+    "num_tool_calls": 0,
+    "llm_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "wall_time_s": 63.1,
+    "error": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to gpt-oss-120b for gpt-oss-120b in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}"
+  }
+}

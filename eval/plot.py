@@ -34,8 +34,11 @@ DIMENSIONS = ["variables", "nodes", "topology", "conditions", "outputs", "functi
 DIM_LABELS = ["Vars", "Nodes", "Topo", "Cond", "Out", "Func"]
 
 # Model display order and colours.
-MODEL_ORDER = ["haiku", "sonnet", "opus"]
-MODEL_COLOURS = {"haiku": "#6BAED6", "sonnet": "#2171B5", "opus": "#08306B"}
+MODEL_ORDER = ["haiku", "sonnet", "opus", "gpt54", "gpt_oss", "deepseek"]
+MODEL_COLOURS = {
+    "haiku": "#6BAED6", "sonnet": "#2171B5", "opus": "#08306B",
+    "gpt54": "#2CA02C", "gpt_oss": "#FF7F0E", "deepseek": "#D62728",
+}
 
 
 def load_results(log_dir: Path) -> List[Dict[str, Any]]:
@@ -281,6 +284,87 @@ def plot_cost_vs_score(results: List[Dict[str, Any]], out_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Chart 5: Pareto frontier — cost vs score per model (aggregated)
+# ---------------------------------------------------------------------------
+
+
+def plot_pareto(results: List[Dict[str, Any]], out_path: Path) -> None:
+    """Pareto frontier: mean cost vs mean score per model.
+
+    Each model is a single point (mean across all successful runs).
+    The Pareto frontier connects models where no other model achieves
+    a better score at the same or lower cost.
+    """
+    grouped = _group_by_model(results)
+    models = [m for m in MODEL_ORDER if m in grouped]
+    if not models:
+        return
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    # Compute mean cost and score per model.
+    points = []  # (cost, score, model)
+    for model in models:
+        runs = grouped[model]
+        costs = [r["cost_usd"] for r in runs]
+        scores = [r["scores"]["score_overall"] for r in runs]
+        mean_cost = np.mean(costs)
+        mean_score = np.mean(scores)
+        std_cost = np.std(costs) if len(costs) > 1 else 0
+        std_score = np.std(scores) if len(scores) > 1 else 0
+        points.append((mean_cost, mean_score, std_cost, std_score, model))
+
+        # Plot individual runs as small dots.
+        colour = MODEL_COLOURS.get(model, "grey")
+        ax.scatter(costs, scores, c=colour, s=25, alpha=0.3, edgecolors="none")
+
+        # Plot mean as large marker with error bars.
+        ax.errorbar(
+            mean_cost, mean_score,
+            xerr=std_cost, yerr=std_score,
+            fmt="o", markersize=12, color=colour,
+            ecolor=colour, elinewidth=1.5, capsize=4,
+            label=f"{model.title()} ({mean_score:.0%}, ${mean_cost:.2f})",
+            zorder=5,
+        )
+
+    # Compute and draw Pareto frontier.
+    # Sort by cost ascending; a point is Pareto-optimal if no other point
+    # has both lower cost AND higher score.
+    sorted_pts = sorted(points, key=lambda p: p[0])
+    frontier = []
+    best_score = -1
+    for cost, score, _, _, model in sorted_pts:
+        if score > best_score:
+            frontier.append((cost, score, model))
+            best_score = score
+
+    if len(frontier) >= 2:
+        fx = [p[0] for p in frontier]
+        fy = [p[1] for p in frontier]
+        ax.plot(fx, fy, "k--", alpha=0.4, linewidth=1.5, label="Pareto frontier")
+
+    # Annotate frontier models.
+    for cost, score, model in frontier:
+        ax.annotate(
+            f" {model.title()}", (cost, score),
+            fontsize=9, fontweight="bold",
+            xytext=(8, -4), textcoords="offset points",
+        )
+
+    ax.set_xlabel("Mean Cost per Run (USD)", fontsize=11)
+    ax.set_ylabel("Mean Overall Score", fontsize=11)
+    ax.set_title("LEMON Eval: Cost–Accuracy Pareto Frontier", fontsize=13)
+    ax.set_ylim(0, 1.05)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved: {out_path}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -301,6 +385,7 @@ def generate_all(log_dir: Path, plot_dir: Path = _PLOT_DIR) -> None:
     plot_dimensions_heatmap(results, plot_dir / "dimensions_heatmap.png")
     plot_functional_vs_structural(results, plot_dir / "functional_vs_structural.png")
     plot_cost_vs_score(results, plot_dir / "cost_vs_score.png")
+    plot_pareto(results, plot_dir / "pareto.png")
 
     print(f"\nAll plots saved to {plot_dir}/")
 

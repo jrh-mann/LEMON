@@ -1,0 +1,2 @@
+sample,model,run_id,num_nodes,num_edges,num_variables,num_tool_calls,llm_calls,input_tokens,output_tokens,total_tokens,cost_usd,wall_time_s,error
+lipid_management,sonnet,1_924fca,0,0,0,0,0,0,0,0,0.0,0.0,LLM error: stream() got an unexpected keyword argument 'thinking'

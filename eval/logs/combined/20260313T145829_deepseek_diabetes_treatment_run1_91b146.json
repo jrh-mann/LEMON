@@ -1,0 +1,52 @@
+{
+  "sample_name": "diabetes_treatment",
+  "model": "deepseek",
+  "model_id": "deepseek-v32",
+  "run_id": "1_91b146",
+  "error": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to deepseek-v32 for DeepSeek-V3.2 in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}",
+  "wall_time_s": 65.2,
+  "cost_usd": 0.0,
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 0,
+    "llm_calls": 0
+  },
+  "workflow": {
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "outputs": []
+  },
+  "tool_calls": [],
+  "llm_response": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to deepseek-v32 for DeepSeek-V3.2 in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}",
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Extract this workflow image into a structured workflow. Follow the Image-to-Workflow Protocol exactly."
+    },
+    {
+      "role": "assistant",
+      "content": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to deepseek-v32 for DeepSeek-V3.2 in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}"
+    }
+  ],
+  "scores": null,
+  "summary": {
+    "sample": "diabetes_treatment",
+    "model": "deepseek",
+    "run_id": "1_91b146",
+    "num_nodes": 0,
+    "num_edges": 0,
+    "num_variables": 0,
+    "num_tool_calls": 0,
+    "llm_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "wall_time_s": 65.2,
+    "error": "LLM error: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to deepseek-v32 for DeepSeek-V3.2 in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}"
+  }
+}

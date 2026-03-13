@@ -1,0 +1,51 @@
+{
+  "sample_name": "lipid_management",
+  "model": "sonnet",
+  "model_id": "claude-sonnet-4-6",
+  "run_id": "1_d47a8d",
+  "error": "LLM error: stream() got an unexpected keyword argument 'thinking'",
+  "wall_time_s": 0.02,
+  "cost_usd": 0.0,
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 0,
+    "llm_calls": 0
+  },
+  "workflow": {
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "outputs": []
+  },
+  "tool_calls": [],
+  "llm_response": "LLM error: stream() got an unexpected keyword argument 'thinking'",
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Extract this workflow image into a structured workflow. Follow the Image-to-Workflow Protocol exactly."
+    },
+    {
+      "role": "assistant",
+      "content": "LLM error: stream() got an unexpected keyword argument 'thinking'"
+    }
+  ],
+  "summary": {
+    "sample": "lipid_management",
+    "model": "sonnet",
+    "run_id": "1_d47a8d",
+    "num_nodes": 0,
+    "num_edges": 0,
+    "num_variables": 0,
+    "num_tool_calls": 0,
+    "llm_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "wall_time_s": 0.0,
+    "error": "LLM error: stream() got an unexpected keyword argument 'thinking'"
+  }
+}

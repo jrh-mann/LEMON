@@ -1,0 +1,4 @@
+sample,model,run_id,num_nodes,num_edges,num_variables,num_tool_calls,llm_calls,input_tokens,output_tokens,total_tokens,cost_usd,wall_time_s,error
+diabetes_treatment,sonnet,1_d969dc,45,44,12,33,20,787910,27860,815770,2.7816,661.5,None
+lipid_management,sonnet,1_186f68,32,31,10,32,27,861012,21922,882934,2.9119,703.9,None
+liver_pathology,sonnet,1_4b44de,42,53,13,48,35,1442202,16115,1458317,4.5683,676.4,None

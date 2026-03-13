@@ -26,7 +26,7 @@ class ModelConfig:
 
 
 MODELS: Dict[str, ModelConfig] = {
-    # Azure Foundry deployment names (no date suffix).
+    # Claude models (Azure Foundry deployment names, no date suffix).
     "haiku": ModelConfig(
         model_id="claude-haiku-4-5",
         input_cost_per_mtok=1.00,
@@ -41,6 +41,22 @@ MODELS: Dict[str, ModelConfig] = {
         model_id="claude-opus-4-6",
         input_cost_per_mtok=5.00,
         output_cost_per_mtok=25.00,
+    ),
+    # OpenAI models (Azure AI Foundry — Team28Test, swedencentral).
+    "gpt54": ModelConfig(
+        model_id="gpt-54",  # Azure deployment name
+        input_cost_per_mtok=5.00,
+        output_cost_per_mtok=15.00,
+    ),
+    "gpt_oss": ModelConfig(
+        model_id="gpt-oss-120b",  # Azure deployment name
+        input_cost_per_mtok=1.00,
+        output_cost_per_mtok=4.00,
+    ),
+    "deepseek": ModelConfig(
+        model_id="deepseek-v32",  # Azure deployment name
+        input_cost_per_mtok=0.50,
+        output_cost_per_mtok=2.00,
     ),
 }
 
