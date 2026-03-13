@@ -35,6 +35,7 @@ def _run_subworkflow_updater(
     build_history: list,
     task: Any,
     notify_sink: Any,
+    build_depth: int = 1,
 ) -> None:
     """Background thread: update a subworkflow using a fresh orchestrator
     pre-loaded with the previous build conversation.
@@ -49,6 +50,7 @@ def _run_subworkflow_updater(
         task: BuilderTask — owns its own EventSink, provides callbacks
         notify_sink: Parent's EventSink for fire-and-forget notifications
                      (subworkflow_ready, build_error). May be None or closed.
+        build_depth: Nesting depth — child builders inherit parent's depth + 1.
     """
     from ...api.task_registry import task_registry as _task_registry
 
@@ -66,6 +68,9 @@ def _run_subworkflow_updater(
             orchestrator.repo_root = repo_root
             # Builder's own sink — nested subworkflows will use this
             orchestrator.event_sink = task.sink
+            # Propagate build depth so nested create_subworkflow is rejected
+            # if we're already at MAX_BUILD_DEPTH
+            orchestrator._build_depth = build_depth
             task.orchestrator = orchestrator
 
             # Pre-load the previous builder's conversation so the LLM has
@@ -267,11 +272,16 @@ class UpdateSubworkflowTool(Tool):
                 "building": True,
             })
 
+        # Inherit parent's build depth so nested creates are depth-limited
+        parent_depth = session_state.get("build_depth", 0)
+        child_depth = parent_depth + 1
+
         thread = threading.Thread(
             target=_run_subworkflow_updater,
             args=(
                 workflow_id, updater_prompt, repo_root, workflow_store,
                 user_id, workflow.build_history, builder, parent_sink,
+                child_depth,
             ),
             daemon=True,
             name=f"subworkflow-updater-{workflow_id}",

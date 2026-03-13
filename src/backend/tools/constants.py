@@ -95,3 +95,9 @@ builder_semaphore = _threading.Semaphore(_MAX_CONCURRENT_BUILDERS)
 # Maximum build_history messages to persist in DB per workflow.
 # Prevents unbounded blob growth from long builder conversations.
 MAX_BUILD_HISTORY_MESSAGES = 100
+
+# Maximum nesting depth for subworkflow builders. A builder at depth N
+# can spawn children at depth N+1. Depth 0 is the parent ChatTask's
+# orchestrator. Prevents infinite recursion and semaphore deadlock
+# (5 builders each waiting for a child that can't acquire the semaphore).
+MAX_BUILD_DEPTH = 2

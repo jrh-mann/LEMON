@@ -442,5 +442,64 @@ class TestUpdateSubworkflow:
         assert result["error_code"] == "STILL_BUILDING"
 
 
+class TestBuildDepthLimit:
+    """Test that create_subworkflow rejects calls that exceed MAX_BUILD_DEPTH."""
+
+    def test_rejects_at_max_depth(self, session_state):
+        """Tool returns MAX_DEPTH_EXCEEDED when build_depth >= MAX_BUILD_DEPTH."""
+        from src.backend.tools.constants import MAX_BUILD_DEPTH
+
+        session_state["build_depth"] = MAX_BUILD_DEPTH  # already at limit
+
+        tool = CreateSubworkflowTool()
+        result = tool.execute(
+            {
+                "name": "Too Deep",
+                "output_type": "string",
+                "brief": "Should be rejected",
+                "inputs": [{"name": "x", "type": "string"}],
+            },
+            session_state=session_state,
+        )
+
+        assert result["success"] is False
+        assert result["error_code"] == "MAX_DEPTH_EXCEEDED"
+
+    def test_allows_below_max_depth(self, session_state):
+        """Tool allows creation when build_depth < MAX_BUILD_DEPTH."""
+        session_state["build_depth"] = 1  # below limit
+
+        tool = CreateSubworkflowTool()
+        result = tool.execute(
+            {
+                "name": "Nested Sub",
+                "output_type": "string",
+                "brief": "Should succeed",
+                "inputs": [{"name": "x", "type": "string"}],
+            },
+            session_state=session_state,
+        )
+
+        assert result["success"] is True
+        assert result["workflow_id"]
+
+    def test_defaults_to_depth_zero(self, session_state):
+        """Without build_depth in session_state, defaults to 0 (allows creation)."""
+        assert "build_depth" not in session_state
+
+        tool = CreateSubworkflowTool()
+        result = tool.execute(
+            {
+                "name": "Top Level Sub",
+                "output_type": "string",
+                "brief": "Created from parent orchestrator",
+                "inputs": [{"name": "x", "type": "string"}],
+            },
+            session_state=session_state,
+        )
+
+        assert result["success"] is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

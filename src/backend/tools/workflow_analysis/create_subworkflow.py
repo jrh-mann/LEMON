@@ -25,6 +25,7 @@ from ..constants import (
     VALID_WORKFLOW_OUTPUT_TYPES,
     builder_semaphore,
     MAX_BUILD_HISTORY_MESSAGES,
+    MAX_BUILD_DEPTH,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ def _run_subworkflow_builder(
     user_id: str,
     task: Any,
     notify_sink: Any,
+    build_depth: int = 1,
 ) -> None:
     """Background thread: build a subworkflow using a fresh orchestrator.
 
@@ -50,6 +52,8 @@ def _run_subworkflow_builder(
         task: BuilderTask — owns its own EventSink, provides callbacks
         notify_sink: Parent's EventSink for fire-and-forget notifications
                      (subworkflow_ready, build_error). May be None or closed.
+        build_depth: Nesting depth — child builders inherit parent's depth + 1.
+                     create_subworkflow rejects if this exceeds MAX_BUILD_DEPTH.
     """
     from ...api.task_registry import task_registry as _task_registry
 
@@ -67,6 +71,9 @@ def _run_subworkflow_builder(
             orchestrator.repo_root = repo_root
             # Builder's own sink — nested subworkflows will use this
             orchestrator.event_sink = task.sink
+            # Propagate build depth so nested create_subworkflow is rejected
+            # if we're already at MAX_BUILD_DEPTH
+            orchestrator._build_depth = build_depth
             task.orchestrator = orchestrator
 
             logger.info(
@@ -254,6 +261,18 @@ class CreateSubworkflowTool(Tool):
         if err:
             return err
 
+        # --- Check build depth to prevent infinite recursion ---
+        parent_depth = session_state.get("build_depth", 0)
+        if parent_depth >= MAX_BUILD_DEPTH:
+            return {
+                "success": False,
+                "error": (
+                    f"Maximum subworkflow nesting depth ({MAX_BUILD_DEPTH}) reached. "
+                    f"Cannot create further nested subworkflows."
+                ),
+                "error_code": "MAX_DEPTH_EXCEEDED",
+            }
+
         repo_root = session_state.get("repo_root")
         if not repo_root:
             return {
@@ -356,11 +375,13 @@ class CreateSubworkflowTool(Tool):
                 "building": True,
             })
 
+        # Child builder runs at parent_depth + 1
+        child_depth = parent_depth + 1
         thread = threading.Thread(
             target=_run_subworkflow_builder,
             args=(
                 workflow_id, builder_prompt, repo_root, workflow_store,
-                user_id, builder, parent_sink,
+                user_id, builder, parent_sink, child_depth,
             ),
             daemon=True,
             name=f"subworkflow-builder-{workflow_id}",

@@ -70,6 +70,9 @@ class Orchestrator:
         self._guidance: List[Dict[str, Any]] = []
         self.repo_root: Optional[Any] = None
         self.event_sink: Optional[Any] = None
+        # Nesting depth for subworkflow builds. 0 = parent ChatTask's orchestrator.
+        # Builders increment this; create_subworkflow rejects if too deep.
+        self._build_depth: int = 0
 
     # --- Workflow state views (used by ChatTask, tools, tests) ---
 
@@ -163,6 +166,7 @@ class Orchestrator:
                 "user_id": self.user_id,
                 "repo_root": self.repo_root,
                 "event_sink": self.event_sink,
+                "build_depth": self._build_depth,
             },
         )
         result = _normalize_tool_result(tool_name, data)
