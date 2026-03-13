@@ -25,9 +25,8 @@ class TestExecutionStateManagement:
     def test_register_execution(self):
         """Test registering a new execution."""
         execution_id = "test-exec-1"
-        sid = "socket-123"
-        
-        _register_execution(execution_id, sid)
+
+        _register_execution(execution_id)
         
         assert not _is_execution_stopped(execution_id)
         assert not _is_execution_paused(execution_id)
@@ -38,9 +37,8 @@ class TestExecutionStateManagement:
     def test_pause_and_resume_execution(self):
         """Test pausing and resuming an execution."""
         execution_id = "test-exec-2"
-        sid = "socket-456"
-        
-        _register_execution(execution_id, sid)
+
+        _register_execution(execution_id)
         
         # Pause
         result = _pause_execution(execution_id)
@@ -58,9 +56,8 @@ class TestExecutionStateManagement:
     def test_stop_execution(self):
         """Test stopping an execution."""
         execution_id = "test-exec-3"
-        sid = "socket-789"
-        
-        _register_execution(execution_id, sid)
+
+        _register_execution(execution_id)
         
         result = _stop_execution(execution_id)
         assert result is True
