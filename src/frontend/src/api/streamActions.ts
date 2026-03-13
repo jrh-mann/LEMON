@@ -207,6 +207,12 @@ type OpenTabPayload = {
  */
 function _buildChatSSEHandlers(workflowId: string) {
   return {
+    // SSE keepalive comment — proves the connection is alive even when
+    // no application events are flowing (e.g. during long tool calls).
+    'keepalive': () => {
+      useChatStore.getState().touchHeartbeat(workflowId)
+    },
+
     // --- Chat streaming events ---
 
     'chat_progress': (rawData: unknown) => {

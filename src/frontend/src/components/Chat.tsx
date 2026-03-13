@@ -4,6 +4,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { cancelChatTask, sendChatMessage } from '../api/streamActions'
+import { syncConversationMessages, syncWorkflowState } from '../utils/conversationSync'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
@@ -154,6 +155,13 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
         cs.finalizeStream(activeWorkflowId)
         cs.setCurrentTaskId(activeWorkflowId, null)
         useUIStore.getState().setError('Connection to backend lost — please try again')
+        // Sync with backend truth — recover messages and workflow state
+        // that may have been committed before the connection dropped.
+        const convId = cs.conversations[activeWorkflowId]?.conversationId
+        if (convId) {
+          syncConversationMessages(activeWorkflowId, convId)
+        }
+        syncWorkflowState(activeWorkflowId)
       }
     }, 5000)
     return () => clearInterval(interval)

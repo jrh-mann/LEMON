@@ -116,7 +116,11 @@ async function _readSSEStream(
           const dataLine = line.slice(5).trim()
           currentData = currentData ? `${currentData}\n${dataLine}` : dataLine
         }
-        // Lines starting with ':' are comments (keepalive) — ignore
+        // Lines starting with ':' are SSE comments (keepalive from backend).
+        // Dispatch to 'keepalive' handler so heartbeat watchdogs stay alive.
+        else if (line.startsWith(':')) {
+          handlers['keepalive']?.({})
+        }
       }
     }
 

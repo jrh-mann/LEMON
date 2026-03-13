@@ -43,7 +43,7 @@ logger = logging.getLogger("backend.api")
 
 # Maximum wall-clock time a single chat turn can run before being killed.
 # Prevents zombie tasks from LLM hangs or tool deadlocks.
-_TASK_TIMEOUT_SECONDS = 600.0
+_TASK_TIMEOUT_SECONDS = 3600.0
 
 
 @dataclass
@@ -195,10 +195,12 @@ class ChatTask:
                     "Task %s timed out (%.0fs > %.0fs) — cancelling",
                     self.task_id, elapsed, _TASK_TIMEOUT_SECONDS,
                 )
-                self._cancelled = True
+                # Emit error BEFORE setting cancelled — emit_error is
+                # cancellation-guarded and would silently drop the message.
                 self.emit_error(
                     "Task timed out — please try again with a simpler request."
                 )
+                self._cancelled = True
                 break
 
     def flush_tool_summary(self) -> None:

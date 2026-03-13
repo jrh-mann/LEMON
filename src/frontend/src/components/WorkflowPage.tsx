@@ -10,7 +10,8 @@ import ToolInspectorModal from './ToolInspectorModal'
 import { ExecutionLogModal } from './ExecutionLogModal'
 import { ApiError, API_BASE, getSessionId } from '../api/client'
 import { getCurrentUser } from '../api/auth'
-import { getWorkflow, getConversationHistory } from '../api/workflows'
+import { getWorkflow } from '../api/workflows'
+import { syncConversationMessages } from '../utils/conversationSync'
 import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
@@ -22,31 +23,6 @@ import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/
 
 import '../styles/HomePage.css'
 
-/** Fetch conversation history from backend and merge new messages into the local store.
- *  Shared by initial load and the building-complete handler. */
-async function mergeBackendMessages(wfId: string, convId: string) {
-    const history = await getConversationHistory(convId)
-    if (!history?.messages?.length) return
-    const backendMessages = history.messages
-        .filter((m: { role: string; content: unknown }) =>
-            (m.role === 'user' || m.role === 'assistant') &&
-            typeof m.content === 'string' &&
-            !(m.content as string).startsWith('[CANCELLED]')
-        )
-        .map((m: { role: string; content: string; id: string; timestamp: string; tool_calls?: unknown[] }) => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            timestamp: m.timestamp,
-            tool_calls: m.tool_calls || [],
-        }))
-    const chatStore = useChatStore.getState()
-    const localMsgs = chatStore.conversations?.[wfId]?.messages ?? []
-    if (backendMessages.length > localMsgs.length) {
-        const newMsgs = backendMessages.slice(localMsgs.length)
-        chatStore.setMessages(wfId, [...localMsgs, ...newMsgs])
-    }
-}
 
 export default function WorkflowPage() {
     const { id: workflowId } = useParams<{ id: string }>()
@@ -219,7 +195,7 @@ export default function WorkflowPage() {
                                 chatStore.setCurrentTaskId(workflowId, null)
                                 const convId = fresh.conversation_id || workflowData.conversation_id
                                 if (convId) {
-                                    mergeBackendMessages(workflowId, convId)
+                                    syncConversationMessages(workflowId, convId)
                                 }
                                 const hydrated = hydrateWorkflowDetail(fresh)
                                 setFlowchart(hydrated.flowchart)
@@ -236,7 +212,7 @@ export default function WorkflowPage() {
                 // Merges any backend messages that arrived while the page was closed.
                 const localMessages = cs.conversations?.[workflowId]?.messages ?? []
                 if (workflowData.conversation_id) {
-                    await mergeBackendMessages(workflowId, workflowData.conversation_id)
+                    await syncConversationMessages(workflowId, workflowData.conversation_id)
                 } else if (!localMessages.length && workflowData.building && workflowData.metadata?.description) {
                     // Building in progress, but the build_user_message stream event was
                     // missed (page refresh / late navigation). Recover the brief from
@@ -340,7 +316,7 @@ export default function WorkflowPage() {
 
                 // Load messages via ConversationLogger (includes tool calls).
                 if (workflowData.conversation_id) {
-                    await mergeBackendMessages(workflowId, workflowData.conversation_id)
+                    await syncConversationMessages(workflowId, workflowData.conversation_id)
                 }
             } catch (err) {
                 console.error('[WorkflowPage] Failed to re-fetch after build complete:', err)
