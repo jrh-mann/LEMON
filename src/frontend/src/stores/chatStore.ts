@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist, type StateStorage } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Message, ToolCall } from '../types'
 import { useWorkflowStore } from './workflowStore'
 
@@ -10,7 +10,13 @@ const MAX_PERSISTED_MESSAGES = 100
 // Resilient localStorage wrapper — catches quota errors so the app keeps
 // working even when storage is full.  On quota failure it evicts the
 // oldest conversations from the persisted blob and retries once.
-const resilientStorage: StateStorage = {
+//
+// NOTE: This is a raw string-based storage adapter (StateStorage interface).
+// It must be wrapped with createJSONStorage() so zustand's persist middleware
+// can serialize/deserialize objects correctly.  Passing it directly as
+// `storage: resilientLocalStorage` would corrupt localStorage (objects get
+// stored as "[object Object]" since localStorage.setItem auto-stringifies).
+const resilientLocalStorage = {
   getItem: (name: string) => localStorage.getItem(name),
   setItem: (name: string, value: string) => {
     try {
@@ -329,7 +335,9 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
     }),
 }), {
   name: 'lemon-chat',
-  storage: resilientStorage,
+  // createJSONStorage wraps the raw string-based adapter with JSON
+  // serialization so the persist middleware can read/write objects correctly.
+  storage: createJSONStorage(() => resilientLocalStorage),
   // Only persist durable state — skip transient streaming/processing fields.
   // Trim messages to MAX_PERSISTED_MESSAGES to prevent localStorage bloat.
   partialize: (state) => ({

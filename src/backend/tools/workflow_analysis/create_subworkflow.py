@@ -57,6 +57,11 @@ def _run_subworkflow_builder(
     )
     response_text = ""
 
+    # Acquire a reference on the shared EventSink so the parent ChatTask's
+    # release() doesn't close the SSE stream while we're still emitting events.
+    if sink is not None:
+        sink.acquire()
+
     # Register as active task so resume can reconnect after refresh.
     # BackgroundBuilderCallbacks exposes the same interface as ChatTask
     # (done, thinking_chunks, stream_buffer, task_id, current_workflow_id, user_id).
@@ -154,6 +159,8 @@ def _run_subworkflow_builder(
             # Notify frontend for library badge refresh
             if sink:
                 sink.push("subworkflow_ready", {"workflow_id": workflow_id})
+                # Release our reference — closes the SSE stream if we're the last producer
+                sink.release()
 
 
 class CreateSubworkflowTool(Tool):

@@ -56,6 +56,11 @@ def _run_subworkflow_updater(
     )
     response_text = ""
 
+    # Acquire a reference on the shared EventSink so the parent ChatTask's
+    # release() doesn't close the SSE stream while we're still emitting events.
+    if sink is not None:
+        sink.acquire()
+
     # Register as active task so handle_resume_task can reconnect after refresh.
     _task_registry.register(cb)
 
@@ -150,6 +155,8 @@ def _run_subworkflow_updater(
             # Notify frontend for library badge refresh
             if sink:
                 sink.push("subworkflow_ready", {"workflow_id": workflow_id})
+                # Release our reference — closes the SSE stream if we're the last producer
+                sink.release()
 
 
 class UpdateSubworkflowTool(Tool):

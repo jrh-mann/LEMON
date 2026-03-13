@@ -628,8 +628,11 @@ class ChatTask:
         finally:
             self.done.set()
             task_registry.unregister(self)
-            # Close the SSE stream
-            self.sink.close()
+            # Release our reference to the SSE stream. If background builders
+            # (create_subworkflow, update_subworkflow) acquired the sink, the
+            # stream stays open until they finish. Without this, the parent's
+            # close() would kill the stream while builders are still emitting.
+            self.sink.release()
             # Clear building flag so the workflow doesn't appear stuck
             if self.current_workflow_id and self.workflow_store:
                 try:
