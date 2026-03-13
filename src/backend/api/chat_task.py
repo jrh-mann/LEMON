@@ -17,12 +17,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event
 from typing import Any, Dict, Optional
-from uuid import uuid4
 
 import anthropic
 
 from .chat_event_channel import ChatEventChannel
-from .chat_turn_runner import ChatRuntimePorts, TurnResult, run_turn
+from .chat_session import (
+    save_uploaded_files,
+    sync_payload_workflow,
+    sync_orchestrator_from_convo,
+    sync_convo_from_orchestrator,
+    persist_conversation_metadata,
+)
+from .chat_turn_runner import ChatRuntimePorts, run_turn
 from .common import utc_now
 from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls
@@ -30,11 +36,8 @@ from .sse import EventSink
 from .task_registry import task_registry
 from .tool_event_projector import ToolEventProjector
 from ..agents.turn import TurnStatus
-from ..utils.uploads import save_uploaded_file, save_annotations
-from ..utils.paths import lemon_data_dir
 from ..storage.conversation_log import ConversationLogger
 from ..storage.workflows import WorkflowStore
-from ..workflow_persistence import persist_workflow_snapshot
 
 logger = logging.getLogger("backend.api")
 
@@ -223,123 +226,41 @@ class ChatTask:
         """Dispatch tool lifecycle events — delegated to projector."""
         self._projector.on_tool_event(event, tool, args, result)
 
-    # --- File handling ---
+    # --- Session helpers (delegated to chat_session module) ---
 
     def _save_uploaded_files(self) -> bool:
-        """Save all uploaded files to disk and populate self.saved_file_paths."""
-        logger.info("_save_uploaded_files: files_data count=%d", len(self.files_data))
-        if not self.files_data:
-            return True
-        for file_info in self.files_data:
-            data_url = file_info.get("data_url", "")
-            logger.info(
-                "_save_uploaded_files: processing file id=%s name=%s data_url_len=%d",
-                file_info.get("id", "?"), file_info.get("name", "?"),
-                len(data_url) if isinstance(data_url, str) else 0,
-            )
-            if not isinstance(data_url, str) or not data_url.strip():
-                logger.warning("_save_uploaded_files: skipping file with empty data_url: %s", file_info.get("name"))
-                continue
-            try:
-                rel_path, file_type = save_uploaded_file(data_url, repo_root=self.repo_root)
-                abs_path = str(lemon_data_dir(self.repo_root) / rel_path)
-                self.saved_file_paths.append({
-                    "id": file_info.get("id", ""),
-                    "name": file_info.get("name", ""),
-                    "path": abs_path,
-                    "file_type": file_type,
-                    "purpose": file_info.get("purpose", "unclassified"),
-                })
-            except Exception as exc:
-                logger.exception("Failed to save uploaded file: %s", file_info.get("name"))
-                self.emit_error(f"Invalid file '{file_info.get('name', '?')}': {exc}")
-                return False
-        if self.img_annotations and isinstance(self.img_annotations, list) and self.saved_file_paths:
-            first_image = next(
-                (f for f in self.saved_file_paths if f["file_type"] == "image"), None
-            )
-            if first_image:
-                save_annotations(first_image["path"], self.img_annotations, repo_root=self.repo_root)
-        return True
-
-    # --- Workflow sync ---
+        """Save uploaded files to disk — delegates to chat_session."""
+        ok, paths = save_uploaded_files(
+            files_data=self.files_data,
+            repo_root=self.repo_root,
+            img_annotations=self.img_annotations,
+            emit_error=self.emit_error,
+        )
+        self.saved_file_paths = paths
+        return ok
 
     def _sync_payload_workflow(self) -> None:
-        if not self.convo:
-            return
-        if isinstance(self.workflow, dict):
-            self.convo.update_workflow_state(self.workflow)
-        if isinstance(self.analysis, dict):
-            self.convo.update_workflow_analysis(self.analysis)
-
-    def _ensure_workflow_persisted(self) -> None:
-        """Persist the canvas workflow snapshot to the database."""
-        if not (self.convo and self.current_workflow_id and self.workflow_store):
-            return
-        workflow = self.convo.workflow
-        try:
-            created, persisted = persist_workflow_snapshot(
-                self.workflow_store,
-                workflow_id=self.current_workflow_id,
-                user_id=self.user_id,
-                name="New Workflow",
-                description="",
-                nodes=workflow.get("nodes", []),
-                edges=workflow.get("edges", []),
-                variables=workflow.get("variables", []),
-                outputs=workflow.get("outputs", []),
-                output_type=workflow.get("output_type", "string"),
-                is_draft=True,
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                f"Failed to persist canvas workflow {self.current_workflow_id}: {exc}"
-            ) from exc
-
-        self.convo.workflow["outputs"] = persisted["outputs"]
-        self.convo.workflow["output_type"] = persisted["output_type"]
-        logger.info(
-            "Persisted canvas workflow snapshot %s for user %s",
-            self.current_workflow_id, self.user_id,
-        )
-        if created:
-            self._emit("workflow_created", {
-                "workflow_id": self.current_workflow_id,
-                "name": "New Workflow",
-                "output_type": persisted["output_type"],
-                "is_draft": True,
-            })
-        self.convo.orchestrator.current_workflow_id = self.current_workflow_id
-        # Look up workflow name from DB for system prompt display
-        record = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
-        if record:
-            self.convo.orchestrator.current_workflow_name = record.name
+        if self.convo:
+            sync_payload_workflow(self.convo, self.workflow, self.analysis)
 
     def _sync_orchestrator_from_convo(self) -> None:
-        """Synchronise orchestrator state from the conversation object."""
         if not self.convo:
             return
-        self.convo.orchestrator.sync_workflow(lambda: self.convo.workflow_state)
-        self.convo.orchestrator.sync_workflow_analysis(lambda: self.convo.workflow_analysis)
-        self.convo.orchestrator.workflow_store = self.workflow_store
-        self.convo.orchestrator.user_id = self.user_id
-        self.convo.orchestrator.repo_root = self.repo_root
-        # Pass the EventSink so subworkflow tools can push fire-and-forget
-        # notifications (subworkflow_created, subworkflow_ready) to the
-        # parent's SSE stream. Builders create their own independent sinks.
-        self.convo.orchestrator.event_sink = self.channel.sink
-        # Ensure the canvas workflow snapshot exists in the database
-        self._ensure_workflow_persisted()
-        self.convo.orchestrator.open_tabs = self.open_tabs or []
-        # Inject conversation logger so the orchestrator can log compaction events
-        self.convo.orchestrator.conversation._conversation_logger = self.conversation_logger
-        self.convo.orchestrator.conversation._conversation_id = self.convo.id
+        sync_orchestrator_from_convo(
+            convo=self.convo,
+            workflow_id=self.current_workflow_id,
+            user_id=self.user_id,
+            repo_root=self.repo_root,
+            workflow_store=self.workflow_store,
+            event_sink=self.channel.sink,
+            open_tabs=self.open_tabs,
+            conversation_logger=self.conversation_logger,
+            publish=self.channel.publish,
+        )
 
     def _sync_convo_from_orchestrator(self) -> None:
-        if not self.convo:
-            return
-        self.convo.update_workflow_state(self.convo.orchestrator.current_workflow)
-        self.convo.update_workflow_analysis(self.convo.orchestrator.workflow_analysis)
+        if self.convo:
+            sync_convo_from_orchestrator(self.convo)
 
     def _emit_response(self, response_text: str, cancelled: bool = False) -> None:
         tool_calls = extract_tool_calls(response_text, include_result=False)
@@ -382,40 +303,18 @@ class ChatTask:
                 self.convo.id if self.convo else "?", exc_info=True,
             )
 
-    # --- Conversation metadata persistence ---
-
     def _persist_conversation_metadata(self) -> None:
-        """Persist conversation_id and uploaded file metadata on the workflow."""
+        """Persist conversation metadata — delegates to chat_session."""
         if not (self.current_workflow_id and self.workflow_store and self.convo):
             return
-        try:
-            update_kwargs: Dict[str, Any] = {"conversation_id": self.convo.id}
-            if self.saved_file_paths:
-                data_dir = lemon_data_dir(self.repo_root)
-                uploaded_files = []
-                for fp in self.saved_file_paths:
-                    abs_p = Path(fp["path"])
-                    try:
-                        rel = str(abs_p.relative_to(data_dir))
-                    except ValueError:
-                        rel = fp["path"]
-                    uploaded_files.append({
-                        "name": fp.get("name", ""),
-                        "rel_path": rel,
-                        "file_type": fp.get("file_type", "image"),
-                        "purpose": fp.get("purpose", "unclassified"),
-                    })
-                update_kwargs["uploaded_files"] = uploaded_files
-            self.workflow_store.update_workflow(
-                self.current_workflow_id, self.user_id, **update_kwargs,
-            )
-        except Exception:
-            logger.warning(
-                "Failed to persist conversation_id/files on workflow %s — "
-                "chat may not survive page refresh",
-                self.current_workflow_id,
-                exc_info=True,
-            )
+        persist_conversation_metadata(
+            workflow_id=self.current_workflow_id,
+            user_id=self.user_id,
+            convo=self.convo,
+            workflow_store=self.workflow_store,
+            repo_root=self.repo_root,
+            saved_file_paths=self.saved_file_paths,
+        )
 
     # --- Main run loop ---
 
