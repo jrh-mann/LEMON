@@ -38,10 +38,13 @@ def _run_subworkflow_builder(
     workflow_store: Any,
     user_id: str,
     task: Any,
-    notify_sink: Any,
     build_depth: int = 1,
 ) -> None:
     """Background thread: build a subworkflow using a fresh orchestrator.
+
+    Fully independent — no reference to the parent's EventSink. The builder
+    owns its own sink via `task.sink`. The DB (building flag) is the only
+    coordination channel with the parent.
 
     Args:
         workflow_id: ID of the workflow to build into
@@ -50,8 +53,6 @@ def _run_subworkflow_builder(
         workflow_store: WorkflowStore instance for DB access
         user_id: Owner user ID
         task: BuilderTask — owns its own EventSink, provides callbacks
-        notify_sink: Parent's EventSink for fire-and-forget notifications
-                     (subworkflow_ready, build_error). May be None or closed.
         build_depth: Nesting depth — child builders inherit parent's depth + 1.
                      create_subworkflow rejects if this exceeds MAX_BUILD_DEPTH.
     """
@@ -135,22 +136,15 @@ def _run_subworkflow_builder(
                     "Failed to clear building flag for %s: %s",
                     workflow_id, inner_exc,
                 )
-            # Notify parent's SSE stream (if still open) so the frontend can
-            # clear the "Building..." state. No-ops if sink is closed.
-            if notify_sink:
-                notify_sink.push("build_error", {
-                    "workflow_id": workflow_id,
-                    "error": str(exc),
-                })
+            # build_error is emitted on the builder's own sink (via
+            # task.emit_response below) so the frontend sees it when
+            # connected to the builder's stream.
         finally:
             # Emit chat_response on builder's own sink to signal build completion
             task.emit_response(response_text)
             # Mark done and unregister so resume knows the build finished
             task.done.set()
             _task_registry.unregister(task)
-            # Notify parent's SSE stream (if still open) for library badge refresh
-            if notify_sink:
-                notify_sink.push("subworkflow_ready", {"workflow_id": workflow_id})
             # Close the builder's own sink (ends the SSE stream or drains the queue)
             task.sink.close()
 
@@ -364,10 +358,8 @@ class CreateSubworkflowTool(Tool):
         # Register before thread spawn so resume can find it immediately
         _task_registry.register(builder)
 
-        # Parent's sink — used for fire-and-forget notifications only
+        # Synchronous notification on parent's sink (still alive during tool call)
         parent_sink = session_state.get("event_sink")
-
-        # Notify frontend that a new subworkflow was created
         if parent_sink:
             parent_sink.push("subworkflow_created", {
                 "workflow_id": workflow_id,
@@ -375,13 +367,14 @@ class CreateSubworkflowTool(Tool):
                 "building": True,
             })
 
-        # Child builder runs at parent_depth + 1
+        # Child builder runs at parent_depth + 1.
+        # No parent_sink reference passed — builder is fully independent.
         child_depth = parent_depth + 1
         thread = threading.Thread(
             target=_run_subworkflow_builder,
             args=(
                 workflow_id, builder_prompt, repo_root, workflow_store,
-                user_id, builder, parent_sink, child_depth,
+                user_id, builder, child_depth,
             ),
             daemon=True,
             name=f"subworkflow-builder-{workflow_id}",
