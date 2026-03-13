@@ -27,9 +27,8 @@ from .conversations import Conversation, ConversationStore
 from .response_utils import extract_tool_calls
 from .sse import EventSink
 from .task_registry import task_registry
-from .tool_summaries import ToolSummaryTracker
+from .tool_event_projector import ToolEventProjector
 from ..agents.turn import Turn, TurnStatus
-from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
 from ..utils.cancellation import CancellationError
 from ..utils.uploads import save_uploaded_file, save_annotations
 from ..utils.paths import lemon_data_dir
@@ -65,8 +64,6 @@ class ChatTask:
     current_workflow_id: Optional[str] = None
     open_tabs: Optional[list[Dict[str, Any]]] = None
     done: Event = field(default_factory=Event)
-    executed_tools: list[dict[str, Any]] = field(default_factory=list)
-    tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
     convo: Optional[Conversation] = None
     img_annotations: Optional[list[dict[str, Any]]] = None
     saved_file_paths: list[dict[str, Any]] = field(default_factory=list)
@@ -80,11 +77,30 @@ class ChatTask:
     _created_at: float = field(default_factory=time.monotonic)
 
     def __post_init__(self) -> None:
-        """Construct the event channel from the initial sink."""
+        """Construct the event channel and tool event projector."""
         self.channel = ChatEventChannel(
             sink=self.sink,
             task_id=self.task_id,
             workflow_id_fn=lambda: self.current_workflow_id,
+        )
+        # Projector uses late-binding lambdas — self.convo is None at
+        # construction time and set during run().
+        self._projector = ToolEventProjector(
+            task_id=self.task_id,
+            publish=self.channel.publish,
+            publish_workflow_state=self.channel.publish_workflow_state,
+            emit_progress=self.emit_progress,
+            stream_chunk=self.stream_chunk,
+            is_cancelled=self.is_cancelled,
+            get_workflow_state_payload=self._workflow_state_payload,
+            get_workflow_analysis=lambda: (
+                self.convo.orchestrator.workflow_analysis if self.convo else {}
+            ),
+            conversation_logger=self.conversation_logger,
+            get_convo_id=lambda: self.convo.id if self.convo else None,
+            get_current_workflow=lambda: (
+                self.convo.orchestrator.current_workflow if self.convo else None
+            ),
         )
 
     # --- Transport delegates (external contract preserved) ---
@@ -103,6 +119,16 @@ class ChatTask:
     def did_stream(self) -> bool:
         """Whether any content was streamed — delegated to channel."""
         return self.channel.did_stream
+
+    @property
+    def executed_tools(self) -> list[dict[str, Any]]:
+        """Tool audit trail — delegated to projector."""
+        return self._projector.executed_tools
+
+    @property
+    def tool_summary(self):
+        """Batched tool progress tracker — delegated to projector."""
+        return self._projector.tool_summary
 
     def _emit(self, event: str, payload: dict) -> None:
         """Push an event to the SSE stream (delegates to channel)."""
@@ -173,9 +199,8 @@ class ChatTask:
                 break
 
     def flush_tool_summary(self) -> None:
-        summary = self.tool_summary.flush()
-        if summary:
-            self.stream_chunk(summary)
+        """Flush accumulated tool summary — delegated to projector."""
+        self._projector.flush_tool_summary()
 
     def _workflow_state_payload(self) -> Optional[Dict[str, Any]]:
         """Build workflow state payload from current conversation."""
@@ -195,108 +220,8 @@ class ChatTask:
         args: Dict[str, Any],
         result: Optional[Dict[str, Any]],
     ) -> None:
-        """Dispatch tool lifecycle events: start, complete, batch_complete.
-
-        Records tool results and emits SSE events so the frontend can
-        update the canvas in real time.
-        """
-        cancelled = self.is_cancelled()
-
-        if event == "tool_start":
-            entry: Dict[str, Any] = {"tool": tool, "arguments": args}
-            if cancelled:
-                entry["interrupted"] = True
-            self.executed_tools.append(entry)
-            # Real-time progress so the user sees which tool is running
-            if not cancelled:
-                self.emit_progress("tool_start", f"Running {tool}...", tool=tool)
-        if event == "tool_complete":
-            if isinstance(result, dict) and result.get("skipped"):
-                return
-            success = True
-            if isinstance(result, dict) and "success" in result:
-                success = bool(result.get("success"))
-            self.tool_summary.note(tool, success=success)
-            for executed in reversed(self.executed_tools):
-                if executed.get("tool") == tool and "result" not in executed:
-                    executed["result"] = result
-                    executed["success"] = success
-                    if cancelled:
-                        executed["interrupted"] = True
-                    break
-            # Snapshot workflow after successful edit tool calls
-            if success and tool in WORKFLOW_EDIT_TOOLS and self.conversation_logger and self.convo:
-                try:
-                    self.conversation_logger.log_workflow_snapshot(
-                        self.convo.id,
-                        self.convo.orchestrator.current_workflow,
-                        task_id=self.task_id,
-                    )
-                except Exception:
-                    logger.error(
-                        "Failed to log workflow snapshot: tool=%s conv=%s",
-                        tool, self.convo.id if self.convo else "?",
-                        exc_info=True,
-                    )
-        if event == "tool_batch_complete":
-            self.flush_tool_summary()
-            # Update progress so frontend doesn't stay stuck on "Running <tool>..."
-            # while the LLM processes tool results (can take 30s+ for images).
-            if not cancelled:
-                self.emit_progress("thinking", "Thinking...")
-
-        # Skip emissions when cancelled
-        if cancelled:
-            return
-
-        if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
-            self._emit("plan_updated", {"items": result.get("items", [])})
-
-        if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
-            questions = result.get("questions", [])
-            for q in questions:
-                self._emit("pending_question", {
-                    "question": q.get("question", ""),
-                    "options": q.get("options", []),
-                })
-
-        if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
-            payload = self._workflow_state_payload()
-
-            if tool in WORKFLOW_EDIT_TOOLS:
-                action = result.get("action")
-                logger.info(
-                    "Emitting workflow_update action=%s tool=%s workflow_id=%s",
-                    action, tool, result.get("workflow_id"),
-                )
-                self._emit("workflow_update", {"action": action, "data": result})
-                if payload:
-                    self.channel.publish_workflow_state(payload)
-
-                has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
-                has_removed_vars = isinstance(result.get("removed_variable_ids"), list) and result["removed_variable_ids"]
-                if (has_new_vars or has_removed_vars) and self.convo:
-                    self._emit("analysis_updated", {
-                        "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
-                        "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
-                        "task_id": self.task_id,
-                    })
-
-            if tool in WORKFLOW_INPUT_TOOLS and payload:
-                self.channel.publish_workflow_state(payload)
-                self._emit("analysis_updated", {
-                    "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
-                    "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
-                    "task_id": self.task_id,
-                })
-
-            if tool == "save_workflow_to_library":
-                self._emit("workflow_saved", {
-                    "workflow_id": result.get("workflow_id"),
-                    "name": result.get("name"),
-                    "is_draft": False,
-                    "already_saved": result.get("already_saved", False),
-                })
+        """Dispatch tool lifecycle events — delegated to projector."""
+        self._projector.on_tool_event(event, tool, args, result)
 
     # --- File handling ---
 
