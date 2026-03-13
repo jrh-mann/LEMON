@@ -161,9 +161,8 @@ def sync_orchestrator_from_convo(
     convo.orchestrator.workflow_store = workflow_store
     convo.orchestrator.user_id = user_id
     convo.orchestrator.repo_root = repo_root
-    # Pass the EventSink so subworkflow tools can push fire-and-forget
-    # notifications (subworkflow_created, subworkflow_ready) to the
-    # parent's SSE stream. Builders create their own independent sinks.
+    # Pass the EventSink so tools (e.g. create_subworkflow) can push
+    # fire-and-forget notifications back to the user's SSE stream.
     convo.orchestrator.event_sink = event_sink
     # Ensure the canvas workflow snapshot exists in the database
     if workflow_id and workflow_store:
