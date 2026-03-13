@@ -30,6 +30,15 @@ from ..utils.cancellation import CancellationError
 logger = logging.getLogger("backend.llm")
 
 
+def _max_tokens_for_model(model: str) -> int:
+    """Return the maximum output tokens allowed for the given model."""
+    # Opus 4.6 and Sonnet 4.6 support 128k output tokens.
+    # Sonnet 4.5 (and earlier) support 64k.
+    if "opus-4-6" in model or "sonnet-4-6" in model:
+        return 128000
+    return 64000
+
+
 @dataclass
 class LLMResponse:
     """Result of a call_llm() invocation."""
@@ -104,7 +113,7 @@ def call_llm(
 
     payload: Dict[str, Any] = {
         "model": get_anthropic_model(),
-        "max_tokens": 128000,
+        "max_tokens": _max_tokens_for_model(get_anthropic_model()),
         "system": system_payload,
         "messages": converted,
     }

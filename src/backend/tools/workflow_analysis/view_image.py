@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core import Tool, ToolParameter, tool_error
+from ...utils.image import detect_image_media_type
 
 
 class ViewImageTool(Tool):
@@ -74,16 +75,8 @@ class ViewImageTool(Tool):
         raw = image_path.read_bytes()
         b64 = base64.b64encode(raw).decode()
 
-        # Determine media type from extension
-        suffix = image_path.suffix.lower()
-        media_type_map = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-        }
-        media_type = media_type_map.get(suffix, f"image/{suffix.lstrip('.')}")
+        # Detect media type from magic bytes (file extension can be wrong)
+        media_type = detect_image_media_type(raw, image_path.suffix)
 
         self._logger.info("ViewImageTool returning image %s (%d bytes)", image_path.name, len(raw))
 

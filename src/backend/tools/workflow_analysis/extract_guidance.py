@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 
 from ..core import Tool, ToolParameter
 from ...llm import call_llm
+from ...utils.image import detect_image_media_type
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +133,7 @@ class ExtractGuidanceTool(Tool):
         raw = image_path.read_bytes()
         b64 = base64.b64encode(raw).decode()
 
-        suffix = image_path.suffix.lower()
-        media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
-        media_type = media_map.get(suffix, f"image/{suffix.lstrip('.')}")
+        media_type = detect_image_media_type(raw, image_path.suffix)
 
         logger.info("ExtractGuidanceTool calling LLM for %s (%d bytes)", image_path.name, len(raw))
 

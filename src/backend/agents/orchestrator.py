@@ -24,6 +24,7 @@ from .conversation_manager import ConversationManager
 from .system_prompt import build_system_prompt
 from ..tools.schema_gen import generate_all_schemas
 from ..utils.cancellation import CancellationError
+from ..utils.image import detect_image_media_type
 from ..validation.workflow_validator import WorkflowValidator
 from ..events.bus import EventBus
 from ..events.types import TOOL_STARTED, TOOL_COMPLETED, TOOL_BATCH_COMPLETE
@@ -512,8 +513,7 @@ def _encode_file(file_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     b64 = base64.b64encode(raw).decode()
     if file_type == "image":
-        suffix = path.suffix.lower()
-        media = "image/jpeg" if suffix in (".jpg", ".jpeg") else f"image/{suffix.lstrip('.')}"
+        media = detect_image_media_type(raw, path.suffix)
         return {"type": "image", "source": {"type": "base64", "media_type": media, "data": b64}}
     elif file_type == "pdf":
         return {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}

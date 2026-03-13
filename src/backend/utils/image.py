@@ -46,16 +46,29 @@ def file_to_data_url(file_path: Path) -> str:
     return image_to_data_url(file_path)
 
 
+def detect_image_media_type(raw: bytes, suffix: str = "") -> str:
+    """Detect image media type from magic bytes, falling back to file extension.
+
+    The file extension can be wrong (e.g. a PNG saved as .jpg when the
+    frontend declares the wrong MIME type). Magic bytes are authoritative.
+    """
+    if raw[:8] == b'\x89PNG\r\n\x1a\n':
+        return "image/png"
+    if raw[:2] == b'\xff\xd8':
+        return "image/jpeg"
+    if raw[:4] == b'RIFF' and len(raw) >= 12 and raw[8:12] == b'WEBP':
+        return "image/webp"
+    if raw[:6] in (b'GIF87a', b'GIF89a'):
+        return "image/gif"
+    # Fall back to extension
+    suffix_clean = suffix.lower().lstrip(".")
+    ext_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
+    return ext_map.get(suffix_clean, "image/png")
+
+
 def _encode_image_bytes(raw: bytes, suffix: str) -> str:
     """Encode raw image bytes to a data URL without compression."""
-    suffix_clean = suffix.lower().lstrip(".")
-    media_map = {
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "webp": "image/webp",
-        "gif": "image/gif",
-    }
-    media_type = media_map.get(suffix_clean, "image/png")
+    media_type = detect_image_media_type(raw, suffix)
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:{media_type};base64,{encoded}"
 
