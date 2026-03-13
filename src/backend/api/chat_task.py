@@ -1,11 +1,11 @@
 """SSE-based chat task — manages a single chat turn in a background thread.
 
-Refactored from WsChatTask: replaces ConnectionRegistry + conn_id with
-EventSink. Events are pushed to a queue that FastAPI yields as SSE.
+Delegates SSE transport to ChatEventChannel. Events are pushed to a queue
+that FastAPI yields as SSE.
 
 No heartbeat thread needed (HTTP keepalive handles it).
 No dead connection detection needed (sink.is_closed detects client disconnect).
-No conn_id locking needed (sink swap for resume is simpler).
+No conn_id locking needed (channel handles sink swap with a lock).
 """
 
 from __future__ import annotations
@@ -21,9 +21,10 @@ from uuid import uuid4
 
 import anthropic
 
+from .chat_event_channel import ChatEventChannel
 from .common import utc_now
 from .conversations import Conversation, ConversationStore
-from .response_utils import extract_tool_calls, summarize_response
+from .response_utils import extract_tool_calls
 from .sse import EventSink
 from .task_registry import task_registry
 from .tool_summaries import ToolSummaryTracker
@@ -47,7 +48,7 @@ _TASK_TIMEOUT_SECONDS = 600.0
 class ChatTask:
     """Manages a single chat turn — runs in a background thread.
 
-    Pushes events to an EventSink which FastAPI streams as SSE.
+    Delegates SSE transport to ChatEventChannel for thread-safe emit/swap.
     """
 
     sink: EventSink
@@ -66,24 +67,76 @@ class ChatTask:
     done: Event = field(default_factory=Event)
     executed_tools: list[dict[str, Any]] = field(default_factory=list)
     tool_summary: ToolSummaryTracker = field(default_factory=ToolSummaryTracker)
-    did_stream: bool = False
     convo: Optional[Conversation] = None
     img_annotations: Optional[list[dict[str, Any]]] = None
     saved_file_paths: list[dict[str, Any]] = field(default_factory=list)
     # Persistent audit log for the conversation lifecycle
     conversation_logger: Optional[ConversationLogger] = None
-    # Accumulated thinking chunks — flushed as a single entry after respond()
-    thinking_chunks: list[str] = field(default_factory=list)
-    # Accumulated stream text — replayed on resume so refresh doesn't lose content
-    stream_buffer: str = ""
-    # Last workflow state emitted — replayed on resume so canvas syncs after refresh
-    _last_workflow_state: Optional[Dict[str, Any]] = None
     # Cached cancellation flag — set by TaskRegistry.cancel()
     _cancelled: bool = False
     # Whether a chat_cancelled event has already been emitted for this task
     _notified: bool = False
     # Timestamp for stale task purging in TaskRegistry
     _created_at: float = field(default_factory=time.monotonic)
+
+    def __post_init__(self) -> None:
+        """Construct the event channel from the initial sink."""
+        self.channel = ChatEventChannel(
+            sink=self.sink,
+            task_id=self.task_id,
+            workflow_id_fn=lambda: self.current_workflow_id,
+        )
+
+    # --- Transport delegates (external contract preserved) ---
+
+    @property
+    def thinking_chunks(self) -> list[str]:
+        """Accumulated thinking chunks — delegated to channel."""
+        return self.channel.thinking_chunks
+
+    @property
+    def stream_buffer(self) -> str:
+        """Accumulated stream text — delegated to channel."""
+        return self.channel.stream_buffer
+
+    @property
+    def did_stream(self) -> bool:
+        """Whether any content was streamed — delegated to channel."""
+        return self.channel.did_stream
+
+    def _emit(self, event: str, payload: dict) -> None:
+        """Push an event to the SSE stream (delegates to channel)."""
+        self.channel.publish(event, payload)
+
+    def emit_progress(self, event: str, status: str, *, tool: Optional[str] = None) -> None:
+        self.channel.publish_progress(event, status, tool=tool)
+
+    def emit_error(self, error: str) -> None:
+        if self.is_cancelled():
+            return
+        self.channel.publish_error(error)
+
+    def emit_cancelled(self) -> None:
+        self.channel.publish_cancelled(self.task_id)
+
+    def stream_chunk(self, chunk: str) -> None:
+        """Stream an SDK chunk to the frontend. Cancellation-guarded."""
+        if self.is_cancelled():
+            return
+        self.channel.stream_chunk(chunk)
+
+    def stream_thinking(self, chunk: str) -> None:
+        """Stream LLM reasoning/thinking chunks. Cancellation-guarded."""
+        if self.is_cancelled():
+            return
+        self.channel.stream_thinking(chunk)
+
+    def swap_sink(self, new_sink: EventSink) -> None:
+        """Swap the event sink for resume after page refresh (delegates to channel)."""
+        self.channel.swap_sink(new_sink)
+        # Keep self.sink in sync for external code that accesses task.sink directly
+        # (e.g. chat_routes.py cancel endpoint pushes to task.sink)
+        self.sink = self.channel.sink
 
     # --- Helpers ---
 
@@ -92,54 +145,9 @@ class ChatTask:
         if self._cancelled:
             return True
         # Also check if the client disconnected (SSE stream closed)
-        if self.sink.is_closed:
+        if self.channel.sink.is_closed:
             return True
         return False
-
-    def _emit(self, event: str, payload: dict) -> None:
-        """Push an event to the SSE stream.
-
-        Automatically includes workflow_id so the frontend can route events
-        to the correct per-workflow conversation.
-        """
-        if self.current_workflow_id and "workflow_id" not in payload:
-            payload["workflow_id"] = self.current_workflow_id
-        self.sink.push(event, payload)
-
-    def emit_progress(self, event: str, status: str, *, tool: Optional[str] = None) -> None:
-        payload: Dict[str, Any] = {"event": event, "status": status, "task_id": self.task_id}
-        if tool:
-            payload["tool"] = tool
-        self._emit("chat_progress", payload)
-
-    def emit_error(self, error: str) -> None:
-        if self.is_cancelled():
-            return
-        self._emit("agent_error", {"task_id": self.task_id, "error": error})
-
-    def emit_cancelled(self) -> None:
-        if task_registry.mark_notified(self.task_id):
-            self._emit("chat_cancelled", {"task_id": self.task_id})
-
-    def stream_chunk(self, chunk: str) -> None:
-        """Stream an SDK chunk to the frontend as-is (no char-by-char splitting).
-
-        The Anthropic SDK already yields ~20-50 char chunks. Emitting them
-        directly removes the 5ms-per-char artificial delay. If a typewriter
-        effect is desired, it should be done client-side with CSS animation.
-        """
-        if self.is_cancelled():
-            return
-        self.did_stream = True
-        self.stream_buffer += chunk  # Accumulate for resume replay
-        self._emit("chat_stream", {"chunk": chunk, "task_id": self.task_id})
-
-    def stream_thinking(self, chunk: str) -> None:
-        """Stream LLM reasoning/thinking chunks to the frontend."""
-        if not chunk or self.is_cancelled():
-            return
-        self.thinking_chunks.append(chunk)
-        self._emit("chat_thinking", {"chunk": chunk, "task_id": self.task_id})
 
     def _timeout_watchdog(self) -> None:
         """Kill the task if it exceeds the wall-clock timeout.
@@ -168,45 +176,6 @@ class ChatTask:
         summary = self.tool_summary.flush()
         if summary:
             self.stream_chunk(summary)
-
-    def swap_sink(self, new_sink: EventSink) -> None:
-        """Swap the event sink for resume after page refresh.
-
-        Replays accumulated thinking + stream content to the new sink,
-        then routes all future events through it. Closes the old sink
-        to end the old SSE stream.
-        """
-        # Send a progress event so the frontend knows it's reconnected
-        new_sink.push("chat_progress", {
-            "event": "resumed",
-            "status": "Processing...",
-            "task_id": self.task_id,
-            "workflow_id": self.current_workflow_id or "",
-        })
-        # Replay accumulated thinking
-        if self.thinking_chunks:
-            new_sink.push("chat_thinking", {
-                "chunk": "".join(self.thinking_chunks),
-                "task_id": self.task_id,
-                "workflow_id": self.current_workflow_id or "",
-            })
-        # Replay accumulated stream content
-        if self.stream_buffer:
-            new_sink.push("chat_stream", {
-                "chunk": self.stream_buffer,
-                "task_id": self.task_id,
-                "workflow_id": self.current_workflow_id or "",
-            })
-        # Replay last workflow state so the canvas syncs
-        if self._last_workflow_state:
-            new_sink.push("workflow_state_updated", {
-                **self._last_workflow_state,
-                "workflow_id": self.current_workflow_id or "",
-            })
-        # Swap: close old sink, install new one
-        old_sink = self.sink
-        self.sink = new_sink
-        old_sink.close()
 
     def _workflow_state_payload(self) -> Optional[Dict[str, Any]]:
         """Build workflow state payload from current conversation."""
@@ -302,8 +271,7 @@ class ChatTask:
                 )
                 self._emit("workflow_update", {"action": action, "data": result})
                 if payload:
-                    self._emit("workflow_state_updated", payload)
-                    self._last_workflow_state = payload
+                    self.channel.publish_workflow_state(payload)
 
                 has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
                 has_removed_vars = isinstance(result.get("removed_variable_ids"), list) and result["removed_variable_ids"]
@@ -315,8 +283,7 @@ class ChatTask:
                     })
 
             if tool in WORKFLOW_INPUT_TOOLS and payload:
-                self._emit("workflow_state_updated", payload)
-                self._last_workflow_state = payload
+                self.channel.publish_workflow_state(payload)
                 self._emit("analysis_updated", {
                     "variables": self.convo.orchestrator.workflow_analysis.get("variables", []),
                     "outputs": self.convo.orchestrator.workflow_analysis.get("outputs", []),
@@ -435,7 +402,7 @@ class ChatTask:
         # Pass the EventSink so subworkflow tools can push fire-and-forget
         # notifications (subworkflow_created, subworkflow_ready) to the
         # parent's SSE stream. Builders create their own independent sinks.
-        self.convo.orchestrator.event_sink = self.sink
+        self.convo.orchestrator.event_sink = self.channel.sink
         # Ensure the canvas workflow snapshot exists in the database
         self._ensure_workflow_persisted()
         self.convo.orchestrator.open_tabs = self.open_tabs or []
@@ -635,7 +602,7 @@ class ChatTask:
             task_registry.unregister(self)
             # Close our SSE stream. Builder tasks have their own independent
             # sinks so this won't affect them.
-            self.sink.close()
+            self.channel.close()
             # Clear building flag so the workflow doesn't appear stuck
             if self.current_workflow_id and self.workflow_store:
                 try:
