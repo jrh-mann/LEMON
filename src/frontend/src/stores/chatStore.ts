@@ -68,7 +68,8 @@ export interface ConversationState {
   conversationId: string | null
   isStreaming: boolean
   streamingContent: string
-  thinkingContent: string
+  // Whether the last appended chunk was thinking (used to open/close <span class="reasoning"> tags)
+  _inThinkingBlock: boolean
   processingStatus: string | null
   currentTaskId: string | null
   contextUsagePct: number  // 0-100, percentage of context window used
@@ -81,7 +82,7 @@ const emptyConversation: ConversationState = {
   conversationId: null,
   isStreaming: false,
   streamingContent: '',
-  thinkingContent: '',
+  _inThinkingBlock: false,
   processingStatus: null,
   currentTaskId: null,
   contextUsagePct: 0,
@@ -111,7 +112,8 @@ interface ChatState {
   setStreaming: (workflowId: string, streaming: boolean) => void
   appendStreamContent: (workflowId: string, content: string) => void
   setCurrentTaskId: (workflowId: string, taskId: string | null) => void
-  appendThinkingContent: (workflowId: string, content: string) => void
+  // Append thinking content inline into streamingContent, wrapped in <span class="reasoning">
+  appendThinkingInline: (workflowId: string, content: string) => void
   setProcessingStatus: (workflowId: string, status: string | null) => void
   setContextUsage: (workflowId: string, pct: number) => void
   // Record that a backend event arrived — used by the heartbeat watchdog to detect stale tasks
@@ -208,29 +210,31 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   appendStreamContent: (workflowId, content) =>
     set((state) => {
       const conv = getConv(state, workflowId)
+      // Close any open thinking block before appending text
+      const prefix = conv._inThinkingBlock ? '<!--THINKING_END-->' : ''
       return updateConv(state, workflowId, {
-        streamingContent: conv.streamingContent + content,
+        streamingContent: conv.streamingContent + prefix + content,
+        _inThinkingBlock: false,
       })
     }),
 
   setCurrentTaskId: (workflowId, taskId) =>
     set((state) => updateConv(state, workflowId, { currentTaskId: taskId })),
 
-  appendThinkingContent: (workflowId, content) =>
+  // Append thinking content inline — delimited by HTML comment markers.
+  // Chat.tsx splits on these markers to render reasoning as collapsible dropdowns.
+  appendThinkingInline: (workflowId, content) =>
     set((state) => {
       const conv = getConv(state, workflowId)
+      const prefix = conv._inThinkingBlock ? '' : '<!--THINKING_START-->'
       return updateConv(state, workflowId, {
-        thinkingContent: conv.thinkingContent + content,
+        streamingContent: conv.streamingContent + prefix + content,
+        _inThinkingBlock: true,
       })
     }),
 
-  // Clear thinking content when processing ends (status set to null)
   setProcessingStatus: (workflowId, status) =>
-    set((state) => updateConv(state, workflowId,
-      status === null
-        ? { processingStatus: null, thinkingContent: '' }
-        : { processingStatus: status },
-    )),
+    set((state) => updateConv(state, workflowId, { processingStatus: status })),
 
   setContextUsage: (workflowId, pct) =>
     set((state) => updateConv(state, workflowId, { contextUsagePct: pct })),
@@ -238,12 +242,14 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   touchHeartbeat: (workflowId) =>
     set((state) => updateConv(state, workflowId, { lastHeartbeatAt: Date.now() })),
 
-  // Finalize streaming: convert streamContent into a Message, clear streaming state.
-  // Only uses actual streamed response text — thinkingContent is internal reasoning
-  // and must never appear as a chat message (e.g. when user cancels during thinking).
+  // Finalize streaming: convert streamContent (including inline reasoning) into a Message.
   finalizeStream: (workflowId, toolCalls) => {
     const conv = getConv(get(), workflowId)
-    const content = conv.streamingContent
+    // Close any open thinking block
+    let content = conv.streamingContent
+    if (conv._inThinkingBlock) {
+      content += '<!--THINKING_END-->'
+    }
     if (content) {
       const msg: Message = {
         id: generateId(),
@@ -255,15 +261,15 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
       set((state) => updateConv(state, workflowId, {
         messages: [...getConv(state, workflowId).messages, msg],
         streamingContent: '',
+        _inThinkingBlock: false,
         isStreaming: false,
         processingStatus: null,
-        thinkingContent: '',
       }))
     } else {
       set((state) => updateConv(state, workflowId, {
         isStreaming: false,
+        _inThinkingBlock: false,
         processingStatus: null,
-        thinkingContent: '',
       }))
     }
   },
@@ -358,7 +364,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
           // Reset transient fields so they don't leak across sessions
           isStreaming: false,
           streamingContent: '',
-          thinkingContent: '',
+          _inThinkingBlock: false,
           processingStatus: null,
           currentTaskId: null,
           contextUsagePct: conv.contextUsagePct,

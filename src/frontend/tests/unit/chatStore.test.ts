@@ -103,20 +103,38 @@ describe('chatStore', () => {
   })
 
   describe('thinking content', () => {
-    it('appendThinkingContent accumulates', () => {
+    it('appendThinkingInline opens a thinking marker and sets _inThinkingBlock', () => {
       const store = useChatStore.getState()
-      store.appendThinkingContent('wf_1', 'Let me ')
-      store.appendThinkingContent('wf_1', 'think...')
-      expect(useChatStore.getState().conversations['wf_1'].thinkingContent).toBe('Let me think...')
+      store.appendThinkingInline('wf_1', 'Let me ')
+      let conv = useChatStore.getState().conversations['wf_1']
+      expect(conv.streamingContent).toBe('<!--THINKING_START-->Let me ')
+      expect(conv._inThinkingBlock).toBe(true)
+
+      // Subsequent chunks accumulate inside the open block
+      store.appendThinkingInline('wf_1', 'think...')
+      conv = useChatStore.getState().conversations['wf_1']
+      expect(conv.streamingContent).toBe('<!--THINKING_START-->Let me think...')
+      expect(conv._inThinkingBlock).toBe(true)
     })
 
-    it('setProcessingStatus(null) clears thinking content', () => {
+    it('appendStreamContent closes the open thinking block before appending', () => {
       const store = useChatStore.getState()
-      store.appendThinkingContent('wf_1', 'thinking...')
-      store.setProcessingStatus('wf_1', null)
+      store.appendThinkingInline('wf_1', 'Let me think...')
+      store.appendStreamContent('wf_1', 'Hello')
       const conv = useChatStore.getState().conversations['wf_1']
-      expect(conv.thinkingContent).toBe('')
-      expect(conv.processingStatus).toBeNull()
+      expect(conv.streamingContent).toBe('<!--THINKING_START-->Let me think...<!--THINKING_END-->Hello')
+      expect(conv._inThinkingBlock).toBe(false)
+    })
+
+    it('finalizeStream closes an open thinking block in the final message content', () => {
+      const store = useChatStore.getState()
+      store.setStreaming('wf_1', true)
+      store.appendThinkingInline('wf_1', 'Still thinking...')
+      store.finalizeStream('wf_1', [])
+      const conv = useChatStore.getState().conversations['wf_1']
+      expect(conv.isStreaming).toBe(false)
+      expect(conv._inThinkingBlock).toBe(false)
+      expect(conv.messages[0].content).toBe('<!--THINKING_START-->Still thinking...<!--THINKING_END-->')
     })
   })
 

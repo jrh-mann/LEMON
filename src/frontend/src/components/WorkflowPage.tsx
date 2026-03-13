@@ -22,6 +22,32 @@ import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/
 
 import '../styles/HomePage.css'
 
+/** Fetch conversation history from backend and merge new messages into the local store.
+ *  Shared by initial load and the building-complete handler. */
+async function mergeBackendMessages(wfId: string, convId: string) {
+    const history = await getConversationHistory(convId)
+    if (!history?.messages?.length) return
+    const backendMessages = history.messages
+        .filter((m: { role: string; content: unknown }) =>
+            (m.role === 'user' || m.role === 'assistant') &&
+            typeof m.content === 'string' &&
+            !(m.content as string).startsWith('[CANCELLED]')
+        )
+        .map((m: { role: string; content: string; id: string; timestamp: string; tool_calls?: unknown[] }) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            timestamp: m.timestamp,
+            tool_calls: m.tool_calls || [],
+        }))
+    const chatStore = useChatStore.getState()
+    const localMsgs = chatStore.conversations?.[wfId]?.messages ?? []
+    if (backendMessages.length > localMsgs.length) {
+        const newMsgs = backendMessages.slice(localMsgs.length)
+        chatStore.setMessages(wfId, [...localMsgs, ...newMsgs])
+    }
+}
+
 export default function WorkflowPage() {
     const { id: workflowId } = useParams<{ id: string }>()
     const navigate = useNavigate()
@@ -137,37 +163,6 @@ export default function WorkflowPage() {
 
         let isActive = true
 
-        // Shared helper: fetch conversation history from backend and merge
-        // any new messages into the local store. Used by both initial load
-        // and the building-complete poll.
-        const mergeBackendMessages = async (wfId: string, convId: string) => {
-            const history = await getConversationHistory(convId)
-            if (!history?.messages?.length) return
-            const backendMessages = history.messages
-                .filter(m =>
-                    (m.role === 'user' || m.role === 'assistant') &&
-                    // Only keep messages with string content — tool-result
-                    // messages have array content (not displayable).
-                    typeof m.content === 'string' &&
-                    // Skip [CANCELLED] markers — internal LLM context signals,
-                    // not displayable messages.
-                    !m.content.startsWith('[CANCELLED]')
-                )
-                .map(m => ({
-                    id: m.id,
-                    role: m.role as 'user' | 'assistant',
-                    content: m.content,
-                    timestamp: m.timestamp,
-                    tool_calls: m.tool_calls || [],
-                }))
-            const chatStore = useChatStore.getState()
-            const localMsgs = chatStore.conversations?.[wfId]?.messages ?? []
-            if (backendMessages.length > localMsgs.length) {
-                const newMsgs = backendMessages.slice(localMsgs.length)
-                chatStore.setMessages(wfId, [...localMsgs, ...newMsgs])
-            }
-        }
-
         const loadWorkflow = async () => {
             try {
                 const workflowData = await getWorkflow(workflowId)
@@ -242,23 +237,6 @@ export default function WorkflowPage() {
                 const localMessages = cs.conversations?.[workflowId]?.messages ?? []
                 if (workflowData.conversation_id) {
                     await mergeBackendMessages(workflowId, workflowData.conversation_id)
-                } else if (!localMessages.length && workflowData.build_history?.length) {
-                    // Build completed — restore chat from build_history.
-                    // Filter to user/assistant with content (skip tool messages
-                    // and empty assistant blocks from tool-use rounds).
-                    const historyMessages = workflowData.build_history
-                        .filter((msg: { role: string; content: unknown }) =>
-                            (msg.role === 'user' || msg.role === 'assistant')
-                            && typeof msg.content === 'string'
-                            && msg.content.trim())
-                        .map((msg: { role: string; content: string }) => ({
-                            id: `bh_${crypto.randomUUID()}`,
-                            role: msg.role as 'user' | 'assistant',
-                            content: msg.content,
-                            timestamp: new Date().toISOString(),
-                            tool_calls: [],
-                        }))
-                    cs.setMessages(workflowId, historyMessages)
                 } else if (!localMessages.length && workflowData.building && workflowData.metadata?.description) {
                     // Building in progress, but the build_user_message stream event was
                     // missed (page refresh / late navigation). Recover the brief from
@@ -342,8 +320,7 @@ export default function WorkflowPage() {
     }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles])
 
     // Re-fetch workflow when a background subworkflow build completes.
-    // This loads the complete build_history and final nodes/edges,
-    // replacing the partial streaming view.
+    // Loads final nodes/edges and merges conversation history (with tool calls).
     useEffect(() => {
         if (!workflowId) return
 
@@ -361,31 +338,9 @@ export default function WorkflowPage() {
                 })
                 setFlowchart(fc)
 
-                // Load complete build_history into chatStore conversation,
-                // but only if the conversation doesn't already have messages
-                // from the current session (avoids overwriting live chat).
-                const cs = useChatStore.getState()
-                const existingConv = cs.conversations?.[workflowId]
-                if (workflowData.build_history?.length && !existingConv?.messages?.length) {
-                    const historyMessages = workflowData.build_history
-                        .filter((msg: { role: string; content: unknown }) =>
-                            // Only keep user/assistant messages with string content.
-                            // Tool-result messages have content as an array of objects
-                            // (e.g. [{type:"tool_result",...}]) — not displayable.
-                            (msg.role === 'user' || msg.role === 'assistant')
-                            && typeof msg.content === 'string'
-                            && msg.content.trim()
-                        )
-                        .map(
-                            (msg: { role: string; content: string }) => ({
-                                id: `bh_${crypto.randomUUID()}`,
-                                role: msg.role as 'user' | 'assistant',
-                                content: msg.content,
-                                timestamp: new Date().toISOString(),
-                                tool_calls: [],
-                            })
-                        )
-                    cs.setMessages(workflowId, historyMessages)
+                // Load messages via ConversationLogger (includes tool calls).
+                if (workflowData.conversation_id) {
+                    await mergeBackendMessages(workflowId, workflowData.conversation_id)
                 }
             } catch (err) {
                 console.error('[WorkflowPage] Failed to re-fetch after build complete:', err)

@@ -234,7 +234,8 @@ function _buildChatSSEHandlers(workflowId: string) {
       const data = rawData as ChatChunkPayload
       // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
       const targetWf = data.workflow_id || workflowId
-      useChatStore.getState().appendThinkingContent(targetWf, data.chunk || '')
+      // Append thinking inline into streamingContent (dimmed via .reasoning class)
+      useChatStore.getState().appendThinkingInline(targetWf, data.chunk || '')
       useChatStore.getState().touchHeartbeat(targetWf)
     },
 

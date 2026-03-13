@@ -1,3 +1,6 @@
+## IMPORTANT: Discuss Before Coding
+NEVER start writing or editing code without explicit user approval. Research and propose your approach first, then WAIT for the user to say "go ahead" before touching any files. No exceptions.
+
 NEVER create markdown files unless instructed
 
 Work atomically, prior to every change define tests and criteria for their acceptance, once these are passed, commit that change.

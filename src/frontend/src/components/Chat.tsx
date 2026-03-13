@@ -27,8 +27,8 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const messages = conv?.messages ?? EMPTY_MESSAGES
   const isStreaming = conv?.isStreaming ?? false
   const streamingContent = conv?.streamingContent ?? ''
+  const isInThinkingBlock = conv?._inThinkingBlock ?? false
   const processingStatus = conv?.processingStatus ?? null
-  const thinkingContent = conv?.thinkingContent ?? ''
   const currentTaskId = conv?.currentTaskId ?? null
   const contextUsagePct = conv?.contextUsagePct ?? 0
 
@@ -57,9 +57,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
 
   const { chatHeight, setChatHeight } = useUIStore()
 
-  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
-  const thinkingRef = useRef<HTMLDivElement>(null)
-  const isThinkingScrolledUp = useRef(false)
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -162,27 +159,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     return () => clearInterval(interval)
   }, [isStreaming, activeWorkflowId])
 
-  // Auto-scroll the thinking stream container
-  useEffect(() => {
-    if (thinkingRef.current && !isThinkingScrolledUp.current) {
-      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
-    }
-  }, [thinkingContent])
-
-  // Reset the scroll-up flag when thinking content is cleared
-  useEffect(() => {
-    if (!thinkingContent) {
-      isThinkingScrolledUp.current = false
-    }
-  }, [thinkingContent])
-
-  // Detect manual scroll inside the thinking stream container
-  const handleThinkingScroll = useCallback(() => {
-    const el = thinkingRef.current
-    if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
-    isThinkingScrolledUp.current = !atBottom
-  }, [])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -272,6 +248,37 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     } catch {
       return content
     }
+  }
+
+  // Split streaming content into text and thinking segments for rendering.
+  // Thinking segments get rendered as collapsible dropdowns (completed) or
+  // expanded dimmed text (currently streaming).
+  type Segment = { type: 'text' | 'thinking'; content: string }
+  const splitIntoSegments = (raw: string): Segment[] => {
+    const segments: Segment[] = []
+    let remaining = raw
+    while (remaining) {
+      const startIdx = remaining.indexOf('<!--THINKING_START-->')
+      if (startIdx === -1) {
+        // No more thinking blocks — rest is text
+        if (remaining) segments.push({ type: 'text', content: remaining })
+        break
+      }
+      // Text before the thinking block
+      if (startIdx > 0) {
+        segments.push({ type: 'text', content: remaining.slice(0, startIdx) })
+      }
+      remaining = remaining.slice(startIdx + '<!--THINKING_START-->'.length)
+      const endIdx = remaining.indexOf('<!--THINKING_END-->')
+      if (endIdx === -1) {
+        // Unclosed thinking block (currently streaming)
+        if (remaining) segments.push({ type: 'thinking', content: remaining })
+        break
+      }
+      segments.push({ type: 'thinking', content: remaining.slice(0, endIdx) })
+      remaining = remaining.slice(endIdx + '<!--THINKING_END-->'.length)
+    }
+    return segments
   }
 
   const isDragging = useRef(false)
@@ -376,17 +383,32 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
               <div className="message-content">
                 {streamingContent ? (
                   <>
-                    {thinkingContent && (
-                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
-                        <span className="thinking-label">Reasoning</span>
-                        <div className="thinking-text">{thinkingContent}</div>
-                      </div>
-                    )}
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: renderMarkdown(streamingContent),
-                      }}
-                    />
+                    {splitIntoSegments(streamingContent).map((seg, i, arr) => {
+                      if (seg.type === 'text') {
+                        return (
+                          <div
+                            key={i}
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.content) }}
+                          />
+                        )
+                      }
+                      // Thinking segment — last one while still thinking = expanded live
+                      const isLive = isInThinkingBlock && i === arr.length - 1
+                      if (isLive) {
+                        return (
+                          <div key={i} className="reasoning reasoning-live">
+                            {seg.content}
+                          </div>
+                        )
+                      }
+                      // Completed thinking — collapsed dropdown
+                      return (
+                        <details key={i} className="reasoning-dropdown">
+                          <summary className="reasoning-summary">Reasoning</summary>
+                          <div className="reasoning">{seg.content}</div>
+                        </details>
+                      )
+                    })}
                     {processingStatus && (
                       <span className="processing-status">
                         <span className="status-dot"></span>
@@ -397,12 +419,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                   </>
                 ) : processingStatus ? (
                   <>
-                    {thinkingContent && (
-                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
-                        <span className="thinking-label">Reasoning</span>
-                        <div className="thinking-text">{thinkingContent}</div>
-                      </div>
-                    )}
                     <span className="processing-status">
                       <span className="status-dot"></span>
                       {processingStatus}
@@ -602,12 +618,22 @@ function MessageBubble({
     }
   }
 
+  // Convert thinking markers to <details> dropdowns for finalized messages
+  const renderAssistantContent = (content: string): string => {
+    const html = renderMarkdown(
+      content
+        .replace(/<!--THINKING_START-->/g, '<details class="reasoning-dropdown"><summary class="reasoning-summary">Reasoning</summary><div class="reasoning">')
+        .replace(/<!--THINKING_END-->/g, '</div></details>')
+    )
+    return html
+  }
+
   return (
     <div className={`message ${message.role}`}>
       <div
         className="message-content"
         dangerouslySetInnerHTML={{
-          __html: isUser || isSystem ? message.content : renderMarkdown(message.content),
+          __html: isUser || isSystem ? message.content : renderAssistantContent(message.content),
         }}
       />
       {message.tool_calls.length > 0 && (

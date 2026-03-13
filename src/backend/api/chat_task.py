@@ -40,7 +40,7 @@ logger = logging.getLogger("backend.api")
 
 # Maximum wall-clock time a single chat turn can run before being killed.
 # Prevents zombie tasks from LLM hangs or tool deadlocks.
-_TASK_TIMEOUT_SECONDS = 300.0
+_TASK_TIMEOUT_SECONDS = 600.0
 
 
 @dataclass
@@ -271,6 +271,10 @@ class ChatTask:
                     )
         if event == "tool_batch_complete":
             self.flush_tool_summary()
+            # Update progress so frontend doesn't stay stuck on "Running <tool>..."
+            # while the LLM processes tool results (can take 30s+ for images).
+            if not cancelled:
+                self.emit_progress("thinking", "Thinking...")
 
         # Skip emissions when cancelled
         if cancelled:

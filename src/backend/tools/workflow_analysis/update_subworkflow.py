@@ -35,6 +35,7 @@ def _run_subworkflow_updater(
     build_history: list,
     task: Any,
     build_depth: int = 1,
+    conversation_logger: Any = None,
 ) -> None:
     """Background thread: update a subworkflow using a fresh orchestrator
     pre-loaded with the previous build conversation.
@@ -102,13 +103,30 @@ def _run_subworkflow_updater(
             workflow_id, len(build_history), instructions[:100],
         )
 
+        # Generate a conversation_id — same path as regular workflows.
+        from uuid import uuid4 as _uuid4
+        conv_id = f"conv_{_uuid4().hex}"
+
+        if conversation_logger:
+            try:
+                conversation_logger.ensure_conversation(
+                    conv_id, user_id=user_id, workflow_id=workflow_id,
+                    model="claude-opus-4-20250514",
+                )
+            except Exception:
+                logger.warning("Failed to ensure conversation row for updater %s", workflow_id)
+
         # Emit the instructions as a user message so the frontend shows it
         task.emit_user_message(instructions)
         task.emit_progress("Updating workflow...", event="start")
 
         # Run the orchestrator with the update instructions
         from ...agents.turn import Turn
-        update_turn = Turn(instructions, f"bg_{workflow_id}")
+        update_turn = Turn(
+            instructions, conv_id,
+            conversation_logger=conversation_logger,
+            task_id=task.task_id,
+        )
         update_turn.start()
         try:
             response_text = orchestrator.respond(
@@ -126,14 +144,14 @@ def _run_subworkflow_updater(
         finally:
             update_turn.commit(orchestrator.conversation)
 
-        # Persist the updated conversation history and clear building flag.
-        # Cap history to prevent unbounded DB blob growth.
+        # Persist conversation_id + history and clear building flag.
         build_hist = orchestrator.conversation.history
         if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
             build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
         workflow_store.update_workflow(
             workflow_id, user_id,
             building=False,
+            conversation_id=conv_id,
             build_history=build_hist,
         )
 
@@ -295,13 +313,14 @@ class UpdateSubworkflowTool(Tool):
         # No parent_sink reference passed — builder is fully independent.
         parent_depth = session_state.get("build_depth", 0)
         child_depth = parent_depth + 1
+        parent_conv_logger = session_state.get("conversation_logger")
 
         thread = threading.Thread(
             target=_run_subworkflow_updater,
             args=(
                 workflow_id, updater_prompt, repo_root, workflow_store,
                 user_id, workflow.build_history, builder,
-                child_depth,
+                child_depth, parent_conv_logger,
             ),
             daemon=True,
             name=f"subworkflow-updater-{workflow_id}",

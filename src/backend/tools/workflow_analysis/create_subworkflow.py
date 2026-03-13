@@ -40,6 +40,7 @@ def _run_subworkflow_builder(
     user_id: str,
     task: Any,
     build_depth: int = 1,
+    conversation_logger: Any = None,
 ) -> None:
     """Background thread: build a subworkflow using a fresh orchestrator.
 
@@ -102,6 +103,22 @@ def _run_subworkflow_builder(
             workflow_id, brief[:100],
         )
 
+        # Generate a conversation_id for the builder — same path as regular
+        # workflows. The ConversationLogger persists messages with tool calls
+        # so the frontend can load them via getConversationHistory.
+        from uuid import uuid4 as _uuid4
+        conv_id = f"conv_{_uuid4().hex}"
+
+        # Ensure a conversation row exists in the audit DB before Turn.start()
+        if conversation_logger:
+            try:
+                conversation_logger.ensure_conversation(
+                    conv_id, user_id=user_id, workflow_id=workflow_id,
+                    model="claude-opus-4-20250514",
+                )
+            except Exception:
+                logger.warning("Failed to ensure conversation row for builder %s", workflow_id)
+
         # Emit the brief as a user message so the frontend shows it during streaming
         task.emit_user_message(brief)
         task.emit_progress("Building workflow...", event="start")
@@ -109,7 +126,11 @@ def _run_subworkflow_builder(
         # Run the orchestrator — it uses its tools to build the subworkflow
         # autonomously (add_node, add_connection, etc.)
         from ...agents.turn import Turn
-        build_turn = Turn(brief, f"bg_{workflow_id}")
+        build_turn = Turn(
+            brief, conv_id,
+            conversation_logger=conversation_logger,
+            task_id=task.task_id,
+        )
         build_turn.start()
         try:
             response_text = orchestrator.respond(
@@ -127,8 +148,9 @@ def _run_subworkflow_builder(
         finally:
             build_turn.commit(orchestrator.conversation)
 
-        # Persist the builder's conversation history and clear building flag.
-        # Cap history to prevent unbounded DB blob growth.
+        # Persist conversation_id + history and clear building flag.
+        # conversation_id lets the frontend load messages via the standard
+        # ConversationLogger path (includes tool calls + reasoning).
         build_hist = orchestrator.conversation.history
         if len(build_hist) > MAX_BUILD_HISTORY_MESSAGES:
             build_hist = build_hist[-MAX_BUILD_HISTORY_MESSAGES:]
@@ -136,6 +158,7 @@ def _run_subworkflow_builder(
             workflow_id, user_id,
             is_draft=False,
             building=False,
+            conversation_id=conv_id,
             build_history=build_hist,
         )
 
@@ -397,11 +420,12 @@ class CreateSubworkflowTool(Tool):
         # Child builder runs at parent_depth + 1.
         # No parent_sink reference passed — builder is fully independent.
         child_depth = parent_depth + 1
+        parent_conv_logger = session_state.get("conversation_logger")
         thread = threading.Thread(
             target=_run_subworkflow_builder,
             args=(
                 workflow_id, builder_prompt, repo_root, workflow_store,
-                user_id, builder, child_depth,
+                user_id, builder, child_depth, parent_conv_logger,
             ),
             daemon=True,
             name=f"subworkflow-builder-{workflow_id}",

@@ -54,7 +54,7 @@ test.describe('chat input area', () => {
             conversationId: 'conv-1',
             isStreaming: true,
             streamingContent: 'Working on it...',
-            thinkingContent: '',
+            _inThinkingBlock: false,
             processingStatus: 'Building workflow...',
             currentTaskId: 'task_123',
             contextUsagePct: 0,
@@ -85,7 +85,7 @@ test.describe('chat input area', () => {
             conversationId: 'conv-1',
             isStreaming: true,
             streamingContent: '',
-            thinkingContent: '',
+            _inThinkingBlock: false,
             processingStatus: 'Analyzing image...',
             currentTaskId: 'task_456',
             contextUsagePct: 0,
@@ -101,7 +101,8 @@ test.describe('chat input area', () => {
     await expect(page.locator('.status-dot')).toBeVisible()
   })
 
-  test('streaming message shows thinking content', async ({ page }) => {
+  test('streaming message shows thinking content as dropdown', async ({ page }) => {
+    // Completed thinking blocks render as collapsed <details> dropdowns
     const payload: PersistedChatState = {
       state: {
         activeWorkflowId: WF_ID,
@@ -111,8 +112,8 @@ test.describe('chat input area', () => {
             messages: [],
             conversationId: 'conv-1',
             isStreaming: true,
-            streamingContent: 'Building the workflow now.',
-            thinkingContent: 'Let me analyze the image carefully...',
+            streamingContent: '<!--THINKING_START-->Let me analyze the image carefully...<!--THINKING_END-->Building the workflow now.',
+            _inThinkingBlock: false,
             processingStatus: null,
             currentTaskId: 'task_789',
             contextUsagePct: 0,
@@ -124,9 +125,10 @@ test.describe('chat input area', () => {
 
     await seedAndLoad(page, WF_ID, JSON.stringify(payload))
 
-    await expect(page.locator('.thinking-stream')).toBeVisible()
-    await expect(page.locator('.thinking-text')).toContainText('Let me analyze the image carefully')
-    await expect(page.locator('.thinking-label')).toContainText('Reasoning')
+    // Completed reasoning renders as a collapsed dropdown
+    await expect(page.locator('.message.assistant.streaming')).toBeVisible()
+    await expect(page.locator('.reasoning-dropdown')).toBeVisible()
+    await expect(page.locator('.reasoning-summary')).toContainText('Reasoning')
   })
 
   test('empty chat shows suggestions', async ({ page }) => {
@@ -159,7 +161,7 @@ test.describe('chat input area', () => {
             conversationId: 'conv-1',
             isStreaming: false,
             streamingContent: '',
-            thinkingContent: '',
+            _inThinkingBlock: false,
             processingStatus: null,
             currentTaskId: null,
             contextUsagePct: 65,
@@ -187,7 +189,7 @@ test.describe('chat input area', () => {
             conversationId: 'conv-1',
             isStreaming: false,
             streamingContent: '',
-            thinkingContent: '',
+            _inThinkingBlock: false,
             processingStatus: null,
             currentTaskId: null,
             contextUsagePct: 85,

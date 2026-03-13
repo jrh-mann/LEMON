@@ -168,15 +168,16 @@ describe('refresh persistence', () => {
       store.setStreaming('wf_1', true)
       store.appendStreamContent('wf_1', 'partial response...')
       store.setProcessingStatus('wf_1', 'Thinking...')
-      store.appendThinkingContent('wf_1', 'Let me think')
+      store.appendThinkingInline('wf_1', 'Let me think')
       store.setCurrentTaskId('wf_1', 'task_abc')
 
       // Verify transient fields are set
       const conv = useChatStore.getState().conversations['wf_1']
       expect(conv.isStreaming).toBe(true)
-      expect(conv.streamingContent).toBe('partial response...')
+      // streamingContent includes inline reasoning (appendThinkingInline wraps in <span>)
+      expect(conv.streamingContent).toBe('partial response...<!--THINKING_START-->Let me think')
       expect(conv.processingStatus).toBe('Thinking...')
-      expect(conv.thinkingContent).toBe('Let me think')
+      expect(conv._inThinkingBlock).toBe(true)
       expect(conv.currentTaskId).toBe('task_abc')
 
       // Simulate what zustand persist partialize does — extract persisted shape
@@ -185,7 +186,7 @@ describe('refresh persistence', () => {
         conversationId: conv.conversationId,
         isStreaming: false,          // Reset
         streamingContent: '',         // Reset
-        thinkingContent: '',          // Reset
+        _inThinkingBlock: false,      // Reset
         processingStatus: null,       // Reset
         currentTaskId: null,          // Reset
         contextUsagePct: conv.contextUsagePct,
@@ -194,7 +195,7 @@ describe('refresh persistence', () => {
       // Verify transient fields are cleared in persisted shape
       expect(persistedConv.isStreaming).toBe(false)
       expect(persistedConv.streamingContent).toBe('')
-      expect(persistedConv.thinkingContent).toBe('')
+      expect(persistedConv._inThinkingBlock).toBe(false)
       expect(persistedConv.processingStatus).toBeNull()
       expect(persistedConv.currentTaskId).toBeNull()
     })

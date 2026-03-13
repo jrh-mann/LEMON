@@ -25,7 +25,7 @@ export interface PersistedChatState {
       conversationId: string | null
       isStreaming: boolean
       streamingContent: string
-      thinkingContent: string
+      _inThinkingBlock: boolean
       processingStatus: string | null
       currentTaskId: string | null
       contextUsagePct: number
@@ -237,7 +237,7 @@ export function buildChatStorage(
           conversationId,
           isStreaming: false,
           streamingContent: '',
-          thinkingContent: '',
+          _inThinkingBlock: false,
           processingStatus: null,
           currentTaskId: null,
           contextUsagePct: 0,

@@ -168,6 +168,7 @@ class Orchestrator:
                 "repo_root": self.repo_root,
                 "event_sink": self.event_sink,
                 "build_depth": self._build_depth,
+                "conversation_logger": getattr(self.conversation, "_conversation_logger", None),
             },
         )
         result = _normalize_tool_result(tool_name, data)
@@ -437,18 +438,15 @@ class Orchestrator:
             if turn:
                 turn.begin_llm_call()
 
-            # Next LLM call — suppress thinking stream for post-tool calls.
-            # With adaptive thinking on Opus 4.6, interleaved thinking from
-            # multiple LLM calls accumulates in the frontend's reasoning section,
-            # mixing initial reasoning with internal tool-result analysis.
-            # Thinking is still enabled (quality benefit) but not streamed.
+            # Next LLM call — stream thinking so the frontend shows activity.
+            # Thinking renders inline as dimmed text alongside regular output.
             try:
                 resp = call_llm(
                     messages, tools=tool_desc,
                     on_delta=on_delta if stream else None,
                     caller="orchestrator", request_tag="post_tool",
                     should_cancel=should_cancel,
-                    thinking=thinking, on_thinking=None,
+                    thinking=thinking, on_thinking=on_thinking,
                 )
                 raw, tool_calls = resp.text, resp.tool_calls
                 thinking_blocks = resp.thinking_blocks

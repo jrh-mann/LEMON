@@ -116,7 +116,7 @@ test.describe('refresh persistence', () => {
           [WF_ID]: {
             messages: [{ id: 'msg_1', role: 'user', content: 'test', timestamp: '2024-01-01T00:00:00Z', tool_calls: [] }],
             conversationId: 'conv-transient',
-            isStreaming: false, streamingContent: '', thinkingContent: '',
+            isStreaming: false, streamingContent: '', _inThinkingBlock: false,
             processingStatus: null, currentTaskId: null, contextUsagePct: 42,
           },
         },

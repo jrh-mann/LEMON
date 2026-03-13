@@ -223,12 +223,12 @@ test.describe('navigation & subworkflows', () => {
         conversations: {
           [WF_MAIN]: {
             messages: mainMessages, conversationId: 'conv-main',
-            isStreaming: false, streamingContent: '', thinkingContent: '',
+            isStreaming: false, streamingContent: '', _inThinkingBlock: false,
             processingStatus: null, currentTaskId: null, contextUsagePct: 0,
           },
           [WF_SUB]: {
             messages: subMessages, conversationId: 'conv-sub',
-            isStreaming: false, streamingContent: '', thinkingContent: '',
+            isStreaming: false, streamingContent: '', _inThinkingBlock: false,
             processingStatus: null, currentTaskId: null, contextUsagePct: 0,
           },
         },
