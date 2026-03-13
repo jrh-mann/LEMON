@@ -180,7 +180,6 @@ describe('refresh persistence', () => {
       expect(conv.currentTaskId).toBe('task_abc')
 
       // Simulate what zustand persist partialize does — extract persisted shape
-      const state = useChatStore.getState()
       const persistedConv = {
         messages: conv.messages,
         conversationId: conv.conversationId,

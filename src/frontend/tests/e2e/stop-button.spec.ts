@@ -10,8 +10,8 @@
  */
 import { test, expect } from '@playwright/test'
 import {
-  mockAllAPIs, buildChatStorage, seedAndLoad,
-  msg, tc, resetMsgCounter,
+  mockAllAPIs, seedAndLoad,
+  msg, resetMsgCounter,
   type PersistedChatState,
 } from './helpers'
 

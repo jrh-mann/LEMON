@@ -11,6 +11,7 @@ import type {
   FlowEdge,
   WorkflowVariable,
   WorkflowOutput,
+  ToolCall,
 } from '../types'
 
 // List all workflows (returns summaries, not full workflows)
@@ -117,9 +118,9 @@ export interface ValidationResponse {
 }
 
 export async function validateWorkflow(payload: {
-  nodes: any[]
-  edges: any[]
-  variables: any[]  // Workflow variables for template validation
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  variables: WorkflowVariable[]  // Workflow variables for template validation
 }): Promise<ValidationResponse> {
   return api.post<ValidationResponse>('/api/validate', payload)
 }
@@ -133,7 +134,7 @@ export interface ConversationHistoryResponse {
     role: 'user' | 'assistant'
     content: string
     timestamp: string
-    tool_calls: any[]
+    tool_calls: ToolCall[]
   }>
 }
 
@@ -158,10 +159,10 @@ export interface CompilePythonResponse {
 }
 
 export interface CompilePythonRequest {
-  nodes: any[]
-  edges: any[]
-  variables: any[]
-  outputs?: any[]
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  variables: WorkflowVariable[]
+  outputs?: WorkflowOutput[]
   name?: string
   include_imports?: boolean
   include_docstring?: boolean

@@ -58,7 +58,9 @@ export function SubprocessConfig({
 
   // Remove a mapping entry by parent input name
   const handleRemoveMapping = (parentKey: string) => {
-    const { [parentKey]: _, ...remaining } = inputMapping
+    const remaining = Object.fromEntries(
+      Object.entries(inputMapping).filter(([key]) => key !== parentKey)
+    )
     onUpdate({ input_mapping: remaining })
   }
 

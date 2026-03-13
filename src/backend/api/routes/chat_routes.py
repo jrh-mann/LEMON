@@ -64,7 +64,7 @@ def register_chat_routes(
         """Accept a chat message and return an SSE stream for the response.
 
         The HTTP response IS the stream — events are yielded as SSE lines
-        until the LLM finishes responding. No Socket.IO needed.
+        until the LLM finishes responding over SSE.
         """
         try:
             payload = await request.json()

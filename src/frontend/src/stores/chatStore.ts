@@ -7,6 +7,10 @@ import { useWorkflowStore } from './workflowStore'
 // to keep localStorage usage bounded and prevent quota-exceeded errors.
 const MAX_PERSISTED_MESSAGES = 100
 
+type PersistedConversationLike = {
+  messages?: Array<{ timestamp?: string }>
+}
+
 // Resilient localStorage wrapper — catches quota errors so the app keeps
 // working even when storage is full.  On quota failure it evicts the
 // oldest conversations from the persisted blob and retries once.
@@ -21,7 +25,7 @@ const resilientLocalStorage = {
   setItem: (name: string, value: string) => {
     try {
       localStorage.setItem(name, value)
-    } catch (e) {
+    } catch {
       // QuotaExceededError — evict old data and retry once
       console.warn('[chatStore] localStorage quota exceeded, evicting old conversations')
       try {
@@ -31,7 +35,7 @@ const resilientLocalStorage = {
           const convs = parsed?.state?.conversations
           if (convs && typeof convs === 'object') {
             // Keep only the 3 most recently-touched conversations
-            const entries = Object.entries(convs) as [string, any][]
+            const entries = Object.entries(convs) as [string, PersistedConversationLike][]
             const sorted = entries.sort((a, b) => {
               const lastA = a[1]?.messages?.at(-1)?.timestamp ?? ''
               const lastB = b[1]?.messages?.at(-1)?.timestamp ?? ''
@@ -268,7 +272,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
 
   sendUserMessage: (content) => {
     // Resolve workflow ID using the SAME logic as sendChatMessage in
-    // socketActions.ts: prefer workflowStore (the canonical canvas ID)
+    // streamActions.ts: prefer workflowStore (the canonical canvas ID)
     // over chatStore.activeWorkflowId. This ensures the user message is
     // stored under the same ID that the backend will use for responses.
     const wfStoreId = useWorkflowStore.getState().currentWorkflow?.id || null
@@ -322,7 +326,9 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
 
   clearConversation: (workflowId) =>
     set((state) => {
-      const { [workflowId]: _, ...rest } = state.conversations
+      const rest = Object.fromEntries(
+        Object.entries(state.conversations).filter(([id]) => id !== workflowId)
+      )
       return { conversations: rest }
     }),
 

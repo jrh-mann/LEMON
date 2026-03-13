@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import type { WorkflowVariable, InputType, VariableSource } from '../types'
 
 /* ── Constants ───────────────────────────────────────────── */
@@ -69,14 +69,14 @@ const makeDefault = (): WorkflowVariable => ({
  * Shows all editable fields: name, type, source, description,
  * and type-specific fields (enum values, number range, constant value).
  */
-export default function VariableModal({ variable, onSave, onClose }: VariableModalProps) {
+export default function VariableModal(props: VariableModalProps) {
+  const modalKey = props.variable?.id ?? 'new'
+  return <VariableModalContent key={modalKey} {...props} />
+}
+
+function VariableModalContent({ variable, onSave, onClose }: VariableModalProps) {
   const isNew = variable === null
   const [draft, setDraft] = useState<WorkflowVariable>(variable ?? makeDefault())
-
-  // Reset draft when the target variable changes (e.g. opening a different variable)
-  useEffect(() => {
-    setDraft(variable ?? makeDefault())
-  }, [variable])
 
   /** Merge partial updates into the draft */
   const update = useCallback((patch: Partial<WorkflowVariable>) => {

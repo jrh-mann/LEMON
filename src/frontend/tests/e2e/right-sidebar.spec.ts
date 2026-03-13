@@ -11,11 +11,11 @@ import { mockAllAPIs, resetMsgCounter } from './helpers'
 const WF_ID = 'wf_sidebar_0000000000000000000000'
 
 test.describe('right sidebar — variables', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async () => {
     resetMsgCounter()
   })
 
-  test('renders variable cards from workflow data', async ({ page }) => {
+  test('renders variable cards from workflow data', async () => {
     await mockAllAPIs(page, {
       workflowDetail: {
         id: WF_ID, name: 'Test',

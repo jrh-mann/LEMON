@@ -115,11 +115,6 @@ export default function Palette() {
     setIsResizing(true)
   }, [])
 
-  // Force build mode if dev tools disabled
-  useEffect(() => {
-    if (!devMode) setPaletteMode('build')
-  }, [devMode])
-
   const [showJsonInput, setShowJsonInput] = useState(false)
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
@@ -248,7 +243,7 @@ export default function Palette() {
     (block: BlockConfig) => {
       // Calculate position based on existing nodes
       const existingNodes = flowchart.nodes
-      let x = 600
+      const x = 600
       let y = 100
 
       if (existingNodes.length > 0) {
@@ -275,6 +270,7 @@ export default function Palette() {
   }, [openModal])
 
   const isCollapsed = sidebarWidth === 0
+  const activePaletteMode = devMode ? paletteMode : 'build'
 
   return (
     <aside
@@ -303,13 +299,13 @@ export default function Palette() {
             <div className="sidebar-section">
               <div className="sidebar-toggle-group">
                 <button
-                  className={`sidebar-toggle-btn ${paletteMode === 'build' ? 'active' : ''}`}
+                  className={`sidebar-toggle-btn ${activePaletteMode === 'build' ? 'active' : ''}`}
                   onClick={() => setPaletteMode('build')}
                 >
                   Build
                 </button>
                 <button
-                  className={`sidebar-toggle-btn ${paletteMode === 'dev' ? 'active' : ''}`}
+                  className={`sidebar-toggle-btn ${activePaletteMode === 'dev' ? 'active' : ''}`}
                   onClick={() => setPaletteMode('dev')}
                 >
                   Dev Tools
@@ -318,7 +314,7 @@ export default function Palette() {
             </div>
           )}
 
-          {paletteMode === 'build' ? (
+          {activePaletteMode === 'build' ? (
             <>
               <div className="sidebar-section">
                 <p className="eyebrow">BLOCKS</p>

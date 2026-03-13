@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import tempfile
 import json
+import sqlite3
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -140,3 +141,21 @@ def test_workflow_persistence():
 if __name__ == "__main__":
     success = test_workflow_persistence()
     sys.exit(0 if success else 1)
+
+
+def test_get_workflow_returns_none_for_corrupt_json(tmp_path):
+    """Corrupt JSON rows should fail closed instead of raising in the error path."""
+    db_path = tmp_path / "corrupt.sqlite"
+    store = WorkflowStore(db_path)
+    store.create_workflow(
+        workflow_id="wf_corrupt",
+        user_id="user_1",
+        name="Corrupt Test",
+        description="",
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE workflows SET tags = ? WHERE id = ?", ("not-json", "wf_corrupt"))
+        conn.commit()
+
+    assert store.get_workflow("wf_corrupt", "user_1") is None

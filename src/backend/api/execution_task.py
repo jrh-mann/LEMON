@@ -155,7 +155,7 @@ class SteppedExecutionTask:
 
     Wraps TreeInterpreter to emit events for each step, allowing
     the frontend to highlight nodes in real-time.  Events are pushed
-    to an EventSink (SSE stream) instead of a Socket.IO registry.
+    to an EventSink (SSE stream) instead of a socket registry.
     """
 
     sink: EventSink

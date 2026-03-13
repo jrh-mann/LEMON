@@ -3,9 +3,11 @@ import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { cancelChatTask, sendChatMessage } from '../api/socketActions'
+import { cancelChatTask, sendChatMessage } from '../api/streamActions'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
+
+const EMPTY_MESSAGES: Message[] = []
 
 export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const [inputValue, setInputValue] = useState('')
@@ -22,7 +24,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   // Read from the active workflow's conversation — no dual-mode, same path for all workflows
   const activeWorkflowId = useChatStore(s => s.activeWorkflowId)
   const conv = useChatStore(s => activeWorkflowId ? s.conversations[activeWorkflowId] : undefined)
-  const messages = conv?.messages ?? []
+  const messages = conv?.messages ?? EMPTY_MESSAGES
   const isStreaming = conv?.isStreaming ?? false
   const streamingContent = conv?.streamingContent ?? ''
   const processingStatus = conv?.processingStatus ?? null
@@ -198,7 +200,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
 
     sendUserMessage(trimmed)
 
-    // Send via socket — only include files on first send
+    // Send via streaming request — only include files on first send
     const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
     sendChatMessage(
       trimmed,

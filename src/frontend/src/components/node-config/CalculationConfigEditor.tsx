@@ -7,7 +7,7 @@
  * human-readable formula string.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useMemo, useCallback } from 'react'
 import type {
   FlowNode,
   WorkflowVariable,
@@ -15,52 +15,12 @@ import type {
   Operand,
 } from '../../types'
 import { getOperator, getOperatorsByCategory } from '../../types'
+import { formatCalculationPreview } from './calculationPreview'
 
-/**
- * Format a calculation as a human-readable formula for preview.
- */
-export function formatCalculationPreview(calc: CalculationConfigType, inputs: WorkflowVariable[]): string {
-  const op = getOperator(calc.operator)
-  if (!op) return '(invalid operator)'
-
-  // Format operands
-  const formatOperand = (operand: Operand): string => {
-    if (operand.kind === 'literal') {
-      return String(operand.value ?? '?')
-    }
-    // Variable reference - show name if found
-    const variable = inputs.find(v => v.id === operand.ref)
-    return variable?.name ?? (operand.ref || '?')
-  }
-
-  const operandStrs = calc.operands.map(formatOperand)
-  const outputName = calc.output.name || 'result'
-
-  // Format based on operator category
-  if (op.category === 'unary') {
-    const arg = operandStrs[0] ?? '?'
-    return `${outputName} = ${op.symbol.replace('x', arg)}`
-  }
-
-  if (op.category === 'binary') {
-    const [a, b] = operandStrs
-    // Replace 'a' and 'b' in symbol
-    const formula = op.symbol.replace('a', a ?? '?').replace('b', b ?? '?')
-    return `${outputName} = ${formula}`
-  }
-
-  // Variadic - join with symbol
-  if (operandStrs.length === 0) {
-    return `${outputName} = ${op.symbol}(?)`
-  }
-
-  // Special formatting for function-style operators
-  if (['min', 'max', 'sum', 'average', 'hypot', 'variance', 'std_dev', 'range', 'geometric_mean', 'harmonic_mean'].includes(op.name)) {
-    return `${outputName} = ${op.name}(${operandStrs.join(', ')})`
-  }
-
-  // Default: join with symbol
-  return `${outputName} = ${operandStrs.join(` ${op.symbol} `)}`
+const EMPTY_CALCULATION: CalculationConfigType = {
+  output: { name: '', description: '' },
+  operator: 'add',
+  operands: [],
 }
 
 export function CalculationConfigEditor({
@@ -73,11 +33,10 @@ export function CalculationConfigEditor({
   onUpdate: (updates: Partial<FlowNode>) => void
 }) {
   // Get current calculation config or create empty one
-  const calculation: CalculationConfigType = node.calculation ?? {
-    output: { name: '', description: '' },
-    operator: 'add',
-    operands: []
-  }
+  const calculation = useMemo(
+    () => node.calculation ?? EMPTY_CALCULATION,
+    [node.calculation]
+  )
 
   // Get the selected operator definition
   const selectedOperator = getOperator(calculation.operator)
@@ -88,9 +47,6 @@ export function CalculationConfigEditor({
   const numericVariables = analysisInputs.filter(v =>
     v.type === 'number'
   )
-
-  // Validation errors state
-  const [validationErrors, setValidationErrors] = useState<string[]>([])
 
   // Validate the calculation configuration
   const validateCalculation = useCallback((calc: CalculationConfigType): string[] => {
@@ -136,12 +92,10 @@ export function CalculationConfigEditor({
 
     return errors
   }, [analysisInputs])
-
-  // Validate on calculation change
-  useEffect(() => {
-    const errors = validateCalculation(calculation)
-    setValidationErrors(errors)
-  }, [calculation, validateCalculation])
+  const validationErrors = useMemo(
+    () => validateCalculation(calculation),
+    [calculation, validateCalculation]
+  )
 
   // Update the calculation field on the node
   const updateCalculation = (updates: Partial<CalculationConfigType>) => {

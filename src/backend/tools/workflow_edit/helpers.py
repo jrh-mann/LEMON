@@ -902,6 +902,7 @@ def save_workflow_changes(
     edges: Optional[List[Dict[str, Any]]] = None,
     variables: Optional[List[Dict[str, Any]]] = None,
     outputs: Optional[List[Dict[str, Any]]] = None,
+    output_type: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Save workflow changes back to database.
     
@@ -914,6 +915,7 @@ def save_workflow_changes(
         edges: Updated list of edges (optional)
         variables: Updated list of variables (optional, stored as 'inputs')
         outputs: Updated list of outputs (optional)
+        output_type: Updated workflow-level output type (optional)
         
     Returns:
         None on success, or an error dict on failure.
@@ -952,6 +954,32 @@ def save_workflow_changes(
         update_kwargs["inputs"] = variables  # Store as 'inputs' in database
     if outputs is not None:
         update_kwargs["outputs"] = outputs
+    if output_type is not None:
+        update_kwargs["output_type"] = output_type
+
+    if nodes is not None or edges is not None:
+        resolved_nodes = nodes
+        resolved_edges = edges
+        if resolved_nodes is None or resolved_edges is None:
+            record = workflow_store.get_workflow(workflow_id, user_id)
+            if record is None:
+                return {
+                    "success": False,
+                    "error": f"Failed to load workflow '{workflow_id}' for tree sync",
+                    "error_code": "WORKFLOW_NOT_FOUND",
+                    "message": f"Workflow '{workflow_id}' not found or unauthorized.",
+                }
+            if resolved_nodes is None:
+                resolved_nodes = record.nodes
+            if resolved_edges is None:
+                resolved_edges = record.edges
+
+        from ...utils.flowchart import tree_from_flowchart
+
+        update_kwargs["tree"] = tree_from_flowchart(
+            resolved_nodes or [],
+            resolved_edges or [],
+        )
     
     # If nothing to update, return success
     if not update_kwargs:

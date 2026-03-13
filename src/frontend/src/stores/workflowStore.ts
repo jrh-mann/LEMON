@@ -13,7 +13,7 @@ export interface ExecutionState {
   executionPath: string[]    // Full path of executed nodes
   executionSpeed: number     // Delay between steps in ms (100-2000)
   executionError: string | null
-  executionOutput: any       // Final output of execution
+  executionOutput: unknown   // Final output of execution
   executionLogs: ExecutionLogEntry[]  // Detailed execution logs for dev tools
   logIndentationStack: string[] // Stack of subworkflow IDs to track indentation depth
 }
@@ -67,7 +67,7 @@ interface WorkflowState {
   // Extraction plan items (from update_plan tool)
   plan: Array<{ text: string; done: boolean }>
 
-  // Library refresh trigger — incremented by socket handlers when the library
+  // Library refresh trigger — incremented by streaming handlers when the library
   // list needs re-fetching (subworkflow created, build finished, etc.)
   libraryRefreshTrigger: number
   incrementLibraryRefresh: () => void
@@ -78,7 +78,7 @@ interface WorkflowState {
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
-  setFlowchartSilent: (flowchart: Flowchart) => void  // Set flowchart without pushing undo history (for WS events)
+  setFlowchartSilent: (flowchart: Flowchart) => void  // Set flowchart without pushing undo history (for streamed server events)
   persistFlowchart: () => Promise<void>
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
   setInputValues: (values: Record<string, unknown>) => void
@@ -136,7 +136,7 @@ interface WorkflowState {
   markNodeExecuted: (nodeId: string) => void
   setExecutionSpeed: (speed: number) => void
   setExecutionError: (error: string | null) => void
-  setExecutionOutput: (output: any) => void
+  setExecutionOutput: (output: unknown) => void
   clearExecution: () => void
 
   // Subflow execution actions
@@ -261,7 +261,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   // Set flowchart without pushing undo history — used for server-driven updates
-  // (WS events like batch_edit) that shouldn't pollute the user's undo stack
+  // (streamed events like batch_edit) that shouldn't pollute the user's undo stack
   setFlowchartSilent: (flowchart) => set({ flowchart }),
   persistFlowchart: async () => {
     const state = get()
@@ -682,7 +682,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   })),
 
   // Sets the final execution output
-  setExecutionOutput: (output: any) => set((state) => ({
+  setExecutionOutput: (output: unknown) => set((state) => ({
     execution: {
       ...state.execution,
       executionOutput: output,

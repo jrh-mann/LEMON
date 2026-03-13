@@ -120,7 +120,12 @@ class SetWorkflowOutputTool(WorkflowTool):
             outputs.append(output_def)
 
         # Auto-save changes to database
-        save_error = save_workflow_changes(workflow_id, session_state, outputs=outputs)
+        save_error = save_workflow_changes(
+            workflow_id,
+            session_state,
+            outputs=outputs,
+            output_type=output_type,
+        )
         if save_error:
             return save_error
 

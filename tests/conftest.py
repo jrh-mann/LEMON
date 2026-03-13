@@ -7,8 +7,7 @@ Also provides the orchestrator_with_workflow fixture used by integration,
 workflow, and feature tests that exercise orchestrator.run_tool().
 """
 
-# Load .env before anything else so tests that hit the real API
-# (e.g. test_workflow_state_integrity, test_atomic_operations) get
+# Load .env before anything else so opt-in live LLM suites can pick up
 # ANTHROPIC_API_KEY, ANTHROPIC_ENDPOINT, etc.
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,6 +22,34 @@ from src.backend.agents.orchestrator import Orchestrator
 from src.backend.agents.orchestrator_factory import build_orchestrator
 from src.backend.storage.workflows import WorkflowStore
 from src.backend.tools.constants import generate_workflow_id
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-live-llm",
+        action="store_true",
+        default=False,
+        help="run tests that require a live Anthropic-backed LLM",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "live_llm: requires live Anthropic credentials and network access",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--run-live-llm"):
+        return
+
+    skip_live = pytest.mark.skip(
+        reason="requires a live Anthropic-backed LLM; rerun with --run-live-llm",
+    )
+    for item in items:
+        if "live_llm" in item.keywords:
+            item.add_marker(skip_live)
 
 
 def _repo_root() -> Path:

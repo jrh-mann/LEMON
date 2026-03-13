@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useChatStore } from '../stores/chatStore'
-import { sendChatMessage } from '../api/socketActions'
+import { sendChatMessage } from '../api/streamActions'
 import { useWorkflowStore } from '../stores/workflowStore'
 
 // ─── Data model ──────────────────────────────────────

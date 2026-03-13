@@ -13,9 +13,8 @@ export default function ExportPage() {
 
     const canExport = currentWorkflow || flowchart.nodes.length > 0
 
-    const ctx = { currentWorkflow, flowchart, currentAnalysis }
-
     const handleExport = useCallback(async (format: string) => {
+        const ctx = { currentWorkflow, flowchart, currentAnalysis }
         setExporting(format)
         setLastResult(prev => ({ ...prev, [format]: null }))
         try {
@@ -43,7 +42,7 @@ export default function ExportPage() {
         } finally {
             setExporting(null)
         }
-    }, [ctx])
+    }, [currentAnalysis, currentWorkflow, flowchart])
 
     return (
         <div className="export-page">

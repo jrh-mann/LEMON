@@ -2927,7 +2927,7 @@ body {
   box-shadow: 0 0 0 3px var(--teal-light);
 }
 
-/* Persistent banner shown when the socket connection drops */
+/* Persistent banner shown when the streaming connection drops */
 .disconnect-banner {
   background: #fef3cd;
   color: #856404;

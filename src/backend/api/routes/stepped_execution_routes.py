@@ -5,7 +5,7 @@ POST /api/executions/{execution_id}/pause  — pause a running execution
 POST /api/executions/{execution_id}/resume — resume a paused execution
 POST /api/executions/{execution_id}/stop   — stop a running execution
 
-These routes replace the Socket.IO execute_workflow / pause_execution /
+These routes replace the older socket-based execute_workflow / pause_execution /
 resume_execution / stop_execution events.
 """
 

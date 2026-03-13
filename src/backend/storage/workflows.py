@@ -526,9 +526,12 @@ class WorkflowStore:
                 updated_at=row["updated_at"],
             )
         except (json.JSONDecodeError, KeyError, TypeError) as e:
+            row_id = "unknown"
+            if row is not None and "id" in row.keys():
+                row_id = row["id"]
             logging.getLogger("backend.workflows").error(
                 "Failed to deserialize workflow row id=%s: %s",
-                row.get("id") if row else "unknown",
+                row_id,
                 e,
             )
             return None

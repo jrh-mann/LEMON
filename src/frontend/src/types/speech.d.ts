@@ -48,5 +48,5 @@ interface SpeechRecognitionStatic {
   new (): SpeechRecognition
 }
 
-declare var SpeechRecognition: SpeechRecognitionStatic
-declare var webkitSpeechRecognition: SpeechRecognitionStatic
+declare const SpeechRecognition: SpeechRecognitionStatic
+declare const webkitSpeechRecognition: SpeechRecognitionStatic

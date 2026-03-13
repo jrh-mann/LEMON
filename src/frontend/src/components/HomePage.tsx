@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { sendChatMessage } from '../api/socketActions'
+import { sendChatMessage } from '../api/streamActions'
 import { addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
 import '../styles/HomePage.css'

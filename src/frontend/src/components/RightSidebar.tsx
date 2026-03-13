@@ -66,6 +66,12 @@ const TYPE_LABELS: Record<InputType, string> = {
   enum: 'Enum',
 }
 
+const EMPTY_VARIABLES: WorkflowVariable[] = []
+const EMPTY_ANALYSIS: WorkflowAnalysis = {
+  variables: EMPTY_VARIABLES,
+  outputs: [],
+}
+
 const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 0
 
@@ -128,11 +134,8 @@ export default function RightSidebar() {
   }, [setWorkflows])
 
   /* ── Derived state ────────────────────────────────────── */
-  const analysisInputs: WorkflowVariable[] = currentAnalysis?.variables || []
-  const effectiveAnalysis: WorkflowAnalysis = currentAnalysis ?? {
-    variables: [],
-    outputs: [],
-  }
+  const analysisInputs = currentAnalysis?.variables ?? EMPTY_VARIABLES
+  const effectiveAnalysis = currentAnalysis ?? EMPTY_ANALYSIS
   const isCollapsed = sidebarWidth === 0
 
   const selectedNode: FlowNode | undefined = selectedNodeId

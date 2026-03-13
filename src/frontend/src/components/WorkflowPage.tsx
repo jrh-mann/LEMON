@@ -16,7 +16,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { transformFlowchartFromBackend } from '../utils/canvas'
 import { hydrateWorkflowDetail } from '../utils/workflowHydration'
-import { sendChatMessage } from '../api/socketActions'
+import { sendChatMessage } from '../api/streamActions'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
 
@@ -97,14 +97,14 @@ export default function WorkflowPage() {
 
         // 4. Trigger Workspace Reveal (sidebars slide in)
         triggerReveal()
-    }, [navigate, setHomeExited, triggerReveal])
+    }, [navigate, setCurrentWorkflowId, setHomeExited, triggerReveal])
 
     // Home chatbox state
     const [homeChatInput, setHomeChatInput] = useState('')
     const [isHomeSending, setIsHomeSending] = useState(false)
     const homeFileInputRef = useRef<HTMLInputElement>(null)
 
-    // Initialize session and socket connection
+    // Initialize session and streaming session state
     useSession(authReady)
 
     useEffect(() => {
@@ -203,7 +203,7 @@ export default function WorkflowPage() {
                         // resumeTask uses fetch/SSE, so no connection wait needed.
                         cs.setStreaming(workflowId, true)
                         cs.setProcessingStatus(workflowId, 'Reconnecting...')
-                        import('../api/socketActions').then(({ resumeTask }) => {
+                        import('../api/streamActions').then(({ resumeTask }) => {
                             if (isActive) resumeTask(workflowId)
                         })
                     }
@@ -258,7 +258,7 @@ export default function WorkflowPage() {
                         }))
                     cs.setMessages(workflowId, historyMessages)
                 } else if (!localMessages.length && workflowData.building && workflowData.metadata?.description) {
-                    // Building in progress, but build_user_message socket event was
+                    // Building in progress, but the build_user_message stream event was
                     // missed (page refresh / late navigation). Recover the brief from
                     // the workflow description so the chat isn't empty.
                     cs.addMessage(workflowId, {
@@ -366,7 +366,7 @@ export default function WorkflowPage() {
                 const existingConv = cs.conversations?.[workflowId]
                 if (workflowData.build_history?.length && !existingConv?.messages?.length) {
                     const historyMessages = workflowData.build_history
-                        .filter((msg: { role: string; content: any }) =>
+                        .filter((msg: { role: string; content: unknown }) =>
                             // Only keep user/assistant messages with string content.
                             // Tool-result messages have content as an array of objects
                             // (e.g. [{type:"tool_result",...}]) — not displayable.
@@ -395,8 +395,7 @@ export default function WorkflowPage() {
     }, [workflowId, setFlowchart])
 
     // No cleanup needed on unmount — conversation state persists in chatStore
-    // across navigations. The socket stays connected so in-flight tasks
-    // continue receiving events normally.
+    // across navigations. In-flight streaming tasks continue emitting events.
 
     // Error toast auto-dismiss
     useEffect(() => {
@@ -420,7 +419,7 @@ export default function WorkflowPage() {
         // Add user message to store locally so it appears in chat history right away
         sendUserMessage(text)
 
-        // Small delay to let transition begin and socket initialize
+        // Small delay to let the transition begin before opening the stream
         setTimeout(() => {
             sendChatMessage(text)
             setIsHomeSending(false)

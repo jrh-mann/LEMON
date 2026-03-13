@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useChatStore } from '../stores/chatStore'
@@ -47,14 +47,7 @@ export default function DevToolsPanel() {
     const activeWfId = chatStore.activeWorkflowId
     const chatMessages = activeWfId ? (chatStore.conversations[activeWfId]?.messages ?? []) : []
 
-    // Load tools when Tools tab is selected
-    useEffect(() => {
-        if (activeSection === 'tools' && tools.length === 0 && !loadingTools) {
-            loadTools()
-        }
-    }, [activeSection])
-
-    const loadTools = async () => {
+    const loadTools = useCallback(async () => {
         setLoadingTools(true)
         setToolsError(null)
         try {
@@ -67,7 +60,14 @@ export default function DevToolsPanel() {
         } finally {
             setLoadingTools(false)
         }
-    }
+    }, [])
+
+    // Load tools when Tools tab is selected
+    useEffect(() => {
+        if (activeSection === 'tools' && tools.length === 0 && !loadingTools) {
+            void loadTools()
+        }
+    }, [activeSection, loadTools, loadingTools, tools.length])
 
     if (!devMode) return null
 

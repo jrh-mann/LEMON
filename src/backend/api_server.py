@@ -65,5 +65,5 @@ register_routes(
 # Serve frontend static files (SPA catch-all) -- must come after API routes
 register_frontend_routes(fastapi_app, _repo_root / "src" / "frontend" / "dist")
 
-# The ASGI app — FastAPI handles everything (no Socket.IO wrapper)
+# The ASGI app — FastAPI handles everything (no socket wrapper)
 app = fastapi_app

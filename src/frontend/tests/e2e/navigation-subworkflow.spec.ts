@@ -53,7 +53,7 @@ const LIBRARY_WORKFLOWS: WorkflowSummaryPayload[] = [
 ]
 
 test.describe('navigation & subworkflows', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async () => {
     resetMsgCounter()
   })
 
@@ -99,7 +99,7 @@ test.describe('navigation & subworkflows', () => {
     expect(toolNames).toContain('create_subworkflow')
   })
 
-  test('library page renders workflow cards from API', async ({ page }) => {
+  test('library page renders workflow cards from API', async () => {
     await mockAllAPIs(page, { workflowsList: LIBRARY_WORKFLOWS })
     await page.goto('/library')
 

@@ -22,26 +22,29 @@ export function useWheelZoom(
   // Stable ref so the non-passive listener always calls the latest closure
   // without needing to re-attach on every render.
   const handleWheelRef = useRef<(e: WheelEvent) => void>(() => {})
-  handleWheelRef.current = (e: WheelEvent) => {
-    e.preventDefault()
 
-    const svg = svgRef.current
-    const container = containerRef.current
-    if (!svg || !container) return
+  useEffect(() => {
+    handleWheelRef.current = (e: WheelEvent) => {
+      e.preventDefault()
 
-    const zoomFactor = 0.1
-    const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
-    if (newZoom === zoom) return
+      const svg = svgRef.current
+      const container = containerRef.current
+      if (!svg || !container) return
 
-    const cursorSVG = screenToSVG(e.clientX, e.clientY)
-    const zoomRatio = zoom / newZoom
-    const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
-    const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
+      const zoomFactor = 0.1
+      const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + delta))
+      if (newZoom === zoom) return
 
-    setZoom(newZoom)
-    setPanOffset({ x: newPanX, y: newPanY })
-  }
+      const cursorSVG = screenToSVG(e.clientX, e.clientY)
+      const zoomRatio = zoom / newZoom
+      const newPanX = panOffset.x + cursorSVG.x * (1 - zoomRatio)
+      const newPanY = panOffset.y + cursorSVG.y * (1 - zoomRatio)
+
+      setZoom(newZoom)
+      setPanOffset({ x: newPanX, y: newPanY })
+    }
+  }, [containerRef, panOffset.x, panOffset.y, screenToSVG, setPanOffset, setZoom, svgRef, zoom])
 
   // Attach non-passive wheel listener to the SVG element
   useEffect(() => {

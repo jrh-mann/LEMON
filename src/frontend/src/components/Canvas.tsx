@@ -26,7 +26,6 @@ export default function Canvas() {
   const {
     flowchart,
     setFlowchart,
-    selectedNodeId: _selectedNodeId,
     selectedNodeIds,
     selectedEdge,
     connectMode,
@@ -36,7 +35,6 @@ export default function Canvas() {
     selectEdge,
     clearSelection,
     moveNode,
-    moveNodes,
     addNode,
     addEdge,
     startConnect,
@@ -330,7 +328,7 @@ export default function Canvas() {
         moveNode(dragNodeId, newPos.x, newPos.y)
       }
     },
-    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, moveNodes, dragConnection, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds]
+    [isDragging, dragNodeId, dragStart, screenToSVG, moveNode, dragConnection, isPanning, panStart, viewBox.width, selectionBox, dragStartPositions, selectedNodeIds, flowchart.nodes]
   )
 
   // Handle pointer up
@@ -524,7 +522,7 @@ export default function Canvas() {
 
   // Handle canvas click (just cancel connect mode, selection handled by pointer events)
   const handleCanvasClick = useCallback(
-    (_e: React.MouseEvent) => {
+    () => {
       if (connectMode) {
         cancelConnect()
       }
@@ -694,7 +692,7 @@ export default function Canvas() {
   }
 
   // Render edge
-  const renderEdge = (edge: { from: string; to: string; label: string }, _edgeIndex: number) => {
+  const renderEdge = (edge: { from: string; to: string; label: string }) => {
     const fromNode = flowchart.nodes.find((n) => n.id === edge.from)
     const toNode = flowchart.nodes.find((n) => n.id === edge.to)
 
@@ -1228,7 +1226,7 @@ export default function Canvas() {
 
           {/* Edges layer */}
           <g id="edgeLayer">
-            {flowchart.edges.map((edge, idx) => renderEdge(edge, idx))}
+            {flowchart.edges.map(renderEdge)}
           </g>
 
           {/* Nodes layer */}

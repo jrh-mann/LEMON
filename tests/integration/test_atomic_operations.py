@@ -34,6 +34,8 @@ from src.backend.agents.orchestrator import Orchestrator
 from src.backend.agents.orchestrator_factory import build_orchestrator
 from src.backend.storage.workflows import WorkflowStore
 
+pytestmark = pytest.mark.live_llm
+
 
 def _repo_root() -> Path:
     return Path(__file__).parent.parent.parent

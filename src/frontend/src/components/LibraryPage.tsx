@@ -11,7 +11,7 @@ type BrowserTab = 'mine' | 'published' | 'peer_review'
 export default function LibraryPage() {
     const navigate = useNavigate()
     const { setZoomingCard, setZoomPhase } = useUIStore()
-    // When socket handlers signal library changes (subworkflow created/finished),
+    // When streaming handlers signal library changes (subworkflow created/finished),
     // this counter increments and triggers a re-fetch of all cached tabs
     const libraryRefreshTrigger = useWorkflowStore(s => s.libraryRefreshTrigger)
 
@@ -33,18 +33,21 @@ export default function LibraryPage() {
         setIsLoading(true)
         try {
             switch (tab) {
-                case 'mine':
+                case 'mine': {
                     const mineResult = await listWorkflows()
                     setMyWorkflows(mineResult)
                     break
-                case 'published':
+                }
+                case 'published': {
                     const publishedResult = await listPublicWorkflows('reviewed')
                     setPublicWorkflows(publishedResult.workflows)
                     break
-                case 'peer_review':
+                }
+                case 'peer_review': {
                     const reviewResult = await listPublicWorkflows('unreviewed')
                     setPeerReviewWorkflows(reviewResult.workflows)
                     break
+                }
             }
         } catch (err) {
             console.error(`Failed to fetch ${tab} workflows:`, err)
@@ -58,7 +61,7 @@ export default function LibraryPage() {
         fetchTabData(activeTab)
     }, [activeTab, fetchTabData])
 
-    // When socket events signal library changes (subworkflow created/finished),
+    // When streaming events signal library changes (subworkflow created/finished),
     // invalidate all cached tabs so they re-fetch fresh data
     useEffect(() => {
         if (libraryRefreshTrigger === 0) return // skip initial render
@@ -77,14 +80,16 @@ export default function LibraryPage() {
                 case 'mine':
                     setMyWorkflows(await listWorkflows())
                     break
-                case 'published':
+                case 'published': {
                     const published = await listPublicWorkflows('reviewed')
                     setPublicWorkflows(published.workflows)
                     break
-                case 'peer_review':
+                }
+                case 'peer_review': {
                     const review = await listPublicWorkflows('unreviewed')
                     setPeerReviewWorkflows(review.workflows)
                     break
+                }
             }
         } catch { /* ignore */ }
         finally { setIsLoading(false) }

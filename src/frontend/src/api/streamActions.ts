@@ -1,5 +1,5 @@
 /**
- * Chat and execution action functions — all SSE/HTTP, no Socket.IO.
+ * Chat and execution action functions — all SSE/HTTP streaming.
  *
  * Chat: POST /api/chat/send → SSE stream
  * Execution: POST /api/workflows/{id}/execute → SSE stream
@@ -16,7 +16,14 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { transformFlowchartFromBackend, transformNodeFromBackend } from '../utils/canvas'
 import { beautifyNodes } from '../utils/beautifyNodes'
-import type { WorkflowAnalysis, FlowNode, FlowEdge, ExecutionLogEntry } from '../types'
+import type {
+  WorkflowAnalysis,
+  FlowNode,
+  FlowEdge,
+  ExecutionLogEntry,
+  PendingFile,
+  ToolCall,
+} from '../types'
 
 // Module-level map of active SSE streams per workflow, for cancellation.
 // Not in Zustand because SSEStream is not serializable.
@@ -24,6 +31,171 @@ const _activeStreams = new Map<string, SSEStream>()
 
 // Separate map for execution SSE streams (one execution at a time, keyed by executionId)
 const _activeExecutionStreams = new Map<string, SSEStream>()
+
+type StreamEventHandlerMap = Record<string, (data: unknown) => void>
+
+type ChatProgressPayload = {
+  workflow_id?: string
+  task_id?: string
+  event?: string
+  status?: string
+}
+
+type ChatChunkPayload = {
+  workflow_id?: string
+  task_id?: string
+  chunk?: string
+}
+
+type ChatResponsePayload = {
+  workflow_id?: string
+  cancelled?: boolean
+  tool_calls?: ToolCall[]
+  response?: string
+  conversation_id?: string
+}
+
+type ChatCancelledPayload = {
+  workflow_id?: string
+  task_id?: string
+}
+
+type WorkflowEventEdge = {
+  from: string
+  to: string
+  label?: string
+  id?: string
+}
+
+type WorkflowEventPayload = {
+  workflow_id?: string
+  node?: unknown
+  node_id?: string
+  edge?: WorkflowEventEdge
+  from_node_id?: string
+  to_node_id?: string
+  workflow?: { nodes?: FlowNode[]; edges?: FlowEdge[] }
+}
+
+type WorkflowUpdatePayload = {
+  action?: string
+  data?: WorkflowEventPayload
+}
+
+type WorkflowStateAnalysisPayload = Partial<WorkflowAnalysis> & {
+  output_type?: string
+}
+
+type WorkflowStateUpdatedPayload = {
+  workflow_id?: string
+  workflow?: { nodes?: FlowNode[]; edges?: FlowEdge[] }
+  analysis?: WorkflowStateAnalysisPayload
+}
+
+type AnalysisUpdatedPayload = {
+  variables?: WorkflowAnalysis['variables']
+  outputs?: WorkflowAnalysis['outputs']
+}
+
+type WorkflowCreatedPayload = {
+  workflow_id: string
+  name?: string
+  output_type?: string
+}
+
+type WorkflowSavedPayload = {
+  already_saved?: boolean
+  name?: string
+}
+
+type PendingQuestionPayload = {
+  question: string
+  options: { label: string; value: string }[]
+}
+
+type PlanUpdatedPayload = {
+  items: Array<{ text: string; done: boolean }>
+}
+
+type ContextStatusPayload = {
+  usage_pct?: number
+}
+
+type BuilderLifecyclePayload = {
+  workflow_id?: string
+  content?: string
+}
+
+type StreamErrorPayload = {
+  workflow_id?: string
+  error?: string
+  transient?: boolean
+}
+
+type ExecutionLifecyclePayload = {
+  execution_id: string
+}
+
+type ExecutionStepPayload = ExecutionLifecyclePayload & {
+  node_id: string
+}
+
+type ExecutionCompletePayload = ExecutionLifecyclePayload & {
+  success?: boolean
+  output?: unknown
+  error?: string
+}
+
+type ExecutionErrorPayload = ExecutionLifecyclePayload & {
+  error?: string
+}
+
+type ExecutionLogPayload = ExecutionLifecyclePayload & {
+  node_id: string
+  node_label: string
+  log_type: ExecutionLogEntry['log_type'] | 'subflow_start' | 'subflow_step' | 'subflow_complete' | 'start' | 'end'
+  subworkflow_id?: string
+  subworkflow_name?: string
+  condition_expression?: string
+  input_name?: string
+  input_value?: unknown
+  comparator?: string
+  compare_value?: unknown
+  compare_value2?: unknown
+  result?: boolean | number
+  branch_taken?: 'true' | 'false'
+  output_name?: string
+  operator?: string
+  operands?: Array<{ name: string; kind: string; value: number }>
+  formula?: string
+  parent_node_id?: string
+  node_type?: string
+  success?: boolean
+  output?: unknown
+  error?: string
+  inputs?: Record<string, unknown>
+}
+
+type SubflowStartPayload = ExecutionLifecyclePayload & {
+  parent_node_id: string
+  subworkflow_id: string
+  subworkflow_name: string
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
+
+type SubflowStepPayload = ExecutionLifecyclePayload & {
+  subworkflow_id: string
+  node_id: string
+}
+
+type OpenTabPayload = {
+  workflow_id: string
+  title: string
+  node_count: number
+  edge_count: number
+  is_active: boolean
+}
 
 // ==================== Chat SSE Handlers ====================
 
@@ -33,11 +205,12 @@ const _activeExecutionStreams = new Map<string, SSEStream>()
  * Includes handlers for builder events (subworkflow_created, etc.) that
  * now flow through the parent ChatTask's EventSink.
  */
-function _buildChatSSEHandlers(workflowId: string, taskId: string) {
+function _buildChatSSEHandlers(workflowId: string) {
   return {
     // --- Chat streaming events ---
 
-    'chat_progress': (data: any) => {
+    'chat_progress': (rawData: unknown) => {
+      const data = rawData as ChatProgressPayload
       console.log('[SSE] chat_progress:', data)
       const chatStore = useChatStore.getState()
       useUIStore.getState().clearError()
@@ -57,14 +230,16 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       chatStore.touchHeartbeat(targetWf)
     },
 
-    'chat_thinking': (data: any) => {
+    'chat_thinking': (rawData: unknown) => {
+      const data = rawData as ChatChunkPayload
       // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
       const targetWf = data.workflow_id || workflowId
       useChatStore.getState().appendThinkingContent(targetWf, data.chunk || '')
       useChatStore.getState().touchHeartbeat(targetWf)
     },
 
-    'chat_stream': (data: any) => {
+    'chat_stream': (rawData: unknown) => {
+      const data = rawData as ChatChunkPayload
       const chatStore = useChatStore.getState()
       // Route to the correct workflow — subworkflow builders tag events with their own workflow_id
       const targetWf = data.workflow_id || workflowId
@@ -77,7 +252,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       chatStore.touchHeartbeat(targetWf)
     },
 
-    'chat_response': (data: any) => {
+    'chat_response': (rawData: unknown) => {
+      const data = rawData as ChatResponsePayload
       console.log('[SSE] chat_response:', data)
       const chatStore = useChatStore.getState()
       useUIStore.getState().clearError()
@@ -125,7 +301,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       }
     },
 
-    'chat_cancelled': (data: any) => {
+    'chat_cancelled': (rawData: unknown) => {
+      const data = rawData as ChatCancelledPayload
       console.log('[SSE] chat_cancelled:', data)
       const chatStore = useChatStore.getState()
       const targetWf = data.workflow_id || workflowId
@@ -140,7 +317,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
 
     // --- Workflow events (emitted during tool execution) ---
 
-    'workflow_update': (data: any) => {
+    'workflow_update': (rawData: unknown) => {
+      const data = rawData as WorkflowUpdatePayload
       if (!data?.data) {
         console.error('[SSE] workflow_update missing data payload:', data)
         return
@@ -160,14 +338,14 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
         switch (data.action) {
           case 'add_node':
             if (data.data.node) {
-              const node = transformNodeFromBackend(data.data.node)
+              const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
               workflowStore.addNode(node)
               uiStore.setCanvasTab('workflow')
             }
             break
           case 'modify_node':
             if (data.data.node) {
-              const node = transformNodeFromBackend(data.data.node)
+              const node = transformNodeFromBackend(data.data.node as Record<string, unknown>)
               if (workflowStore.flowchart.nodes.find(n => n.id === node.id)) {
                 workflowStore.updateNode(node.id, node)
               }
@@ -213,7 +391,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       }
     },
 
-    'workflow_state_updated': (data: any) => {
+    'workflow_state_updated': (rawData: unknown) => {
+      const data = rawData as WorkflowStateUpdatedPayload
       console.log('[SSE] workflow_state_updated')
       const workflowStore = useWorkflowStore.getState()
       // Check if event is for a different workflow
@@ -237,7 +416,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       }
     },
 
-    'analysis_updated': (data: any) => {
+    'analysis_updated': (rawData: unknown) => {
+      const data = rawData as AnalysisUpdatedPayload
       const workflowStore = useWorkflowStore.getState()
       const currentAnalysis = workflowStore.currentAnalysis ?? { variables: [], outputs: [] }
       const updatedAnalysis: WorkflowAnalysis = {
@@ -248,7 +428,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       workflowStore.setAnalysis(updatedAnalysis)
     },
 
-    'workflow_created': (data: any) => {
+    'workflow_created': (rawData: unknown) => {
+      const data = rawData as WorkflowCreatedPayload
       console.log('[SSE] workflow_created:', data)
       const store = useWorkflowStore.getState()
       const currentId = store.currentWorkflow?.id
@@ -269,7 +450,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       }
     },
 
-    'workflow_saved': (data: any) => {
+    'workflow_saved': (rawData: unknown) => {
+      const data = rawData as WorkflowSavedPayload
       console.log('[SSE] workflow_saved:', data)
       if (!data.already_saved) {
         const currentWf = useWorkflowStore.getState().currentWorkflow
@@ -282,41 +464,49 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       }
     },
 
-    'pending_question': (data: any) => {
+    'pending_question': (rawData: unknown) => {
+      const data = rawData as PendingQuestionPayload
       useChatStore.getState().enqueuePendingQuestion(data)
     },
 
-    'plan_updated': (data: any) => {
+    'plan_updated': (rawData: unknown) => {
+      const data = rawData as PlanUpdatedPayload
       useWorkflowStore.getState().setPlan(data.items)
     },
 
-    'context_status': (data: any) => {
+    'context_status': (rawData: unknown) => {
+      const data = rawData as ContextStatusPayload
       useChatStore.getState().setContextUsage(workflowId, data.usage_pct ?? 0)
     },
 
     // --- Builder events (flow through parent ChatTask's EventSink) ---
 
-    'subworkflow_created': (data: any) => {
+    'subworkflow_created': (rawData: unknown) => {
+      const data = rawData as BuilderLifecyclePayload
       console.log('[SSE] subworkflow_created:', data)
       useWorkflowStore.getState().incrementLibraryRefresh()
     },
 
-    'subworkflow_building': (data: any) => {
+    'subworkflow_building': (rawData: unknown) => {
+      const data = rawData as BuilderLifecyclePayload
       console.log('[SSE] subworkflow_building:', data)
       useWorkflowStore.getState().incrementLibraryRefresh()
     },
 
-    'build_error': (data: any) => {
+    'build_error': (rawData: unknown) => {
+      const data = rawData as BuilderLifecyclePayload
       console.error('[SSE] build_error:', data)
       useWorkflowStore.getState().incrementLibraryRefresh()
     },
 
-    'subworkflow_ready': (data: any) => {
+    'subworkflow_ready': (rawData: unknown) => {
+      const data = rawData as BuilderLifecyclePayload
       console.log('[SSE] subworkflow_ready:', data)
       useWorkflowStore.getState().incrementLibraryRefresh()
     },
 
-    'build_user_message': (data: any) => {
+    'build_user_message': (rawData: unknown) => {
+      const data = rawData as BuilderLifecyclePayload
       // Add the builder's initial prompt as a user message in the builder's conversation
       if (data.workflow_id && data.content) {
         useChatStore.getState().addMessage(data.workflow_id, {
@@ -331,7 +521,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
 
     // --- Error events ---
 
-    'agent_error': (data: any) => {
+    'agent_error': (rawData: unknown) => {
+      const data = rawData as StreamErrorPayload
       console.error('[SSE] agent_error:', data)
       const chatStore = useChatStore.getState()
       const targetWf = data.workflow_id || workflowId
@@ -345,7 +536,8 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
       }
     },
 
-    'error': (data: any) => {
+    'error': (rawData: unknown) => {
+      const data = rawData as StreamErrorPayload
       console.error('[SSE] connection error:', data)
       const chatStore = useChatStore.getState()
       chatStore.setStreaming(workflowId, false)
@@ -372,7 +564,7 @@ function _buildChatSSEHandlers(workflowId: string, taskId: string) {
 export function sendChatMessage(
   message: string,
   conversationId?: string | null,
-  files?: import('../types').PendingFile[],
+  files?: PendingFile[],
   annotations?: unknown[]
 ): void {
   const chatStore = useChatStore.getState()
@@ -398,7 +590,7 @@ export function sendChatMessage(
   }
 
   // Collect info about the active unsaved workflow
-  const openTabs: any[] = []
+  const openTabs: OpenTabPayload[] = []
   const currentWf = workflowStore.currentWorkflow
   if (currentWf && workflowStore.flowchart.nodes.length > 0) {
     openTabs.push({
@@ -448,7 +640,7 @@ export function sendChatMessage(
   }
 
   // Open the SSE stream — the HTTP response IS the event stream
-  const handlers = _buildChatSSEHandlers(currentWorkflowId || '', taskId)
+  const handlers = _buildChatSSEHandlers(currentWorkflowId || '')
   const stream = createSSEStream('/api/chat/send', payload, handlers)
 
   // Store for cancellation
@@ -487,7 +679,7 @@ export function resumeTask(workflowId: string): void {
   console.log('[SSE] Resuming task for workflow:', workflowId)
 
   // Build SSE handlers for the resumed stream
-  const handlers = _buildChatSSEHandlers(workflowId, '')
+  const handlers = _buildChatSSEHandlers(workflowId)
 
   // POST to resume — may return SSE stream or JSON
   fetch('/api/chat/resume', {
@@ -530,7 +722,7 @@ export function resumeTask(workflowId: string): void {
  */
 function _readResumeSSEStream(
   response: Response,
-  handlers: Record<string, (data: any) => void>,
+  handlers: StreamEventHandlerMap,
   workflowId: string,
 ): SSEStream {
   const controller = new AbortController()
@@ -597,12 +789,13 @@ function _readResumeSSEStream(
 
 /**
  * Build the SSE handler map for a stepped workflow execution.
- * Mirrors the Socket.IO executionHandlers.ts logic, adapted for SSE events.
+ * Handles stepped execution events delivered over SSE.
  */
 function _buildExecutionSSEHandlers(executionId: string) {
   return {
     // Execution started — skip if already optimistically started (race condition guard)
-    'execution_started': (data: any) => {
+    'execution_started': (rawData: unknown) => {
+      const data = rawData as ExecutionLifecyclePayload
       console.log('[SSE] execution_started:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId === data.execution_id) {
@@ -612,7 +805,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Execution step — highlight the current node, mark previous as executed
-    'execution_step': (data: any) => {
+    'execution_step': (rawData: unknown) => {
+      const data = rawData as ExecutionStepPayload
       console.log('[SSE] execution_step:', data)
       const workflowStore = useWorkflowStore.getState()
       const execution = workflowStore.execution
@@ -625,7 +819,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Execution paused
-    'execution_paused': (data: any) => {
+    'execution_paused': (rawData: unknown) => {
+      const data = rawData as ExecutionLifecyclePayload
       console.log('[SSE] execution_paused:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId === data.execution_id) {
@@ -634,7 +829,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Execution resumed
-    'execution_resumed': (data: any) => {
+    'execution_resumed': (rawData: unknown) => {
+      const data = rawData as ExecutionLifecyclePayload
       console.log('[SSE] execution_resumed:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId === data.execution_id) {
@@ -643,7 +839,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Execution complete — show results in the execute modal
-    'execution_complete': (data: any) => {
+    'execution_complete': (rawData: unknown) => {
+      const data = rawData as ExecutionCompletePayload
       console.log('[SSE] execution_complete:', data)
       const workflowStore = useWorkflowStore.getState()
       const uiStore = useUIStore.getState()
@@ -665,19 +862,21 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Execution error — show error in the execute modal
-    'execution_error': (data: any) => {
+    'execution_error': (rawData: unknown) => {
+      const data = rawData as ExecutionErrorPayload
       console.error('[SSE] execution_error:', data)
       const workflowStore = useWorkflowStore.getState()
       const uiStore = useUIStore.getState()
       if (workflowStore.execution.executionId === data.execution_id) {
-        workflowStore.setExecutionError(data.error)
+        workflowStore.setExecutionError(data.error || 'Execution failed')
         workflowStore.stopExecution()
         uiStore.openModal('execute')
       }
     },
 
     // Execution log — detailed logs for dev tools panel
-    'execution_log': (data: any) => {
+    'execution_log': (rawData: unknown) => {
+      const data = rawData as ExecutionLogPayload
       console.log('[SSE] execution_log:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId !== data.execution_id) return
@@ -728,7 +927,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Subflow start — opens popup modal with subflow canvas
-    'subflow_start': (data: any) => {
+    'subflow_start': (rawData: unknown) => {
+      const data = rawData as SubflowStartPayload
       console.log('[SSE] subflow_start:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId !== data.execution_id) return
@@ -747,7 +947,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Subflow step — highlights node in subflow popup
-    'subflow_step': (data: any) => {
+    'subflow_step': (rawData: unknown) => {
+      const data = rawData as SubflowStepPayload
       console.log('[SSE] subflow_step:', data)
       const workflowStore = useWorkflowStore.getState()
       const { subflowStack } = workflowStore
@@ -762,7 +963,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
     },
 
     // Subflow complete — closes popup modal
-    'subflow_complete': (data: any) => {
+    'subflow_complete': (rawData: unknown) => {
+      const data = rawData as ExecutionLifecyclePayload
       console.log('[SSE] subflow_complete:', data)
       const workflowStore = useWorkflowStore.getState()
       const { subflowStack } = workflowStore
@@ -783,7 +985,8 @@ function _buildExecutionSSEHandlers(executionId: string) {
       _activeExecutionStreams.delete(executionId)
     },
 
-    'error': (data: any) => {
+    'error': (rawData: unknown) => {
+      const data = rawData as StreamErrorPayload
       console.error('[SSE] execution stream error:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId === executionId) {

@@ -176,6 +176,24 @@ class TestSetWorkflowOutputConstant:
         assert len(orch.workflow["outputs"]) >= 1
         assert any(o["name"] == "BMI" for o in orch.workflow["outputs"])
 
+    def test_tool_persists_workflow_level_output_type(
+        self, workflow_store, test_user_id, create_test_workflow,
+    ):
+        """set_workflow_output should update the stored workflow-level output_type."""
+        from src.backend.tools.workflow_output.set_output import SetWorkflowOutputTool
+
+        wf_id, session_state = create_test_workflow(name="Persist Type Test", output_type="string")
+        tool = SetWorkflowOutputTool()
+        result = tool.execute(
+            {"workflow_id": wf_id, "name": "Score", "type": "number"},
+            session_state=session_state,
+        )
+
+        assert result["success"]
+        record = workflow_store.get_workflow(wf_id, test_user_id)
+        assert record is not None
+        assert record.output_type == "number"
+
 
 # ---------------------------------------------------------------------------
 # 3. Retry message off-by-one
