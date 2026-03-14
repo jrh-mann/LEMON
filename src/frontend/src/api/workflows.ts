@@ -1,6 +1,5 @@
 import { api } from './client'
 import type {
-  Workflow,
   WorkflowDetailResponse,
   WorkflowSummary,
   SearchWorkflowsResponse,
