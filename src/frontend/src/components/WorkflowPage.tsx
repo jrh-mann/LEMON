@@ -140,6 +140,10 @@ export default function WorkflowPage() {
         let isActive = true
 
         const loadWorkflow = async () => {
+            // Eagerly set the workflow ID so SSE event guards reject
+            // events from the previous workflow during the async fetch.
+            setCurrentWorkflowId(workflowId)
+
             try {
                 const workflowData = await getWorkflow(workflowId)
                 if (!isActive) return

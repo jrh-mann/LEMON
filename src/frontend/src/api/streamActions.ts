@@ -334,12 +334,14 @@ function _buildChatSSEHandlers(workflowId: string) {
       const workflowStore = useWorkflowStore.getState()
       const uiStore = useUIStore.getState()
 
-      // Check if event is for a different workflow (e.g. subworkflow builder)
+      // Drop events without workflow_id — cannot be safely routed.
       const eventWfId = data.data.workflow_id as string | undefined
-      if (eventWfId) {
-        const currentId = workflowStore.currentWorkflow?.id
-        if (currentId && eventWfId !== currentId) return
+      if (!eventWfId) {
+        console.warn('[SSE] workflow_update dropped: missing workflow_id')
+        return
       }
+      const currentId = workflowStore.currentWorkflow?.id
+      if (currentId && eventWfId !== currentId) return
 
       try {
         switch (data.action) {
@@ -402,11 +404,13 @@ function _buildChatSSEHandlers(workflowId: string) {
       const data = rawData as WorkflowStateUpdatedPayload
       console.log('[SSE] workflow_state_updated')
       const workflowStore = useWorkflowStore.getState()
-      // Check if event is for a different workflow
-      if (data.workflow_id) {
-        const currentId = workflowStore.currentWorkflow?.id
-        if (currentId && data.workflow_id !== currentId) return
+      // Drop events without workflow_id — cannot be safely routed.
+      if (!data.workflow_id) {
+        console.warn('[SSE] workflow_state_updated dropped: missing workflow_id')
+        return
       }
+      const currentId = workflowStore.currentWorkflow?.id
+      if (currentId && data.workflow_id !== currentId) return
       if (data.workflow) {
         const flowchart = transformFlowchartFromBackend(data.workflow)
         workflowStore.setFlowchartSilent(flowchart)

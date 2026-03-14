@@ -7,8 +7,10 @@ Covers:
 4. Lock prevents interleaving of swap and publish
 5. publish_workflow_state caches for replay
 6. close() delegates to sink
+7. Warning when workflow events lack workflow_id
 """
 
+import logging
 import threading
 from unittest.mock import MagicMock, call
 
@@ -54,6 +56,28 @@ class TestPublish:
 
         channel.publish("test_event", {"key": "val"})
         sink.push.assert_called_once_with("test_event", {"key": "val"})
+
+    def test_warns_on_workflow_event_without_id(self, caplog):
+        """Workflow-affecting events without workflow_id trigger a warning."""
+        channel, _ = _make_channel(workflow_id=None)
+        sink = _mock_sink()
+        channel._sink = sink
+
+        with caplog.at_level(logging.WARNING, logger="src.backend.tasks.chat_event_channel"):
+            channel.publish("workflow_state_updated", {"workflow": {}})
+
+        assert any("without workflow_id" in r.message for r in caplog.records)
+
+    def test_no_warning_when_workflow_id_present(self, caplog):
+        """No warning when workflow_id is present on workflow events."""
+        channel, _ = _make_channel(workflow_id="wf-42")
+        sink = _mock_sink()
+        channel._sink = sink
+
+        with caplog.at_level(logging.WARNING, logger="src.backend.tasks.chat_event_channel"):
+            channel.publish("workflow_state_updated", {"workflow": {}})
+
+        assert not any("without workflow_id" in r.message for r in caplog.records)
 
     def test_does_not_overwrite_existing_workflow_id(self):
         channel, _ = _make_channel(workflow_id="wf-42")

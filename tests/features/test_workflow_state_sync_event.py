@@ -16,3 +16,20 @@ def test_frontend_registers_combined_workflow_state_handler():
     assert "workflow_state_updated" in content
     assert "setFlowchartSilent" in content
     assert "setAnalysis" in content
+
+
+def test_frontend_guard_requires_workflow_id():
+    """streamActions.ts drops workflow events that lack workflow_id."""
+    content = Path("src/frontend/src/api/streamActions.ts").read_text(encoding="utf-8")
+    # Both workflow_update and workflow_state_updated handlers must have the early-return guard
+    assert "!data.workflow_id" in content or "!eventWfId" in content
+    assert "workflow_update dropped: missing workflow_id" in content
+    assert "workflow_state_updated dropped: missing workflow_id" in content
+
+
+def test_workflow_page_sets_id_before_fetch():
+    """WorkflowPage.tsx calls setCurrentWorkflowId before the async getWorkflow fetch."""
+    content = Path("src/frontend/src/components/WorkflowPage.tsx").read_text(encoding="utf-8")
+    set_id_pos = content.index("setCurrentWorkflowId(workflowId)")
+    fetch_pos = content.index("await getWorkflow(workflowId)")
+    assert set_id_pos < fetch_pos, "setCurrentWorkflowId must appear before getWorkflow"

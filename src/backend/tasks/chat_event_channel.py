@@ -6,11 +6,17 @@ All SSE event emission for a chat task goes through this channel.
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
 from .sse import EventSink
 from .registry import task_registry
+
+logger = logging.getLogger(__name__)
+
+# Workflow-affecting events that the frontend requires workflow_id on.
+_WORKFLOW_EVENTS = {"workflow_update", "workflow_state_updated", "workflow_created"}
 
 
 class ChatEventChannel:
@@ -66,6 +72,12 @@ class ChatEventChannel:
         with self._lock:
             if wf_id and "workflow_id" not in payload:
                 payload["workflow_id"] = wf_id
+            # Warn when workflow-affecting events lack workflow_id — frontend will drop them.
+            if event in _WORKFLOW_EVENTS and not payload.get("workflow_id"):
+                logger.warning(
+                    "Publishing %s without workflow_id — frontend will drop this event",
+                    event,
+                )
             self._sink.push(event, payload)
 
     def publish_workflow_state(self, payload: Dict[str, Any]) -> None:
