@@ -160,7 +160,7 @@ def register_chat_routes(
         if not isinstance(task_id, str) or not task_id.strip():
             return api_error("task_id is required")
 
-        task = task_registry.cancel(task_id)
+        task = task_registry.cancel(task_id, user.id)
         if task and task_registry.mark_notified(task_id):
             # Push cancellation event to the task's SSE stream
             cancel_payload: Dict[str, Any] = {"task_id": task_id}
@@ -236,7 +236,7 @@ def register_chat_routes(
         if not isinstance(message, str) or not message.strip():
             return api_error("message is required")
 
-        convo = conversation_store.get_or_create(conversation_id)
+        convo = conversation_store.get_or_create(conversation_id, user.id)
         if isinstance(image_data, str) and image_data.strip():
             try:
                 save_uploaded_image(image_data, repo_root=repo_root)
@@ -302,7 +302,7 @@ def register_chat_routes(
         history). Falls back to the ConversationLogger SQLite DB which
         persists across server restarts.
         """
-        convo = conversation_store.get(conversation_id)
+        convo = conversation_store.get(conversation_id, user.id)
         if convo and convo.orchestrator.conversation.history:
             messages = []
             pending_user: dict | None = None
@@ -365,6 +365,9 @@ def register_chat_routes(
             )
 
         if conversation_logger:
+            # Verify the requesting user owns this conversation
+            if not conversation_logger.verify_conversation_owner(conversation_id, user.id):
+                return api_error("conversation not found", 404)
             entries = conversation_logger.get_conversation_timeline(
                 conversation_id,
                 entry_types=["user_message", "assistant_response", "tool_call"],

@@ -113,3 +113,33 @@ class TestConversationIsolation:
         fetched = self.store.get("convo_z")
 
         assert fetched is created
+
+
+class TestConversationOwnership:
+    """Verify that user_id ownership is enforced on conversations."""
+
+    def setup_method(self):
+        self.store = ConversationStore(repo_root=Path("."))
+
+    def test_get_or_create_sets_user_id(self):
+        """get_or_create() should store user_id on the conversation."""
+        convo = self.store.get_or_create("convo_owned", user_id="user_alice")
+        assert convo.user_id == "user_alice"
+
+    def test_get_wrong_user_returns_none(self):
+        """get() with a different user_id should return None."""
+        self.store.get_or_create("convo_private", user_id="user_alice")
+        result = self.store.get("convo_private", user_id="user_eve")
+        assert result is None
+
+    def test_get_correct_user_returns_conversation(self):
+        """get() with the correct user_id should return the conversation."""
+        created = self.store.get_or_create("convo_private", user_id="user_alice")
+        result = self.store.get("convo_private", user_id="user_alice")
+        assert result is created
+
+    def test_get_without_user_id_returns_any(self):
+        """get() without user_id should return the conversation (backwards compat for internal use)."""
+        created = self.store.get_or_create("convo_any", user_id="user_alice")
+        result = self.store.get("convo_any")
+        assert result is created

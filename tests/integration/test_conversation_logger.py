@@ -304,3 +304,23 @@ class TestListConversations:
         assert len(page2) == 2
         all_ids = {c["id"] for c in page} | {c["id"] for c in page2}
         assert len(all_ids) == 4  # no overlap
+
+
+# ------------------------------------------------------------------
+# Conversation ownership verification
+# ------------------------------------------------------------------
+
+class TestVerifyConversationOwner:
+    def test_verify_owner_correct(self, logger: ConversationLogger) -> None:
+        """Owner check returns True for the correct user."""
+        logger.ensure_conversation("c-owned", user_id="alice", model=MODEL)
+        assert logger.verify_conversation_owner("c-owned", "alice") is True
+
+    def test_verify_owner_wrong_user(self, logger: ConversationLogger) -> None:
+        """Owner check returns False for a different user."""
+        logger.ensure_conversation("c-owned", user_id="alice", model=MODEL)
+        assert logger.verify_conversation_owner("c-owned", "eve") is False
+
+    def test_verify_owner_nonexistent(self, logger: ConversationLogger) -> None:
+        """Owner check returns False for a conversation that doesn't exist."""
+        assert logger.verify_conversation_owner("c-ghost", "anyone") is False

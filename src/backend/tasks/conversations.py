@@ -24,6 +24,7 @@ _MAX_CONVERSATIONS = 100
 class Conversation:
     id: str
     orchestrator: Orchestrator
+    user_id: Optional[str] = None  # Owner — used for authorization checks
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
 
@@ -90,7 +91,7 @@ class ConversationStore:
         # Lock protects _conversations from concurrent WS thread access
         self._lock = threading.Lock()
 
-    def get_or_create(self, conversation_id: Optional[str]) -> Conversation:
+    def get_or_create(self, conversation_id: Optional[str], user_id: Optional[str] = None) -> Conversation:
         with self._lock:
             if conversation_id and conversation_id in self._conversations:
                 convo = self._conversations[conversation_id]
@@ -99,7 +100,7 @@ class ConversationStore:
             # Evict oldest conversations when at capacity
             self._evict_if_full()
             new_id = conversation_id or f"conv_{uuid4().hex}"
-            convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root))
+            convo = Conversation(id=new_id, orchestrator=build_orchestrator(self._repo_root), user_id=user_id)
             # Reload history from persistent logger when the conversation_id was
             # provided but not found in memory (e.g. after backend restart).
             if conversation_id and self._conversation_logger:
@@ -161,9 +162,13 @@ class ConversationStore:
                 convo.id, exc_info=True,
             )
 
-    def get(self, conversation_id: str) -> Optional[Conversation]:
+    def get(self, conversation_id: str, user_id: Optional[str] = None) -> Optional[Conversation]:
+        """Look up a conversation by ID, optionally verifying ownership."""
         with self._lock:
-            return self._conversations.get(conversation_id)
+            convo = self._conversations.get(conversation_id)
+            if convo and user_id and convo.user_id and convo.user_id != user_id:
+                return None
+            return convo
 
     def _evict_if_full(self) -> None:
         """Remove oldest conversations when store exceeds max capacity.

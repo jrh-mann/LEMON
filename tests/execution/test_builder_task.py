@@ -271,7 +271,7 @@ class TestBuilderTaskRegistry:
         task = BuilderTask(sink=sink, workflow_id="wf_1", user_id="u1", task_id="t1")
 
         registry.register(task)
-        registry.cancel("t1")
+        registry.cancel("t1", "u1")
 
         assert task._cancelled is True
         assert task.is_cancelled()

@@ -106,8 +106,8 @@ def register_stepped_execution_routes(
         if not isinstance(execution_id, str) or not execution_id.strip():
             execution_id = uuid4().hex
 
-        # Register for pause/resume/stop tracking
-        register_execution(execution_id)
+        # Register for pause/resume/stop tracking (stores user_id for ownership checks)
+        register_execution(execution_id, user.id)
 
         # Create the SSE sink and execution task
         sink = EventSink()
@@ -141,7 +141,7 @@ def register_stepped_execution_routes(
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
         """Pause a running execution."""
-        if pause_execution(execution_id):
+        if pause_execution(execution_id, user.id):
             logger.info("Paused execution %s", execution_id)
             return JSONResponse({"ok": True})
         logger.warning("Failed to pause execution %s — not found", execution_id)
@@ -153,7 +153,7 @@ def register_stepped_execution_routes(
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
         """Resume a paused execution."""
-        if resume_execution(execution_id):
+        if resume_execution(execution_id, user.id):
             logger.info("Resumed execution %s", execution_id)
             return JSONResponse({"ok": True})
         logger.warning("Failed to resume execution %s — not found", execution_id)
@@ -165,7 +165,7 @@ def register_stepped_execution_routes(
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
         """Stop a running execution."""
-        if stop_execution(execution_id):
+        if stop_execution(execution_id, user.id):
             logger.info("Stopped execution %s", execution_id)
             return JSONResponse({"ok": True})
         logger.warning("Failed to stop execution %s — not found", execution_id)

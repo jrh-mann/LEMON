@@ -50,12 +50,13 @@ class TaskRegistry:
             if task.current_workflow_id:
                 self._by_workflow[(task.user_id, task.current_workflow_id)] = task
 
-    def cancel(self, task_id: str) -> Optional[Any]:
-        """Mark a task as cancelled. Returns the task if found."""
+    def cancel(self, task_id: str, user_id: str) -> Optional[Any]:
+        """Mark a task as cancelled. Returns the task if owned by user_id."""
         with self._lock:
             task = self._by_task_id.get(task_id)
-            if task:
-                task._cancelled = True
+            if not task or task.user_id != user_id:
+                return None
+            task._cancelled = True
             return task
 
     def mark_notified(self, task_id: str) -> bool:
