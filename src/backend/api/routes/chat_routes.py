@@ -161,7 +161,9 @@ def register_chat_routes(
             return api_error("task_id is required")
 
         task = task_registry.cancel(task_id, user.id)
-        if task and task_registry.mark_notified(task_id):
+        if task is None:
+            return api_error("task not found", 404)
+        if task_registry.mark_notified(task_id):
             # Push cancellation event to the task's SSE stream
             cancel_payload: Dict[str, Any] = {"task_id": task_id}
             if task.current_workflow_id:

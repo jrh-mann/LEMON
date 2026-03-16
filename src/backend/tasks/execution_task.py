@@ -68,6 +68,7 @@ def register_execution(execution_id: str, user_id: str) -> None:
 def pause_execution(execution_id: str, user_id: str) -> bool:
     """Pause a running execution.  Returns True if found and owned by user_id."""
     with _EXECUTION_LOCK:
+        _purge_stale_executions_locked(time.monotonic())
         state = _EXECUTION_STATE.get(execution_id)
         if not state or state["user_id"] != user_id:
             return False
@@ -79,6 +80,7 @@ def pause_execution(execution_id: str, user_id: str) -> bool:
 def resume_execution(execution_id: str, user_id: str) -> bool:
     """Resume a paused execution.  Returns True if found and owned by user_id."""
     with _EXECUTION_LOCK:
+        _purge_stale_executions_locked(time.monotonic())
         state = _EXECUTION_STATE.get(execution_id)
         if not state or state["user_id"] != user_id:
             return False
@@ -90,6 +92,7 @@ def resume_execution(execution_id: str, user_id: str) -> bool:
 def stop_execution(execution_id: str, user_id: str) -> bool:
     """Stop a running execution.  Returns True if found and owned by user_id."""
     with _EXECUTION_LOCK:
+        _purge_stale_executions_locked(time.monotonic())
         state = _EXECUTION_STATE.get(execution_id)
         if not state or state["user_id"] != user_id:
             return False
