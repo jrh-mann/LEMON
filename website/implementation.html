@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Implementation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <h1>Implementation</h1>
+
+    <p>This section describes the implementation of LEMON's key features. Each subsection covers what the feature does, how it was built, which libraries and frameworks were used, and includes a short code snippet where helpful.</p>
+
+    <!-- LLM Orchestrator and Tool Use -->
+    <h2>LLM Orchestrator and Tool Use</h2>
+
+    <p>The orchestrator manages a multi-turn conversation with Claude where each turn may involve multiple tool calls that modify the workflow. The Orchestrator class maintains workflow state, conversation history, and a ToolRegistry containing 30+ tools. Each turn sends the conversation to Claude with available tool schemas. Claude responds with tool calls (e.g. add_node, add_connection, modify_node) which are executed against the workflow state. Results are fed back until Claude responds with text. A maximum of 50 iterations prevents runaway loops.</p>
+    <p>Libraries: Anthropic SDK for Claude API calls, Pydantic for tool parameter validation.</p>
+
+<pre>
+# Simplified main loop from orchestrator.py
+def run_turn(self, user_message):
+    self.conversation.add_user_message(user_message)
+    for _ in range(MAX_ITERATIONS):
+        response = call_llm(
+            self.conversation.messages,
+            self.tools.schemas
+        )
+        if response.has_text_only:
+            return response.text
+        for tool_call in response.tool_calls:
+            result = self.tools.execute(tool_call, self.workflow)
+            self.event_bus.emit("TOOL_COMPLETED", result)
+            self.conversation.add_tool_result(tool_call.id, result)
+</pre>
+
+    <!-- Real-time Streaming (SSE) -->
+    <h2>Real-time Streaming (SSE)</h2>
+
+    <p>All LLM responses, tool call updates, and workflow changes stream to the frontend in real time using Server-Sent Events. The EventSink class is a thread-safe queue. The ChatTask (running in a background thread) pushes events as the orchestrator executes tools. The FastAPI endpoint yields these events as SSE-formatted strings via StreamingResponse. The frontend's EventSource API receives events and updates Zustand stores, which trigger React re-renders.</p>
+    <p>The project originally used Socket.IO for real-time communication but migrated to SSE in March 2026. The system only needs server-to-client streaming, so SSE was simpler and eliminated the need for a WebSocket protocol upgrade.</p>
+    <p>Libraries: FastAPI StreamingResponse, native browser EventSource API.</p>
+
+<pre>
+# EventSink from sse.py
+class EventSink:
+    def __init__(self):
+        self._queue = queue.Queue()
+        self._closed = False
+
+    def push(self, event, data):
+        if not self._closed:
+            self._queue.put((event, data))
+
+    def __iter__(self):
+        while True:
+            item = self._queue.get(timeout=15)  # keepalive
+            if item is None:
+                break
+            event, data = item
+            yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
+</pre>
+
+    <!-- Visual Canvas -->
+    <h2>Visual Canvas</h2>
+
+    <p>The canvas is an interactive SVG surface where workflow nodes are rendered as colored shapes and edges as paths, with drag-and-drop, pan, zoom, and auto-layout. The Canvas component renders the workflow as SVG elements inside a React component. Each node type has a distinct color and shape. Edges are calculated using path routing algorithms. Users can drag nodes (with collision detection), draw connections between nodes, and use keyboard shortcuts for undo/redo. The auto-layout algorithm arranges nodes in a hierarchical tree structure. All canvas state lives in a Zustand store that reacts to both user interactions and SSE events from the backend.</p>
+    <p>Libraries: React 19 for rendering, Zustand for state management, custom SVG utilities for layout, collision detection, and edge routing.</p>
+    <p>The canvas rendering logic is spread across several utility modules (layout.ts, collision.ts, edges.ts, geometry.ts) that handle the spatial calculations, while Canvas.tsx coordinates the React rendering and event handling.</p>
+
+    <!-- Expression Parser and Evaluator -->
+    <h2>Expression Parser and Evaluator</h2>
+
+    <p>Decision nodes contain conditions like <code>Age >= 65 AND BMI < 30</code>. LEMON includes a custom parser and evaluator that processes these at runtime. The pipeline has three stages. First, the tokenizer scans the condition string into typed tokens (identifiers, numbers, comparators, logical operators). Second, a recursive descent parser builds an Abstract Syntax Tree of BinaryOp, Variable, and Literal nodes. Third, the evaluator walks the AST with a variable context, performing type-appropriate comparisons and returning a boolean result.</p>
+    <p>Libraries: Pure Python with no external dependencies.</p>
+
+<pre>
+# Token types from parser.py
+class TokenType(Enum):
+    IDENTIFIER = "IDENTIFIER"  # variable names
+    NUMBER = "NUMBER"          # 65, 18.5
+    STRING = "STRING"          # "high", "positive"
+    BOOL = "BOOL"              # true, false
+    GTE = "GTE"                # >=
+    LTE = "LTE"                # <=
+    EQ = "EQ"                  # ==
+    NEQ = "NEQ"                # !=
+    GT = "GT"                  # >
+    LT = "LT"                  # <
+    AND = "AND"
+    OR = "OR"
+    NOT = "NOT"
+
+# parse("Age >= 65 AND BMI < 30") -> BinaryOp(AND, ...)
+# evaluate(ast, {"Age": 70, "BMI": 25}) -> True
+</pre>
+
+    <!-- Subworkflows -->
+    <h2>Subworkflows</h2>
+
+    <p>Subprocess nodes call other workflows, passing inputs and receiving outputs as derived variables. This allows complex workflows to be decomposed into reusable pieces. When the TreeInterpreter encounters a subprocess node, it loads the referenced workflow from the database, maps the parent's variables to the child's inputs, and executes the child workflow recursively. The child's output becomes a derived variable in the parent's context. A build-depth limit prevents infinite recursion. During authoring, subworkflows are built by independent BuilderTask instances that run their own orchestrator conversation in a background thread.</p>
+    <p>Libraries: FastAPI background tasks, SQLite for workflow storage.</p>
+    <p>Subworkflow execution follows a recursive pattern: the interpreter calls itself with the child workflow and mapped inputs, then injects the result back into the parent context. Depth limiting (default 5 levels) prevents infinite recursion from circular references.</p>
+
+    <!-- Image-to-Workflow -->
+    <h2>Image-to-Workflow</h2>
+
+    <p>Users can upload a flowchart image or PDF, and the system reconstructs it as an editable workflow on the canvas. When a user uploads an image, the backend processes it using Pillow to detect the MIME type from magic bytes (not the file extension, for security). The image is then included in the conversation as a content block using Claude's Vision API. The orchestrator analyzes the image, identifies nodes, connections, conditions, and labels, then uses its workflow tools to reconstruct the flowchart as a structured workflow. This process uses the same tool-use loop as text-based workflow creation.</p>
+    <p>Libraries: Pillow for image format detection and processing, Anthropic Vision API for image understanding.</p>
+
+    <!-- Authentication -->
+    <h2>Authentication</h2>
+
+    <p>Session-based authentication with secure password storage. User passwords are hashed using PBKDF2 with a random salt before storage. On login, the submitted password is hashed and compared. A session token (random hex string) is generated and stored in the auth database with an expiration timestamp. The session token is sent to the client and included in subsequent requests as a header. FastAPI middleware validates the session on each request. Rate limiting (via slowapi) on the registration and login endpoints prevents brute-force attacks.</p>
+    <p>Libraries: hashlib (PBKDF2), secrets (token generation), slowapi (rate limiting).</p>
+
+    <!-- Workflow Persistence -->
+    <h2>Workflow Persistence</h2>
+
+    <p>Workflows are stored as JSON in SQLite with schema versioning for safe upgrades. The WorkflowStore class handles all database operations. Workflow data (nodes, edges, variables, outputs, tree representation) is serialized as JSON and stored alongside scalar metadata (name, description, domain, flags). The save contract ensures that nodes, edges, variables, outputs, and the tree representation stay synchronized after every save or update operation.</p>
+    <p>The database schema uses version-based migrations. Each migration adds columns or tables needed for new features. The current schema is at version 8, having evolved from the initial version to support drafts, publication, build history, conversation linking, and uploaded file tracking.</p>
+    <p>Libraries: sqlite3 (standard library), json for serialization.</p>
+
+<pre>
+# Key fields from WorkflowRecord (workflows.py)
+@dataclass(frozen=True)
+class WorkflowRecord:
+    id: str
+    user_id: str
+    name: str
+    nodes: List[Dict]      # JSON: node definitions
+    edges: List[Dict]      # JSON: connections
+    inputs: List[Dict]     # JSON: typed variables
+    outputs: List[Dict]    # JSON: output definitions
+    tree: Dict             # JSON: tree representation
+    output_type: str       # string, number, boolean
+    building: bool         # True during orchestrator build
+    conversation_id: str   # Links to chat history
+</pre>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>
