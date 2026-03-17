@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Appendices</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Appendices</h1>
+
+    <!-- ================================================================ -->
+    <h2>User Manual</h2>
+
+    <div class="placeholder">
+      <strong>Live Application:</strong> [Azure URL to be added]<br>
+      <strong>Test Account:</strong> [Username and password to be added]
+    </div>
+
+    <h3>1. Logging In</h3>
+    <p>Navigate to the application URL. Enter your email address and password, then click Login. New users can register by clicking the Register tab and providing an email, name, and password.</p>
+    <div class="placeholder">Screenshot: Login page</div>
+
+    <h3>2. Creating a Workflow via Chat</h3>
+    <p>Type a description of your workflow in the chat panel on the left side of the screen. For example: "Create a diabetes treatment workflow that checks HbA1c levels and recommends medication adjustments." The orchestrator will build nodes and connections on the canvas in real time. You can see each tool call as it executes.</p>
+    <div class="placeholder">Screenshot: Chat panel with workflow being built on canvas</div>
+
+    <h3>3. Uploading a Flowchart Image</h3>
+    <p>Click the upload button (paperclip icon) in the chat input area. Select an image file (PNG, JPG) or PDF of a flowchart. The system will analyze the image and reconstruct it as an editable workflow on the canvas.</p>
+    <div class="placeholder">Screenshot: Image upload and reconstruction</div>
+
+    <h3>4. Editing on the Canvas</h3>
+    <p>Drag nodes to reposition them. Right-click a node to open its context menu (edit, delete, connect). Draw connections by clicking the output port of one node and dragging to the input of another. Use scroll wheel to zoom and click-drag on empty space to pan.</p>
+    <div class="placeholder">Screenshot: Canvas with nodes and connections</div>
+
+    <h3>5. Managing Variables</h3>
+    <p>Open the right sidebar to view workflow variables. Each variable has a name, type (string, number, boolean, date, enum), and optional description. Variables are used in decision conditions and calculation nodes. The orchestrator creates variables automatically, but you can also add or edit them manually.</p>
+    <div class="placeholder">Screenshot: Variable panel in sidebar</div>
+
+    <h3>6. Using Subworkflows</h3>
+    <p>Create a subprocess node to reference another saved workflow. Configure the input mapping to connect parent variables to the child workflow's inputs. When executed, the subprocess runs the referenced workflow and returns its output as a derived variable.</p>
+    <div class="placeholder">Screenshot: Subprocess node configuration</div>
+
+    <h3>7. Executing with Test Inputs</h3>
+    <p>Click the Execute button. Enter values for each input variable in the dialog that appears. Click Run to start execution. The system steps through each node, highlighting the active node and the execution path on the canvas. The final output and execution context are displayed when complete.</p>
+    <div class="placeholder">Screenshot: Execution dialog and path highlighting</div>
+
+    <h3>8. Saving to Library</h3>
+    <p>Click Save in the header to store your workflow in the personal library. You can access saved workflows later from the Library page (/library). Each workflow stores its full state including nodes, edges, variables, and conversation history.</p>
+    <div class="placeholder">Screenshot: Library page</div>
+
+    <h3>9. Exporting</h3>
+    <p>Navigate to the Export page. Choose your export format:</p>
+    <ul>
+      <li><strong>JSON</strong>: Complete workflow data including nodes, edges, variables, and metadata</li>
+      <li><strong>Python</strong>: Compiled executable code that reproduces the workflow logic</li>
+      <li><strong>PNG</strong>: Visual image of the workflow canvas</li>
+    </ul>
+    <div class="placeholder">Screenshot: Export page with format options</div>
+
+    <!-- ================================================================ -->
+    <h2>Deployment Manual</h2>
+
+    <h3>Prerequisites</h3>
+    <ul>
+      <li>Python 3.10 or later</li>
+      <li>Node.js 18 or later</li>
+      <li>uv (Python package manager): install with <code>curl -LsSf https://astral.sh/uv/install.sh | sh</code></li>
+      <li>An Anthropic API key (obtain from console.anthropic.com)</li>
+    </ul>
+
+    <h3>Local Development Setup</h3>
+    <ol>
+      <li>
+        <p>Clone the repository:</p>
+        <pre><code>git clone https://github.com/jrh-mann/LEMON.git
+cd LEMON</code></pre>
+      </li>
+      <li>
+        <p>Install Python dependencies:</p>
+        <pre><code>uv sync</code></pre>
+      </li>
+      <li>
+        <p>Install frontend dependencies:</p>
+        <pre><code>cd src/frontend
+npm install
+cd ../..</code></pre>
+      </li>
+      <li>
+        <p>Configure environment variables:</p>
+        <pre><code>cp .env.example .env</code></pre>
+        <p>Then edit <code>.env</code> and add your Anthropic API key:</p>
+        <pre><code>ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-6</code></pre>
+      </li>
+      <li>
+        <p>Start the development servers:</p>
+        <pre><code>./scripts/dev.sh</code></pre>
+      </li>
+      <li>
+        <p>Access the application:</p>
+        <ul>
+          <li>Frontend: http://localhost:5173</li>
+          <li>Backend: http://localhost:5001</li>
+          <li>Logs: /tmp/lemon-backend.log, /tmp/lemon-frontend.log</li>
+        </ul>
+      </li>
+    </ol>
+
+    <h3>Azure Deployment</h3>
+    <p>The project uses GitHub Actions for production deployment. The workflow file is at <code>.github/workflows/deploy-prod.yml</code>.</p>
+    <p>Deployment process:</p>
+    <ol>
+      <li>Push code to the <code>prod</code> branch</li>
+      <li>GitHub Actions automatically triggers the deployment workflow</li>
+      <li>The workflow installs Node.js 20, builds the frontend (<code>npm ci &amp;&amp; npm run build</code>)</li>
+      <li>Packages the backend (src/backend, compiled frontend, scripts, configuration) into a ZIP archive</li>
+      <li>Deploys to Azure Web App using the publish profile stored as a GitHub secret</li>
+    </ol>
+    <p>To configure deployment for a new environment:</p>
+    <ul>
+      <li>Set up an Azure Web App instance</li>
+      <li>Add the Azure publish profile as a GitHub repository secret named <code>AZUREAPPSERVICE_PUBLISHPROFILE</code></li>
+      <li>Push to the <code>prod</code> branch to trigger deployment</li>
+    </ul>
+
+    <!-- ================================================================ -->
+    <h2>Legal Issues and GDPR</h2>
+
+    <h3>Source Code License</h3>
+    <p>LEMON is released under the MIT License. This permits use, modification, and distribution of the source code for any purpose, provided the original copyright notice and license text are included. The full license text is available in the LICENSE file in the repository root.</p>
+
+    <h3>GDPR and Data Privacy</h3>
+    <p>LEMON stores workflow definitions, user accounts (email and hashed password), and conversation logs for audit purposes.</p>
+    <p>No patient data or personally identifiable health information is processed or stored by the system. The requirements specification explicitly excludes patient datasets and production data processing from the system scope.</p>
+    <p>Workflow descriptions and chat messages are sent to the Anthropic Claude API for processing. Anthropic's data handling and privacy policies apply to this transmitted data. Users should be informed that their input is processed by a third-party AI service.</p>
+    <p>User authentication uses PBKDF2 password hashing with random salts. Passwords are never stored in plaintext.</p>
+    <p>Users can delete their workflows at any time. Session tokens expire automatically.</p>
+    <p>The system enforces user ownership on all API endpoints, ensuring users can only access their own data.</p>
+
+    <!-- ================================================================ -->
+    <h2>Development Blog</h2>
+
+    <p>The development blog documents the team's progress throughout the project. Each entry summarizes the key work completed during that period.</p>
+
+    <div class="placeholder">
+      <strong>External Blog URL:</strong> [Link to external blog platform to be added]<br>
+      The university requires the development blog to be hosted on a public external site (e.g. WordPress, UCL blogging tools).
+    </div>
+
+    <h3>December 9-15, 2025: Project Kickoff</h3>
+    <p>Initial repository setup and exploration of the problem space. The team created ground truth workflow definitions for diabetes treatment pathways, establishing the benchmark data that would later be used for automated evaluation. Early experiments with LLM-based workflow generation began.</p>
+
+    <h3>January 7-14, 2026: Building the Foundation</h3>
+    <p>Connected the frontend prototype to a new backend architecture. Switched from the initial LLM approach to Claude as the primary provider, taking advantage of its native tool-use API. Separated the backend into a standalone FastAPI service. Added workflow upload and image analysis capabilities.</p>
+
+    <h3>January 15-20, 2026: The Visual Editor Takes Shape</h3>
+    <p>Major canvas development sprint. Implemented drag-and-drop node positioning, collision detection to prevent overlapping nodes, a hierarchical auto-layout algorithm, connection drawing between nodes, and color-coded node types. Added a node palette for creating nodes manually and JSON import for loading existing workflows.</p>
+
+    <h3>January 21-29, 2026: Workflow Execution Engine</h3>
+    <p>Built the expression parser and evaluator for decision node conditions. Implemented the TreeInterpreter for walking workflows and producing execution results. Added the validation framework for checking workflow correctness before save or export. Expanded the tool system to over 30 tools. Added subprocess nodes and compound conditions.</p>
+
+    <h3>February 3-11, 2026: Scaling Up</h3>
+    <p>Intensive development period. Built end-to-end test infrastructure using Playwright. Added workflow library features for saving and browsing workflows. Implemented prompt caching to reduce API costs on repeated interactions. Added task cancellation and conversation state management for long-running orchestrator sessions.</p>
+
+    <h3>February 20-27, 2026: Subworkflows and Streaming</h3>
+    <p>Implemented independent subworkflow builders with recursive execution and input/output mapping between parent and child workflows. Built the SSE infrastructure for real-time event streaming. Added build depth limits to prevent infinite recursion. Improved frontend resilience with localStorage quota handling and event routing fixes.</p>
+
+    <h3>March 1-9, 2026: Architecture Migration</h3>
+    <p>Completed the migration from Socket.IO to Server-Sent Events, simplifying the real-time communication infrastructure. Rewrote end-to-end tests to run against a real backend instead of mocks. Switched the internal tool format from OpenAI-style to native Anthropic format. Added stepped execution with pause, resume, and stop controls.</p>
+
+    <h3>March 10-16, 2026: Evaluation and Hardening</h3>
+    <p>Built the six-dimension evaluation framework for measuring workflow extraction quality (variables, nodes, topology, conditions, outputs, functional routing). Implemented comprehensive security hardening: XSS prevention, path traversal mitigation, CSRF headers, rate limiting, and user ownership enforcement on all API endpoints.</p>
+
+    <!-- ================================================================ -->
+    <h2>Monthly Videos</h2>
+
+    <div class="placeholder">
+      Monthly video update links will be added here:
+      <ul>
+        <li>November 2025: [OneDrive link]</li>
+        <li>December 2025: [OneDrive link]</li>
+        <li>January 2026: [OneDrive link]</li>
+        <li>February 2026: [OneDrive link]</li>
+        <li>March 2026: [OneDrive link]</li>
+      </ul>
+    </div>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>
