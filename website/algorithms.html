@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Algorithms</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <h1>Algorithms</h1>
+
+    <!-- Models -->
+    <h2>Models</h2>
+
+    <h3>LLM Orchestrator (Tool-Use Loop)</h3>
+    <p>The core of LEMON is an orchestrator that manages a multi-turn conversation with Claude [1]. In each turn, the orchestrator sends the conversation history and available tools to the LLM. Claude responds with either text (displayed to the user) or tool calls (executed against the workflow state). Tool results are fed back and Claude may issue further calls. This loop continues until Claude responds with text only, or a safety limit is reached (50 iterations maximum).</p>
+    <p>The orchestrator maintains workflow state (nodes, edges, variables, outputs), conversation history, and session context. A ToolRegistry provides JSON schemas for 30+ tools that the LLM can call, including add_node, add_connection, modify_node, add_workflow_variable, validate_workflow, and save_workflow.</p>
+
+<pre>
+# Simplified orchestrator loop (from orchestrator.py)
+class Orchestrator:
+    def __init__(self, tools, event_bus):
+        self.tools = tools          # ToolRegistry with 30+ tools
+        self.workflow = {"nodes": [], "edges": [], "variables": [], "outputs": []}
+        self.conversation = ConversationManager(context_limit=200_000)
+
+    def run_turn(self, user_message):
+        self.conversation.add_user_message(user_message)
+        for iteration in range(MAX_ITERATIONS):  # MAX_ITERATIONS = 50
+            response = call_llm(self.conversation.messages, self.tools.schemas)
+            if response.has_text_only:
+                return response.text
+            for tool_call in response.tool_calls:
+                result = self.tools.execute(tool_call, self.workflow)
+                self.conversation.add_tool_result(tool_call.id, result)
+</pre>
+
+    <h3>Expression Parser and Evaluator</h3>
+    <p>Decision nodes contain conditions like <code>Age >= 65 AND BMI < 30</code>. These need to be parsed and evaluated at runtime. LEMON includes a custom expression parser that tokenizes condition strings, builds an Abstract Syntax Tree (AST), and evaluates the tree against a variable context [2].</p>
+    <p>The pipeline has three stages:</p>
+    <ol>
+      <li><strong>Tokenization</strong>: The input string is scanned into tokens (IDENTIFIER, NUMBER, STRING, BOOL, comparators like GTE/LTE/EQ, logical operators AND/OR/NOT, parentheses).</li>
+      <li><strong>Parsing</strong>: A recursive descent parser builds an AST of BinaryOp, Variable, and Literal nodes.</li>
+      <li><strong>Evaluation</strong>: The evaluator walks the AST, resolves variable references from the execution context, and produces a boolean result.</li>
+    </ol>
+
+<pre>
+# Expression evaluation pipeline (from parser.py / evaluator.py)
+class TokenType(Enum):
+    IDENTIFIER = "IDENTIFIER"    # variable names
+    NUMBER = "NUMBER"            # numeric literals
+    STRING = "STRING"            # string literals
+    GTE = "GTE"                  # >=
+    LTE = "LTE"                  # <=
+    EQ = "EQ"                    # ==
+    AND = "AND"                  # logical AND
+    OR = "OR"                    # logical OR
+    # ... other token types
+
+# Usage: parse("Age >= 65 AND BMI < 30") returns AST
+# evaluate(ast, {"Age": 70, "BMI": 25}) returns True
+</pre>
+
+    <!-- Data -->
+    <h2>Data</h2>
+
+    <h3>Evaluation Dataset</h3>
+    <p>The evaluation framework uses benchmark workflows with known correct structures:</p>
+    <ul>
+      <li><strong>Diabetes Treatment Pathway</strong>: A clinical workflow for diabetes management decisions based on HbA1c levels, blood glucose, and patient age. Contains decision nodes with numeric thresholds, branching to different treatment recommendations (medication adjustment, specialist referral, hospital admission).</li>
+      <li><strong>Liver Pathology Classification</strong>: A diagnostic workflow for classifying liver conditions based on lab results and imaging findings.</li>
+    </ul>
+    <p>Each benchmark includes:</p>
+    <ul>
+      <li>A natural language description of the workflow</li>
+      <li>A ground truth (golden) workflow with the correct node structure, connections, conditions, and outputs</li>
+      <li>A set of expected execution behaviors for known inputs</li>
+    </ul>
+
+    <!-- Experiments -->
+    <h2>Experiments</h2>
+
+    <h3>Experiment Design</h3>
+    <p>The evaluation harness runs each LLM model against each benchmark sample, potentially across multiple runs per configuration. For each run, the orchestrator attempts to build a workflow from the natural language description. The resulting workflow is then scored against the golden reference.</p>
+
+    <h3>Scoring Framework</h3>
+    <p>Scoring uses six dimensions, each producing a score between 0.0 and 1.0:</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>What It Measures</th>
+          <th>How It's Calculated</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Variables</td>
+          <td>Input variable recall and type accuracy</td>
+          <td>Fraction of golden variables found in extracted workflow, weighted by type match</td>
+        </tr>
+        <tr>
+          <td>Nodes</td>
+          <td>Node count recall and type accuracy</td>
+          <td>Fraction of golden nodes matched by type in extracted workflow</td>
+        </tr>
+        <tr>
+          <td>Topology</td>
+          <td>Edge recall and label accuracy</td>
+          <td>Fraction of golden edges matched (using node mapping), weighted by correct labels</td>
+        </tr>
+        <tr>
+          <td>Conditions</td>
+          <td>Comparator and threshold accuracy</td>
+          <td>For matched decision nodes, how accurately conditions reproduce the golden comparators and values</td>
+        </tr>
+        <tr>
+          <td>Outputs</td>
+          <td>End node output similarity</td>
+          <td>Text similarity between golden and extracted end node output values</td>
+        </tr>
+        <tr>
+          <td>Functional</td>
+          <td>Execution routing agreement</td>
+          <td>Fraction of test cases where both workflows reach the same end node given identical inputs</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Functional Scoring</h3>
+    <p>The functional dimension is distinct from the structural dimensions above. Rather than comparing the workflow structure, it compares behavior:</p>
+    <ol>
+      <li>Extract numeric thresholds from the golden workflow's decision conditions</li>
+      <li>Generate boundary test cases: values below, at, and above each threshold</li>
+      <li>Execute both the golden and extracted workflows with the same inputs</li>
+      <li>Compare which end node each workflow reaches</li>
+      <li>Score = fraction of test cases with matching routing</li>
+    </ol>
+    <p>This catches cases where the workflow structure differs from the golden reference but the behavior is equivalent, as well as cases where the structure appears correct but conditions are subtly wrong.</p>
+
+    <h3>Results</h3>
+    <div class="placeholder">Detailed evaluation results (tables and charts comparing model performance across dimensions) will be added here after final evaluation runs are complete.</div>
+
+    <!-- Discussion -->
+    <h2>Discussion</h2>
+    <p>Where extraction fails:</p>
+    <ul>
+      <li><strong>Deeply nested branching</strong>: Workflows with many levels of conditional nesting are harder for the LLM to reconstruct accurately, particularly when branch paths reconverge.</li>
+      <li><strong>Ambiguous condition phrasing</strong>: Natural language descriptions that use vague thresholds ("elevated", "abnormal") rather than numeric values lead to incorrect or missing conditions.</li>
+      <li><strong>Complex compound conditions</strong>: Conditions combining multiple variables with mixed AND/OR logic are sometimes simplified or split incorrectly.</li>
+      <li><strong>Implicit flow</strong>: When the source description omits explicit connections between steps, the orchestrator may create incorrect topology.</li>
+    </ul>
+    <p>Suggestions for improvement:</p>
+    <ul>
+      <li>Expand the evaluation dataset with more diverse clinical workflows</li>
+      <li>Add an iterative refinement pass where the orchestrator validates its own output and corrects errors</li>
+      <li>Improve prompt engineering to handle ambiguous descriptions more robustly</li>
+      <li>Explore few-shot prompting with example workflows</li>
+    </ul>
+
+    <!-- Conclusion -->
+    <h2>Conclusion</h2>
+    <p>The evaluation framework provides a quantitative basis for measuring orchestrator quality. The six-dimension scoring approach captures both structural accuracy and behavioral correctness. Functional scoring is particularly valuable because it tests what matters most: whether the workflow produces the correct output for a given set of inputs, regardless of how the internal structure differs from the reference. This framework enables regression testing when prompts, tool schemas, or model versions change.</p>
+
+    <!-- References -->
+    <h2>References</h2>
+    <p>
+      [1] Anthropic, "Claude API Documentation - Tool Use," docs.anthropic.com. Accessed Mar. 2026.<br>
+      [2] A. Aho, R. Sethi, and J. Ullman, "Compilers: Principles, Techniques, and Tools," Addison-Wesley, 1986.
+    </p>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>
