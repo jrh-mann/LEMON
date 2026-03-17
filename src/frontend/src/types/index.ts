@@ -694,6 +694,6 @@ export interface ApiError {
 
 export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running' | 'code_refining' | 'done'
 
-export type ModalType = 'library' | 'validation' | 'save' | 'execute' | 'none'
+export type ModalType = 'validation' | 'save' | 'execute' | 'none'
 
 export type SidebarTab = 'library' | 'variables' | 'properties' | 'devtools'
