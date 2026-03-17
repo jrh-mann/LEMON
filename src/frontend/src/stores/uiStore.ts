@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Stage, ModalType, SidebarTab, ToolCall } from '../types'
+import type { ModalType, SidebarTab, ToolCall } from '../types'
 
 export type CanvasTab = 'workflow' | 'image'
 
@@ -7,9 +7,6 @@ export type CanvasTab = 'workflow' | 'image'
 export type CanvasMode = 'select' | 'pan'
 
 interface UIState {
-  // App stage
-  stage: Stage
-
   // Modal state
   modalOpen: ModalType
 
@@ -55,7 +52,6 @@ interface UIState {
   zoomPhase: 'idle' | 'expanding' | 'fading'
 
   // Actions
-  setStage: (stage: Stage) => void
   openModal: (modal: ModalType) => void
   closeModal: () => void
   setActiveTab: (tab: SidebarTab) => void
@@ -106,7 +102,6 @@ const ZOOM_STEP = 0.7
 
 export const useUIStore = create<UIState>((set) => ({
   // Initial state
-  stage: 'idle',
   modalOpen: 'none',
   activeTab: 'library',
   canvasTab: 'workflow',
@@ -128,8 +123,6 @@ export const useUIStore = create<UIState>((set) => ({
   zoomPhase: 'idle',
 
   // Actions
-  setStage: (stage) => set({ stage }),
-
   openModal: (modal) => set({ modalOpen: modal }),
 
   closeModal: () => set({ modalOpen: 'none' }),
@@ -207,7 +200,6 @@ export const useUIStore = create<UIState>((set) => ({
   // Reset
   reset: () =>
     set({
-      stage: 'idle',
       modalOpen: 'none',
       activeTab: 'library',
       canvasTab: 'workflow',

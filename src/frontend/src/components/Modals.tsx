@@ -10,7 +10,6 @@ import {
   resumeWorkflowExecution,
   stopWorkflowExecution,
 } from '../api/streamActions'
-import WorkflowBrowser from './WorkflowBrowser'
 import type { Flowchart, Workflow, WorkflowAnalysis, WorkflowVariable } from '../types'
 
 export default function Modals() {
@@ -18,11 +17,6 @@ export default function Modals() {
 
   return (
     <>
-      {/* Library Modal */}
-      <Modal isOpen={modalOpen === 'library'} onClose={closeModal} title="Workflow Library">
-        <WorkflowBrowser />
-      </Modal>
-
       {/* Validation Modal */}
       <Modal isOpen={modalOpen === 'validation'} onClose={closeModal} title="Validate Workflow">
         <ValidationFlow />

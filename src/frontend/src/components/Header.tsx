@@ -194,7 +194,7 @@ export default function Header() {
           <button
             className="ghost"
             disabled={!canExport}
-            onClick={() => navigate('/export')}
+            onClick={() => navigate(currentWorkflow?.id ? `/export/${currentWorkflow.id}` : '/export')}
             title={canExport ? 'Export workflow' : 'No workflow to export'}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

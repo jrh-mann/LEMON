@@ -1,10 +1,9 @@
 """Chat routes: SSE streaming, cancel, resume, and conversation history.
 
-POST /api/chat/send  — returns an SSE stream for one chat turn
+POST /api/chat/send   — returns an SSE stream for one chat turn
 POST /api/chat/cancel — cancel an in-progress task
 POST /api/chat/resume — re-attach to a running task (returns SSE stream)
 GET  /api/chat/<id>   — retrieve conversation history
-POST /api/chat        — legacy sync endpoint (no streaming)
 """
 
 from __future__ import annotations
@@ -23,16 +22,13 @@ from ..common import utc_now
 from ...tasks.conversations import ConversationStore
 from ...tasks.chat_task import ChatTask
 from ..deps import require_auth
-from ..response_utils import extract_flowchart, extract_tool_calls, summarize_response
+from .helpers import api_error
 from ...tasks.sse import EventSink
 from ...tasks.registry import task_registry
-from ...agents.turn import Turn
 from ...storage.auth import AuthUser
 from ...storage.conversation_log import ConversationLogger
 from ...storage.workflows import WorkflowStore
-from ...utils.uploads import save_uploaded_image
 from ...workflow_persistence import persist_workflow_snapshot
-from .helpers import api_error
 
 logger = logging.getLogger("backend.api")
 
@@ -56,11 +52,11 @@ def register_chat_routes(
     """
     router = APIRouter()
 
-    @router.post("/api/chat/send")
+    @router.post("/api/chat/send", response_model=None)
     async def send_chat_message(
         request: Request,
         user: AuthUser = Depends(require_auth),
-    ) -> StreamingResponse:
+    ) -> StreamingResponse | JSONResponse:
         """Accept a chat message and return an SSE stream for the response.
 
         The HTTP response IS the stream — events are yielded as SSE lines
@@ -219,79 +215,6 @@ def register_chat_routes(
                 workflow_id,
             )
             return JSONResponse({"status": "no_active_task", "workflow_id": workflow_id})
-
-    @router.post("/api/chat")
-    async def chat(
-        request: Request,
-        user: AuthUser = Depends(require_auth),
-    ) -> JSONResponse:
-        """Legacy sync chat endpoint (no streaming). Used by tests."""
-        try:
-            payload = await request.json()
-        except (json.JSONDecodeError, ValueError) as e:
-            return api_error(f"Invalid JSON: {e}")
-
-        message = payload.get("message", "")
-        conversation_id = payload.get("conversation_id")
-        image_data = payload.get("image")
-
-        if not isinstance(message, str) or not message.strip():
-            return api_error("message is required")
-
-        convo = conversation_store.get_or_create(conversation_id, user.id)
-        if isinstance(image_data, str) and image_data.strip():
-            try:
-                save_uploaded_image(image_data, repo_root=repo_root)
-            except Exception as exc:
-                logger.exception("Failed to save uploaded image")
-                return api_error(f"Invalid image data: {exc}")
-
-        executed_tools: list[dict[str, Any]] = []
-
-        def on_tool_event(
-            event: str,
-            tool: str,
-            args: Dict[str, Any],
-            result: Optional[Dict[str, Any]],
-        ) -> None:
-            if event == "tool_start":
-                executed_tools.append({"tool": tool, "arguments": args})
-
-        turn = Turn(message, convo.id)
-        turn.start()
-        try:
-            response_text = convo.orchestrator.respond(
-                message,
-                turn=turn,
-                has_files=[],
-                allow_tools=True,
-                on_tool_event=on_tool_event,
-            )
-            turn.complete(response_text)
-        except Exception:
-            turn.fail(str(message))
-            response_text = ""
-        finally:
-            from ...agents.turn import TurnStatus
-            if turn.status != TurnStatus.PENDING:
-                turn.commit(convo.orchestrator.conversation)
-
-        tool_calls = extract_tool_calls(response_text, include_result=False)
-        if not tool_calls and turn.tool_calls:
-            tool_calls = turn.tool_calls
-        elif not tool_calls and executed_tools:
-            tool_calls = executed_tools
-        response_summary = summarize_response(response_text)
-        flowchart = extract_flowchart(response_text)
-        convo.updated_at = utc_now()
-        return JSONResponse(
-            {
-                "conversation_id": convo.id,
-                "response": response_summary,
-                "tool_calls": tool_calls,
-                "flowchart": flowchart,
-            }
-        )
 
     @router.get("/api/chat/{conversation_id}")
     async def get_conversation(

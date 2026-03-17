@@ -266,7 +266,6 @@ class Orchestrator:
         tool_desc = generate_all_schemas(self.tools) if allow_tools else None
         system = build_system_prompt(
             has_files=self.uploaded_files, allow_tools=allow_tools,
-            current_workflow_id=self.current_workflow_id,
             current_workflow_name=self.current_workflow_name,
             guidance=self._guidance or None,
         )

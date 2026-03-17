@@ -21,7 +21,7 @@ import { sendChatMessage } from '../api/streamActions'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
 
-import '../styles/HomePage.css'
+import '../styles/WorkflowLanding.css'
 
 
 export default function WorkflowPage() {
