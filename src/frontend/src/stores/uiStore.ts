@@ -50,6 +50,7 @@ interface UIState {
   // Zooming card transition
   zoomingCard: { id: string, rect: DOMRect, title: string } | null
   zoomPhase: 'idle' | 'expanding' | 'fading'
+  pendingPostSaveAction: 'newSession' | null
 
   // Actions
   openModal: (modal: ModalType) => void
@@ -91,6 +92,7 @@ interface UIState {
   // Set zooming card
   setZoomingCard: (card: { id: string, rect: DOMRect, title: string } | null) => void
   setZoomPhase: (phase: 'idle' | 'expanding' | 'fading') => void
+  setPendingPostSaveAction: (action: 'newSession' | null) => void
 
   // Reset
   reset: () => void
@@ -121,6 +123,7 @@ export const useUIStore = create<UIState>((set) => ({
   isTransitioning: false,
   zoomingCard: null,
   zoomPhase: 'idle',
+  pendingPostSaveAction: null,
 
   // Actions
   openModal: (modal) => set({ modalOpen: modal }),
@@ -196,6 +199,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   setZoomingCard: (card) => set({ zoomingCard: card }),
   setZoomPhase: (phase) => set({ zoomPhase: phase }),
+  setPendingPostSaveAction: (action) => set({ pendingPostSaveAction: action }),
 
   // Reset
   reset: () =>
@@ -215,5 +219,6 @@ export const useUIStore = create<UIState>((set) => ({
       isTransitioning: false,
       zoomingCard: null,
       zoomPhase: 'idle',
+      pendingPostSaveAction: null,
     }),
 }))

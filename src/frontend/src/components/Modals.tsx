@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
+import { useChatStore } from '../stores/chatStore'
 import { useValidationStore } from '../stores/validationStore'
 import { startValidation, submitValidationAnswer } from '../api/validation'
 import { createWorkflow, validateWorkflow, type ValidationError } from '../api/workflows'
@@ -27,11 +28,45 @@ export default function Modals() {
         <SaveWorkflowForm />
       </Modal>
 
+      <Modal isOpen={modalOpen === 'saveChanges'} onClose={closeModal} title="Start New Session">
+        <SaveChangesForm />
+      </Modal>
+
       {/* Execute Modal */}
       <Modal isOpen={modalOpen === 'execute'} onClose={closeModal} title="Run Workflow">
         <ExecuteWorkflowForm />
       </Modal>
     </>
+  )
+}
+
+function SaveChangesForm() {
+  const { closeModal, openModal, setPendingPostSaveAction } = useUIStore()
+  const { reset } = useWorkflowStore()
+  const resetChat = useChatStore(s => s.reset)
+
+  const handleSave = useCallback(() => {
+    setPendingPostSaveAction('newSession')
+    openModal('save')
+  }, [openModal, setPendingPostSaveAction])
+
+  const handleDiscard = useCallback(() => {
+    reset()
+    resetChat()
+    setPendingPostSaveAction(null)
+    closeModal()
+    window.location.assign('/workflow')
+  }, [closeModal, reset, resetChat, setPendingPostSaveAction])
+
+  return (
+    <div className="save-form">
+      <p>Save changes before starting new session?</p>
+      <div className="json-modal-actions">
+        <button className="ghost" onClick={closeModal}>Cancel</button>
+        <button className="ghost" onClick={handleDiscard}>No</button>
+        <button className="primary" onClick={handleSave}>Yes</button>
+      </div>
+    </div>
   )
 }
 
@@ -306,7 +341,9 @@ function SaveWorkflowFormContent({
   currentAnalysis: WorkflowAnalysis | null
   currentWorkflow: Workflow | null
 }) {
-  const { closeModal } = useUIStore()
+  const { closeModal, pendingPostSaveAction, setPendingPostSaveAction } = useUIStore()
+  const { markSavedSnapshot, reset } = useWorkflowStore()
+  const resetChat = useChatStore(s => s.reset)
 
   // Check if this is an existing workflow (has ID from LLM creation or previous load)
   const existingWorkflowId = currentWorkflow?.id
@@ -384,6 +421,7 @@ function SaveWorkflowFormContent({
         ? { ...payload, id: existingWorkflowId }
         : payload
       await createWorkflow(payloadWithId)
+      markSavedSnapshot()
 
       setSaveSuccess(true)
       setShowValidationWarning(false)
@@ -393,12 +431,18 @@ function SaveWorkflowFormContent({
       // Close modal after short delay to show success message
       setTimeout(() => {
         closeModal()
+        if (pendingPostSaveAction === 'newSession') {
+          setPendingPostSaveAction(null)
+          reset()
+          resetChat()
+          window.location.assign('/workflow')
+        }
       }, 1500)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, markSavedSnapshot, pendingPostSaveAction, reset, resetChat, setPendingPostSaveAction])
 
   if (flowchart.nodes.length === 0) {
     return (

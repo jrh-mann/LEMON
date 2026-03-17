@@ -622,6 +622,6 @@ export interface ApiError {
 
 // ============ UI State Types ============
 
-export type ModalType = 'validation' | 'save' | 'execute' | 'none'
+export type ModalType = 'validation' | 'save' | 'execute' | 'saveChanges' | 'none'
 
 export type SidebarTab = 'library' | 'variables' | 'properties' | 'devtools'
