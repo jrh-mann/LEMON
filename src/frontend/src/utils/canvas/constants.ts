@@ -1,11 +1,6 @@
 import type { FlowNodeType, FlowNodeColor } from '../../types'
 
-// Backend BlockType to Frontend FlowNodeType mapping
 export const BLOCK_TYPE_MAP: Record<string, FlowNodeType> = {
-  input: 'process',
-  output: 'end',
-  workflow_ref: 'subprocess',
-  // These already match
   start: 'start',
   end: 'end',
   process: 'process',
@@ -16,9 +11,6 @@ export const BLOCK_TYPE_MAP: Record<string, FlowNodeType> = {
 
 // Default color for each block type from backend
 export const BLOCK_TYPE_COLORS: Record<string, FlowNodeColor> = {
-  input: 'teal',
-  output: 'green',
-  workflow_ref: 'sky',
   start: 'teal',
   end: 'green',
   process: 'teal',

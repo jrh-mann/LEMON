@@ -3,9 +3,7 @@
 
 // ============ Enums ============
 
-export type BlockType = 'input' | 'decision' | 'output' | 'workflow_ref'
 export type InputType = 'number' | 'bool' | 'string' | 'enum' | 'date'
-export type PortType = 'default' | 'true' | 'false'
 
 // ============ Decision Condition Types ============
 // Comparators for structured decision node conditions
@@ -196,54 +194,6 @@ export interface Range {
   max?: number
 }
 
-export interface BlockBase {
-  id: string
-  type: BlockType
-  position: Position
-}
-
-export interface InputBlock extends BlockBase {
-  type: 'input'
-  name: string
-  input_type: InputType
-  range?: Range
-  enum_values?: string[]
-  description: string
-  required: boolean
-}
-
-export interface DecisionBlock extends BlockBase {
-  type: 'decision'
-  condition: string
-  description: string
-}
-
-export interface OutputBlock extends BlockBase {
-  type: 'output'
-  value: string
-  description: string
-  output_type?: string
-  output_template?: string
-}
-
-export interface WorkflowRefBlock extends BlockBase {
-  type: 'workflow_ref'
-  ref_id: string
-  ref_name: string
-  input_mapping: Record<string, string>
-  output_name: string
-}
-
-export type Block = InputBlock | DecisionBlock | OutputBlock | WorkflowRefBlock
-
-export interface Connection {
-  id: string
-  from_block: string
-  from_port: PortType
-  to_block: string
-  to_port: PortType
-}
-
 export interface WorkflowMetadata {
   name: string
   description: string
@@ -262,8 +212,6 @@ export interface Workflow {
   id: string
   output_type?: string  // Workflow-level output type: 'string' | 'number' | 'bool' | 'json'
   metadata: WorkflowMetadata
-  blocks: Block[]
-  connections: Connection[]
 }
 
 /** Shape returned by GET /api/workflows/:id — backend-oriented before frontend transform */
@@ -418,7 +366,7 @@ export interface ExecutionStep {
   block_id: string
   block_type: string
   state_before: Record<string, unknown>
-  action: 'output' | 'decision' | 'workflow_ref' | 'input' | 'unknown'
+  action: 'output' | 'decision' | 'subprocess' | 'process' | 'unknown'
   [key: string]: unknown
 }
 

@@ -166,8 +166,6 @@ function createEmptyWorkflow(id = '', name = 'New Workflow'): Workflow {
       confidence: 'none',
       is_validated: false,
     },
-    blocks: [],
-    connections: [],
   }
 }
 
