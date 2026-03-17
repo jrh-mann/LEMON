@@ -52,7 +52,7 @@ def register_chat_routes(
     """
     router = APIRouter()
 
-    @router.post("/api/chat/send")
+    @router.post("/api/chat/send", response_model=None)
     async def send_chat_message(
         request: Request,
         user: AuthUser = Depends(require_auth),
