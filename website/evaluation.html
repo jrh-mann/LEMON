@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Evaluation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Evaluation</h1>
+
+    <h2>Summary of Achievements</h2>
+
+    <h3>Achievement Table</h3>
+    <table class="req-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Requirement</th>
+          <th>Priority</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>FR1-001</td>
+          <td>Analyse uploaded diagrams and reconstruct as workflows</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-002</td>
+          <td>Visual editor supports 6 node types</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-003</td>
+          <td>Natural-language workflow creation via orchestrator</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-004</td>
+          <td>Typed variables (string, number, boolean, date, enum)</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-005</td>
+          <td>Orchestrator registers variables before dependent nodes</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-006</td>
+          <td>Decision nodes with comparators and true/false branching</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-007</td>
+          <td>Calculation nodes with math operators and derived variables</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-008</td>
+          <td>Compound conditions with AND/OR</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-009</td>
+          <td>Subprocess nodes with input/output mapping</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-010</td>
+          <td>Orchestrator uses tools for workflow operations</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-011</td>
+          <td>Switch between multiple workflows</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-012</td>
+          <td>Import workflow JSON</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR1-013</td>
+          <td>Orchestrator reasons about correctness</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR2-001</td>
+          <td>Validate workflows before save/export/execution</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR2-002</td>
+          <td>Validation checks (reachability, branching, references)</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR2-003</td>
+          <td>Execute against manual inputs, inspect output/path/context</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR2-004</td>
+          <td>Execution supports calculations, subprocesses, cycle protection</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR2-005</td>
+          <td>Step-level execution for visual playback</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR2-006</td>
+          <td>Pause, resume, stop stepped execution</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR3-001</td>
+          <td>Export as JSON</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR3-002</td>
+          <td>Export as compiled Python</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR3-003</td>
+          <td>Export canvas as PNG</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR3-004</td>
+          <td>Exported Python preserves logic</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR4-001</td>
+          <td>Save workflows to personal library</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR4-002</td>
+          <td>Browse saved workflows</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR5-001</td>
+          <td>Stream orchestrator responses incrementally</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR5-002</td>
+          <td>Cancel long-running tasks</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR5-003</td>
+          <td>Preserve conversation state across turns</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>FR5-004</td>
+          <td>Resume after client refresh</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>NFR-001</td>
+          <td>Responsive UI actions (under 2s)</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>NFR-002</td>
+          <td>Fast validation (under 2s)</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>NFR-003</td>
+          <td>Automatic LLM context management</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>NFR-004</td>
+          <td>Bounded, protected execution</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>NFR-005</td>
+          <td>Canonical save contract</td>
+          <td>Must</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+        <tr>
+          <td>NFR-006</td>
+          <td>Explicit error responses</td>
+          <td>Should</td>
+          <td style="color: #16a34a;">Complete</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Known Bugs</h3>
+    <div class="placeholder">Known bugs will be listed here.</div>
+
+    <h3>Individual Contribution Table (System Development)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Team Member</th>
+          <th>Main Areas</th>
+          <th>Contribution %</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Jude Hawrani</td>
+          <td>Requirements, orchestrator, tools, evaluation framework</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Axel Weernink</td>
+          <td>Frontend, canvas editor, UI/UX, streaming</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Jeet Thakwani</td>
+          <td>Backend infrastructure, Azure deployment, database</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>James Mann</td>
+          <td>Testing, execution engine, validation, security</td>
+          <td>TBD</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Individual Contribution Table (Website)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Team Member</th>
+          <th>Main Areas</th>
+          <th>Contribution %</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Jude Hawrani</td>
+          <td>TBD</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Axel Weernink</td>
+          <td>TBD</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Jeet Thakwani</td>
+          <td>TBD</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>James Mann</td>
+          <td>TBD</td>
+          <td>TBD</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Critical Evaluation</h2>
+
+    <h3>UI/UX</h3>
+    <p>The real-time canvas provides strong visual feedback as workflows are built. The chat interface is intuitive for users who prefer natural language over manual graph editing. For large workflows, the canvas can become dense, though the auto-layout and zoom features help manage complexity. The stepped execution view with path highlighting is particularly effective for debugging.</p>
+
+    <h3>Functionality</h3>
+    <p>All 28 functional requirements marked as "Must" were implemented, along with all "Should" requirements. The subworkflow feature and stepped execution with pause/resume/stop go beyond the original core requirements.</p>
+
+    <h3>Stability</h3>
+    <p>The system handles error states explicitly, returning structured error responses rather than failing silently. Task cancellation works reliably during LLM calls. Reconnection after page refresh preserves conversation state. Rate limiting on authentication endpoints prevents brute-force attempts.</p>
+
+    <h3>Efficiency</h3>
+    <p>Prompt caching reduces API costs for repeated interactions with similar context. Bounded execution (max step limit, cycle detection) prevents runaway workflows. Context compaction manages long conversations by summarizing older history.</p>
+
+    <h3>Compatibility</h3>
+    <p>LEMON is a web application that runs in modern browsers (Chrome, Firefox, Safari, Edge). The backend runs on Python 3.10+ and deploys to Azure. No platform-specific dependencies.</p>
+
+    <h3>Maintainability</h3>
+    <p>The codebase follows a modular architecture with clear separation between API routes, business logic, tool execution, and storage. Over 1,200 automated tests provide a safety net for changes. The TypeScript frontend catches type errors at compile time. The event bus pattern decouples components, making it possible to change the transport layer (as demonstrated by the Socket.IO to SSE migration) without rewriting business logic.</p>
+
+    <h3>Project Management</h3>
+    <p>Development followed an iterative approach with frequent commits (677 total across 4 months). The team worked on features in parallel, with continuous testing throughout. The most significant architectural decision, migrating from Socket.IO to SSE, was completed mid-project without regressions thanks to the existing test suite.</p>
+
+    <h2>Future Work</h2>
+
+    <h3>Multi-user Real-time Collaboration</h3>
+    <p>Allow multiple users to edit the same workflow simultaneously with conflict resolution and presence indicators.</p>
+
+    <h3>Additional Node Types</h3>
+    <p>Add loop nodes for iterative logic, parallel execution nodes for concurrent branches, and wait/timer nodes for time-based workflows.</p>
+
+    <h3>FHIR/HL7 Integration</h3>
+    <p>Connect LEMON with healthcare interoperability standards to import clinical data schemas and export workflows in standard clinical formats.</p>
+
+    <h3>Expanded Evaluation Framework</h3>
+    <p>Add more clinical workflow benchmarks beyond diabetes and liver pathology. Include workflows from other domains (administrative, operational) to test generalization.</p>
+
+    <h3>Role-based Access Control</h3>
+    <p>Add team workspaces with role-based permissions, allowing administrators to manage access and reviewers to approve workflows before use.</p>
+
+    <h3>Offline Execution Mode</h3>
+    <p>Enable local workflow execution without requiring a cloud API, using a lightweight local model or compiled workflow code.</p>
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>
