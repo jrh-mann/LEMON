@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - System Design</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <h1>System Design</h1>
+
+    <!-- =========================================================
+         System Architecture
+         ========================================================= -->
+    <h2>System Architecture</h2>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 560" width="820" height="560" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#666"/>
+          </marker>
+        </defs>
+
+        <!-- Layer 1: React Frontend (light blue) -->
+        <rect x="30" y="10" width="620" height="80" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+        <text x="340" y="30" text-anchor="middle" font-size="13" font-weight="600" fill="#1e40af">React 19 Frontend</text>
+        <rect x="50" y="40" width="120" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
+        <text x="110" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Canvas (SVG)</text>
+        <rect x="185" y="40" width="120" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
+        <text x="245" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Chat Panel</text>
+        <rect x="320" y="40" width="100" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
+        <text x="370" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Library</text>
+        <rect x="435" y="40" width="100" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
+        <text x="485" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Export</text>
+
+        <!-- Layer 2: Zustand (light blue, slightly different) -->
+        <rect x="30" y="100" width="620" height="34" rx="6" fill="#bfdbfe" stroke="#93c5fd" stroke-width="1.5"/>
+        <text x="340" y="122" text-anchor="middle" font-size="12" font-weight="600" fill="#1e40af">Zustand State Management</text>
+
+        <!-- Arrow between layers 1-2 -->
+        <line x1="340" y1="90" x2="340" y2="100" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Layer 3: Transport (light green) -->
+        <rect x="30" y="146" width="620" height="38" rx="6" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+        <rect x="40" y="150" width="295" height="28" rx="4" fill="#fff" stroke="#6ee7b7"/>
+        <text x="187" y="169" text-anchor="middle" font-size="11" font-weight="600" fill="#047857">SSE (Server to Client)</text>
+        <rect x="345" y="150" width="295" height="28" rx="4" fill="#fff" stroke="#6ee7b7"/>
+        <text x="492" y="169" text-anchor="middle" font-size="11" font-weight="600" fill="#047857">REST API (Client to Server)</text>
+
+        <!-- Arrow between layers 2-3 -->
+        <line x1="340" y1="134" x2="340" y2="146" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Layer 4: FastAPI Backend (light orange) -->
+        <rect x="30" y="196" width="620" height="80" rx="6" fill="#ffedd5" stroke="#fdba74" stroke-width="1.5"/>
+        <text x="340" y="216" text-anchor="middle" font-size="13" font-weight="600" fill="#9a3412">FastAPI Backend</text>
+        <rect x="50" y="226" width="130" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
+        <text x="115" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Chat Routes</text>
+        <rect x="195" y="226" width="130" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
+        <text x="260" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Workflow Routes</text>
+        <rect x="340" y="226" width="140" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
+        <text x="410" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Execution Routes</text>
+        <rect x="495" y="226" width="130" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
+        <text x="560" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Auth Routes</text>
+
+        <!-- Arrow between layers 3-4 -->
+        <line x1="340" y1="184" x2="340" y2="196" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Layer 5: Business Logic (light purple) -->
+        <rect x="30" y="288" width="620" height="70" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.5"/>
+        <text x="340" y="308" text-anchor="middle" font-size="13" font-weight="600" fill="#5b21b6">Business Logic</text>
+        <rect x="50" y="316" width="150" height="32" rx="4" fill="#fff" stroke="#c4b5fd"/>
+        <text x="125" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Orchestrator</text>
+        <rect x="215" y="316" width="220" height="32" rx="4" fill="#fff" stroke="#c4b5fd"/>
+        <text x="325" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Tool Registry (30+ tools)</text>
+        <rect x="450" y="316" width="150" height="32" rx="4" fill="#fff" stroke="#c4b5fd"/>
+        <text x="525" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Event Bus</text>
+
+        <!-- Arrow between layers 4-5 -->
+        <line x1="340" y1="276" x2="340" y2="288" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Layer 6: Execution Engine (light yellow) -->
+        <rect x="30" y="370" width="620" height="46" rx="6" fill="#fef9c3" stroke="#fde047" stroke-width="1.5"/>
+        <text x="110" y="398" text-anchor="middle" font-size="12" font-weight="600" fill="#854d0e">Execution Engine</text>
+        <rect x="200" y="378" width="140" height="28" rx="4" fill="#fff" stroke="#fde047"/>
+        <text x="270" y="397" text-anchor="middle" font-size="11" fill="#854d0e">TreeInterpreter</text>
+        <rect x="350" y="378" width="140" height="28" rx="4" fill="#fff" stroke="#fde047"/>
+        <text x="420" y="397" text-anchor="middle" font-size="11" fill="#854d0e">Expression Parser</text>
+        <rect x="500" y="378" width="140" height="28" rx="4" fill="#fff" stroke="#fde047"/>
+        <text x="570" y="397" text-anchor="middle" font-size="11" fill="#854d0e">Expression Evaluator</text>
+
+        <!-- Arrow between layers 5-6 -->
+        <line x1="340" y1="358" x2="340" y2="370" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Layer 7: Storage (light gray) -->
+        <rect x="30" y="428" width="620" height="70" rx="6" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="340" y="448" text-anchor="middle" font-size="13" font-weight="600" fill="#374151">Storage</text>
+        <!-- DB icon 1 -->
+        <ellipse cx="140" cy="466" rx="50" ry="10" fill="#e5e7eb" stroke="#9ca3af"/>
+        <rect x="90" y="466" width="100" height="22" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/>
+        <ellipse cx="140" cy="488" rx="50" ry="10" fill="#e5e7eb" stroke="#9ca3af"/>
+        <text x="140" y="480" text-anchor="middle" font-size="10" fill="#374151">workflows.sqlite</text>
+        <!-- DB icon 2 -->
+        <ellipse cx="340" cy="466" rx="50" ry="10" fill="#e5e7eb" stroke="#9ca3af"/>
+        <rect x="290" y="466" width="100" height="22" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/>
+        <ellipse cx="340" cy="488" rx="50" ry="10" fill="#e5e7eb" stroke="#9ca3af"/>
+        <text x="340" y="480" text-anchor="middle" font-size="10" fill="#374151">auth.sqlite</text>
+        <!-- DB icon 3 -->
+        <ellipse cx="540" cy="466" rx="68" ry="10" fill="#e5e7eb" stroke="#9ca3af"/>
+        <rect x="472" y="466" width="136" height="22" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/>
+        <ellipse cx="540" cy="488" rx="68" ry="10" fill="#e5e7eb" stroke="#9ca3af"/>
+        <text x="540" y="480" text-anchor="middle" font-size="10" fill="#374151">conversation_log.sqlite</text>
+
+        <!-- Arrow between layers 6-7 -->
+        <line x1="340" y1="416" x2="340" y2="428" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- External: Anthropic Claude API -->
+        <rect x="680" y="296" width="130" height="54" rx="8" fill="#fce7f3" stroke="#f9a8d4" stroke-width="1.5"/>
+        <text x="745" y="318" text-anchor="middle" font-size="11" font-weight="600" fill="#9d174d">Anthropic</text>
+        <text x="745" y="334" text-anchor="middle" font-size="11" font-weight="600" fill="#9d174d">Claude API</text>
+
+        <!-- Arrow from Business Logic to Claude API -->
+        <line x1="650" y1="323" x2="678" y2="323" stroke="#666" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Legend labels at bottom -->
+        <text x="410" y="520" text-anchor="middle" font-size="11" fill="#666">Data flows downward through each layer. The Claude API is called externally by the Orchestrator.</text>
+      </svg>
+    </div>
+
+    <p>LEMON follows a layered architecture. The React frontend communicates with the FastAPI backend via REST API calls and receives real-time updates through Server-Sent Events. The backend orchestrates LLM interactions through a tool-use loop, with the Event Bus decoupling tool execution from the transport layer. Workflow execution is handled by a dedicated interpreter that evaluates conditions using a custom expression parser.</p>
+
+    <!-- =========================================================
+         Site Map
+         ========================================================= -->
+    <h2>Site Map</h2>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 220" width="440" height="220" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <!-- Root node -->
+        <rect x="175" y="10" width="90" height="32" rx="5" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+        <text x="220" y="31" text-anchor="middle" font-size="13" font-weight="600" fill="#1e40af">/</text>
+
+        <!-- Lines from root -->
+        <line x1="220" y1="42" x2="70" y2="80" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="220" y1="42" x2="220" y2="80" stroke="#94a3b8" stroke-width="1.2"/>
+        <line x1="220" y1="42" x2="330" y2="80" stroke="#94a3b8" stroke-width="1.2"/>
+
+        <!-- /auth -->
+        <rect x="15" y="80" width="110" height="32" rx="5" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="70" y="101" text-anchor="middle" font-size="12" fill="#374151">/auth</text>
+        <text x="70" y="130" text-anchor="middle" font-size="10" fill="#6b7280">Login / Register</text>
+
+        <!-- /workflow/:id -->
+        <rect x="148" y="80" width="144" height="32" rx="5" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="220" y="101" text-anchor="middle" font-size="12" fill="#374151">/workflow/:id</text>
+        <text x="220" y="130" text-anchor="middle" font-size="10" fill="#6b7280">Main Editor:</text>
+        <text x="220" y="144" text-anchor="middle" font-size="10" fill="#6b7280">Canvas + Chat + Sidebar</text>
+
+        <!-- /library -->
+        <rect x="305" y="80" width="100" height="32" rx="5" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="355" y="101" text-anchor="middle" font-size="12" fill="#374151">/library</text>
+        <text x="355" y="130" text-anchor="middle" font-size="10" fill="#6b7280">Saved Workflows</text>
+
+        <!-- /export  (nested under /workflow or standalone) -->
+        <line x1="355" y1="112" x2="355" y2="160" stroke="#94a3b8" stroke-width="1.2"/>
+        <rect x="305" y="160" width="100" height="32" rx="5" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="355" y="181" text-anchor="middle" font-size="12" fill="#374151">/export</text>
+        <text x="355" y="208" text-anchor="middle" font-size="10" fill="#6b7280">Export Interface</text>
+      </svg>
+    </div>
+
+    <!-- =========================================================
+         Sequence Diagrams
+         ========================================================= -->
+    <h2>Sequence Diagrams</h2>
+
+    <h3>Chat Message Flow</h3>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 620" width="860" height="620" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <!-- Participant boxes -->
+        <rect x="10" y="5" width="60" height="28" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="40" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#1e40af">User</text>
+
+        <rect x="95" y="5" width="85" height="28" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="137" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#1e40af">React Chat</text>
+
+        <rect x="210" y="5" width="70" height="28" rx="4" fill="#ffedd5" stroke="#fdba74" stroke-width="1.2"/>
+        <text x="245" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#9a3412">FastAPI</text>
+
+        <rect x="310" y="5" width="70" height="28" rx="4" fill="#ffedd5" stroke="#fdba74" stroke-width="1.2"/>
+        <text x="345" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#9a3412">ChatTask</text>
+
+        <rect x="405" y="5" width="85" height="28" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+        <text x="447" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#5b21b6">Orchestrator</text>
+
+        <rect x="515" y="5" width="80" height="28" rx="4" fill="#fce7f3" stroke="#f9a8d4" stroke-width="1.2"/>
+        <text x="555" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#9d174d">Claude API</text>
+
+        <rect x="620" y="5" width="75" height="28" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.2"/>
+        <text x="657" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#047857">EventSink</text>
+
+        <rect x="720" y="5" width="75" height="28" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.2"/>
+        <text x="757" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#047857">SSE Stream</text>
+
+        <!-- Lifelines -->
+        <line x1="40" y1="33" x2="40" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="137" y1="33" x2="137" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="245" y1="33" x2="245" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="345" y1="33" x2="345" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="447" y1="33" x2="447" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="555" y1="33" x2="555" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="657" y1="33" x2="657" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="757" y1="33" x2="757" y2="600" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <!-- Note: React Canvas shares the SSE Stream lifeline visually for compactness -->
+
+        <!-- 1. User -> React Chat: Type message -->
+        <line x1="40" y1="60" x2="130" y2="60" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="85" y="55" text-anchor="middle" font-size="9" fill="#333">Type message</text>
+
+        <!-- 2. React Chat -> FastAPI: POST /api/chat/send -->
+        <line x1="137" y1="82" x2="238" y2="82" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="187" y="77" text-anchor="middle" font-size="9" fill="#333">POST /api/chat/send</text>
+
+        <!-- 3. FastAPI -> ChatTask: Spawn background thread -->
+        <line x1="245" y1="104" x2="338" y2="104" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="291" y="99" text-anchor="middle" font-size="9" fill="#333">Spawn background thread</text>
+
+        <!-- 4. FastAPI -> SSE Stream: Return StreamingResponse -->
+        <line x1="245" y1="126" x2="750" y2="126" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+        <text x="497" y="121" text-anchor="middle" font-size="9" fill="#333">Return StreamingResponse</text>
+
+        <!-- 5. ChatTask -> Orchestrator: run_turn(message) -->
+        <line x1="345" y1="150" x2="440" y2="150" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="392" y="145" text-anchor="middle" font-size="9" fill="#333">run_turn(message)</text>
+
+        <!-- 6. Orchestrator -> Claude API: Send conversation + tools -->
+        <line x1="447" y1="174" x2="548" y2="174" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="497" y="169" text-anchor="middle" font-size="9" fill="#333">Send conversation + tools</text>
+
+        <!-- 7. Claude API -> Orchestrator: Return tool_calls -->
+        <line x1="555" y1="198" x2="454" y2="198" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+        <text x="504" y="193" text-anchor="middle" font-size="9" fill="#333">Return tool_calls</text>
+
+        <!-- 8. Orchestrator -> Orchestrator: Execute tool (self-call) -->
+        <path d="M 453 222 L 480 222 L 480 238 L 453 238" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="500" y="233" font-size="9" fill="#333">Execute tool (e.g. add_node)</text>
+
+        <!-- 9. Orchestrator -> EventSink: Push tool_started event -->
+        <line x1="447" y1="258" x2="650" y2="258" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="548" y="253" text-anchor="middle" font-size="9" fill="#333">Push tool_started event</text>
+
+        <!-- 10. EventSink -> SSE Stream: Yield SSE event -->
+        <line x1="657" y1="280" x2="750" y2="280" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="703" y="275" text-anchor="middle" font-size="9" fill="#333">Yield SSE event</text>
+
+        <!-- 11. SSE Stream -> React (Canvas): Update workflow state -->
+        <line x1="757" y1="302" x2="144" y2="302" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+        <text x="450" y="297" text-anchor="middle" font-size="9" fill="#2563eb">Update workflow state (React Canvas)</text>
+
+        <!-- Loop box -->
+        <rect x="420" y="340" width="380" height="90" rx="4" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,2"/>
+        <text x="430" y="354" font-size="9" font-weight="600" fill="#64748b">loop [until Claude returns text]</text>
+
+        <!-- 12. Repeat: Steps 6-11 -->
+        <line x1="447" y1="370" x2="548" y2="370" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="497" y="365" text-anchor="middle" font-size="9" fill="#333">Send conversation + tools</text>
+
+        <line x1="555" y1="390" x2="454" y2="390" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+        <text x="504" y="385" text-anchor="middle" font-size="9" fill="#333">Return tool_calls / text</text>
+
+        <line x1="447" y1="410" x2="650" y2="410" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="548" y="405" text-anchor="middle" font-size="9" fill="#333">Push events</text>
+
+        <!-- 13. Orchestrator -> EventSink: Push message event -->
+        <line x1="447" y1="460" x2="650" y2="460" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="548" y="455" text-anchor="middle" font-size="9" fill="#333">Push message event</text>
+
+        <!-- 14. EventSink -> SSE Stream: Yield final event -->
+        <line x1="657" y1="484" x2="750" y2="484" stroke="#333" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="703" y="479" text-anchor="middle" font-size="9" fill="#333">Yield final event</text>
+
+        <!-- 15. SSE Stream -> React Chat: Display response -->
+        <line x1="757" y1="508" x2="144" y2="508" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+        <text x="450" y="503" text-anchor="middle" font-size="9" fill="#2563eb">Display response (React Chat)</text>
+      </svg>
+    </div>
+
+    <h3>Workflow Execution Flow</h3>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 440" width="620" height="440" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <defs>
+          <marker id="arrow2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#666"/>
+          </marker>
+        </defs>
+
+        <!-- Participant boxes -->
+        <rect x="25" y="5" width="60" height="28" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="55" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#1e40af">User</text>
+
+        <rect x="165" y="5" width="60" height="28" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="195" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#1e40af">React</text>
+
+        <rect x="315" y="5" width="70" height="28" rx="4" fill="#ffedd5" stroke="#fdba74" stroke-width="1.2"/>
+        <text x="350" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#9a3412">FastAPI</text>
+
+        <rect x="460" y="5" width="110" height="28" rx="4" fill="#fef9c3" stroke="#fde047" stroke-width="1.2"/>
+        <text x="515" y="24" text-anchor="middle" font-size="10" font-weight="600" fill="#854d0e">TreeInterpreter</text>
+
+        <!-- Lifelines -->
+        <line x1="55" y1="33" x2="55" y2="430" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="195" y1="33" x2="195" y2="430" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="350" y1="33" x2="350" y2="430" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="515" y1="33" x2="515" y2="430" stroke="#ccc" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <!-- 1. User -> React: Click Execute, enter inputs -->
+        <line x1="55" y1="60" x2="188" y2="60" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="121" y="55" text-anchor="middle" font-size="9" fill="#333">Click Execute, enter inputs</text>
+
+        <!-- 2. React -> FastAPI: POST /api/execute/{id} -->
+        <line x1="195" y1="84" x2="343" y2="84" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="269" y="79" text-anchor="middle" font-size="9" fill="#333">POST /api/execute/{id}</text>
+
+        <!-- 3. FastAPI -> TreeInterpreter: execute(workflow, inputs) -->
+        <line x1="350" y1="108" x2="508" y2="108" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="429" y="103" text-anchor="middle" font-size="9" fill="#333">execute(workflow, inputs)</text>
+
+        <!-- Self-calls on TreeInterpreter -->
+        <!-- 4. Walk start node -->
+        <path d="M 521 132 L 560 132 L 560 148 L 521 148" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="572" y="143" font-size="9" fill="#333">Walk start node</text>
+
+        <!-- 5. Evaluate condition -->
+        <path d="M 521 168 L 560 168 L 560 184 L 521 184" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="572" y="179" font-size="9" fill="#333">Evaluate condition</text>
+
+        <!-- 6. Follow true/false branch -->
+        <path d="M 521 204 L 560 204 L 560 220 L 521 220" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="572" y="215" font-size="9" fill="#333">Follow branch</text>
+
+        <!-- 7. Execute calculation nodes -->
+        <path d="M 521 240 L 560 240 L 560 256 L 521 256" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="572" y="251" font-size="9" fill="#333">Execute calculations</text>
+
+        <!-- 8. Recurse into subworkflows -->
+        <path d="M 521 276 L 560 276 L 560 292 L 521 292" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="572" y="287" font-size="9" fill="#333">Recurse subworkflows</text>
+
+        <!-- 9. TreeInterpreter -> FastAPI: Return result -->
+        <line x1="515" y1="318" x2="357" y2="318" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
+        <text x="436" y="313" text-anchor="middle" font-size="9" fill="#333">{output, path, context}</text>
+
+        <!-- 10. FastAPI -> React: JSON response -->
+        <line x1="350" y1="346" x2="202" y2="346" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
+        <text x="276" y="341" text-anchor="middle" font-size="9" fill="#333">JSON response</text>
+
+        <!-- 11. React -> React: Highlight execution path -->
+        <path d="M 201 370 L 240 370 L 240 386 L 201 386" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="252" y="381" font-size="9" fill="#333">Highlight execution path on canvas</text>
+      </svg>
+    </div>
+
+    <!-- =========================================================
+         Design Patterns
+         ========================================================= -->
+    <h2>Design Patterns</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Pattern</th>
+          <th>Where Used</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Observer</td>
+          <td>EventBus (events/bus.py)</td>
+          <td>Decouple tool execution from transport. Subscribers receive TOOL_STARTED, TOOL_COMPLETED events without knowing about SSE or the frontend.</td>
+        </tr>
+        <tr>
+          <td>Registry</td>
+          <td>ToolRegistry (tools/core.py)</td>
+          <td>Central catalog of 30+ tools. Generates JSON schemas for the LLM automatically. New tools are registered declaratively.</td>
+        </tr>
+        <tr>
+          <td>Interpreter</td>
+          <td>TreeInterpreter (execution/interpreter.py) + Parser/Evaluator</td>
+          <td>Walk the workflow tree at runtime, evaluate conditions, execute calculations. Classic interpreter pattern for a domain-specific language.</td>
+        </tr>
+        <tr>
+          <td>Factory</td>
+          <td>OrchestratorFactory (agents/orchestrator_factory.py)</td>
+          <td>Create configured Orchestrator instances with the correct tools, event bus, and session context for each chat interaction.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- =========================================================
+         Data Storage
+         ========================================================= -->
+    <h2>Data Storage</h2>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 520" width="820" height="520" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <defs>
+          <marker id="arrow3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#666"/>
+          </marker>
+        </defs>
+
+        <!-- ===== Group 1: workflows.sqlite ===== -->
+        <rect x="10" y="10" width="340" height="380" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="180" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">workflows.sqlite</text>
+
+        <!-- Table: workflows -->
+        <rect x="25" y="48" width="310" height="230" rx="4" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+        <rect x="25" y="48" width="310" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="180" y="65" text-anchor="middle" font-size="12" font-weight="600" fill="#1e40af">workflows</text>
+        <text x="35" y="88" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
+        <text x="35" y="103" font-size="10" fill="#333">user_id</text>
+        <text x="35" y="118" font-size="10" fill="#333">name</text>
+        <text x="35" y="133" font-size="10" fill="#333">description</text>
+        <text x="35" y="148" font-size="10" fill="#333">domain</text>
+        <text x="35" y="163" font-size="10" fill="#333">tags (JSON)</text>
+        <text x="35" y="178" font-size="10" fill="#333">nodes (JSON)</text>
+        <text x="35" y="193" font-size="10" fill="#333">edges (JSON)</text>
+        <text x="180" y="88" font-size="10" fill="#333">inputs (JSON)</text>
+        <text x="180" y="103" font-size="10" fill="#333">outputs (JSON)</text>
+        <text x="180" y="118" font-size="10" fill="#333">tree (JSON)</text>
+        <text x="180" y="133" font-size="10" fill="#333">output_type</text>
+        <text x="180" y="148" font-size="10" fill="#333">is_draft</text>
+        <text x="180" y="163" font-size="10" fill="#333">building</text>
+        <text x="180" y="178" font-size="10" fill="#333">conversation_id</text>
+        <text x="180" y="193" font-size="10" fill="#333">created_at</text>
+        <text x="180" y="208" font-size="10" fill="#333">updated_at</text>
+
+        <!-- Table: workflow_votes -->
+        <rect x="25" y="290" width="200" height="88" rx="4" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+        <rect x="25" y="290" width="200" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="125" y="307" text-anchor="middle" font-size="12" font-weight="600" fill="#1e40af">workflow_votes</text>
+        <text x="35" y="330" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
+        <text x="35" y="345" font-size="10" fill="#333">workflow_id (FK)</text>
+        <text x="35" y="360" font-size="10" fill="#333">user_id</text>
+        <text x="135" y="330" font-size="10" fill="#333">vote</text>
+        <text x="135" y="345" font-size="10" fill="#333">created_at</text>
+
+        <!-- FK line: workflow_votes.workflow_id -> workflows.id -->
+        <line x1="80" y1="290" x2="80" y2="278" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrow3)"/>
+
+        <!-- Table: schema_version -->
+        <rect x="240" y="290" width="95" height="58" rx="4" fill="#fff" stroke="#93c5fd" stroke-width="1.2"/>
+        <rect x="240" y="290" width="95" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+        <text x="287" y="307" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">schema_version</text>
+        <text x="250" y="330" font-size="10" fill="#333">version</text>
+
+        <!-- ===== Group 2: auth.sqlite ===== -->
+        <rect x="370" y="10" width="210" height="380" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="475" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">auth.sqlite</text>
+
+        <!-- Table: users -->
+        <rect x="385" y="48" width="180" height="128" rx="4" fill="#fff" stroke="#6ee7b7" stroke-width="1.2"/>
+        <rect x="385" y="48" width="180" height="24" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.2"/>
+        <text x="475" y="65" text-anchor="middle" font-size="12" font-weight="600" fill="#047857">users</text>
+        <text x="395" y="88" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
+        <text x="395" y="103" font-size="10" fill="#333">email (UNIQUE)</text>
+        <text x="395" y="118" font-size="10" fill="#333">name</text>
+        <text x="395" y="133" font-size="10" fill="#333">password_hash</text>
+        <text x="395" y="148" font-size="10" fill="#333">created_at</text>
+
+        <!-- Table: sessions -->
+        <rect x="385" y="195" width="180" height="108" rx="4" fill="#fff" stroke="#6ee7b7" stroke-width="1.2"/>
+        <rect x="385" y="195" width="180" height="24" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.2"/>
+        <text x="475" y="212" text-anchor="middle" font-size="12" font-weight="600" fill="#047857">sessions</text>
+        <text x="395" y="235" font-size="10" fill="#333"><tspan font-weight="600">token</tspan> (PK)</text>
+        <text x="395" y="250" font-size="10" fill="#333">user_id (FK)</text>
+        <text x="395" y="265" font-size="10" fill="#333">created_at</text>
+        <text x="395" y="280" font-size="10" fill="#333">expires_at</text>
+
+        <!-- FK line: sessions.user_id -> users.id -->
+        <line x1="475" y1="195" x2="475" y2="180" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrow3)"/>
+
+        <!-- ===== Group 3: conversation_log.sqlite ===== -->
+        <rect x="600" y="10" width="210" height="230" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="705" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">conversation_log.sqlite</text>
+
+        <!-- Table: conversations -->
+        <rect x="615" y="48" width="180" height="128" rx="4" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+        <rect x="615" y="48" width="180" height="24" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+        <text x="705" y="65" text-anchor="middle" font-size="12" font-weight="600" fill="#5b21b6">conversations</text>
+        <text x="625" y="88" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
+        <text x="625" y="103" font-size="10" fill="#333">user_id</text>
+        <text x="625" y="118" font-size="10" fill="#333">workflow_id</text>
+        <text x="625" y="133" font-size="10" fill="#333">messages (JSON)</text>
+        <text x="625" y="148" font-size="10" fill="#333">created_at</text>
+        <text x="625" y="163" font-size="10" fill="#333">updated_at</text>
+
+        <!-- Legend -->
+        <text x="410" y="490" text-anchor="middle" font-size="10" fill="#6b7280">PK = Primary Key, FK = Foreign Key. Lines indicate foreign key relationships.</text>
+      </svg>
+    </div>
+
+    <p>LEMON uses three separate SQLite databases to isolate concerns. Workflow data (definitions, votes, schema version) is kept in workflows.sqlite. Authentication data (users, sessions) is in auth.sqlite. Conversation history for audit purposes is in conversation_log.sqlite. The schema uses version-based migrations, currently at version 8.</p>
+
+    <!-- =========================================================
+         API Endpoints
+         ========================================================= -->
+    <h2>API Endpoints</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>Path</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>POST</td><td>/api/chat/send</td><td>Send chat message, returns SSE stream</td></tr>
+        <tr><td>POST</td><td>/api/chat/cancel</td><td>Cancel in-progress chat task</td></tr>
+        <tr><td>POST</td><td>/api/chat/resume</td><td>Re-attach to running task SSE stream</td></tr>
+        <tr><td>GET</td><td>/api/chat/{conversation_id}</td><td>Get conversation history</td></tr>
+        <tr><td>GET</td><td>/api/workflows</td><td>List user's workflows</td></tr>
+        <tr><td>POST</td><td>/api/workflows</td><td>Create new workflow</td></tr>
+        <tr><td>GET</td><td>/api/workflows/{id}</td><td>Get workflow by ID</td></tr>
+        <tr><td>PUT</td><td>/api/workflows/{id}</td><td>Update workflow</td></tr>
+        <tr><td>DELETE</td><td>/api/workflows/{id}</td><td>Delete workflow</td></tr>
+        <tr><td>POST</td><td>/api/execute/{workflow_id}</td><td>Execute workflow with inputs</td></tr>
+        <tr><td>POST</td><td>/api/workflows/{id}/execute</td><td>Start stepped execution (SSE)</td></tr>
+        <tr><td>POST</td><td>/api/executions/{id}/pause</td><td>Pause stepped execution</td></tr>
+        <tr><td>POST</td><td>/api/executions/{id}/resume</td><td>Resume stepped execution</td></tr>
+        <tr><td>POST</td><td>/api/executions/{id}/stop</td><td>Stop stepped execution</td></tr>
+        <tr><td>POST</td><td>/api/validate</td><td>Validate workflow structure</td></tr>
+        <tr><td>POST</td><td>/api/workflows/compile</td><td>Compile workflow to Python</td></tr>
+        <tr><td>GET</td><td>/api/search</td><td>Search workflows</td></tr>
+        <tr><td>POST</td><td>/api/auth/register</td><td>Register new user</td></tr>
+        <tr><td>POST</td><td>/api/auth/login</td><td>Login</td></tr>
+        <tr><td>POST</td><td>/api/auth/logout</td><td>Logout</td></tr>
+        <tr><td>GET</td><td>/api/auth/me</td><td>Current user info</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>
