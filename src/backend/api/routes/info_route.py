@@ -25,7 +25,10 @@ def register_info_route(app: FastAPI) -> None:
                 "name": "LEMON Backend",
                 "version": "0.1",
                 "endpoints": {
-                    "chat": "/api/chat",
+                    "chat_send": "/api/chat/send",
+                    "chat_cancel": "/api/chat/cancel",
+                    "chat_resume": "/api/chat/resume",
+                    "chat_history": "/api/chat/{conversation_id}",
                     "workflows": "/api/workflows",
                     "search": "/api/search",
                 },
