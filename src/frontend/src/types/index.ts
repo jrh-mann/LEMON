@@ -668,31 +668,11 @@ export interface SubmitValidationResponse {
   session_complete: boolean
 }
 
-export interface ChatRequest {
-  message: string
-  conversation_id?: string
-  image?: string
-}
-
-export interface ChatResponse {
-  conversation_id: string
-  response: string
-  tool_calls: ToolCall[]
-}
-
-export interface ApiInfo {
-  name: string
-  version: string
-  endpoints: Record<string, string>
-}
-
 export interface ApiError {
   error: string
 }
 
 // ============ UI State Types ============
-
-export type Stage = 'idle' | 'analyzing' | 'awaiting_approval' | 'tests_running' | 'code_refining' | 'done'
 
 export type ModalType = 'validation' | 'save' | 'execute' | 'none'
 

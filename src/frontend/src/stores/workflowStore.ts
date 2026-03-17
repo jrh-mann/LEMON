@@ -33,7 +33,6 @@ export interface SubflowExecutionState {
 interface WorkflowState {
   // Workflow library
   workflows: WorkflowSummary[]
-  isLoadingWorkflows: boolean
 
   // Current workflow state
   currentWorkflow: Workflow | null
@@ -74,7 +73,6 @@ interface WorkflowState {
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
-  setLoadingWorkflows: (loading: boolean) => void
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
@@ -212,7 +210,6 @@ const persistWorkflowGraph = async (
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Initial state
   workflows: [],
-  isLoadingWorkflows: false,
 
   // ID starts empty — WorkflowPage sets it from the URL (single source of truth)
   currentWorkflow: createEmptyWorkflow(),
@@ -243,7 +240,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
-  setLoadingWorkflows: (loading) => set({ isLoadingWorkflows: loading }),
   setCurrentWorkflow: (workflow) => set({ currentWorkflow: workflow }),
 
   // Sets just the workflow ID for the current workflow
