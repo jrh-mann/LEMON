@@ -330,12 +330,10 @@ def _guidance_notes(guidance: List[Dict[str, Any]]) -> str:
 
 def build_system_prompt(
     *,
-    last_session_id: Optional[str] = None,
     has_files: Optional[List[Dict[str, Any]]] = None,
     allow_tools: bool = True,
     reasoning: str = "",
     guidance: Optional[List[Dict[str, Any]]] = None,
-    current_workflow_id: Optional[str] = None,
     current_workflow_name: Optional[str] = None,
 ) -> str:
     """Build the system prompt for the orchestrator LLM.
@@ -348,12 +346,10 @@ def build_system_prompt(
     early so they get maximum attention from the model.
 
     Args:
-        last_session_id: Unused, kept for call-site compatibility.
         has_files: List of uploaded file metadata dicts, if any.
         allow_tools: Whether tool calling is enabled for this response.
         reasoning: Analysis reasoning context from prior analysis.
         guidance: Guidance notes extracted from the workflow image.
-        current_workflow_id: Unused, kept for call-site compatibility.
         current_workflow_name: Human-readable name of the current workflow.
 
     Returns:
