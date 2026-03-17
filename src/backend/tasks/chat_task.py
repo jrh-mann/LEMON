@@ -56,7 +56,7 @@ class ChatTask:
     sink: EventSink
     conversation_store: ConversationStore
     repo_root: Path
-    workflow_store: WorkflowStore
+    workflow_store: Optional[WorkflowStore]
     user_id: str
     task_id: str
     message: str
