@@ -19,9 +19,9 @@
     <!-- Abstract -->
     <section>
       <h2>Abstract</h2>
-      <p>Clinical decision workflows are typically recorded as static flowcharts, written protocols, or informal verbal descriptions. Converting these into structured, executable formats requires technical expertise that most clinicians do not have, making the process slow and error-prone.</p>
+      <p>Clinical decision workflows are typically recorded as static flowcharts, written protocols, or informal verbal descriptions. Converting these into structured, executable formats requires technical expertise that most clinicians do not have, making the process slow error-prone, and expensive.</p>
       <p>LEMON is a web-based platform that allows domain experts to create executable decision workflows through natural language conversation or by uploading flowchart images. An LLM orchestrator interprets user input and builds structured decision trees on a visual canvas using a tool-use architecture. The system supports six node types (start, process, decision, calculation, subprocess, end), typed variables, compound conditions, and recursive subworkflows.</p>
-      <p>The team delivered a working system with real-time streaming, a visual workflow editor, stepped execution with live path highlighting, a workflow library, and export to JSON, Python, and PNG. An automated evaluation framework scores workflow extraction quality across six dimensions. The project includes over 1,200 automated tests and is deployed on Azure.</p>
+      <p>Our team delivered a working system with real-time streaming, a visual workflow editor, stepped execution with live path highlighting, a workflow library, and export to JSON, Python, and PNG. An automated evaluation framework scores workflow extraction quality across six dimensions. The project includes over 1,300 automated tests and is deployed on Azure.</p>
     </section>
 
     <!-- Demo Video -->
@@ -67,9 +67,18 @@
       <div class="gantt-container">
         <svg viewBox="0 0 880 440" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
           <!--
-            Timeline: Oct 20 2025 – Mar 27 2026 = 158 days
+            Timeline: Dec 1 2025 – Mar 27 2026 = 116 days
             Chart area: x 220..860 (640px wide), y 40..420
-            Each day = 640 / 158 ≈ 4.051px
+            Each day = 640 / 116 ≈ 5.517px
+            dayToX(d) = 220 + d * 5.517
+
+            Day 0 = Dec 1
+            Dec 9  = day 8    Jan 1  = day 31   Feb 1  = day 62
+            Jan 10 = day 40   Jan 15 = day 45   Jan 18 = day 48
+            Jan 28 = day 58   Feb 3  = day 64   Feb 5  = day 66
+            Feb 10 = day 71   Feb 20 = day 81   Mar 1  = day 90
+            Mar 12 = day 101  Mar 13 = day 102  Mar 14 = day 103
+            Mar 16 = day 105  Mar 27 = day 116
           -->
           <defs>
             <style>
@@ -83,86 +92,69 @@
           <!-- Background -->
           <rect x="220" y="30" width="640" height="390" fill="#fafafa" rx="2"/>
 
-          <!-- Vertical grid lines (weekly, starting Oct 20) -->
-          <!-- Week 0: Oct 20 = day 0, x=220 -->
-          <line x1="220" y1="30" x2="220" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 1: Oct 27 = day 7 -->
-          <line x1="248.4" y1="30" x2="248.4" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 2: Nov 3 = day 14 -->
-          <line x1="276.7" y1="30" x2="276.7" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 3: Nov 10 = day 21 -->
-          <line x1="305.1" y1="30" x2="305.1" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 4: Nov 17 = day 28 -->
-          <line x1="333.4" y1="30" x2="333.4" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 5: Nov 24 = day 35 -->
-          <line x1="361.8" y1="30" x2="361.8" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 6: Dec 1 = day 42 -->
-          <line x1="390.1" y1="30" x2="390.1" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 7: Dec 8 = day 49 -->
-          <line x1="418.5" y1="30" x2="418.5" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 8: Dec 15 = day 56 -->
-          <line x1="446.9" y1="30" x2="446.9" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 9: Dec 22 = day 63 -->
-          <line x1="475.2" y1="30" x2="475.2" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 10: Dec 29 = day 70 -->
-          <line x1="503.6" y1="30" x2="503.6" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 11: Jan 5 = day 77 -->
-          <line x1="531.9" y1="30" x2="531.9" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 12: Jan 12 = day 84 -->
-          <line x1="560.3" y1="30" x2="560.3" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 13: Jan 19 = day 91 -->
-          <line x1="588.6" y1="30" x2="588.6" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 14: Jan 26 = day 98 -->
-          <line x1="617.0" y1="30" x2="617.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 15: Feb 2 = day 105 -->
-          <line x1="645.3" y1="30" x2="645.3" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 16: Feb 9 = day 112 -->
-          <line x1="673.7" y1="30" x2="673.7" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 17: Feb 16 = day 119 -->
-          <line x1="702.1" y1="30" x2="702.1" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 18: Feb 23 = day 126 -->
-          <line x1="730.4" y1="30" x2="730.4" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 19: Mar 2 = day 133 -->
-          <line x1="758.8" y1="30" x2="758.8" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 20: Mar 9 = day 140 -->
-          <line x1="787.1" y1="30" x2="787.1" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 21: Mar 16 = day 147 -->
-          <line x1="815.5" y1="30" x2="815.5" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
-          <!-- Week 22: Mar 23 = day 154 -->
-          <line x1="843.8" y1="30" x2="843.8" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Vertical grid lines (weekly, starting Dec 1) -->
+          <line x1="220.0" y1="30" x2="220.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 8 = day 7 -->
+          <line x1="258.6" y1="30" x2="258.6" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 15 = day 14 -->
+          <line x1="297.2" y1="30" x2="297.2" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 22 = day 21 -->
+          <line x1="335.9" y1="30" x2="335.9" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 29 = day 28 -->
+          <line x1="374.5" y1="30" x2="374.5" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 5 = day 35 -->
+          <line x1="413.1" y1="30" x2="413.1" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 12 = day 42 -->
+          <line x1="451.7" y1="30" x2="451.7" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 19 = day 49 -->
+          <line x1="490.3" y1="30" x2="490.3" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 26 = day 56 -->
+          <line x1="529.0" y1="30" x2="529.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 2 = day 63 -->
+          <line x1="567.6" y1="30" x2="567.6" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 9 = day 70 -->
+          <line x1="606.2" y1="30" x2="606.2" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 16 = day 77 -->
+          <line x1="644.8" y1="30" x2="644.8" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 23 = day 84 -->
+          <line x1="683.4" y1="30" x2="683.4" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 2 = day 91 -->
+          <line x1="722.0" y1="30" x2="722.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 9 = day 98 -->
+          <line x1="760.7" y1="30" x2="760.7" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 16 = day 105 -->
+          <line x1="799.3" y1="30" x2="799.3" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 23 = day 112 -->
+          <line x1="837.9" y1="30" x2="837.9" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
 
           <!-- Month labels along the top -->
-          <!-- Oct: days 0-11 (Oct 20-31), center ~day 5.5, x≈242 -->
-          <text x="242" y="20" class="month-label" text-anchor="middle">Oct</text>
-          <!-- Nov: days 12-41 (Nov 1-30), center ~day 26.5, x≈327 -->
-          <text x="327" y="20" class="month-label" text-anchor="middle">Nov</text>
-          <!-- Dec: days 42-72 (Dec 1-31), center ~day 57, x≈451 -->
-          <text x="451" y="20" class="month-label" text-anchor="middle">Dec</text>
-          <!-- Jan: days 73-103 (Jan 1-31), center ~day 88, x≈576 -->
-          <text x="576" y="20" class="month-label" text-anchor="middle">Jan</text>
-          <!-- Feb: days 104-131 (Feb 1-28), center ~day 117.5, x≈696 -->
-          <text x="696" y="20" class="month-label" text-anchor="middle">Feb</text>
-          <!-- Mar: days 132-158 (Mar 1-27), center ~day 145, x≈807 -->
-          <text x="807" y="20" class="month-label" text-anchor="middle">Mar</text>
+          <!-- Dec: days 0-30, center ~day 15, x≈303 -->
+          <text x="303" y="20" class="month-label" text-anchor="middle">Dec</text>
+          <!-- Jan: days 31-61, center ~day 46, x≈474 -->
+          <text x="474" y="20" class="month-label" text-anchor="middle">Jan</text>
+          <!-- Feb: days 62-89, center ~day 75.5, x≈636 -->
+          <text x="636" y="20" class="month-label" text-anchor="middle">Feb</text>
+          <!-- Mar: days 90-116, center ~day 103, x≈788 -->
+          <text x="788" y="20" class="month-label" text-anchor="middle">Mar</text>
 
           <!--
             Phase bars: 10 phases, chart area y 40..420 → 380px
             Row height = 38px, bar height = 24px, vertical padding = 7px
             y_bar(i) = 40 + i*38 + 7
 
-            dayToX(d) = 220 + d * (640/158) = 220 + d * 4.051
+            dayToX(d) = 220 + d * 5.517
 
-            Phase data (days from Oct 20):
-            1. Initial Prototyping:     Dec 9 = day 50,  Jan 10 = day 82   → x=422.5, w=129.6
-            2. Backend & Orchestrator:  Jan 10 = day 82, Jan 28 = day 100  → x=552.2, w=72.9
-            3. Canvas & Visual Editor:  Jan 15 = day 87, Feb 5 = day 108   → x=572.4, w=85.1
-            4. Tool System:             Jan 18 = day 90, Feb 10 = day 113  → x=584.6, w=93.2
-            5. Streaming (SSE):         Feb 3 = day 106, Mar 12 = day 143  → x=649.4, w=149.9
-            6. Subworkflows:            Feb 20 = day 123, Mar 13 = day 144 → x=718.3, w=85.1
-            7. Evaluation Framework:    Mar 1 = day 132, Mar 12 = day 143  → x=754.7, w=44.6
-            8. Security Hardening:      Mar 14 = day 145, Mar 16 = day 147 → x=807.4, w=8.1
-            9. Testing:                 Jan 18 = day 90, Mar 16 = day 147  → x=584.6, w=231.0
-            10. Docs & Deployment:      Mar 13 = day 144, Mar 27 = day 158 → x=803.3, w=56.7
+            Phase data (days from Dec 1):
+            1. Initial Prototyping:     Dec 9 = day 8,   Jan 10 = day 40  → x=264.1, w=176.5
+            2. Backend & Orchestrator:  Jan 10 = day 40,  Jan 28 = day 58  → x=440.7, w=99.3
+            3. Canvas & Visual Editor:  Jan 15 = day 45,  Feb 5 = day 66   → x=468.3, w=115.9
+            4. Tool System:             Jan 18 = day 48,  Feb 10 = day 71  → x=484.8, w=126.9
+            5. Streaming (SSE):         Feb 3 = day 64,   Mar 12 = day 101 → x=573.1, w=204.1
+            6. Subworkflows:            Feb 20 = day 81,  Mar 13 = day 102 → x=666.9, w=115.9
+            7. Evaluation Framework:    Mar 1 = day 90,   Mar 12 = day 101 → x=716.5, w=60.7
+            8. Security Hardening:      Mar 14 = day 103, Mar 16 = day 105 → x=788.2, w=11.0
+            9. Testing:                 Jan 18 = day 48,  Mar 16 = day 105 → x=484.8, w=314.5
+            10. Docs & Deployment:      Mar 13 = day 102, Mar 27 = day 116 → x=782.7, w=77.2
           -->
 
           <!-- Phase labels (left side) -->
@@ -179,34 +171,34 @@
 
           <!-- Phase bars -->
           <!-- 1. Initial Prototyping: #4CAF50 -->
-          <rect x="422.5" y="47" width="129.6" height="24" rx="3" fill="#4CAF50"/>
+          <rect x="264.1" y="47" width="176.5" height="24" rx="3" fill="#4CAF50"/>
 
           <!-- 2. Backend & Orchestrator: #2196F3 -->
-          <rect x="552.2" y="85" width="72.9" height="24" rx="3" fill="#2196F3"/>
+          <rect x="440.7" y="85" width="99.3" height="24" rx="3" fill="#2196F3"/>
 
           <!-- 3. Canvas & Visual Editor: #9C27B0 -->
-          <rect x="572.4" y="123" width="85.1" height="24" rx="3" fill="#9C27B0"/>
+          <rect x="468.3" y="123" width="115.9" height="24" rx="3" fill="#9C27B0"/>
 
           <!-- 4. Tool System: #FF9800 -->
-          <rect x="584.6" y="161" width="93.2" height="24" rx="3" fill="#FF9800"/>
+          <rect x="484.8" y="161" width="126.9" height="24" rx="3" fill="#FF9800"/>
 
           <!-- 5. Streaming (Socket.IO, then SSE): #F44336 -->
-          <rect x="649.4" y="199" width="149.9" height="24" rx="3" fill="#F44336"/>
+          <rect x="573.1" y="199" width="204.1" height="24" rx="3" fill="#F44336"/>
 
           <!-- 6. Subworkflows: #00BCD4 -->
-          <rect x="718.3" y="237" width="85.1" height="24" rx="3" fill="#00BCD4"/>
+          <rect x="666.9" y="237" width="115.9" height="24" rx="3" fill="#00BCD4"/>
 
           <!-- 7. Evaluation Framework: #E91E63 -->
-          <rect x="754.7" y="275" width="44.6" height="24" rx="3" fill="#E91E63"/>
+          <rect x="716.5" y="275" width="60.7" height="24" rx="3" fill="#E91E63"/>
 
           <!-- 8. Security Hardening: #795548 -->
-          <rect x="807.4" y="313" width="8.1" height="24" rx="3" fill="#795548"/>
+          <rect x="788.2" y="313" width="11.0" height="24" rx="3" fill="#795548"/>
 
           <!-- 9. Testing: #607D8B -->
-          <rect x="584.6" y="351" width="231.0" height="24" rx="3" fill="#607D8B"/>
+          <rect x="484.8" y="351" width="314.5" height="24" rx="3" fill="#607D8B"/>
 
           <!-- 10. Documentation & Deployment: #8BC34A -->
-          <rect x="803.3" y="389" width="56.7" height="24" rx="3" fill="#8BC34A"/>
+          <rect x="782.7" y="389" width="77.2" height="24" rx="3" fill="#8BC34A"/>
         </svg>
       </div>
     </section>

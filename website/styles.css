@@ -46,10 +46,10 @@ body {
   z-index: 100;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
-  height: 56px;
+  min-height: 56px;
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  padding: 8px 24px;
 }
 
 .nav-inner {
