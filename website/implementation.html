@@ -16,14 +16,14 @@
     <!-- LLM Orchestrator and Tool Use -->
     <h2>LLM Orchestrator and Tool Use</h2>
 
-    <p>The orchestrator manages a multi-turn conversation with Claude where each turn may involve multiple tool calls that modify the workflow. The Orchestrator class maintains workflow state, conversation history, and a ToolRegistry containing 30+ tools. Each turn sends the conversation to Claude with available tool schemas. Claude responds with tool calls (e.g. add_node, add_connection, modify_node) which are executed against the workflow state. Results are fed back until Claude responds with text. A maximum of 50 iterations prevents runaway loops.</p>
+    <p>The orchestrator manages a multi-turn conversation with Claude where each turn may involve multiple tool calls that modify the workflow. The Orchestrator class maintains workflow state, conversation history, and a ToolRegistry containing over 20 tools. Each turn sends the conversation to Claude with available tool schemas. Claude responds with tool calls (e.g. add_node, add_connection, modify_node) which are executed against the workflow state. Results are fed back until Claude responds with text. A maximum of 50 iterations prevents runaway loops.</p>
     <p>Libraries: Anthropic SDK for Claude API calls, Pydantic for tool parameter validation.</p>
 
 <pre>
 # Simplified main loop from orchestrator.py
 def run_turn(self, user_message):
     self.conversation.add_user_message(user_message)
-    for _ in range(MAX_ITERATIONS):
+    for _ in range(_MAX_TOOL_ITERATIONS):
         response = call_llm(
             self.conversation.messages,
             self.tools.schemas
@@ -102,7 +102,7 @@ class TokenType(Enum):
 
     <p>Subprocess nodes call other workflows, passing inputs and receiving outputs as derived variables. This allows complex workflows to be decomposed into reusable pieces. When the TreeInterpreter encounters a subprocess node, it loads the referenced workflow from the database, maps the parent's variables to the child's inputs, and executes the child workflow recursively. The child's output becomes a derived variable in the parent's context. A build-depth limit prevents infinite recursion. During authoring, subworkflows are built by independent BuilderTask instances that run their own orchestrator conversation in a background thread.</p>
     <p>Libraries: FastAPI background tasks, SQLite for workflow storage.</p>
-    <p>Subworkflow execution follows a recursive pattern: the interpreter calls itself with the child workflow and mapped inputs, then injects the result back into the parent context. Depth limiting (default 5 levels) prevents infinite recursion from circular references.</p>
+    <p>Subworkflow execution follows a recursive pattern: the interpreter calls itself with the child workflow and mapped inputs, then injects the result back into the parent context. Depth limiting (default 2 levels) prevents infinite recursion from circular references.</p>
 
     <!-- Image-to-Workflow -->
     <h2>Image-to-Workflow</h2>

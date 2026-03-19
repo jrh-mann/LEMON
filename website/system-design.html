@@ -74,7 +74,7 @@
         <rect x="50" y="316" width="150" height="32" rx="4" fill="#fff" stroke="#c4b5fd"/>
         <text x="125" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Orchestrator</text>
         <rect x="215" y="316" width="220" height="32" rx="4" fill="#fff" stroke="#c4b5fd"/>
-        <text x="325" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Tool Registry (30+ tools)</text>
+        <text x="325" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Tool Registry (20+ tools)</text>
         <rect x="450" y="316" width="150" height="32" rx="4" fill="#fff" stroke="#c4b5fd"/>
         <text x="525" y="337" text-anchor="middle" font-size="11" fill="#5b21b6">Event Bus</text>
 
@@ -387,7 +387,7 @@
         <tr>
           <td>Registry</td>
           <td>ToolRegistry (tools/core.py)</td>
-          <td>Central catalog of 30+ tools. Generates JSON schemas for the LLM automatically. New tools are registered declaratively.</td>
+          <td>Central catalog of 20+ tools. Generates JSON schemas for the LLM automatically. New tools are registered declaratively.</td>
         </tr>
         <tr>
           <td>Interpreter</td>
@@ -396,7 +396,7 @@
         </tr>
         <tr>
           <td>Factory</td>
-          <td>OrchestratorFactory (agents/orchestrator_factory.py)</td>
+          <td>build_orchestrator (agents/orchestrator_factory.py)</td>
           <td>Create configured Orchestrator instances with the correct tools, event bus, and session context for each chat interaction.</td>
         </tr>
       </tbody>

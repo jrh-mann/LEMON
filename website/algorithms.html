@@ -16,19 +16,19 @@
 
     <h3>LLM Orchestrator (Tool-Use Loop)</h3>
     <p>The core of LEMON is an orchestrator that manages a multi-turn conversation with Claude [1]. In each turn, the orchestrator sends the conversation history and available tools to the LLM. Claude responds with either text (displayed to the user) or tool calls (executed against the workflow state). Tool results are fed back and Claude may issue further calls. This loop continues until Claude responds with text only, or a safety limit is reached (50 iterations maximum).</p>
-    <p>The orchestrator maintains workflow state (nodes, edges, variables, outputs), conversation history, and session context. A ToolRegistry provides JSON schemas for 30+ tools that the LLM can call, including add_node, add_connection, modify_node, add_workflow_variable, validate_workflow, and save_workflow.</p>
+    <p>The orchestrator maintains workflow state (nodes, edges, variables, outputs), conversation history, and session context. A ToolRegistry provides JSON schemas for over 20 tools that the LLM can call, including add_node, add_connection, modify_node, add_workflow_variable, validate_workflow, and save_workflow.</p>
 
 <pre>
 # Simplified orchestrator loop (from orchestrator.py)
 class Orchestrator:
     def __init__(self, tools, event_bus):
-        self.tools = tools          # ToolRegistry with 30+ tools
+        self.tools = tools          # ToolRegistry with 20+ tools
         self.workflow = {"nodes": [], "edges": [], "variables": [], "outputs": []}
         self.conversation = ConversationManager(context_limit=200_000)
 
     def run_turn(self, user_message):
         self.conversation.add_user_message(user_message)
-        for iteration in range(MAX_ITERATIONS):  # MAX_ITERATIONS = 50
+        for iteration in range(_MAX_TOOL_ITERATIONS):  # _MAX_TOOL_ITERATIONS = 50
             response = call_llm(self.conversation.messages, self.tools.schemas)
             if response.has_text_only:
                 return response.text
