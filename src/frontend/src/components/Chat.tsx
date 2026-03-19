@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
@@ -9,6 +10,46 @@ import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
 const EMPTY_MESSAGES: Message[] = []
+
+// Module-scope: stable reference, no re-creation per render.
+// DOMPurify strips any injected scripts/event handlers from marked output.
+function renderMarkdown(content: string): string {
+  try {
+    return DOMPurify.sanitize(marked.parse(content, { async: false }) as string)
+  } catch {
+    return DOMPurify.sanitize(content)
+  }
+}
+
+// Segment type for splitting streaming content into text and thinking blocks.
+type Segment = { type: 'text' | 'thinking'; content: string }
+
+// Split streaming content into text and thinking segments for rendering.
+// Thinking segments get rendered as collapsible dropdowns (completed) or
+// expanded dimmed text (currently streaming).
+function splitIntoSegments(raw: string): Segment[] {
+  const segments: Segment[] = []
+  let remaining = raw
+  while (remaining) {
+    const startIdx = remaining.indexOf('<!--THINKING_START-->')
+    if (startIdx === -1) {
+      if (remaining) segments.push({ type: 'text', content: remaining })
+      break
+    }
+    if (startIdx > 0) {
+      segments.push({ type: 'text', content: remaining.slice(0, startIdx) })
+    }
+    remaining = remaining.slice(startIdx + '<!--THINKING_START-->'.length)
+    const endIdx = remaining.indexOf('<!--THINKING_END-->')
+    if (endIdx === -1) {
+      if (remaining) segments.push({ type: 'thinking', content: remaining })
+      break
+    }
+    segments.push({ type: 'thinking', content: remaining.slice(0, endIdx) })
+    remaining = remaining.slice(endIdx + '<!--THINKING_END-->'.length)
+  }
+  return segments
+}
 
 export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const [inputValue, setInputValue] = useState('')
@@ -249,45 +290,8 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }
 
-  // Render markdown safely
-  const renderMarkdown = (content: string): string => {
-    try {
-      return marked.parse(content, { async: false }) as string
-    } catch {
-      return content
-    }
-  }
-
-  // Split streaming content into text and thinking segments for rendering.
-  // Thinking segments get rendered as collapsible dropdowns (completed) or
-  // expanded dimmed text (currently streaming).
-  type Segment = { type: 'text' | 'thinking'; content: string }
-  const splitIntoSegments = (raw: string): Segment[] => {
-    const segments: Segment[] = []
-    let remaining = raw
-    while (remaining) {
-      const startIdx = remaining.indexOf('<!--THINKING_START-->')
-      if (startIdx === -1) {
-        // No more thinking blocks — rest is text
-        if (remaining) segments.push({ type: 'text', content: remaining })
-        break
-      }
-      // Text before the thinking block
-      if (startIdx > 0) {
-        segments.push({ type: 'text', content: remaining.slice(0, startIdx) })
-      }
-      remaining = remaining.slice(startIdx + '<!--THINKING_START-->'.length)
-      const endIdx = remaining.indexOf('<!--THINKING_END-->')
-      if (endIdx === -1) {
-        // Unclosed thinking block (currently streaming)
-        if (remaining) segments.push({ type: 'thinking', content: remaining })
-        break
-      }
-      segments.push({ type: 'thinking', content: remaining.slice(0, endIdx) })
-      remaining = remaining.slice(endIdx + '<!--THINKING_END-->'.length)
-    }
-    return segments
-  }
+  // Memoize segment parsing — only re-runs when streamingContent changes
+  const segments = useMemo(() => splitIntoSegments(streamingContent), [streamingContent])
 
   const isDragging = useRef(false)
   const startY = useRef(0)
@@ -359,7 +363,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           </div>
         ) : (
           messages.map((message) => (
-            <MessageBubble key={message.id} message={message} renderMarkdown={renderMarkdown} />
+            <MessageBubble key={message.id} message={message} />
           ))
         )}
 
@@ -391,7 +395,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
               <div className="message-content">
                 {streamingContent ? (
                   <>
-                    {splitIntoSegments(streamingContent).map((seg, i, arr) => {
+                    {segments.map((seg, i, arr) => {
                       if (seg.type === 'text') {
                         return (
                           <div
@@ -608,13 +612,12 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   )
 }
 
-// Message bubble component
-function MessageBubble({
+// Message bubble component — memoized to avoid re-renders when message hasn't changed.
+// renderMarkdown is module-scope (stable), so no unstable prop defeats memo.
+const MessageBubble = memo(function MessageBubble({
   message,
-  renderMarkdown,
 }: {
   message: Message
-  renderMarkdown: (content: string) => string
 }) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
@@ -641,7 +644,7 @@ function MessageBubble({
       <div
         className="message-content"
         dangerouslySetInnerHTML={{
-          __html: isUser || isSystem ? message.content : renderAssistantContent(message.content),
+          __html: isUser || isSystem ? DOMPurify.sanitize(message.content) : renderAssistantContent(message.content),
         }}
       />
       {message.tool_calls.length > 0 && (
@@ -666,4 +669,4 @@ function MessageBubble({
       )}
     </div>
   )
-}
+})

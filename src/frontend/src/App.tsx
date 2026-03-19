@@ -32,7 +32,7 @@ function App() {
               <Header />
               <Routes>
                 <Route path="/library" element={<LibraryPage />} />
-                <Route path="/export" element={<ExportPage />} />
+                <Route path="/export/:id?" element={<ExportPage />} />
                 <Route path="/workflow/:id?" element={<WorkflowPage />} />
                 <Route path="/" element={<Navigate to="/workflow" replace />} />
                 <Route path="*" element={<Navigate to="/workflow" replace />} />

@@ -20,8 +20,9 @@ import { hydrateWorkflowDetail } from '../utils/workflowHydration'
 import { sendChatMessage } from '../api/streamActions'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
+import { parseImportedWorkflowJson } from '../utils/workflowImport'
 
-import '../styles/HomePage.css'
+import '../styles/WorkflowLanding.css'
 
 
 export default function WorkflowPage() {
@@ -44,7 +45,7 @@ export default function WorkflowPage() {
     const clearError = useUIStore(s => s.clearError)
 
     // Workflow Store
-    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles } = useWorkflowStore()
+    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles, setImportedWorkflow, markSavedSnapshot } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
     // Ref for the build-completion poll interval — stored here so the
@@ -105,6 +106,10 @@ export default function WorkflowPage() {
     const [homeChatInput, setHomeChatInput] = useState('')
     const [isHomeSending, setIsHomeSending] = useState(false)
     const homeFileInputRef = useRef<HTMLInputElement>(null)
+    const homeImportInputRef = useRef<HTMLInputElement>(null)
+    const [showImportModal, setShowImportModal] = useState(false)
+    const [importJsonText, setImportJsonText] = useState('')
+    const [importError, setImportError] = useState<string | null>(null)
 
     // Initialize session and streaming session state
     useSession(authReady)
@@ -131,7 +136,17 @@ export default function WorkflowPage() {
 
     // Load workflow from URL params, or sync URL ID to store for new workflows
     useEffect(() => {
-        if (!authReady || !workflowId) {
+        if (!authReady) {
+            return
+        }
+
+        if (!workflowId) {
+            loadedWorkflowIdRef.current = null
+            useChatStore.getState().setActiveWorkflowId(null)
+            clearPendingFiles()
+            setCurrentWorkflow(null)
+            setFlowchart({ nodes: [], edges: [] })
+            setAnalysis(null)
             return
         }
 
@@ -152,6 +167,7 @@ export default function WorkflowPage() {
                 setCurrentWorkflow(workflow)
                 setFlowchart(flowchart)
                 setAnalysis(analysis)
+                markSavedSnapshot()
                 loadedWorkflowIdRef.current = workflowId
 
                 // Set active workflow in chatStore so Chat.tsx reads this workflow's conversation.
@@ -297,7 +313,7 @@ export default function WorkflowPage() {
                 pollIntervalRef.current = null
             }
         }
-    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles])
+    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles, markSavedSnapshot])
 
     // Re-fetch workflow when a background subworkflow build completes.
     // Loads final nodes/edges and merges conversation history (with tool calls).
@@ -435,6 +451,64 @@ export default function WorkflowPage() {
         }
     }, [addPendingFile, setError, startWorkflowSession])
 
+    const importIntoNewSession = useCallback(async (jsonString: string) => {
+        const imported = parseImportedWorkflowJson(jsonString)
+        const newId = `wf_${crypto.randomUUID().replace(/-/g, '')}`
+        const importedWorkflow = {
+            ...imported.workflow,
+            id: newId,
+            metadata: {
+                ...imported.workflow.metadata,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            },
+        }
+
+        loadedWorkflowIdRef.current = newId
+        useChatStore.getState().setActiveWorkflowId(newId)
+        setCurrentWorkflowId(newId)
+        setImportedWorkflow(importedWorkflow, imported.flowchart, imported.analysis)
+        setShowImportModal(false)
+        setImportJsonText('')
+        setImportError(null)
+
+        setHomeExited(true)
+        await new Promise(resolve => setTimeout(resolve, 400))
+        navigate(`/workflow/${newId}`)
+        triggerReveal()
+    }, [navigate, setCurrentWorkflowId, setHomeExited, setImportedWorkflow, triggerReveal])
+
+    const handleImportJson = useCallback(async () => {
+        try {
+            await importIntoNewSession(importJsonText)
+        } catch (err) {
+            setImportError(err instanceof Error ? err.message : 'Invalid JSON')
+        }
+    }, [importIntoNewSession, importJsonText])
+
+    const handleImportFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        const reader = new FileReader()
+        reader.onload = async (event) => {
+            try {
+                const content = event.target?.result as string
+                await importIntoNewSession(content)
+            } catch (err) {
+                setImportError(err instanceof Error ? err.message : 'Invalid JSON file')
+            }
+        }
+        reader.onerror = () => {
+            setImportError('Failed to read file')
+        }
+        reader.readAsText(file)
+
+        if (homeImportInputRef.current) {
+            homeImportInputRef.current.value = ''
+        }
+    }, [importIntoNewSession])
+
     const revealedClass = workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
 
     return (
@@ -516,9 +590,54 @@ export default function WorkflowPage() {
                             </svg>
                             New Workflow
                         </button>
+
+                        <button className="home-chip" onClick={() => setShowImportModal(true)}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                                <polyline points="17 8 12 3 7 8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                            Import
+                        </button>
                     </div>
                 </div>
             </div>
+
+            <input
+                ref={homeImportInputRef}
+                type="file"
+                accept=".json,application/json"
+                style={{ display: 'none' }}
+                onChange={handleImportFileUpload}
+            />
+
+            {showImportModal && (
+                <div className="json-modal-overlay" onClick={() => setShowImportModal(false)}>
+                    <div className="json-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>Import Workflow JSON</h3>
+                        <p className="muted small">Start a new session and load a workflow from JSON</p>
+                        <button className="ghost full-width file-upload-btn" onClick={() => homeImportInputRef.current?.click()}>
+                            Choose JSON File
+                        </button>
+                        <div className="import-divider">
+                            <span>or paste JSON</span>
+                        </div>
+                        <textarea
+                            value={importJsonText}
+                            onChange={(e) => {
+                                setImportJsonText(e.target.value)
+                                setImportError(null)
+                            }}
+                            rows={10}
+                        />
+                        {importError && <p className="error-text">{importError}</p>}
+                        <div className="json-modal-actions">
+                            <button className="ghost" onClick={() => setShowImportModal(false)}>Cancel</button>
+                            <button className="primary" onClick={handleImportJson} disabled={!importJsonText.trim()}>Import</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Chat revealedClass={revealedClass} />
             <Modals />

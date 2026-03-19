@@ -63,13 +63,31 @@ class TestCancelNotify:
         reg = TaskRegistry()
         task = FakeTask("t1", "u1", "wf1")
         reg.register(task)
-        result = reg.cancel("t1")
+        result = reg.cancel("t1", "u1")
         assert result is task
         assert task._cancelled
 
     def test_cancel_nonexistent(self):
         reg = TaskRegistry()
-        assert reg.cancel("nope") is None
+        assert reg.cancel("nope", "u1") is None
+
+    def test_cancel_wrong_user_returns_none(self):
+        """A user cannot cancel another user's task."""
+        reg = TaskRegistry()
+        task = FakeTask("t1", "u1", "wf1")
+        reg.register(task)
+        result = reg.cancel("t1", "u_attacker")
+        assert result is None
+        assert not task._cancelled
+
+    def test_cancel_correct_user_succeeds(self):
+        """The owning user can cancel their own task."""
+        reg = TaskRegistry()
+        task = FakeTask("t1", "owner", "wf1")
+        reg.register(task)
+        result = reg.cancel("t1", "owner")
+        assert result is task
+        assert task._cancelled
 
     def test_mark_notified_first_call_true(self):
         reg = TaskRegistry()

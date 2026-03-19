@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Research</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <h1>Research</h1>
+
+    <!-- Related Projects -->
+    <h2>Related Projects</h2>
+
+    <h3>Camunda [1]</h3>
+    <p>Camunda is an open-source BPMN workflow engine designed for business process automation. It provides visual modeling, execution, and monitoring of complex process flows, and is widely used in enterprise environments where teams need to orchestrate multi-step business logic. Key features include a graphical BPMN designer, a REST API for deploying and managing processes, and detailed execution history for auditing. Camunda is built for technical users who are comfortable with BPMN notation and process XML. The lesson for LEMON is that workflow tools need to be accessible to non-technical domain experts. LEMON's chat-based interface removes the need to learn any specialized notation, letting clinicians describe a workflow in plain language and letting the system handle structured representation.</p>
+
+    <h3>OpenCDS [2]</h3>
+    <p>OpenCDS is an open-source clinical decision support framework grounded in HL7 and FHIR standards. It is designed for deep integration with existing health IT infrastructure, including electronic health record systems and clinical data repositories. Key features include standards-compliant rule execution, integration with CDS Hooks, and support for knowledge artifact formats such as CQL. The framework is powerful but requires substantial setup, configuration, and ongoing maintenance to operate within a clinical environment. The lesson for LEMON is that a standalone authoring tool with export capabilities is more practical for rapid workflow prototyping than a deeply integrated framework. LEMON targets the creation and editing phase, exporting workflows that can be consumed downstream rather than embedding itself in live clinical systems.</p>
+
+    <h3>LangChain / LangGraph [3]</h3>
+    <p>LangChain and LangGraph are general-purpose LLM agent frameworks that support tool use, multi-step reasoning, and stateful agent graphs. LangChain provides abstractions for chaining LLM calls with retrieval, memory, and external tools, while LangGraph extends this with a graph-based model for building cyclic and stateful agent workflows. Neither framework is domain-specific. The lesson for LEMON is that the tool-use pattern for structured output generation is effective, but a production workflow builder needs domain-specific constraints, validation rules, and a purpose-built visual editor rather than a generic agent framework. LEMON implements its own tool-use orchestration layer so that every tool call maps to a validated node operation on the workflow graph, with no reliance on a general-purpose agent abstraction.</p>
+
+    <!-- Technology Review -->
+    <h2>Technology Review</h2>
+
+    <h3>LLM Provider</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Option</th>
+          <th>Pros</th>
+          <th>Cons</th>
+          <th>Our Choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Claude (Anthropic)</td>
+          <td>Native tool use API, extended thinking mode, streaming support, strong instruction following</td>
+          <td>Higher per-token cost</td>
+          <td><strong>Yes</strong></td>
+        </tr>
+        <tr>
+          <td>GPT-4 (OpenAI)</td>
+          <td>Mature ecosystem, function calling support, wide adoption</td>
+          <td>Less native tool-use integration than Claude at the time of evaluation</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Gemini (Google)</td>
+          <td>Competitive performance, long context window</td>
+          <td>Less mature tool-use API when evaluated</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Native tool use with structured JSON responses was the deciding factor in choosing Claude [4]. The orchestrator needs precise, validated tool calls rather than free-form text, and Claude's tool use API provided the most reliable mechanism for generating structured node operations during evaluation.</p>
+
+    <h3>Backend Framework</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Option</th>
+          <th>Pros</th>
+          <th>Cons</th>
+          <th>Our Choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>FastAPI</td>
+          <td>Async-native, automatic OpenAPI docs, Pydantic validation, SSE streaming support via StreamingResponse</td>
+          <td></td>
+          <td><strong>Yes</strong></td>
+        </tr>
+        <tr>
+          <td>Flask</td>
+          <td>Simple and flexible, large ecosystem</td>
+          <td>No native async support, SSE requires extensions</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Django</td>
+          <td>Full-featured with ORM, admin panel, authentication</td>
+          <td>Heavyweight for an API-focused project</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Native async support and StreamingResponse for SSE were essential requirements [5]. Pydantic integration simplified request validation throughout the API layer, and the automatic OpenAPI documentation accelerated development across the team.</p>
+
+    <h3>Frontend Framework</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Option</th>
+          <th>Pros</th>
+          <th>Cons</th>
+          <th>Our Choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>React</td>
+          <td>Large ecosystem, component model, hooks for state management, team familiarity</td>
+          <td></td>
+          <td><strong>Yes</strong></td>
+        </tr>
+        <tr>
+          <td>Vue</td>
+          <td>Simpler learning curve, good documentation</td>
+          <td>Smaller ecosystem for complex canvas-based UIs</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Svelte</td>
+          <td>Compiled approach, minimal runtime</td>
+          <td>Less community support for SVG-heavy canvas applications</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Team familiarity, Zustand for lightweight state management, and a strong ecosystem for building interactive canvas applications were the primary reasons for choosing React [6]. The visual workflow editor relies heavily on SVG manipulation, an area where React's ecosystem provided strong existing tooling.</p>
+
+    <h3>Real-time Communication</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Option</th>
+          <th>Pros</th>
+          <th>Cons</th>
+          <th>Our Choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Server-Sent Events (SSE)</td>
+          <td>Simple unidirectional server-to-client streaming over HTTP, no protocol upgrade needed, works with HTTP/2</td>
+          <td></td>
+          <td><strong>Yes</strong></td>
+        </tr>
+        <tr>
+          <td>WebSocket (Socket.IO)</td>
+          <td>Bidirectional communication, automatic reconnection</td>
+          <td>Requires protocol upgrade, more complex server infrastructure</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Polling</td>
+          <td>Simple to implement</td>
+          <td>Higher latency, unnecessary server load</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>LEMON originally used Socket.IO for real-time communication. During development, the team realized that the application only required server-to-client streaming (LLM responses, tool call updates, execution events). Bidirectional communication was unnecessary. The project migrated from Socket.IO to SSE in March 2026, simplifying the infrastructure and eliminating the need for a separate WebSocket protocol [7].</p>
+
+    <h3>Database</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Option</th>
+          <th>Pros</th>
+          <th>Cons</th>
+          <th>Our Choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SQLite</td>
+          <td>Single-file, zero-configuration, no separate server process, sufficient for per-user workflow storage</td>
+          <td></td>
+          <td><strong>Yes</strong></td>
+        </tr>
+        <tr>
+          <td>PostgreSQL</td>
+          <td>Full-featured relational database, concurrent access, scalability</td>
+          <td>Overhead not justified for a single-instance deployment</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The application stores workflow definitions, user accounts, and conversation logs. These are small, per-user datasets. SQLite's zero-configuration approach simplified deployment [8], and its single-file model aligned well with the Azure Web App deployment target where managing a separate database server was not warranted.</p>
+
+    <h3>State Management</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Option</th>
+          <th>Pros</th>
+          <th>Cons</th>
+          <th>Our Choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Zustand</td>
+          <td>Minimal API, no boilerplate, works well with React hooks</td>
+          <td></td>
+          <td><strong>Yes</strong></td>
+        </tr>
+        <tr>
+          <td>Redux</td>
+          <td>Industry standard, powerful middleware</td>
+          <td>Verbose for a project of this scale</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>Context API</td>
+          <td>Built into React, no dependencies</td>
+          <td>Does not scale well for complex state with frequent updates</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Zustand's minimal API and natural fit with React hooks made it the practical choice for managing the workflow canvas state [9]. The canvas involves frequent updates as nodes are added, moved, and connected in real time, and Zustand handled these without the boilerplate overhead of Redux.</p>
+
+    <!-- Technical Decisions Summary -->
+    <h2>Technical Decisions Summary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Technology Area</th>
+          <th>Choice</th>
+          <th>Rationale</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>LLM Provider</td>
+          <td>Anthropic Claude</td>
+          <td>Native tool use API, extended thinking, strong instruction following</td>
+        </tr>
+        <tr>
+          <td>Backend Framework</td>
+          <td>FastAPI</td>
+          <td>Async support, SSE streaming, Pydantic validation</td>
+        </tr>
+        <tr>
+          <td>Frontend Framework</td>
+          <td>React 19</td>
+          <td>Team familiarity, Zustand state management, SVG canvas ecosystem</td>
+        </tr>
+        <tr>
+          <td>Real-time Communication</td>
+          <td>Server-Sent Events</td>
+          <td>Unidirectional streaming sufficient, simpler than WebSocket</td>
+        </tr>
+        <tr>
+          <td>Database</td>
+          <td>SQLite</td>
+          <td>Zero-configuration, single-file, sufficient for per-user storage</td>
+        </tr>
+        <tr>
+          <td>State Management</td>
+          <td>Zustand</td>
+          <td>Minimal API, works with React hooks, no boilerplate</td>
+        </tr>
+        <tr>
+          <td>Package Manager</td>
+          <td>uv</td>
+          <td>Fast Python dependency resolution and virtual environment management</td>
+        </tr>
+        <tr>
+          <td>Build Tool</td>
+          <td>Vite</td>
+          <td>Fast frontend development server with HMR</td>
+        </tr>
+        <tr>
+          <td>Testing (Backend)</td>
+          <td>pytest</td>
+          <td>Standard Python testing, 1300+ tests</td>
+        </tr>
+        <tr>
+          <td>Testing (Frontend)</td>
+          <td>Playwright</td>
+          <td>Real browser E2E testing</td>
+        </tr>
+        <tr>
+          <td>Deployment</td>
+          <td>Azure Web App</td>
+          <td>Provided by Avanade partnership</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- References -->
+    <h2>References</h2>
+    <p>
+      [1] Camunda, "Camunda Platform Documentation," camunda.com/docs. Accessed Mar. 2026.<br>
+      [2] OpenCDS, "OpenCDS Clinical Decision Support," opencds.org. Accessed Mar. 2026.<br>
+      [3] LangChain, "LangChain Documentation," docs.langchain.com. Accessed Mar. 2026.<br>
+      [4] Anthropic, "Claude API Documentation - Tool Use," docs.anthropic.com. Accessed Mar. 2026.<br>
+      [5] S. Ramirez, "FastAPI Documentation," fastapi.tiangolo.com. Accessed Mar. 2026.<br>
+      [6] Meta, "React Documentation," react.dev. Accessed Mar. 2026.<br>
+      [7] WHATWG, "Server-Sent Events," html.spec.whatwg.org/multipage/server-sent-events.html. Accessed Mar. 2026.<br>
+      [8] SQLite Consortium, "SQLite Documentation," sqlite.org/docs.html. Accessed Mar. 2026.<br>
+      [9] P. Mendez, "Zustand Documentation," docs.pmnd.rs/zustand. Accessed Mar. 2026.<br>
+      [10] Astral, "uv - Python Package Manager," docs.astral.sh/uv. Accessed Mar. 2026.<br>
+      [11] Vite, "Vite Documentation," vite.dev. Accessed Mar. 2026.
+    </p>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

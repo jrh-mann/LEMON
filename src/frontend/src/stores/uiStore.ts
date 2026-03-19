@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Stage, ModalType, SidebarTab, ToolCall } from '../types'
+import type { ModalType, SidebarTab, ToolCall } from '../types'
 
 export type CanvasTab = 'workflow' | 'image'
 
@@ -7,9 +7,6 @@ export type CanvasTab = 'workflow' | 'image'
 export type CanvasMode = 'select' | 'pan'
 
 interface UIState {
-  // App stage
-  stage: Stage
-
   // Modal state
   modalOpen: ModalType
 
@@ -53,9 +50,9 @@ interface UIState {
   // Zooming card transition
   zoomingCard: { id: string, rect: DOMRect, title: string } | null
   zoomPhase: 'idle' | 'expanding' | 'fading'
+  pendingPostSaveAction: 'newSession' | null
 
   // Actions
-  setStage: (stage: Stage) => void
   openModal: (modal: ModalType) => void
   closeModal: () => void
   setActiveTab: (tab: SidebarTab) => void
@@ -95,6 +92,7 @@ interface UIState {
   // Set zooming card
   setZoomingCard: (card: { id: string, rect: DOMRect, title: string } | null) => void
   setZoomPhase: (phase: 'idle' | 'expanding' | 'fading') => void
+  setPendingPostSaveAction: (action: 'newSession' | null) => void
 
   // Reset
   reset: () => void
@@ -106,7 +104,6 @@ const ZOOM_STEP = 0.7
 
 export const useUIStore = create<UIState>((set) => ({
   // Initial state
-  stage: 'idle',
   modalOpen: 'none',
   activeTab: 'library',
   canvasTab: 'workflow',
@@ -126,10 +123,9 @@ export const useUIStore = create<UIState>((set) => ({
   isTransitioning: false,
   zoomingCard: null,
   zoomPhase: 'idle',
+  pendingPostSaveAction: null,
 
   // Actions
-  setStage: (stage) => set({ stage }),
-
   openModal: (modal) => set({ modalOpen: modal }),
 
   closeModal: () => set({ modalOpen: 'none' }),
@@ -203,11 +199,11 @@ export const useUIStore = create<UIState>((set) => ({
 
   setZoomingCard: (card) => set({ zoomingCard: card }),
   setZoomPhase: (phase) => set({ zoomPhase: phase }),
+  setPendingPostSaveAction: (action) => set({ pendingPostSaveAction: action }),
 
   // Reset
   reset: () =>
     set({
-      stage: 'idle',
       modalOpen: 'none',
       activeTab: 'library',
       canvasTab: 'workflow',
@@ -223,5 +219,6 @@ export const useUIStore = create<UIState>((set) => ({
       isTransitioning: false,
       zoomingCard: null,
       zoomPhase: 'idle',
+      pendingPostSaveAction: null,
     }),
 }))

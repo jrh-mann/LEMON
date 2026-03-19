@@ -33,13 +33,14 @@ export interface SubflowExecutionState {
 interface WorkflowState {
   // Workflow library
   workflows: WorkflowSummary[]
-  isLoadingWorkflows: boolean
 
   // Current workflow state
   currentWorkflow: Workflow | null
   flowchart: Flowchart
   currentAnalysis: WorkflowAnalysis | null
   inputValues: Record<string, unknown>
+  lastSavedSnapshot: string | null
+  isDirty: boolean
 
   // Canvas state
   selectedNodeId: string | null
@@ -74,7 +75,6 @@ interface WorkflowState {
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
-  setLoadingWorkflows: (loading: boolean) => void
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
@@ -82,6 +82,9 @@ interface WorkflowState {
   persistFlowchart: () => Promise<void>
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
   setInputValues: (values: Record<string, unknown>) => void
+  markSavedSnapshot: () => void
+  clearSavedSnapshot: () => void
+  setImportedWorkflow: (workflow: Workflow, flowchart: Flowchart, analysis: WorkflowAnalysis | null) => void
 
   // Node operations
   selectNode: (nodeId: string | null) => void
@@ -168,9 +171,62 @@ function createEmptyWorkflow(id = '', name = 'New Workflow'): Workflow {
       confidence: 'none',
       is_validated: false,
     },
-    blocks: [],
-    connections: [],
   }
+}
+
+function normalizeWorkflowForSnapshot(workflow: Workflow | null, flowchart: Flowchart, analysis: WorkflowAnalysis | null) {
+  return {
+    workflow: workflow
+      ? {
+          metadata: {
+            name: workflow.metadata.name,
+            description: workflow.metadata.description,
+            domain: workflow.metadata.domain || '',
+            tags: [...workflow.metadata.tags].sort(),
+          },
+          output_type: workflow.output_type || 'string',
+        }
+      : null,
+    flowchart: {
+      nodes: flowchart.nodes.map(node => ({
+        id: node.id,
+        type: node.type,
+        label: node.label,
+        x: node.x,
+        y: node.y,
+        color: node.color,
+        output_type: node.output_type,
+        output_template: node.output_template,
+        output_value: node.output_value,
+        condition: node.condition,
+        subworkflow_id: node.subworkflow_id,
+        input_mapping: node.input_mapping,
+        output_variable: node.output_variable,
+        calculation: node.calculation,
+      })),
+      edges: flowchart.edges.map(edge => ({
+        id: edge.id,
+        from: edge.from,
+        to: edge.to,
+        label: edge.label,
+      })),
+    },
+    analysis: {
+      variables: analysis?.variables || [],
+      outputs: analysis?.outputs || [],
+    },
+  }
+}
+
+function buildWorkflowSnapshot(workflow: Workflow | null, flowchart: Flowchart, analysis: WorkflowAnalysis | null): string {
+  return JSON.stringify(normalizeWorkflowForSnapshot(workflow, flowchart, analysis))
+}
+
+function computeDirtyState(state: Pick<WorkflowState, 'currentWorkflow' | 'flowchart' | 'currentAnalysis' | 'lastSavedSnapshot'>): boolean {
+  if (!state.lastSavedSnapshot) {
+    return state.flowchart.nodes.length > 0 || state.flowchart.edges.length > 0 || Boolean(state.currentAnalysis?.variables.length) || Boolean(state.currentAnalysis?.outputs.length)
+  }
+  return buildWorkflowSnapshot(state.currentWorkflow, state.flowchart, state.currentAnalysis) !== state.lastSavedSnapshot
 }
 
 // Default execution state
@@ -212,13 +268,14 @@ const persistWorkflowGraph = async (
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Initial state
   workflows: [],
-  isLoadingWorkflows: false,
 
   // ID starts empty — WorkflowPage sets it from the URL (single source of truth)
   currentWorkflow: createEmptyWorkflow(),
   flowchart: emptyFlowchart,
   currentAnalysis: null,
   inputValues: {},
+  lastSavedSnapshot: null,
+  isDirty: false,
 
   selectedNodeId: null,
   selectedNodeIds: [],
@@ -243,33 +300,63 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   // Setters
   setWorkflows: (workflows) => set({ workflows }),
-  setLoadingWorkflows: (loading) => set({ isLoadingWorkflows: loading }),
-  setCurrentWorkflow: (workflow) => set({ currentWorkflow: workflow }),
+  setCurrentWorkflow: (workflow) => set((state) => {
+    const nextState = { ...state, currentWorkflow: workflow }
+    return { currentWorkflow: workflow, isDirty: computeDirtyState(nextState) }
+  }),
 
   // Sets just the workflow ID for the current workflow
   setCurrentWorkflowId: (workflowId) => set((state) => {
     const workflow = state.currentWorkflow
       ? { ...state.currentWorkflow, id: workflowId }
       : createEmptyWorkflow(workflowId, '')
-    return { currentWorkflow: workflow }
+    const nextState = { ...state, currentWorkflow: workflow }
+    return { currentWorkflow: workflow, isDirty: computeDirtyState(nextState) }
   }),
 
   setFlowchart: (flowchart) => {
     const state = get()
     state.pushHistory()
-    set({ flowchart })
+    const nextState = { ...state, flowchart }
+    set({ flowchart, isDirty: computeDirtyState(nextState) })
   },
 
   // Set flowchart without pushing undo history — used for server-driven updates
   // (streamed events like batch_edit) that shouldn't pollute the user's undo stack
-  setFlowchartSilent: (flowchart) => set({ flowchart }),
+  setFlowchartSilent: (flowchart) => set((state) => {
+    const nextState = { ...state, flowchart }
+    return { flowchart, isDirty: computeDirtyState(nextState) }
+  }),
   persistFlowchart: async () => {
     const state = get()
     await persistWorkflowGraph(state.currentWorkflow?.id, state.flowchart, state.currentAnalysis, state.currentWorkflow?.output_type)
   },
 
-  setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
+  setAnalysis: (analysis) => set((state) => {
+    const nextState = { ...state, currentAnalysis: analysis }
+    return { currentAnalysis: analysis, isDirty: computeDirtyState(nextState) }
+  }),
   setInputValues: (inputValues) => set({ inputValues }),
+  markSavedSnapshot: () => set((state) => {
+    const snapshot = buildWorkflowSnapshot(state.currentWorkflow, state.flowchart, state.currentAnalysis)
+    return { lastSavedSnapshot: snapshot, isDirty: false }
+  }),
+  clearSavedSnapshot: () => set((state) => ({ lastSavedSnapshot: null, isDirty: computeDirtyState({ ...state, lastSavedSnapshot: null }) })),
+  setImportedWorkflow: (workflow, flowchart, analysis) => set((state) => ({
+    currentWorkflow: workflow,
+    flowchart,
+    currentAnalysis: analysis,
+    selectedNodeId: null,
+    selectedNodeIds: [],
+    selectedEdge: null,
+    connectMode: false,
+    connectFromId: null,
+    history: [],
+    historyIndex: -1,
+    execution: { ...initialExecutionState },
+    lastSavedSnapshot: null,
+    isDirty: computeDirtyState({ ...state, currentWorkflow: workflow, flowchart, currentAnalysis: analysis, lastSavedSnapshot: null }),
+  })),
 
   // Node operations
   selectNode: (nodeId) => set({
@@ -303,63 +390,74 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   addNode: (node) => {
     const state = get()
     state.pushHistory()
+    const nextFlowchart = {
+      ...state.flowchart,
+      nodes: [...state.flowchart.nodes, node],
+    }
     set({
-      flowchart: {
-        ...state.flowchart,
-        nodes: [...state.flowchart.nodes, node],
-      },
+      flowchart: nextFlowchart,
+      isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }),
     })
   },
 
   updateNode: (nodeId, updates) => {
     const state = get()
     state.pushHistory()
-    set({
-      flowchart: {
-        ...state.flowchart,
-        nodes: state.flowchart.nodes.map((node) =>
-          node.id === nodeId ? { ...node, ...updates } : node
-        ),
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      nodes: state.flowchart.nodes.map((node) =>
+        node.id === nodeId ? { ...node, ...updates } : node
+      ),
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
   },
 
   deleteNode: (nodeId) => {
     const state = get()
     state.pushHistory()
+    const nextFlowchart = {
+      nodes: state.flowchart.nodes.filter((n) => n.id !== nodeId),
+      edges: state.flowchart.edges.filter(
+        (e) => e.from !== nodeId && e.to !== nodeId
+      ),
+    }
     set({
-      flowchart: {
-        nodes: state.flowchart.nodes.filter((n) => n.id !== nodeId),
-        edges: state.flowchart.edges.filter(
-          (e) => e.from !== nodeId && e.to !== nodeId
-        ),
-      },
+      flowchart: nextFlowchart,
       selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
       selectedNodeIds: state.selectedNodeIds.filter(id => id !== nodeId),
+      isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }),
     })
   },
 
   moveNode: (nodeId, x, y) => {
-    set((state) => ({
-      flowchart: {
+    set((state) => {
+      const nextFlowchart = {
         ...state.flowchart,
         nodes: state.flowchart.nodes.map((node) =>
           node.id === nodeId ? { ...node, x, y } : node
         ),
-      },
-    }))
+      }
+      return {
+        flowchart: nextFlowchart,
+        isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }),
+      }
+    })
   },
 
   moveNodes: (nodeIds: string[], dx: number, dy: number) => {
     const nodeIdSet = new Set(nodeIds)
-    set((state) => ({
-      flowchart: {
+    set((state) => {
+      const nextFlowchart = {
         ...state.flowchart,
         nodes: state.flowchart.nodes.map((node) =>
           nodeIdSet.has(node.id) ? { ...node, x: node.x + dx, y: node.y + dy } : node
         ),
-      },
-    }))
+      }
+      return {
+        flowchart: nextFlowchart,
+        isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }),
+      }
+    })
   },
 
   // Edge operations
@@ -372,25 +470,23 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (exists) return
 
     state.pushHistory()
-    set({
-      flowchart: {
-        ...state.flowchart,
-        edges: [...state.flowchart.edges, edge],
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      edges: [...state.flowchart.edges, edge],
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
   },
 
   deleteEdge: (from, to) => {
     const state = get()
     state.pushHistory()
-    set({
-      flowchart: {
-        ...state.flowchart,
-        edges: state.flowchart.edges.filter(
-          (e) => !(e.from === from && e.to === to)
-        ),
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      edges: state.flowchart.edges.filter(
+        (e) => !(e.from === from && e.to === to)
+      ),
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
   },
 
   updateEdgeLabel: (from, to, label) => {
@@ -424,12 +520,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
 
     // Update local state immediately
-    set({
-      flowchart: {
-        ...state.flowchart,
-        edges: newEdges,
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      edges: newEdges,
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
 
     void persistWorkflowGraph(state.currentWorkflow?.id, {
       ...state.flowchart,
@@ -444,19 +539,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (edgesFromDecision.length !== 2) return // Only swap if exactly 2 edges
 
     state.pushHistory()
-    set({
-      flowchart: {
-        ...state.flowchart,
-        edges: state.flowchart.edges.map((e) => {
-          if (e.from === decisionNodeId) {
-            const currentLabel = e.label?.toLowerCase()
-            if (currentLabel === 'true') return { ...e, label: 'false' }
-            if (currentLabel === 'false') return { ...e, label: 'true' }
-          }
-          return e
-        }),
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      edges: state.flowchart.edges.map((e) => {
+        if (e.from === decisionNodeId) {
+          const currentLabel = e.label?.toLowerCase()
+          if (currentLabel === 'true') return { ...e, label: 'false' }
+          if (currentLabel === 'false') return { ...e, label: 'true' }
+        }
+        return e
+      }),
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
   },
 
   // Set default edge labels for decision nodes based on target node positions
@@ -481,30 +575,27 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (targetNodes.length !== 2) return
 
     state.pushHistory()
-    set({
-      flowchart: {
-        ...state.flowchart,
-        edges: state.flowchart.edges.map((e) => {
-          if (e.from === decisionNodeId) {
-            // Left child (smaller x) = false, Right child (larger x) = true
-            if (e.to === targetNodes[0].edge.to) return { ...e, label: 'false' }
-            if (e.to === targetNodes[1].edge.to) return { ...e, label: 'true' }
-          }
-          return e
-        }),
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      edges: state.flowchart.edges.map((e) => {
+        if (e.from === decisionNodeId) {
+          if (e.to === targetNodes[0].edge.to) return { ...e, label: 'false' }
+          if (e.to === targetNodes[1].edge.to) return { ...e, label: 'true' }
+        }
+        return e
+      }),
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
   },
 
   deleteEdgeById: (edgeId) => {
     const state = get()
     state.pushHistory()
-    set({
-      flowchart: {
-        ...state.flowchart,
-        edges: state.flowchart.edges.filter((e) => e.id !== edgeId),
-      },
-    })
+    const nextFlowchart = {
+      ...state.flowchart,
+      edges: state.flowchart.edges.filter((e) => e.id !== edgeId),
+    }
+    set({ flowchart: nextFlowchart, isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }) })
   },
 
   selectEdge: (edge) => {
@@ -543,9 +634,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const state = get()
     if (state.historyIndex > 0) {
       const newIndex = state.historyIndex - 1
+      const nextFlowchart = structuredClone(state.history[newIndex])
       set({
-        flowchart: structuredClone(state.history[newIndex]),
+        flowchart: nextFlowchart,
         historyIndex: newIndex,
+        isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }),
       })
     }
   },
@@ -554,9 +647,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const state = get()
     if (state.historyIndex < state.history.length - 1) {
       const newIndex = state.historyIndex + 1
+      const nextFlowchart = structuredClone(state.history[newIndex])
       set({
-        flowchart: structuredClone(state.history[newIndex]),
+        flowchart: nextFlowchart,
         historyIndex: newIndex,
+        isDirty: computeDirtyState({ ...state, flowchart: nextFlowchart }),
       })
     }
   },
@@ -589,6 +684,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       flowchart: emptyFlowchart,
       currentAnalysis: null,
       inputValues: {},
+      lastSavedSnapshot: null,
+      isDirty: false,
       selectedNodeId: null,
       selectedNodeIds: [],
       connectMode: false,

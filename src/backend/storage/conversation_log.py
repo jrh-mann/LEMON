@@ -329,6 +329,15 @@ class ConversationLogger:
     # Read API (for eval tooling)
     # ------------------------------------------------------------------
 
+    def verify_conversation_owner(self, conversation_id: str, user_id: str) -> bool:
+        """Check whether conversation_id belongs to user_id."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            ).fetchone()
+            return row is not None
+
     def get_conversation_timeline(
         self,
         conversation_id: str,

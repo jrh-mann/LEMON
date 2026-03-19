@@ -91,6 +91,9 @@ class Turn:
         self.input_tokens: int = 0
         self.output_tokens: int = 0
 
+        # Count of audit logging failures — non-fatal but observable by callers
+        self.audit_failures: int = 0
+
     # ------------------------------------------------------------------
     # State transitions
     # ------------------------------------------------------------------
@@ -114,6 +117,7 @@ class Turn:
                     files=file_meta, task_id=self._task_id,
                 )
             except Exception:
+                self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log user message conv=%s",
                     self.conversation_id, exc_info=True,
@@ -150,6 +154,7 @@ class Turn:
                     task_id=self._task_id,
                 )
             except Exception:
+                self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log assistant response conv=%s",
                     self.conversation_id, exc_info=True,
@@ -176,6 +181,7 @@ class Turn:
                     self.conversation_id, error, task_id=self._task_id,
                 )
             except Exception:
+                self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log error conv=%s",
                     self.conversation_id, exc_info=True,
@@ -241,6 +247,7 @@ class Turn:
                     duration_ms, task_id=self._task_id,
                 )
             except Exception:
+                self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log tool call %s conv=%s",
                     name, self.conversation_id, exc_info=True,

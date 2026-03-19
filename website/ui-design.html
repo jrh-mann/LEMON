@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - UI Design</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>UI Design</h1>
+
+    <h2>Design Principles</h2>
+
+    <h3>Real-time Feedback</h3>
+    <p>The canvas updates in real time as the LLM builds the workflow. Users see nodes and connections appear as tool calls execute, giving immediate visual confirmation of progress without needing to wait for a response to complete.</p>
+
+    <h3>Direct Manipulation</h3>
+    <p>Users can drag nodes to reposition them, draw connections by clicking and dragging between nodes, and right-click for context menus. The canvas is not a passive display but an interactive surface that responds to user input.</p>
+
+    <h3>Visibility of System State</h3>
+    <p>The chat panel shows streaming LLM responses and lists each tool call as it executes. During stepped execution, the active node is highlighted on the canvas with the execution path traced, so users always know what the system is doing.</p>
+
+    <h3>Simplicity</h3>
+    <p>The primary interface is a chat window. Users describe what they want in plain language and the system handles the rest. The canvas and sidebar provide visual feedback but the core interaction model stays conversational.</p>
+
+    <h3>Tolerance</h3>
+    <p>Users can undo and redo canvas operations, cancel in-progress LLM tasks, and the system handles reconnection after a page refresh. Mistakes are reversible, reducing the cost of experimentation.</p>
+
+    <h3>Consistency</h3>
+    <p>All node types follow the same visual language using colored shapes on the SVG canvas, and all editing follows the same pattern: either chat-based or direct manipulation. Users do not need to learn separate paradigms for different parts of the interface.</p>
+
+    <h2>Hand-drawn Sketches</h2>
+    <div class="placeholder">Hand-drawn sketches will be added here. These should show early design explorations for the canvas layout, chat interface, and overall page structure.</div>
+
+    <h2>Wireframes and Prototypes</h2>
+    <div class="placeholder">High-fidelity wireframes or Figma prototype link will be added here.</div>
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

@@ -26,11 +26,11 @@ class TestExecutionStateManagement:
         """Test registering a new execution."""
         execution_id = "test-exec-1"
 
-        _register_execution(execution_id)
-        
+        _register_execution(execution_id, "u1")
+
         assert not _is_execution_stopped(execution_id)
         assert not _is_execution_paused(execution_id)
-        
+
         # Cleanup
         _clear_execution(execution_id)
 
@@ -38,18 +38,18 @@ class TestExecutionStateManagement:
         """Test pausing and resuming an execution."""
         execution_id = "test-exec-2"
 
-        _register_execution(execution_id)
-        
+        _register_execution(execution_id, "u1")
+
         # Pause
-        result = _pause_execution(execution_id)
+        result = _pause_execution(execution_id, "u1")
         assert result is True
         assert _is_execution_paused(execution_id)
-        
+
         # Resume
-        result = _resume_execution(execution_id)
+        result = _resume_execution(execution_id, "u1")
         assert result is True
         assert not _is_execution_paused(execution_id)
-        
+
         # Cleanup
         _clear_execution(execution_id)
 
@@ -57,23 +57,23 @@ class TestExecutionStateManagement:
         """Test stopping an execution."""
         execution_id = "test-exec-3"
 
-        _register_execution(execution_id)
-        
-        result = _stop_execution(execution_id)
+        _register_execution(execution_id, "u1")
+
+        result = _stop_execution(execution_id, "u1")
         assert result is True
         assert _is_execution_stopped(execution_id)
-        
+
         # Cleanup
         _clear_execution(execution_id)
 
     def test_pause_nonexistent_execution(self):
         """Test pausing a non-existent execution returns False."""
-        result = _pause_execution("nonexistent-id")
+        result = _pause_execution("nonexistent-id", "u1")
         assert result is False
 
     def test_stop_nonexistent_execution(self):
         """Test stopping a non-existent execution returns False."""
-        result = _stop_execution("nonexistent-id")
+        result = _stop_execution("nonexistent-id", "u1")
         assert result is False
 
 
@@ -136,7 +136,7 @@ class TestSteppedExecutionTask:
     def test_task_emits_step_events(self, mock_sink, mock_workflow_store, simple_workflow):
         """Test that task emits execution_step events for each node."""
         execution_id = "test-step-events"
-        _register_execution(execution_id)
+        _register_execution(execution_id, "user-1")
 
         task = SteppedExecutionTask(
             sink=mock_sink,
@@ -168,7 +168,7 @@ class TestSteppedExecutionTask:
     def test_task_detects_stop_signal(self, mock_sink, mock_workflow_store, simple_workflow):
         """Test that task detects stop signal via is_stopped()."""
         execution_id = "test-stop-signal"
-        _register_execution(execution_id)
+        _register_execution(execution_id, "user-1")
 
         task = SteppedExecutionTask(
             sink=mock_sink,
@@ -182,7 +182,7 @@ class TestSteppedExecutionTask:
 
         # Verify task can detect stop
         assert not task.is_stopped()
-        _stop_execution(execution_id)
+        _stop_execution(execution_id, "user-1")
         assert task.is_stopped()
 
         # Cleanup
@@ -240,7 +240,7 @@ class TestSteppedExecutionTask:
     def test_task_handles_empty_workflow(self, mock_sink, mock_workflow_store):
         """Test that task handles empty workflow gracefully."""
         execution_id = "test-empty"
-        _register_execution(execution_id)
+        _register_execution(execution_id, "user-1")
 
         task = SteppedExecutionTask(
             sink=mock_sink,
@@ -265,7 +265,7 @@ class TestSteppedExecutionTask:
     def test_task_handles_missing_start_node(self, mock_sink, mock_workflow_store):
         """Test that task handles workflow without start node."""
         execution_id = "test-no-start"
-        _register_execution(execution_id)
+        _register_execution(execution_id, "user-1")
 
         task = SteppedExecutionTask(
             sink=mock_sink,

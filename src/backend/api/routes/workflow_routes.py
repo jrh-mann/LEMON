@@ -7,6 +7,7 @@ before saving.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -18,7 +19,7 @@ from starlette.responses import FileResponse, JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
-from .helpers import _calculate_confidence, _infer_outputs_from_nodes
+from .helpers import _calculate_confidence, _infer_outputs_from_nodes, api_error
 from ...storage.workflows import WorkflowStore
 from ...utils.flowchart import tree_from_flowchart
 from ...utils.paths import lemon_data_dir
@@ -89,8 +90,8 @@ def register_workflow_routes(
         """Save a new workflow for the authenticated user."""
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         # Extract workflow data from payload
         workflow_id = payload.get("id") or f"wf_{uuid4().hex}"
@@ -270,8 +271,8 @@ def register_workflow_routes(
         """
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         # Check workflow exists and belongs to user
         existing = workflow_store.get_workflow(workflow_id, user.id)
@@ -310,7 +311,7 @@ def register_workflow_routes(
                 )
         except Exception as e:
             logger.exception("PATCH workflow failed: %s", e)
-            return JSONResponse({"error": f"Database error: {e}"}, status_code=500)
+            return JSONResponse({"error": "Database error"}, status_code=500)
 
         return JSONResponse(
             {
@@ -333,8 +334,8 @@ def register_workflow_routes(
         """
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         # Check workflow exists and belongs to user
         existing = workflow_store.get_workflow(workflow_id, user.id)
@@ -447,8 +448,8 @@ def register_workflow_routes(
         """
         data_dir = lemon_data_dir(repo_root)
         resolved = (data_dir / file_path).resolve()
-        # Guard: must be inside the data directory
-        if not str(resolved).startswith(str(data_dir.resolve())):
+        # Guard: must be inside the data directory (is_relative_to is symlink-safe)
+        if not resolved.is_relative_to(data_dir.resolve()):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         if not resolved.is_file():
             return JSONResponse({"error": "file not found"}, status_code=404)

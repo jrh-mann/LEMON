@@ -7,6 +7,7 @@ returns the execution result including subflow outputs.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, FastAPI, Request
@@ -16,6 +17,7 @@ from ..deps import require_auth
 from ...storage.auth import AuthUser
 from ...execution.preparation import prepare_record_execution
 from ...storage.workflows import WorkflowStore
+from .helpers import api_error
 
 logger = logging.getLogger("backend.api")
 
@@ -84,8 +86,8 @@ def register_execution_routes(
         # Get input values from request
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         # Convert input names to input IDs for the interpreter
         # User provides: {"Age": 25} -> interpreter needs: {"input_age_int": 25}

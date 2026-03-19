@@ -10,6 +10,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { getConversationHistory } from '../api/workflows'
 import { getWorkflow } from '../api/workflows'
 import { hydrateWorkflowDetail } from './workflowHydration'
+import type { ToolCall } from '../types'
 
 /**
  * Fetch conversation history from backend and merge into the local store.
@@ -32,12 +33,12 @@ export async function syncConversationMessages(
         typeof m.content === 'string' &&
         !(m.content as string).startsWith('[CANCELLED]')
       )
-      .map((m: { role: string; content: string; id: string; timestamp: string; tool_calls?: unknown[] }) => ({
+      .map((m: { role: string; content: string; id: string; timestamp: string; tool_calls?: ToolCall[] }) => ({
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: m.timestamp,
-        tool_calls: m.tool_calls || [],
+        tool_calls: m.tool_calls || [] as ToolCall[],
       }))
 
     const chatStore = useChatStore.getState()

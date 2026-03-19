@@ -17,7 +17,6 @@ Subflow Execution:
 Variable System:
 - The unified variable system uses 'variables' instead of 'inputs'
 - Each variable has a 'source' field: 'input' (user-provided), 'subprocess' (derived), etc.
-- For backwards compatibility, the interpreter accepts both 'variables' and legacy 'inputs'
 """
 
 import json
@@ -114,7 +113,6 @@ class TreeInterpreter:
 
         # Create mapping from variable names to IDs for condition evaluation
         # e.g., "Age" -> "var_age_int", "BMI" -> "var_bmi_float"
-        # Also supports legacy "input_age_int" format
         # Handle variables without 'name' field by using ID as fallback
         self.name_to_id = {}
         for var in var_list:
@@ -891,7 +889,7 @@ Args:
         3. output_template: String template with variable substitution
            - Only use for string outputs that need formatting
            - Example: "Patient BMI is {BMI}"
-        4. label: Fallback (legacy support)
+        4. label: fallback plain-text output when no structured output field is set
         
         Args:
             node: Output node with output_type, output_variable/value/template
@@ -939,7 +937,7 @@ Args:
         if node.get('output_template'):
             template = node['output_template']
             
-            # For backwards compatibility: if template is a single variable like "{BMI}",
+            # If the template is a single variable like "{BMI}",
             # extract the raw value (same as output_variable behavior)
             stripped = template.strip()
             if (stripped.startswith('{') and stripped.endswith('}') and 
@@ -962,7 +960,7 @@ Args:
             except Exception as e:
                 return f"Error formatting output: {str(e)}"
 
-        # 4. Fallback to label (legacy support)
+        # 4. Fallback to label text when no explicit output field exists
         label = node.get('label', '')
         if '{' in label and '}' in label:
             try:
