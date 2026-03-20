@@ -13,22 +13,22 @@
     <h2>Design Principles</h2>
 
     <h3>Real-time Feedback</h3>
-    <p>The canvas updates in real time as the LLM builds the workflow. Users see nodes and connections appear as tool calls execute, giving immediate visual confirmation of progress without needing to wait for a response to complete.</p>
+    <p>As the LLM builds a workflow, nodes and connections appear on the canvas in real time. Users can watch the workflow take shape as each tool call executes, rather than waiting for the whole response to finish.</p>
 
     <h3>Direct Manipulation</h3>
-    <p>Users can drag nodes to reposition them, draw connections by clicking and dragging between nodes, and right-click for context menus. The canvas is not a passive display but an interactive surface that responds to user input.</p>
+    <p>Users can drag nodes around, draw connections between them, and right-click to get context menus. The canvas is fully interactive, not just a read-only preview of what the LLM built.</p>
 
     <h3>Visibility of System State</h3>
-    <p>The chat panel shows streaming LLM responses and lists each tool call as it executes. During stepped execution, the active node is highlighted on the canvas with the execution path traced, so users always know what the system is doing.</p>
+    <p>The chat panel streams LLM responses and shows each tool call as it runs. During stepped execution, the active node lights up on the canvas and the execution path is traced, so you can always see where the system is and what it's doing.</p>
 
     <h3>Simplicity</h3>
-    <p>The primary interface is a chat window. Users describe what they want in plain language and the system handles the rest. The canvas and sidebar provide visual feedback but the core interaction model stays conversational.</p>
+    <p>The main way to use LEMON is just to type what you want. The canvas and sidebar show what's happening visually, but the core interaction is a chat conversation.</p>
 
     <h3>Tolerance</h3>
-    <p>Users can undo and redo canvas operations, cancel in-progress LLM tasks, and the system handles reconnection after a page refresh. Mistakes are reversible, reducing the cost of experimentation.</p>
+    <p>Undo and redo work on the canvas, you can cancel LLM tasks mid-way, and refreshing the page doesn't lose your work. Making mistakes is cheap, which encourages users to experiment.</p>
 
     <h3>Consistency</h3>
-    <p>All node types follow the same visual language using colored shapes on the SVG canvas, and all editing follows the same pattern: either chat-based or direct manipulation. Users do not need to learn separate paradigms for different parts of the interface.</p>
+    <p>Every node type uses the same visual language (coloured shapes on the canvas), and editing always works the same way: either type in the chat or click on the canvas directly. There's one way of doing things, not different modes for different parts of the app.</p>
 
     <h2>Hand-drawn Sketches</h2>
     <div class="placeholder">Hand-drawn sketches will be added here. These should show early design explorations for the canvas layout, chat interface, and overall page structure.</div>

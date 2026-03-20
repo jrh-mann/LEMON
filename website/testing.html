@@ -11,7 +11,7 @@
     <h1>Testing</h1>
 
     <h2>Testing Strategy</h2>
-    <p>LEMON uses a multi-layer testing approach covering unit tests, integration tests, end-to-end tests, prompt/LLM evaluation, and user acceptance testing. Each layer targets different types of defects and provides different levels of confidence.</p>
+    <p>We test LEMON at several levels: unit tests for individual functions, integration tests for module interactions, end-to-end browser tests, a custom evaluation framework for measuring LLM quality, and user acceptance testing with our project partners.</p>
 
     <table>
       <thead>
@@ -59,7 +59,7 @@
     <h2>Unit Testing</h2>
 
     <h3>Why</h3>
-    <p>Unit tests catch regressions in individual components. Each module in the backend (parser, evaluator, tools, validation, workflow storage) has dedicated tests that verify correct behavior in isolation.</p>
+    <p>Unit tests catch regressions when we change individual components. Each backend module (parser, evaluator, tools, validation, workflow storage) has its own test file that verifies it works correctly on its own.</p>
 
     <h3>Tool</h3>
     <p>pytest, the standard Python testing framework. Tests are organized by module in the <code>tests/</code> directory.</p>
@@ -121,7 +121,7 @@
     <h2>Integration Testing</h2>
 
     <h3>Why</h3>
-    <p>Integration tests verify that modules work together correctly. Individual units may pass their own tests while failing when combined.</p>
+    <p>Individual modules can pass their own tests while breaking when combined. Integration tests catch these problems.</p>
 
     <h3>Tool</h3>
     <p>pytest, using the same framework as unit tests but with fixtures that set up multi-component environments.</p>
@@ -133,12 +133,12 @@
     <p>47 test files covering integration and feature-level scenarios. All tests are automated and run as part of the continuous integration pipeline.</p>
 
     <h3>Analysis</h3>
-    <p>Integration tests proved especially valuable during the Socket.IO to SSE migration in March 2026. The existing test suite caught several regressions where the new SSE transport layer did not correctly propagate tool events that Socket.IO had handled differently.</p>
+    <p>These tests were especially useful during the Socket.IO to SSE migration. The existing suite caught several regressions where the new SSE layer didn't propagate tool events the same way Socket.IO had.</p>
 
     <h2>End-to-End Testing</h2>
 
     <h3>Why</h3>
-    <p>E2E tests verify complete user flows from browser interaction through to backend response and canvas update. They catch issues that only appear in the full stack.</p>
+    <p>Some bugs only show up when you run the full stack. E2E tests catch these by automating real browser interactions against a running backend.</p>
 
     <h3>Tool</h3>
     <p>Playwright, a browser automation framework. Tests run in a real browser against a real backend (not mocked).</p>
@@ -209,12 +209,12 @@
     </table>
 
     <h3>Analysis</h3>
-    <p>Running E2E tests against a real backend (rather than mocking) provides higher confidence that the system works as users will experience it. The trade-off is slower test execution and dependency on an API key.</p>
+    <p>Running against a real backend (no mocks) means the tests reflect what users actually experience. The downside is slower execution and needing an API key, but the extra confidence is worth it.</p>
 
     <h2>Prompt Testing</h2>
 
     <h3>Why</h3>
-    <p>LLM-based systems need a different kind of testing. Traditional unit tests verify deterministic behavior, but the orchestrator's output varies with prompt changes, model updates, and tool schema modifications. A dedicated evaluation framework measures quality over time.</p>
+    <p>Normal unit tests don't work well for LLM output because the results aren't deterministic. When we change a prompt or update the model, we need to know whether extraction quality went up or down. That's what the evaluation framework is for.</p>
 
     <h3>Tool</h3>
     <p>Custom evaluation framework built in <code>eval/</code>. Uses pytest-compatible test infrastructure.</p>
@@ -226,7 +226,7 @@
     <p>The framework currently evaluates against diabetes treatment and liver pathology benchmark workflows. Scoring runs across multiple models and configurations to detect regressions.</p>
 
     <h3>Analysis</h3>
-    <p>This framework provides quantitative measurement of orchestrator quality that traditional testing cannot. When prompt templates or tool schemas change, running the evaluation suite shows exactly which scoring dimensions improved or regressed.</p>
+    <p>This gives us actual numbers instead of just "it seems to work". When we change a prompt or tool schema, we can run the eval suite and see exactly which dimensions got better or worse.</p>
 
     <h2>User Acceptance Testing</h2>
     <div class="placeholder">
