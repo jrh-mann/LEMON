@@ -11,22 +11,22 @@
     <h1>Conclusion</h1>
 
     <h2>Project Summary</h2>
-    <p>LEMON is a conversational AI platform for clinical workflow authoring. Users describe decision logic in natural language or upload a flowchart image, and an LLM orchestrator translates that into a structured, executable decision tree on a visual canvas. The system supports six node types, typed variables, compound conditions, subworkflows, and stepped execution with step-level debugging. Completed workflows can be exported to JSON, compiled Python, or PNG.</p>
+    <p>LEMON lets clinicians build executable decision workflows by describing them in plain language or uploading a flowchart image. An LLM orchestrator turns that input into a structured decision tree on a visual canvas. The finished system supports six node types, typed variables, compound conditions, subworkflows, and stepped execution with step-level debugging. Workflows can be exported as JSON, compiled Python, or PNG.</p>
 
     <h2>Goals Revisited</h2>
-    <p>The project was shaped around four product goals, each of which was addressed in the final system.</p>
-    <p><strong>Reduce the effort required to formalise expert decision logic.</strong> Natural language input and image-based workflow creation remove the need for any technical expertise. A clinician can describe a decision process in plain terms and the system produces a structured workflow without the user writing a single line of code.</p>
-    <p><strong>Provide a safe authoring environment with strong validation before execution or export.</strong> A structural validation framework checks workflows before they can be run or exported. Stepped execution lets users walk through a workflow node by node, inspecting state at each step and catching logical errors before deployment.</p>
-    <p><strong>Support review, sharing, and reuse of high-value workflows.</strong> A workflow library allows users to save, browse, and reload workflows. This makes it practical to build on existing work rather than starting from scratch each time.</p>
+    <p>We set four product goals at the start of the project. Here is how each one played out.</p>
+    <p><strong>Reduce the effort required to formalise expert decision logic.</strong> Users can describe a decision process in plain English or upload a photo, and the system produces a structured workflow. No code required.</p>
+    <p><strong>Provide a safe authoring environment with strong validation before execution or export.</strong> The validation framework checks workflows before they can be run or exported, and stepped execution lets users walk through a workflow node by node to spot logic errors before anything goes live.</p>
+    <p><strong>Support review, sharing, and reuse of high-value workflows.</strong> The workflow library lets users save, browse, and reload workflows so they can build on existing work instead of starting from scratch.</p>
     <p><strong>Enable export to formats suitable for downstream engineering systems.</strong> Workflows export to JSON for interoperability, compiled Python for direct execution, and PNG for documentation or review.</p>
 
     <h2>Lessons Learned</h2>
-    <p>The tool-use architecture proved to be the right approach for this kind of system. Giving the LLM a small set of constrained, typed tools rather than asking it to generate free-form code meant that output could be validated against a schema at each step. Errors were contained and recoverable, which would not have been the case with unconstrained generation.</p>
-    <p>Testing LLM-integrated systems requires more than standard unit tests. The 6-dimension scoring framework built for LEMON provided quantitative feedback on orchestrator quality across real prompts, making it possible to track regression and improvement in a way that simple pass/fail tests could not.</p>
-    <p>The mid-project migration from Socket.IO to Server-Sent Events was a useful reminder that pragmatic decisions matter. SSE was a better fit for the unidirectional streaming pattern of LLM output, simpler to reason about, and easier to debug. Switching was disruptive in the short term but improved the overall architecture.</p>
+    <p>Giving the LLM a fixed set of typed tools instead of asking it to generate free-form code turned out to be the right call. Every tool call can be validated against a schema, so errors get caught and handled rather than silently corrupting the workflow. This would not have worked with unconstrained generation.</p>
+    <p>Standard unit tests aren't enough when your system depends on an LLM. The 6-dimension scoring framework gave us actual numbers on how well the orchestrator was performing, so we could track regressions when we changed prompts or updated models.</p>
+    <p>Migrating from Socket.IO to SSE mid-project was disruptive but worth it. SSE was a better fit since we only needed one-way streaming, and it was much simpler to debug. Sometimes the right call is to rip something out and replace it even when it already works.</p>
 
     <h2>Closing Statement</h2>
-    <p>LEMON demonstrates that LLM tool use can close the gap between domain expertise and executable logic. By keeping the authoring interface conversational and delegating structure to the orchestrator, the system makes workflow formalization accessible to people without programming skills. The core idea, that an LLM with well-defined tools can act as a reliable intermediary between human intent and machine-readable structure, holds up in practice and points toward a broader class of authoring tools worth building.</p>
+    <p>LEMON shows that an LLM with well-defined tools can act as a reliable bridge between what a person means and what a computer needs. By keeping the interface conversational, workflow formalization becomes something a clinician can do without help from a developer. We think the same approach could work for other kinds of structured authoring beyond clinical workflows.</p>
   </div>
   <script src="nav.js"></script>
 </body>

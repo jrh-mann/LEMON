@@ -72,6 +72,7 @@ publishprofile.xml
 .cursor/
 .claude/
 .claude-co.json
+.superpowers/
 .dev-pids
 REVIEW.md
 agent_demands.md

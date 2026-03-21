@@ -15,13 +15,13 @@
     <h2>Related Projects</h2>
 
     <h3>Camunda [1]</h3>
-    <p>Camunda is an open-source BPMN workflow engine designed for business process automation. It provides visual modeling, execution, and monitoring of complex process flows, and is widely used in enterprise environments where teams need to orchestrate multi-step business logic. Key features include a graphical BPMN designer, a REST API for deploying and managing processes, and detailed execution history for auditing. Camunda is built for technical users who are comfortable with BPMN notation and process XML. The lesson for LEMON is that workflow tools need to be accessible to non-technical domain experts. LEMON's chat-based interface removes the need to learn any specialized notation, letting clinicians describe a workflow in plain language and letting the system handle structured representation.</p>
+    <p>Camunda is an open-source BPMN workflow engine for business process automation. It offers visual modeling, execution, and monitoring of process flows, and is widely used in enterprise settings. Features include a graphical BPMN designer, a REST API for deployment, and detailed execution history. The main drawback for our use case is that Camunda expects users to understand BPMN notation and XML. The takeaway for LEMON was that workflow tools for clinicians need to work without any specialized notation. Our chat-based interface lets users describe what they want in plain language instead.</p>
 
     <h3>OpenCDS [2]</h3>
-    <p>OpenCDS is an open-source clinical decision support framework grounded in HL7 and FHIR standards. It is designed for deep integration with existing health IT infrastructure, including electronic health record systems and clinical data repositories. Key features include standards-compliant rule execution, integration with CDS Hooks, and support for knowledge artifact formats such as CQL. The framework is powerful but requires substantial setup, configuration, and ongoing maintenance to operate within a clinical environment. The lesson for LEMON is that a standalone authoring tool with export capabilities is more practical for rapid workflow prototyping than a deeply integrated framework. LEMON targets the creation and editing phase, exporting workflows that can be consumed downstream rather than embedding itself in live clinical systems.</p>
+    <p>OpenCDS is an open-source clinical decision support framework built around HL7 and FHIR standards. It integrates with electronic health record systems and supports standards-compliant rule execution via CDS Hooks and CQL. The framework is powerful but heavy: it takes a lot of setup and configuration to get running, and it assumes deep integration with existing hospital IT. For LEMON, the lesson was that we should focus on the authoring side of the problem. Rather than trying to plug into live clinical systems, LEMON creates and validates workflows, then exports them in formats that downstream systems can consume.</p>
 
     <h3>LangChain / LangGraph [3]</h3>
-    <p>LangChain and LangGraph are general-purpose LLM agent frameworks that support tool use, multi-step reasoning, and stateful agent graphs. LangChain provides abstractions for chaining LLM calls with retrieval, memory, and external tools, while LangGraph extends this with a graph-based model for building cyclic and stateful agent workflows. Neither framework is domain-specific. The lesson for LEMON is that the tool-use pattern for structured output generation is effective, but a production workflow builder needs domain-specific constraints, validation rules, and a purpose-built visual editor rather than a generic agent framework. LEMON implements its own tool-use orchestration layer so that every tool call maps to a validated node operation on the workflow graph, with no reliance on a general-purpose agent abstraction.</p>
+    <p>LangChain and LangGraph are general-purpose LLM agent frameworks. LangChain chains LLM calls with retrieval, memory, and external tools; LangGraph adds a graph-based model for stateful agent workflows. They are flexible but not domain-specific. We considered using LangChain as a base but decided against it because we needed tight control over how tool calls map to validated workflow operations. LEMON implements its own orchestration loop where every tool call directly modifies the workflow graph and is validated on each step. A generic agent framework would have added abstraction without giving us the domain-specific constraints we needed.</p>
 
     <!-- Technology Review -->
     <h2>Technology Review</h2>
@@ -57,7 +57,7 @@
         </tr>
       </tbody>
     </table>
-    <p>Native tool use with structured JSON responses was the deciding factor in choosing Claude [4]. The orchestrator needs precise, validated tool calls rather than free-form text, and Claude's tool use API provided the most reliable mechanism for generating structured node operations during evaluation.</p>
+    <p>We chose Claude mainly because of its native tool use API [4]. Our orchestrator needs the LLM to return precise, structured tool calls (not free-form text), and Claude's tool use was the most reliable option we tested for generating valid node operations.</p>
 
     <h3>Backend Framework</h3>
     <table class="comparison-table">
@@ -90,7 +90,7 @@
         </tr>
       </tbody>
     </table>
-    <p>Native async support and StreamingResponse for SSE were essential requirements [5]. Pydantic integration simplified request validation throughout the API layer, and the automatic OpenAPI documentation accelerated development across the team.</p>
+    <p>We needed async support and SSE streaming out of the box, which ruled out Flask [5]. FastAPI's Pydantic integration also saved us a lot of manual request validation, and the auto-generated OpenAPI docs were useful during development.</p>
 
     <h3>Frontend Framework</h3>
     <table class="comparison-table">
@@ -123,7 +123,7 @@
         </tr>
       </tbody>
     </table>
-    <p>Team familiarity, Zustand for lightweight state management, and a strong ecosystem for building interactive canvas applications were the primary reasons for choosing React [6]. The visual workflow editor relies heavily on SVG manipulation, an area where React's ecosystem provided strong existing tooling.</p>
+    <p>Most of the team already knew React, and Zustand gave us a lightweight way to manage the complex canvas state [6]. The workflow editor does a lot of SVG manipulation, and React's ecosystem had better support for that than the alternatives.</p>
 
     <h3>Real-time Communication</h3>
     <table class="comparison-table">
@@ -156,7 +156,7 @@
         </tr>
       </tbody>
     </table>
-    <p>LEMON originally used Socket.IO for real-time communication. During development, the team realized that the application only required server-to-client streaming (LLM responses, tool call updates, execution events). Bidirectional communication was unnecessary. The project migrated from Socket.IO to SSE in March 2026, simplifying the infrastructure and eliminating the need for a separate WebSocket protocol [7].</p>
+    <p>We started with Socket.IO but realised partway through development that we only actually needed server-to-client streaming (LLM responses, tool call updates, execution events). We never used the client-to-server channel that WebSockets provide. We migrated to SSE in March 2026, which simplified the infrastructure considerably [7].</p>
 
     <h3>Database</h3>
     <table class="comparison-table">
@@ -183,7 +183,7 @@
         </tr>
       </tbody>
     </table>
-    <p>The application stores workflow definitions, user accounts, and conversation logs. These are small, per-user datasets. SQLite's zero-configuration approach simplified deployment [8], and its single-file model aligned well with the Azure Web App deployment target where managing a separate database server was not warranted.</p>
+    <p>Our data is mostly workflow definitions, user accounts, and conversation logs. These are small, per-user datasets, so a full database server would have been overkill. SQLite's zero-config, single-file approach kept deployment simple [8], which was especially helpful on Azure where we didn't want to manage a separate database instance.</p>
 
     <h3>State Management</h3>
     <table class="comparison-table">
@@ -216,7 +216,7 @@
         </tr>
       </tbody>
     </table>
-    <p>Zustand's minimal API and natural fit with React hooks made it the practical choice for managing the workflow canvas state [9]. The canvas involves frequent updates as nodes are added, moved, and connected in real time, and Zustand handled these without the boilerplate overhead of Redux.</p>
+    <p>Zustand was the obvious pick for state management [9]. The canvas state updates constantly as nodes get added, moved, and connected, and Zustand handles that without the boilerplate that Redux would have required.</p>
 
     <!-- Technical Decisions Summary -->
     <h2>Technical Decisions Summary</h2>
@@ -290,17 +290,17 @@
     <!-- References -->
     <h2>References</h2>
     <p>
-      [1] Camunda, "Camunda Platform Documentation," camunda.com/docs. Accessed Mar. 2026.<br>
-      [2] OpenCDS, "OpenCDS Clinical Decision Support," opencds.org. Accessed Mar. 2026.<br>
-      [3] LangChain, "LangChain Documentation," docs.langchain.com. Accessed Mar. 2026.<br>
-      [4] Anthropic, "Claude API Documentation - Tool Use," docs.anthropic.com. Accessed Mar. 2026.<br>
-      [5] S. Ramirez, "FastAPI Documentation," fastapi.tiangolo.com. Accessed Mar. 2026.<br>
-      [6] Meta, "React Documentation," react.dev. Accessed Mar. 2026.<br>
-      [7] WHATWG, "Server-Sent Events," html.spec.whatwg.org/multipage/server-sent-events.html. Accessed Mar. 2026.<br>
-      [8] SQLite Consortium, "SQLite Documentation," sqlite.org/docs.html. Accessed Mar. 2026.<br>
-      [9] P. Mendez, "Zustand Documentation," docs.pmnd.rs/zustand. Accessed Mar. 2026.<br>
-      [10] Astral, "uv - Python Package Manager," docs.astral.sh/uv. Accessed Mar. 2026.<br>
-      [11] Vite, "Vite Documentation," vite.dev. Accessed Mar. 2026.
+      [1] Camunda, "Camunda Platform Documentation." [Online]. Available: https://camunda.com/docs. [Accessed: Mar. 2026].<br>
+      [2] OpenCDS, "OpenCDS Clinical Decision Support." [Online]. Available: https://opencds.org. [Accessed: Mar. 2026].<br>
+      [3] LangChain, "LangChain Documentation." [Online]. Available: https://docs.langchain.com. [Accessed: Mar. 2026].<br>
+      [4] Anthropic, "Claude API Documentation - Tool Use." [Online]. Available: https://docs.anthropic.com. [Accessed: Mar. 2026].<br>
+      [5] S. Ramirez, "FastAPI Documentation." [Online]. Available: https://fastapi.tiangolo.com. [Accessed: Mar. 2026].<br>
+      [6] Meta, "React Documentation." [Online]. Available: https://react.dev. [Accessed: Mar. 2026].<br>
+      [7] WHATWG, "Server-Sent Events," <em>HTML Living Standard</em>. [Online]. Available: https://html.spec.whatwg.org/multipage/server-sent-events.html. [Accessed: Mar. 2026].<br>
+      [8] SQLite Consortium, "SQLite Documentation." [Online]. Available: https://sqlite.org/docs.html. [Accessed: Mar. 2026].<br>
+      [9] P. Mendez, "Zustand Documentation." [Online]. Available: https://docs.pmnd.rs/zustand. [Accessed: Mar. 2026].<br>
+      [10] Astral, "uv - Python Package Manager." [Online]. Available: https://docs.astral.sh/uv. [Accessed: Mar. 2026].<br>
+      [11] Vite, "Vite Documentation." [Online]. Available: https://vite.dev. [Accessed: Mar. 2026].
     </p>
 
   </div>
