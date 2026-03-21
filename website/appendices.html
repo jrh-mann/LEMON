@@ -92,7 +92,7 @@ cd ../..</code></pre>
         <pre><code>cp .env.example .env</code></pre>
         <p>Then edit <code>.env</code> and add your Anthropic API key:</p>
         <pre><code>ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6</code></pre>
+ANTHROPIC_MODEL=claude-opus-4-6</code></pre>
       </li>
       <li>
         <p>Start the development servers:</p>
@@ -167,11 +167,11 @@ ANTHROPIC_MODEL=claude-sonnet-4-6</code></pre>
     <h3>February 20-27, 2026: Subworkflows and Streaming</h3>
     <p>Implemented independent subworkflow builders with recursive execution and input/output mapping between parent and child workflows. Built the SSE infrastructure for real-time event streaming. Added build depth limits to prevent infinite recursion. Improved frontend resilience with localStorage quota handling and event routing fixes.</p>
 
-    <h3>March 1-9, 2026: Architecture Migration</h3>
-    <p>Completed the migration from Socket.IO to Server-Sent Events, simplifying the real-time communication infrastructure. Rewrote end-to-end tests to run against a real backend instead of mocks. Switched the internal tool format from OpenAI-style to native Anthropic format. Added stepped execution with pause, resume, and stop controls.</p>
+    <h3>March 1-9, 2026: Execution Controls and Tool Format</h3>
+    <p>Rewrote end-to-end tests to run against a real backend instead of mocks. Switched the internal tool format from OpenAI-style to native Anthropic format. Added stepped execution with pause, resume, and stop controls.</p>
 
-    <h3>March 10-16, 2026: Evaluation and Hardening</h3>
-    <p>Built the six-dimension evaluation framework for measuring workflow extraction quality (variables, nodes, topology, conditions, outputs, functional routing). Implemented comprehensive security hardening: XSS prevention, path traversal mitigation, CSRF headers, rate limiting, and user ownership enforcement on all API endpoints.</p>
+    <h3>March 10-16, 2026: Architecture Migration, Evaluation and Hardening</h3>
+    <p>Completed the migration from Socket.IO to Server-Sent Events, simplifying the real-time communication infrastructure. Built the six-dimension evaluation framework for measuring workflow extraction quality (variables, nodes, topology, conditions, outputs, functional routing). Implemented comprehensive security hardening: XSS prevention, path traversal mitigation, CSRF headers, rate limiting, and user ownership enforcement on all API endpoints.</p>
 
     <!-- ================================================================ -->
     <h2>Monthly Videos</h2>

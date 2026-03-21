@@ -129,7 +129,7 @@
       </svg>
     </div>
 
-    <p>LEMON follows a layered architecture. The React frontend communicates with the FastAPI backend via REST API calls and receives real-time updates through Server-Sent Events. The backend orchestrates LLM interactions through a tool-use loop, with the Event Bus decoupling tool execution from the transport layer. Workflow execution is handled by a dedicated interpreter that evaluates conditions using a custom expression parser.</p>
+    <p>LEMON follows a layered architecture. The React [1] frontend, with Zustand [5] for state management, communicates with the FastAPI [2] backend via REST API calls and receives real-time updates through Server-Sent Events [3]. The backend orchestrates Claude API [6] interactions through a tool-use loop, with the Event Bus decoupling tool execution from the transport layer. Workflow execution is handled by a dedicated interpreter that evaluates conditions using a custom expression parser.</p>
 
     <!-- =========================================================
          Site Map
@@ -382,12 +382,12 @@
         <tr>
           <td>Observer</td>
           <td>EventBus (events/bus.py)</td>
-          <td>Decouple tool execution from transport. Subscribers receive TOOL_STARTED, TOOL_COMPLETED events without knowing about SSE or the frontend.</td>
+          <td>Decouple tool execution from transport. Subscribers receive TOOL_STARTED, TOOL_COMPLETED events without knowing about SSE [3] or the frontend.</td>
         </tr>
         <tr>
           <td>Registry</td>
           <td>ToolRegistry (tools/core.py)</td>
-          <td>Central catalog of 20+ tools. Generates JSON schemas for the LLM automatically. New tools are registered declaratively.</td>
+          <td>Central catalog of 20+ tools. Generates JSON schemas for the Claude API [6] automatically. New tools are registered declaratively.</td>
         </tr>
         <tr>
           <td>Interpreter</td>
@@ -461,7 +461,7 @@
         <text x="250" y="330" font-size="10" fill="#333">version</text>
 
         <!-- ===== Group 2: auth.sqlite ===== -->
-        <rect x="370" y="10" width="210" height="380" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+        <rect x="370" y="10" width="210" height="400" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
         <text x="475" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">auth.sqlite</text>
 
         <!-- Table: users -->
@@ -475,19 +475,21 @@
         <text x="395" y="148" font-size="10" fill="#333">created_at</text>
 
         <!-- Table: sessions -->
-        <rect x="385" y="195" width="180" height="108" rx="4" fill="#fff" stroke="#6ee7b7" stroke-width="1.2"/>
+        <rect x="385" y="195" width="180" height="128" rx="4" fill="#fff" stroke="#6ee7b7" stroke-width="1.2"/>
         <rect x="385" y="195" width="180" height="24" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.2"/>
         <text x="475" y="212" text-anchor="middle" font-size="12" font-weight="600" fill="#047857">sessions</text>
-        <text x="395" y="235" font-size="10" fill="#333"><tspan font-weight="600">token</tspan> (PK)</text>
+        <text x="395" y="235" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
         <text x="395" y="250" font-size="10" fill="#333">user_id (FK)</text>
-        <text x="395" y="265" font-size="10" fill="#333">created_at</text>
-        <text x="395" y="280" font-size="10" fill="#333">expires_at</text>
+        <text x="395" y="265" font-size="10" fill="#333">token_hash (UNIQUE)</text>
+        <text x="395" y="280" font-size="10" fill="#333">created_at</text>
+        <text x="395" y="295" font-size="10" fill="#333">expires_at</text>
+        <text x="395" y="310" font-size="10" fill="#333">last_used_at</text>
 
         <!-- FK line: sessions.user_id -> users.id -->
         <line x1="475" y1="195" x2="475" y2="180" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrow3)"/>
 
         <!-- ===== Group 3: conversation_log.sqlite ===== -->
-        <rect x="600" y="10" width="210" height="230" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+        <rect x="600" y="10" width="210" height="380" rx="8" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
         <text x="705" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">conversation_log.sqlite</text>
 
         <!-- Table: conversations -->
@@ -497,16 +499,33 @@
         <text x="625" y="88" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
         <text x="625" y="103" font-size="10" fill="#333">user_id</text>
         <text x="625" y="118" font-size="10" fill="#333">workflow_id</text>
-        <text x="625" y="133" font-size="10" fill="#333">messages (JSON)</text>
+        <text x="625" y="133" font-size="10" fill="#333">model</text>
         <text x="625" y="148" font-size="10" fill="#333">created_at</text>
         <text x="625" y="163" font-size="10" fill="#333">updated_at</text>
+
+        <!-- Table: entries -->
+        <rect x="615" y="195" width="180" height="178" rx="4" fill="#fff" stroke="#c4b5fd" stroke-width="1.2"/>
+        <rect x="615" y="195" width="180" height="24" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+        <text x="705" y="212" text-anchor="middle" font-size="12" font-weight="600" fill="#5b21b6">entries</text>
+        <text x="625" y="235" font-size="10" fill="#333"><tspan font-weight="600">id</tspan> (PK)</text>
+        <text x="625" y="250" font-size="10" fill="#333">conversation_id (FK)</text>
+        <text x="625" y="265" font-size="10" fill="#333">seq</text>
+        <text x="625" y="280" font-size="10" fill="#333">entry_type</text>
+        <text x="625" y="295" font-size="10" fill="#333">role</text>
+        <text x="625" y="310" font-size="10" fill="#333">content</text>
+        <text x="625" y="325" font-size="10" fill="#333">tool_name</text>
+        <text x="625" y="340" font-size="10" fill="#333">tool_result</text>
+        <text x="625" y="355" font-size="10" fill="#333">timestamp</text>
+
+        <!-- FK line: entries.conversation_id -> conversations.id -->
+        <line x1="705" y1="195" x2="705" y2="180" stroke="#2563eb" stroke-width="1.2" marker-end="url(#arrow3)"/>
 
         <!-- Legend -->
         <text x="410" y="490" text-anchor="middle" font-size="10" fill="#6b7280">PK = Primary Key, FK = Foreign Key. Lines indicate foreign key relationships.</text>
       </svg>
     </div>
 
-    <p>LEMON uses three separate SQLite databases to isolate concerns. Workflow data (definitions, votes, schema version) is kept in workflows.sqlite. Authentication data (users, sessions) is in auth.sqlite. Conversation history for audit purposes is in conversation_log.sqlite. The schema uses version-based migrations, currently at version 8.</p>
+    <p>LEMON uses three separate SQLite [4] databases to isolate concerns. Workflow data (definitions, votes, schema version) is kept in workflows.sqlite. Authentication data (users, sessions) is in auth.sqlite. Conversation history for audit purposes is in conversation_log.sqlite. The schema uses version-based migrations, currently at version 8.</p>
 
     <!-- =========================================================
          API Endpoints
@@ -545,6 +564,20 @@
         <tr><td>GET</td><td>/api/auth/me</td><td>Current user info</td></tr>
       </tbody>
     </table>
+
+    <!-- =========================================================
+         References
+         ========================================================= -->
+    <h2>References</h2>
+
+    <ol class="references">
+      <li>[1] Meta, "React." [Online]. Available: https://react.dev/. [Accessed: Mar. 2026].</li>
+      <li>[2] S. Ramirez, "FastAPI." [Online]. Available: https://fastapi.tiangolo.com/. [Accessed: Mar. 2026].</li>
+      <li>[3] Mozilla, "Using server-sent events." [Online]. Available: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events. [Accessed: Mar. 2026].</li>
+      <li>[4] SQLite Consortium, "SQLite." [Online]. Available: https://www.sqlite.org/. [Accessed: Mar. 2026].</li>
+      <li>[5] Daishi Kato, "Zustand." [Online]. Available: https://zustand-demo.pmnd.rs/. [Accessed: Mar. 2026].</li>
+      <li>[6] Anthropic, "Claude API Documentation." [Online]. Available: https://docs.anthropic.com/. [Accessed: Mar. 2026].</li>
+    </ol>
 
   </div>
   <script src="nav.js"></script>

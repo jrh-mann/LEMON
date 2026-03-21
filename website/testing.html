@@ -25,19 +25,25 @@
       <tbody>
         <tr>
           <td>Unit</td>
-          <td>pytest</td>
-          <td>~1,300 tests across 93 files</td>
+          <td>pytest [1]</td>
+          <td>46 test files</td>
           <td>Verify individual functions and modules</td>
         </tr>
         <tr>
           <td>Integration</td>
-          <td>pytest</td>
+          <td>pytest [1]</td>
           <td>47 test files (integration + features)</td>
           <td>Verify cross-module interactions</td>
         </tr>
         <tr>
+          <td>Frontend Unit</td>
+          <td>Vitest [4]</td>
+          <td>4 test files</td>
+          <td>Verify frontend stores and utility functions</td>
+        </tr>
+        <tr>
           <td>End-to-End</td>
-          <td>Playwright</td>
+          <td>Playwright [2]</td>
           <td>12 spec files</td>
           <td>Verify full user flows in browser</td>
         </tr>
@@ -55,6 +61,7 @@
         </tr>
       </tbody>
     </table>
+    <p>Altogether the backend test suite has over 1,300 automated tests across 93 test files.</p>
 
     <h2>Unit Testing</h2>
 
@@ -62,7 +69,7 @@
     <p>Unit tests catch regressions when we change individual components. Each backend module (parser, evaluator, tools, validation, workflow storage) has its own test file that verifies it works correctly on its own.</p>
 
     <h3>Tool</h3>
-    <p>pytest, the standard Python testing framework. Tests are organized by module in the <code>tests/</code> directory.</p>
+    <p>pytest [1], the standard Python testing framework. Tests are organized by module in the <code>tests/</code> directory.</p>
 
     <h3>How Tests Are Conducted</h3>
     <p>Tests are organized into subdirectories by functionality. Each test file focuses on a single module or feature. Tests use pytest fixtures for setup and run without any external dependencies (no API calls, no database servers).</p>
@@ -98,16 +105,6 @@
           <td>CRUD operations, persistence, library management, save/load contract</td>
         </tr>
         <tr>
-          <td>Features</td>
-          <td>24</td>
-          <td>Feature-level integration (subworkflows, export, cancellation, streaming)</td>
-        </tr>
-        <tr>
-          <td>Integration</td>
-          <td>23</td>
-          <td>Event bus, schema migrations, API routes with auth, cross-module flows</td>
-        </tr>
-        <tr>
           <td>Evaluation</td>
           <td>2</td>
           <td>Scorer dimensions, functional scoring, threshold extraction</td>
@@ -124,13 +121,34 @@
     <p>Individual modules can pass their own tests while breaking when combined. Integration tests catch these problems.</p>
 
     <h3>Tool</h3>
-    <p>pytest, using the same framework as unit tests but with fixtures that set up multi-component environments.</p>
+    <p>pytest [1], using the same framework as unit tests but with fixtures that set up multi-component environments.</p>
 
     <h3>How Tests Are Conducted</h3>
     <p>Tests in <code>tests/integration/</code> and <code>tests/features/</code> set up scenarios involving multiple backend components. These cover event bus communication between the orchestrator and the frontend transport layer, database schema migration sequences from version 0 through 8, workflow save-load cycles ensuring data integrity, and API route handling with authentication middleware.</p>
 
     <h3>Results</h3>
-    <p>47 test files covering integration and feature-level scenarios. All tests are automated and run as part of the continuous integration pipeline.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Test Area</th>
+          <th>Files</th>
+          <th>What's Covered</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Features</td>
+          <td>24</td>
+          <td>Feature-level integration (subworkflows, export, cancellation, streaming)</td>
+        </tr>
+        <tr>
+          <td>Integration</td>
+          <td>23</td>
+          <td>Event bus, schema migrations, API routes with auth, cross-module flows</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>47 test files in total. All tests are automated and run as part of the continuous integration pipeline.</p>
 
     <h3>Analysis</h3>
     <p>These tests were especially useful during the Socket.IO to SSE migration. The existing suite caught several regressions where the new SSE layer didn't propagate tool events the same way Socket.IO had.</p>
@@ -141,7 +159,7 @@
     <p>Some bugs only show up when you run the full stack. E2E tests catch these by automating real browser interactions against a running backend.</p>
 
     <h3>Tool</h3>
-    <p>Playwright, a browser automation framework. Tests run in a real browser against a real backend (not mocked).</p>
+    <p>Playwright [2], a browser automation framework. Tests run in a real browser against a real backend (not mocked).</p>
 
     <h3>How Tests Are Conducted</h3>
     <p>Test specs in <code>src/frontend/tests/e2e/</code> automate user interactions: typing in the chat panel, waiting for LLM responses, verifying canvas updates, checking modal dialogs, and testing navigation flows.</p>
@@ -220,7 +238,7 @@
     <p>Custom evaluation framework built in <code>eval/</code>. Uses pytest-compatible test infrastructure.</p>
 
     <h3>How Tests Are Conducted</h3>
-    <p>Benchmark tasks with reference (golden) workflows. The evaluation harness runs the orchestrator against a natural language description, then scores the extracted workflow against the golden reference across six dimensions: variables, nodes, topology, conditions, outputs, and functional routing agreement. See the Algorithms page for detailed scoring methodology.</p>
+    <p>Benchmark tasks with reference (golden) workflows. The evaluation harness runs the orchestrator against a natural language description, then scores the extracted workflow against the golden reference across six dimensions: variables, nodes, topology, conditions, outputs, and functional routing agreement [3]. See the Algorithms page for detailed scoring methodology.</p>
 
     <h3>Results</h3>
     <p>The framework currently evaluates against diabetes treatment and liver pathology benchmark workflows. Scoring runs across multiple models and configurations to detect regressions.</p>
@@ -237,6 +255,16 @@
         <li>Issues identified and how they were addressed</li>
       </ul>
     </div>
+
+    <!-- References -->
+    <h2>References</h2>
+    <p>
+      [1] pytest developers, "pytest: helps you write better programs." [Online]. Available: https://docs.pytest.org. [Accessed: Mar. 2026].<br>
+      [2] Microsoft, "Playwright: Fast and reliable end-to-end testing for modern web apps." [Online]. Available: https://playwright.dev. [Accessed: Mar. 2026].<br>
+      [3] Anthropic, "Claude API Documentation." [Online]. Available: https://docs.anthropic.com. [Accessed: Mar. 2026].<br>
+      [4] Vitest Team, "Vitest: A blazing fast unit test framework." [Online]. Available: https://vitest.dev. [Accessed: Mar. 2026].
+    </p>
+
   </div>
   <script src="nav.js"></script>
 </body>

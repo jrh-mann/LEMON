@@ -57,7 +57,7 @@
         </tr>
       </tbody>
     </table>
-    <p>We chose Claude mainly because of its native tool use API [4]. Our orchestrator needs the LLM to return precise, structured tool calls (not free-form text), and Claude's tool use was the most reliable option we tested for generating valid node operations.</p>
+    <p>We initially prototyped with an OpenAI-based approach but switched to Claude in January 2026 after finding its native tool use API [4] more reliable for our use case. Our orchestrator needs the LLM to return precise, structured tool calls (not free-form text), and Claude's tool use was the most consistent option we tested for generating valid node operations.</p>
 
     <h3>Backend Framework</h3>
     <table class="comparison-table">
@@ -90,7 +90,7 @@
         </tr>
       </tbody>
     </table>
-    <p>We needed async support and SSE streaming out of the box, which ruled out Flask [5]. FastAPI's Pydantic integration also saved us a lot of manual request validation, and the auto-generated OpenAPI docs were useful during development.</p>
+    <p>We started with Flask [5] for the initial prototype because of its simplicity, but migrated to FastAPI in March 2026. As the project grew, we needed native async support and SSE streaming, which Flask could not provide without heavy extensions. FastAPI's Pydantic integration also saved us a lot of manual request validation, and the auto-generated OpenAPI docs were useful during development.</p>
 
     <h3>Frontend Framework</h3>
     <table class="comparison-table">
@@ -298,7 +298,7 @@
       [6] Meta, "React Documentation." [Online]. Available: https://react.dev. [Accessed: Mar. 2026].<br>
       [7] WHATWG, "Server-Sent Events," <em>HTML Living Standard</em>. [Online]. Available: https://html.spec.whatwg.org/multipage/server-sent-events.html. [Accessed: Mar. 2026].<br>
       [8] SQLite Consortium, "SQLite Documentation." [Online]. Available: https://sqlite.org/docs.html. [Accessed: Mar. 2026].<br>
-      [9] P. Mendez, "Zustand Documentation." [Online]. Available: https://docs.pmnd.rs/zustand. [Accessed: Mar. 2026].<br>
+      [9] D. Kato, "Zustand Documentation." [Online]. Available: https://docs.pmnd.rs/zustand. [Accessed: Mar. 2026].<br>
       [10] Astral, "uv - Python Package Manager." [Online]. Available: https://docs.astral.sh/uv. [Accessed: Mar. 2026].<br>
       [11] Vite, "Vite Documentation." [Online]. Available: https://vite.dev. [Accessed: Mar. 2026].
     </p>
