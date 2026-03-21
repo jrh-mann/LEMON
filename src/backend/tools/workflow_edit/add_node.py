@@ -47,12 +47,12 @@ ALL_COMPARATORS = [
 def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> str | None:
     """Validate a single simple condition and resolve variable references.
 
-    Accepts either ``variable`` (name-based, preferred) or ``input_id`` (legacy ID).
-    When ``variable`` is provided, resolves it to an ``input_id`` via case-insensitive
-    name lookup so downstream code (execution engine) works unchanged.
+    Accepts ``variable`` (name-based) and resolves it to an ``input_id`` via
+    case-insensitive name lookup so downstream execution logic can work with
+    canonical variable IDs.
 
     Args:
-        condition: Condition dict with variable (or input_id), comparator, value, value2.
+        condition: Condition dict with variable, comparator, value, value2.
         variables: List of workflow variable definitions.
 
     Returns:
@@ -60,7 +60,6 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
     """
     # Extract condition fields
     var_name = condition.get("variable")
-    input_id = condition.get("input_id")
     comparator = condition.get("comparator")
     value = condition.get("value")
 
@@ -80,7 +79,7 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
         # Inject resolved ID so the execution engine can use it
         condition["input_id"] = matched["id"]
         input_id = matched["id"]
-    elif not input_id:
+    else:
         return "condition.variable is required (name of the workflow variable to check)"
 
     comparator = condition.get("comparator")

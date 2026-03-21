@@ -83,7 +83,21 @@ class ConversationManager:
         self.history.append({"role": "user", "content": user_message})
         if tool_messages:
             self.history.extend(tool_messages)
-        self.history.append({"role": "assistant", "content": final_text})
+        final_msg: Dict[str, Any] = {"role": "assistant", "content": final_text}
+        if tool_messages:
+            tool_calls_meta = []
+            for msg in tool_messages:
+                if msg.get("role") != "assistant":
+                    continue
+                for call in msg.get("tool_calls") or []:
+                    tool_calls_meta.append({
+                        "tool": call.get("name", ""),
+                        "arguments": call.get("input") or {},
+                        "success": True,
+                    })
+            if tool_calls_meta:
+                final_msg["tool_calls_meta"] = tool_calls_meta
+        self.history.append(final_msg)
         self._logger.debug("History now has %d messages", len(self.history))
 
     def save_error(self, user_message: str, error_msg: str) -> None:

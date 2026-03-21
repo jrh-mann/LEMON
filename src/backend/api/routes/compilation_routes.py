@@ -7,12 +7,15 @@ Python source code.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
+from .helpers import api_error
 
 
 def register_compilation_routes(
@@ -58,8 +61,8 @@ def register_compilation_routes(
 
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         nodes = payload.get("nodes", [])
         edges = payload.get("edges", [])

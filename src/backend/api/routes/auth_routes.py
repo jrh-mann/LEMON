@@ -6,6 +6,7 @@ management, and current-user queries.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Dict
 from uuid import uuid4
@@ -13,6 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse
 
+from .helpers import api_error
 from ..auth import (
     apply_login_rate_limit,
     clear_session_cookie,
@@ -56,12 +58,12 @@ def register_auth_routes(app: FastAPI, *, auth_store: AuthStore) -> None:
     @router.post("/api/auth/register")
     async def register_user(request: Request) -> JSONResponse:
         if not allow_registration:
-            return JSONResponse({"error": "Registration is disabled."}, status_code=403)
+            return api_error("Registration is disabled.", 403)
 
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         email = normalize_email(str(payload.get("email", "")))
         name = str(payload.get("name", "")).strip()
@@ -76,14 +78,14 @@ def register_auth_routes(app: FastAPI, *, auth_store: AuthStore) -> None:
             errors.append("Name is required.")
         errors.extend(list(validate_password(password, auth_config)))
         if errors:
-            return JSONResponse({"error": errors[0], "errors": errors}, status_code=400)
+            return api_error(errors[0])
 
         user_id = f"user_{uuid4().hex}"
         password_hash = hash_password(password, config=auth_config)
         try:
             auth_store.create_user(user_id, email, name, password_hash)
         except sqlite3.IntegrityError:
-            return JSONResponse({"error": "Email is already registered."}, status_code=409)
+            return api_error("Email is already registered.", 409)
 
         token, expires_at = issue_session(
             auth_store,
@@ -103,8 +105,8 @@ def register_auth_routes(app: FastAPI, *, auth_store: AuthStore) -> None:
     async def login_user(request: Request) -> JSONResponse:
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         email = normalize_email(str(payload.get("email", "")))
         password = str(payload.get("password", ""))
@@ -112,7 +114,7 @@ def register_auth_routes(app: FastAPI, *, auth_store: AuthStore) -> None:
 
         email_error = validate_email(email)
         if email_error:
-            return JSONResponse({"error": email_error}, status_code=400)
+            return api_error(email_error)
 
         # Use client IP for rate-limiting identifier
         client_host = request.client.host if request.client else "unknown"
@@ -125,11 +127,11 @@ def register_auth_routes(app: FastAPI, *, auth_store: AuthStore) -> None:
         if not user:
             verify_password(password, dummy_password_hash)
             note_login_failure(identifier)
-            return JSONResponse({"error": "Invalid email or password."}, status_code=401)
+            return api_error("Invalid email or password.", 401)
 
         if not verify_password(password, user.password_hash):
             note_login_failure(identifier)
-            return JSONResponse({"error": "Invalid email or password."}, status_code=401)
+            return api_error("Invalid email or password.", 401)
 
         auth_store.update_last_login(user.id)
         token, expires_at = issue_session(

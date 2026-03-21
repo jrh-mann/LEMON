@@ -49,12 +49,13 @@ def _purge_stale_executions_locked(now: float) -> None:
         _EXECUTION_STATE.pop(eid, None)
 
 
-def register_execution(execution_id: str) -> None:
+def register_execution(execution_id: str, user_id: str) -> None:
     """Register a new execution for pause/resume/stop tracking."""
     with _EXECUTION_LOCK:
         now = time.monotonic()
         _purge_stale_executions_locked(now)
         _EXECUTION_STATE[execution_id] = {
+            "user_id": user_id,
             "paused": False,
             "stopped": False,
             "pause_event": Event(),
@@ -64,33 +65,36 @@ def register_execution(execution_id: str) -> None:
         _EXECUTION_STATE[execution_id]["pause_event"].set()
 
 
-def pause_execution(execution_id: str) -> bool:
-    """Pause a running execution.  Returns True if found."""
+def pause_execution(execution_id: str, user_id: str) -> bool:
+    """Pause a running execution.  Returns True if found and owned by user_id."""
     with _EXECUTION_LOCK:
+        _purge_stale_executions_locked(time.monotonic())
         state = _EXECUTION_STATE.get(execution_id)
-        if not state:
+        if not state or state["user_id"] != user_id:
             return False
         state["paused"] = True
         state["pause_event"].clear()
         return True
 
 
-def resume_execution(execution_id: str) -> bool:
-    """Resume a paused execution.  Returns True if found."""
+def resume_execution(execution_id: str, user_id: str) -> bool:
+    """Resume a paused execution.  Returns True if found and owned by user_id."""
     with _EXECUTION_LOCK:
+        _purge_stale_executions_locked(time.monotonic())
         state = _EXECUTION_STATE.get(execution_id)
-        if not state:
+        if not state or state["user_id"] != user_id:
             return False
         state["paused"] = False
         state["pause_event"].set()
         return True
 
 
-def stop_execution(execution_id: str) -> bool:
-    """Stop a running execution.  Returns True if found."""
+def stop_execution(execution_id: str, user_id: str) -> bool:
+    """Stop a running execution.  Returns True if found and owned by user_id."""
     with _EXECUTION_LOCK:
+        _purge_stale_executions_locked(time.monotonic())
         state = _EXECUTION_STATE.get(execution_id)
-        if not state:
+        if not state or state["user_id"] != user_id:
             return False
         state["stopped"] = True
         # Unblock pause_event so the thread can wake up and check stopped
@@ -378,7 +382,8 @@ class SteppedExecutionTask:
             self.emit_complete(success=False, error="Execution stopped by user", path=[])
         except Exception as exc:
             logger.exception("Stepped execution failed")
-            self.emit_error(str(exc))
+            # Don't leak internal details (paths, stack traces) to the client
+            self.emit_error("Execution failed unexpectedly. Please try again.")
         finally:
             self.done.set()
             _clear_execution(self.execution_id)

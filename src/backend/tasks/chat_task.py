@@ -56,7 +56,7 @@ class ChatTask:
     sink: EventSink
     conversation_store: ConversationStore
     repo_root: Path
-    workflow_store: WorkflowStore
+    workflow_store: Optional[WorkflowStore]
     user_id: str
     task_id: str
     message: str
@@ -332,7 +332,7 @@ class ChatTask:
 
         try:
             # --- Bootstrap ---
-            self.convo = self.conversation_store.get_or_create(self.conversation_id)
+            self.convo = self.conversation_store.get_or_create(self.conversation_id, self.user_id)
             if not self._save_uploaded_files():
                 return
             self._sync_payload_workflow()

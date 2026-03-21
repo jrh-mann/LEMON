@@ -6,6 +6,7 @@ available tools and execute them with provided arguments.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from starlette.responses import JSONResponse
 from ..deps import require_auth
 from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
+from .helpers import api_error
 
 logger = logging.getLogger("backend.api")
 
@@ -71,7 +73,7 @@ def register_dev_tools_routes(
             return JSONResponse({"tools": tools})
         except Exception as e:
             logger.exception("Failed to list tools: %s", e)
-            return JSONResponse({"error": str(e), "tools": []}, status_code=500)
+            return JSONResponse({"error": "Failed to list tools", "tools": []}, status_code=500)
 
     @router.post("/api/tools/{tool_name}/execute")
     async def execute_tool(
@@ -90,8 +92,8 @@ def register_dev_tools_routes(
 
         try:
             payload = await request.json()
-        except Exception:
-            payload = {}
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
 
         # Build session_state like the orchestrator does
         # This allows tools to work with the same context as via chat
@@ -119,6 +121,6 @@ def register_dev_tools_routes(
             return JSONResponse({"success": success, "result": result})
         except Exception as e:
             logger.exception("Failed to execute tool %s: %s", tool_name, e)
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": "Tool execution failed"}, status_code=500)
 
     app.include_router(router)

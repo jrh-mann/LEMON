@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { exportAsJSON, exportAsPNG, exportAsPython } from '../utils/exportUtils'
 import FlowchartPreview from './FlowchartPreview'
@@ -7,11 +7,20 @@ import '../styles/ExportPage.css'
 
 export default function ExportPage() {
     const navigate = useNavigate()
+    const { id: routeWorkflowId } = useParams<{ id?: string }>()
     const { currentWorkflow, flowchart, currentAnalysis } = useWorkflowStore()
     const [exporting, setExporting] = useState<string | null>(null)
     const [lastResult, setLastResult] = useState<Record<string, string | null>>({})
 
     const canExport = currentWorkflow || flowchart.nodes.length > 0
+    const resolvedWorkflowId = routeWorkflowId || currentWorkflow?.id || null
+    const workflowRoute = resolvedWorkflowId ? `/workflow/${resolvedWorkflowId}` : '/workflow'
+
+    useEffect(() => {
+        if (!routeWorkflowId && currentWorkflow?.id) {
+            navigate(`/export/${currentWorkflow.id}`, { replace: true })
+        }
+    }, [routeWorkflowId, currentWorkflow?.id, navigate])
 
     const handleExport = useCallback(async (format: string) => {
         const ctx = { currentWorkflow, flowchart, currentAnalysis }
@@ -48,7 +57,7 @@ export default function ExportPage() {
         <div className="export-page">
             <header className="export-header">
                 <div className="export-header-left">
-                    <button className="ghost export-back-btn" onClick={() => navigate('/workflow')}>
+                    <button className="ghost export-back-btn" onClick={() => navigate(workflowRoute)}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>
@@ -67,7 +76,7 @@ export default function ExportPage() {
                 {!canExport ? (
                     <div className="export-empty">
                         <p>No workflow to export. Create or open a workflow first.</p>
-                        <button className="primary" onClick={() => navigate('/workflow')}>
+                        <button className="primary" onClick={() => navigate(workflowRoute)}>
                             Go to Workflow Editor
                         </button>
                     </div>

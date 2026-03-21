@@ -80,31 +80,58 @@ class TestExecutionStateMachine:
     """Pause/resume/stop state management."""
 
     def test_register_and_pause(self):
-        """Registered execution can be paused."""
-        register_execution("test_exec_1")
-        assert pause_execution("test_exec_1")
+        """Registered execution can be paused by the owner."""
+        register_execution("test_exec_1", "u1")
+        assert pause_execution("test_exec_1", "u1")
         _clear_execution("test_exec_1")
 
     def test_pause_nonexistent(self):
         """Pausing a nonexistent execution returns False."""
-        assert not pause_execution("nonexistent")
+        assert not pause_execution("nonexistent", "u1")
 
     def test_register_and_resume(self):
-        """Registered execution can be paused then resumed."""
-        register_execution("test_exec_2")
-        assert pause_execution("test_exec_2")
-        assert resume_execution("test_exec_2")
+        """Registered execution can be paused then resumed by the owner."""
+        register_execution("test_exec_2", "u1")
+        assert pause_execution("test_exec_2", "u1")
+        assert resume_execution("test_exec_2", "u1")
         _clear_execution("test_exec_2")
 
     def test_register_and_stop(self):
-        """Registered execution can be stopped."""
-        register_execution("test_exec_3")
-        assert stop_execution("test_exec_3")
+        """Registered execution can be stopped by the owner."""
+        register_execution("test_exec_3", "u1")
+        assert stop_execution("test_exec_3", "u1")
         _clear_execution("test_exec_3")
 
     def test_stop_nonexistent(self):
         """Stopping a nonexistent execution returns False."""
-        assert not stop_execution("nonexistent")
+        assert not stop_execution("nonexistent", "u1")
+
+    def test_pause_wrong_user(self):
+        """A different user cannot pause another user's execution."""
+        register_execution("test_exec_own_1", "alice")
+        assert not pause_execution("test_exec_own_1", "eve")
+        _clear_execution("test_exec_own_1")
+
+    def test_resume_wrong_user(self):
+        """A different user cannot resume another user's execution."""
+        register_execution("test_exec_own_2", "alice")
+        assert pause_execution("test_exec_own_2", "alice")
+        assert not resume_execution("test_exec_own_2", "eve")
+        _clear_execution("test_exec_own_2")
+
+    def test_stop_wrong_user(self):
+        """A different user cannot stop another user's execution."""
+        register_execution("test_exec_own_3", "alice")
+        assert not stop_execution("test_exec_own_3", "eve")
+        _clear_execution("test_exec_own_3")
+
+    def test_register_stores_user_id(self):
+        """register_execution stores user_id in the state dict."""
+        from src.backend.tasks.execution_task import _EXECUTION_STATE, _EXECUTION_LOCK
+        register_execution("test_exec_uid", "owner_123")
+        with _EXECUTION_LOCK:
+            assert _EXECUTION_STATE["test_exec_uid"]["user_id"] == "owner_123"
+        _clear_execution("test_exec_uid")
 
 
 class TestExecutionTaskStop:
@@ -117,7 +144,7 @@ class TestExecutionTaskStop:
 
         # Create a minimal workflow that will take a while to execute
         # (the speed_ms delay gives us time to stop)
-        register_execution(exec_id)
+        register_execution(exec_id, "u1")
 
         task = SteppedExecutionTask(
             sink=sink,

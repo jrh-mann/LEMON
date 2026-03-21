@@ -24,8 +24,6 @@ export function hydrateWorkflowDetail(workflowData: WorkflowDetailResponse): {
     id: workflowData.id,
     output_type: workflowData.output_type,
     metadata: workflowData.metadata,
-    blocks: [],
-    connections: [],
   }
 
   const analysis: WorkflowAnalysis = {

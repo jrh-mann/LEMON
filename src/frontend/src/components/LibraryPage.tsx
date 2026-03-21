@@ -9,6 +9,7 @@ import '../styles/LibraryPage.css'
 export default function LibraryPage() {
     const navigate = useNavigate()
     const { setZoomingCard, setZoomPhase } = useUIStore()
+    const currentWorkflowId = useWorkflowStore(s => s.currentWorkflow?.id)
     // When streaming handlers signal library changes (subworkflow created/finished),
     // this counter increments and triggers a re-fetch
     const libraryRefreshTrigger = useWorkflowStore(s => s.libraryRefreshTrigger)
@@ -100,12 +101,13 @@ export default function LibraryPage() {
     }, [refreshWorkflows])
 
     const displayWorkflows = (workflows ?? []).filter(filterBySearch)
+    const workflowReturnPath = currentWorkflowId ? `/workflow/${currentWorkflowId}` : '/workflow'
 
     return (
         <div className="library-page">
             <header className="library-header">
                 <div className="library-header-left">
-                    <button className="ghost library-back-btn" onClick={() => navigate('/workflow')}>
+                    <button className="ghost library-back-btn" onClick={() => navigate(workflowReturnPath)}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>

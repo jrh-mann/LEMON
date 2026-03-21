@@ -97,8 +97,17 @@ def _to_anthropic_messages(
         blocks = _build_message_blocks(msg)
         if not blocks:
             blocks = [{"type": "text", "text": "(empty)"}]
-        # Merge consecutive same-role messages (e.g. batched tool results)
-        if converted and converted[-1]["role"] == role:
+        # Never merge consecutive assistant messages when the earlier one contains
+        # tool_use blocks. Anthropic requires tool_result blocks to immediately
+        # follow the assistant tool_use message, and merging another assistant text
+        # message into that same block can produce invalid request structure.
+        previous = converted[-1] if converted else None
+        previous_has_tool_use = bool(previous and any(
+            isinstance(block, dict) and block.get("type") == "tool_use"
+            for block in previous.get("content", [])
+        ))
+        # Merge consecutive same-role messages only when safe.
+        if previous and previous["role"] == role and not previous_has_tool_use:
             converted[-1]["content"].extend(blocks)
         else:
             converted.append({"role": role, "content": blocks})

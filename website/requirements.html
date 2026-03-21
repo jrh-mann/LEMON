@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Requirements</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <h1>Requirements</h1>
+
+    <!-- Partner Introduction -->
+    <h2>Partner Introduction</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Organisation</th>
+          <th>Contact</th>
+          <th>Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CloudSurge</td>
+          <td><a href="mailto:ilyas@cloudsurge.uk">Ilyas (ilyas@cloudsurge.uk)</a></td>
+          <td>Project supervisor. Focused on medical workflow formalization and clinical decision support. CloudSurge provided the core problem domain and guided the project's clinical focus.</td>
+        </tr>
+        <tr>
+          <td>Avanade</td>
+          <td><a href="mailto:tarun.b.arora@avanade.com">Tarun Arora (tarun.b.arora@avanade.com)</a></td>
+          <td>Advisor and facilitator. Brought enterprise technology perspective to the project.</td>
+        </tr>
+        <tr>
+          <td>Trigger Point Labs</td>
+          <td><a href="mailto:haider@triggerpointlabs.com">Haider Khokhar (haider@triggerpointlabs.com)</a></td>
+          <td>Technical advisor and stakeholder with domain knowledge in medicine.</td>
+        </tr>
+        <tr>
+          <td>UCL</td>
+          <td><a href="mailto:yun.fu@ucl.ac.uk">Yun Fu (yun.fu@ucl.ac.uk)</a></td>
+          <td>Academic supervisor.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Project Background and Goals -->
+    <h2>Project Background and Goals</h2>
+    <p>Doctors and other clinicians often know their decision-making processes well but have no way to turn that knowledge into something a computer can run. LEMON is built for these non-technical users: people who understand clinical processes but shouldn't need to write code to formalize them.</p>
+    <ol>
+      <li>Reduce the effort required to formalise expert decision logic.</li>
+      <li>Provide a safe authoring environment with strong validation before execution or export.</li>
+      <li>Support review, sharing, and reuse of high-value workflows.</li>
+      <li>Enable export to formats suitable for downstream engineering systems.</li>
+    </ol>
+
+    <!-- Requirement Gathering -->
+    <h2>Requirement Gathering</h2>
+    <p>We gathered requirements through regular meetings with CloudSurge and Avanade throughout the project. These sessions helped us narrow the scope, sort out priorities, and check our technical direction. The outcome was a formal requirements specification document, reviewed and signed off by all stakeholders.</p>
+    <p>No formal user survey was conducted. Requirements were collected through direct stakeholder meetings and iterative discussion with the project partners.</p>
+    <div class="placeholder">Detailed meeting notes and requirement evolution will be added here.</div>
+
+    <!-- Personas -->
+    <h2>Personas</h2>
+
+    <div class="persona">
+      <div class="persona-name">Dr. Sarah Chen</div>
+      <div class="persona-role">General Practitioner</div>
+      <p>15 years of clinical experience. Strong domain knowledge of treatment protocols but limited technical ability. She wants to quickly convert her clinical decision-making process into structured workflows that colleagues can review and follow. Currently frustrated by the need to explain workflows to IT staff who then build them manually. She would use LEMON's chat interface to describe workflows in natural language.</p>
+    </div>
+
+    <div class="persona">
+      <div class="persona-name">Dr. James Okonkwo</div>
+      <div class="persona-role">Clinical Researcher</div>
+      <p>Works at a teaching hospital developing treatment guidelines. Needs to review workflows for correctness, validate them against known cases, and share them across departments. He would use the workflow library to browse and validate existing workflows, and the stepped execution feature to verify correctness with test inputs.</p>
+    </div>
+
+    <div class="persona">
+      <div class="persona-name">Rachel Torres</div>
+      <div class="persona-role">Hospital IT Administrator</div>
+      <p>Manages clinical software deployments across a hospital network. Needs to deploy LEMON, create user accounts, and export workflows for integration with existing hospital systems. She would use the deployment pipeline and export features (JSON, Python) to integrate workflows into downstream systems.</p>
+    </div>
+
+    <!-- Use Cases -->
+    <h2>Use Cases</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Use Case</th>
+          <th>Actor</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>UC-01</td>
+          <td>Create Workflow from Text</td>
+          <td>Domain Expert</td>
+          <td>Describe a clinical workflow in natural language via the chat interface</td>
+        </tr>
+        <tr>
+          <td>UC-02</td>
+          <td>Create Workflow from Image</td>
+          <td>Domain Expert</td>
+          <td>Upload a flowchart image or PDF for automatic reconstruction</td>
+        </tr>
+        <tr>
+          <td>UC-03</td>
+          <td>Edit Workflow on Canvas</td>
+          <td>Domain Expert</td>
+          <td>Drag nodes, draw connections, modify properties directly on the visual editor</td>
+        </tr>
+        <tr>
+          <td>UC-04</td>
+          <td>Validate Workflow</td>
+          <td>Domain Expert</td>
+          <td>Run structural validation checks before saving or exporting</td>
+        </tr>
+        <tr>
+          <td>UC-05</td>
+          <td>Execute with Test Inputs</td>
+          <td>Domain Expert</td>
+          <td>Provide test values and step through the workflow to verify correctness</td>
+        </tr>
+        <tr>
+          <td>UC-06</td>
+          <td>Save to Library</td>
+          <td>Domain Expert</td>
+          <td>Store a workflow in the personal library for later access</td>
+        </tr>
+        <tr>
+          <td>UC-07</td>
+          <td>Browse Library</td>
+          <td>Domain Expert</td>
+          <td>Search and browse saved workflows</td>
+        </tr>
+        <tr>
+          <td>UC-08</td>
+          <td>Export Workflow</td>
+          <td>Domain Expert</td>
+          <td>Export as JSON, compiled Python, or PNG image</td>
+        </tr>
+        <tr>
+          <td>UC-09</td>
+          <td>Create Subworkflow</td>
+          <td>Domain Expert</td>
+          <td>Extract part of a workflow as a reusable subprocess</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Functional Requirements (MoSCoW) -->
+    <h2>Functional Requirements (MoSCoW)</h2>
+    <table class="req-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Description</th>
+          <th>Priority</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>FR1-001</td>
+          <td>The system shall analyse uploaded workflow diagrams and reconstruct them into structured workflows in the editor</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-002</td>
+          <td>The visual editor shall support the node types start, process, decision, calculation, subprocess, and end</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-003</td>
+          <td>Users shall be able to create and edit workflows through natural-language interaction with the orchestrator</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR1-004</td>
+          <td>Users shall be able to create and manage typed variables with supported types string, number, boolean, date, and enum</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-005</td>
+          <td>The orchestrator shall be able to register variables before creating nodes that depend on them</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-006</td>
+          <td>Decision nodes shall support type-appropriate comparators and true/false branching during execution</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-007</td>
+          <td>Calculation nodes shall support a documented set of mathematical operators and store results as derived variables</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-008</td>
+          <td>Users shall be able to create compound conditions combining multiple comparisons using logical AND/OR</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-009</td>
+          <td>Users shall be able to create subprocess nodes that call other workflows and map inputs and outputs</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-010</td>
+          <td>The orchestrator shall use workflow tools to create, update, inspect, validate, and save workflows</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-011</td>
+          <td>The system shall allow users to switch between multiple workflows for editing and review</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR1-012</td>
+          <td>The system shall allow import of workflow JSON into the editor</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR1-013</td>
+          <td>The orchestrator reasons about workflow correctness during creation</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR2-001</td>
+          <td>The system shall validate workflows against a structural rule set before save, export, or execution</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR2-002</td>
+          <td>Validation shall check start node constraints, reachability, edge references, complete decision branching, variable references, subprocess references, and output consistency</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR2-003</td>
+          <td>Users shall be able to execute a workflow against manually entered input values and inspect output, path, and context</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR2-004</td>
+          <td>Preview execution shall support calculations, derived variables, subprocess execution, and cycle protection</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR2-005</td>
+          <td>The system shall expose step-level execution information for visual playback and debugging</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR2-006</td>
+          <td>Users shall be able to pause, resume, and stop stepped execution</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR3-001</td>
+          <td>Users shall be able to export workflows as structured JSON</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR3-002</td>
+          <td>Users shall be able to export workflows as compiled Python code</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR3-003</td>
+          <td>Users shall be able to export the workflow canvas as a PNG image</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR3-004</td>
+          <td>Exported Python shall preserve control flow, decision logic, and calculation logic</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR4-001</td>
+          <td>Users shall be able to save workflows to a personal library</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR4-002</td>
+          <td>Users shall be able to browse saved workflows through a library interface</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR5-001</td>
+          <td>The chat interface shall stream orchestrator responses incrementally</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>FR5-002</td>
+          <td>Long-running orchestrator tasks shall support cancellation by the user</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR5-003</td>
+          <td>The system shall preserve conversation state across multiple turns</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>FR5-004</td>
+          <td>The system should allow a running task to resume after client refresh</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Non-Functional Requirements -->
+    <h2>Non-Functional Requirements</h2>
+    <table class="req-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Requirement</th>
+          <th>Acceptance Criteria</th>
+          <th>Priority</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>NFR-001</td>
+          <td>UI actions feel responsive</td>
+          <td>Non-LLM actions complete within 2 seconds</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>NFR-002</td>
+          <td>Validation completes quickly</td>
+          <td>Typical workflows validated within 2 seconds</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+        <tr>
+          <td>NFR-003</td>
+          <td>Manage LLM context limits</td>
+          <td>Older history compacted before context exhaustion</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>NFR-004</td>
+          <td>Execution bounded and protected</td>
+          <td>Max step limit, cycle detection</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>NFR-005</td>
+          <td>Canonical save contract</td>
+          <td>Nodes, edges, variables, outputs synchronized after save</td>
+          <td><span class="priority-must">Must</span></td>
+        </tr>
+        <tr>
+          <td>NFR-006</td>
+          <td>Fail loudly for invalid states</td>
+          <td>Invalid operations return explicit errors</td>
+          <td><span class="priority-should">Should</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Risks -->
+    <h2>Risks</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Description</th>
+          <th>Likelihood</th>
+          <th>Impact</th>
+          <th>Mitigation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>R-001</td>
+          <td>Sensitive patient data entered into workflows</td>
+          <td>Low</td>
+          <td>Very High</td>
+          <td>Limit scope to authoring/preview, no dataset storage, documented safe-use expectations, authenticated access</td>
+        </tr>
+        <tr>
+          <td>R-002</td>
+          <td>LLM misuse or prompt injection</td>
+          <td>Medium</td>
+          <td>High</td>
+          <td>Restrict orchestrator to explicit tools, validation, authenticated sessions, server-side checks</td>
+        </tr>
+        <tr>
+          <td>R-003</td>
+          <td>Incorrectly authored workflows mistaken for approved clinical logic</td>
+          <td>Medium</td>
+          <td>Very High</td>
+          <td>Require validation, preview execution, review flows, downstream human review</td>
+        </tr>
+        <tr>
+          <td>R-004</td>
+          <td>External API cost or latency impacts usability</td>
+          <td>Medium</td>
+          <td>Medium</td>
+          <td>Bounded orchestration, context compaction, local validation/execution</td>
+        </tr>
+      </tbody>
+    </table>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

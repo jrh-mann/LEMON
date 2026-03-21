@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Testing</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Testing</h1>
+
+    <h2>Testing Strategy</h2>
+    <p>We test LEMON at several levels: unit tests for individual functions, integration tests for module interactions, end-to-end browser tests, a custom evaluation framework for measuring LLM quality, and user acceptance testing with our project partners.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Layer</th>
+          <th>Tool</th>
+          <th>Approximate Count</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Unit</td>
+          <td>pytest</td>
+          <td>~1,300 tests across 93 files</td>
+          <td>Verify individual functions and modules</td>
+        </tr>
+        <tr>
+          <td>Integration</td>
+          <td>pytest</td>
+          <td>47 test files (integration + features)</td>
+          <td>Verify cross-module interactions</td>
+        </tr>
+        <tr>
+          <td>End-to-End</td>
+          <td>Playwright</td>
+          <td>12 spec files</td>
+          <td>Verify full user flows in browser</td>
+        </tr>
+        <tr>
+          <td>Prompt/LLM</td>
+          <td>Custom eval framework</td>
+          <td>6 scoring dimensions</td>
+          <td>Measure LLM extraction quality</td>
+        </tr>
+        <tr>
+          <td>User Acceptance</td>
+          <td>Manual</td>
+          <td>TBD</td>
+          <td>Validate with project partners</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Unit Testing</h2>
+
+    <h3>Why</h3>
+    <p>Unit tests catch regressions when we change individual components. Each backend module (parser, evaluator, tools, validation, workflow storage) has its own test file that verifies it works correctly on its own.</p>
+
+    <h3>Tool</h3>
+    <p>pytest, the standard Python testing framework. Tests are organized by module in the <code>tests/</code> directory.</p>
+
+    <h3>How Tests Are Conducted</h3>
+    <p>Tests are organized into subdirectories by functionality. Each test file focuses on a single module or feature. Tests use pytest fixtures for setup and run without any external dependencies (no API calls, no database servers).</p>
+
+    <h3>Results</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Test Area</th>
+          <th>Files</th>
+          <th>What's Covered</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Execution</td>
+          <td>15</td>
+          <td>Expression parser tokenization, AST construction, evaluator operators, type coercion, TreeInterpreter workflow walking</td>
+        </tr>
+        <tr>
+          <td>Tools</td>
+          <td>7</td>
+          <td>add_node, modify_node, delete_node, connections, batch edit, variable management</td>
+        </tr>
+        <tr>
+          <td>Validation</td>
+          <td>8</td>
+          <td>Structural rules, edge cases, start node constraints, reachability, branch completeness</td>
+        </tr>
+        <tr>
+          <td>Workflow</td>
+          <td>14</td>
+          <td>CRUD operations, persistence, library management, save/load contract</td>
+        </tr>
+        <tr>
+          <td>Features</td>
+          <td>24</td>
+          <td>Feature-level integration (subworkflows, export, cancellation, streaming)</td>
+        </tr>
+        <tr>
+          <td>Integration</td>
+          <td>23</td>
+          <td>Event bus, schema migrations, API routes with auth, cross-module flows</td>
+        </tr>
+        <tr>
+          <td>Evaluation</td>
+          <td>2</td>
+          <td>Scorer dimensions, functional scoring, threshold extraction</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Analysis</h3>
+    <p>The heaviest test coverage is on the execution engine (parser, evaluator, interpreter) and the tool system, which are the core components that must be correct for workflows to function. The execution tests alone cover tokenization of condition strings, AST construction for compound expressions, evaluation with type coercion, and full workflow traversal including subworkflow recursion.</p>
+
+    <h2>Integration Testing</h2>
+
+    <h3>Why</h3>
+    <p>Individual modules can pass their own tests while breaking when combined. Integration tests catch these problems.</p>
+
+    <h3>Tool</h3>
+    <p>pytest, using the same framework as unit tests but with fixtures that set up multi-component environments.</p>
+
+    <h3>How Tests Are Conducted</h3>
+    <p>Tests in <code>tests/integration/</code> and <code>tests/features/</code> set up scenarios involving multiple backend components. These cover event bus communication between the orchestrator and the frontend transport layer, database schema migration sequences from version 0 through 8, workflow save-load cycles ensuring data integrity, and API route handling with authentication middleware.</p>
+
+    <h3>Results</h3>
+    <p>47 test files covering integration and feature-level scenarios. All tests are automated and run as part of the continuous integration pipeline.</p>
+
+    <h3>Analysis</h3>
+    <p>These tests were especially useful during the Socket.IO to SSE migration. The existing suite caught several regressions where the new SSE layer didn't propagate tool events the same way Socket.IO had.</p>
+
+    <h2>End-to-End Testing</h2>
+
+    <h3>Why</h3>
+    <p>Some bugs only show up when you run the full stack. E2E tests catch these by automating real browser interactions against a running backend.</p>
+
+    <h3>Tool</h3>
+    <p>Playwright, a browser automation framework. Tests run in a real browser against a real backend (not mocked).</p>
+
+    <h3>How Tests Are Conducted</h3>
+    <p>Test specs in <code>src/frontend/tests/e2e/</code> automate user interactions: typing in the chat panel, waiting for LLM responses, verifying canvas updates, checking modal dialogs, and testing navigation flows.</p>
+
+    <h3>Results</h3>
+    <p>Twelve test spec files covering core user journeys:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Spec File</th>
+          <th>What's Tested</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>chat-flow.spec.ts</td>
+          <td>Full chat-to-canvas workflow: send message, see tool calls, verify nodes appear</td>
+        </tr>
+        <tr>
+          <td>canvas.spec.ts</td>
+          <td>Canvas interactions: drag nodes, draw connections, context menus</td>
+        </tr>
+        <tr>
+          <td>subworkflow-build.spec.ts</td>
+          <td>Creating and executing subworkflows</td>
+        </tr>
+        <tr>
+          <td>chat-input.spec.ts</td>
+          <td>Chat input validation and edge cases</td>
+        </tr>
+        <tr>
+          <td>chat-e2e.spec.ts</td>
+          <td>End-to-end chat interaction flows</td>
+        </tr>
+        <tr>
+          <td>live-backend.spec.ts</td>
+          <td>Full integration against a running backend server</td>
+        </tr>
+        <tr>
+          <td>all-tools-display.spec.ts</td>
+          <td>Tool call display and rendering in the chat panel</td>
+        </tr>
+        <tr>
+          <td>right-sidebar.spec.ts</td>
+          <td>Right sidebar variable panel and workflow metadata</td>
+        </tr>
+        <tr>
+          <td>stop-button.spec.ts</td>
+          <td>Task cancellation via the stop button</td>
+        </tr>
+        <tr>
+          <td>refresh-persistence.spec.ts</td>
+          <td>State persistence and recovery after page refresh</td>
+        </tr>
+        <tr>
+          <td>routing-header.spec.ts</td>
+          <td>Page routing and header navigation</td>
+        </tr>
+        <tr>
+          <td>navigation-subworkflow.spec.ts</td>
+          <td>Navigation between parent and child subworkflows</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Analysis</h3>
+    <p>Running against a real backend (no mocks) means the tests reflect what users actually experience. The downside is slower execution and needing an API key, but the extra confidence is worth it.</p>
+
+    <h2>Prompt Testing</h2>
+
+    <h3>Why</h3>
+    <p>Normal unit tests don't work well for LLM output because the results aren't deterministic. When we change a prompt or update the model, we need to know whether extraction quality went up or down. That's what the evaluation framework is for.</p>
+
+    <h3>Tool</h3>
+    <p>Custom evaluation framework built in <code>eval/</code>. Uses pytest-compatible test infrastructure.</p>
+
+    <h3>How Tests Are Conducted</h3>
+    <p>Benchmark tasks with reference (golden) workflows. The evaluation harness runs the orchestrator against a natural language description, then scores the extracted workflow against the golden reference across six dimensions: variables, nodes, topology, conditions, outputs, and functional routing agreement. See the Algorithms page for detailed scoring methodology.</p>
+
+    <h3>Results</h3>
+    <p>The framework currently evaluates against diabetes treatment and liver pathology benchmark workflows. Scoring runs across multiple models and configurations to detect regressions.</p>
+
+    <h3>Analysis</h3>
+    <p>This gives us actual numbers instead of just "it seems to work". When we change a prompt or tool schema, we can run the eval suite and see exactly which dimensions got better or worse.</p>
+
+    <h2>User Acceptance Testing</h2>
+    <div class="placeholder">
+      User acceptance testing details will be added here, including:
+      <ul>
+        <li>Test cases and scenarios tested with project partners</li>
+        <li>Feedback from CloudSurge, Avanade, and Haider Khokhar</li>
+        <li>Issues identified and how they were addressed</li>
+      </ul>
+    </div>
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

@@ -84,7 +84,7 @@ def test_rest_and_sse_execution_share_validation_and_output(monkeypatch):
         "output_type": "number",
     }
 
-    register_execution(execution_id)
+    register_execution(execution_id, user.id)
     task = SteppedExecutionTask(
         sink=sink,
         workflow_store=store,

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Home</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- Hero -->
+    <section class="hero">
+      <h1>LEMON</h1>
+      <p class="subtitle">UCL COMP0016 Systems Engineering 2025/26</p>
+      <p class="partners">In partnership with Avanade and CloudSurge</p>
+    </section>
+
+    <!-- Abstract -->
+    <section>
+      <h2>Abstract</h2>
+      <p>Clinical decision workflows are usually written up as static flowcharts, Word documents, or verbal explanations passed between colleagues. Turning these into something a computer can actually execute takes programming skills that most clinicians don't have, which makes the process slow, error-prone, and expensive.</p>
+      <p>LEMON lets doctors and other domain experts build executable decision workflows by chatting in plain English or uploading a photo of a flowchart. Behind the scenes, an LLM orchestrator translates what the user says into a structured decision tree on a visual canvas. The system handles six node types (start, process, decision, calculation, subprocess, end), typed variables, compound conditions, and nested subworkflows.</p>
+      <p>We built a working system with real-time streaming, a visual workflow editor, stepped execution that highlights the active path on the canvas, a workflow library, and export to JSON, Python, and PNG. We also developed an evaluation framework that scores how well the LLM extracts workflows across six dimensions. The project has over 1,300 automated tests and is deployed on Azure.</p>
+    </section>
+
+    <!-- Demo Video -->
+    <section>
+      <h2>Project Demo</h2>
+      <div class="video-placeholder">8-minute project demonstration video will be embedded here.</div>
+    </section>
+
+    <!-- Team -->
+    <section>
+      <h2>The Team</h2>
+      <div class="team-grid">
+        <div class="team-card">
+          <div class="photo-placeholder"></div>
+          <div class="name">Jude Hawrani</div>
+          <div class="role">Programmer / Report Editor</div>
+          <div class="email"><a href="mailto:jude.hawrani.24@ucl.ac.uk">jude.hawrani.24@ucl.ac.uk</a></div>
+        </div>
+        <div class="team-card">
+          <div class="photo-placeholder"></div>
+          <div class="name">Axel Weernink</div>
+          <div class="role">Programmer / UI Design</div>
+          <div class="email"><a href="mailto:axel.weernink.24@ucl.ac.uk">axel.weernink.24@ucl.ac.uk</a></div>
+        </div>
+        <div class="team-card">
+          <div class="photo-placeholder"></div>
+          <div class="name">Jeet Thakwani</div>
+          <div class="role">Programmer / DevOps &amp; Backend</div>
+          <div class="email"><a href="mailto:jeet.thakwani.24@ucl.ac.uk">jeet.thakwani.24@ucl.ac.uk</a></div>
+        </div>
+        <div class="team-card">
+          <div class="photo-placeholder"></div>
+          <div class="name">James Mann</div>
+          <div class="role">Programmer / Tester</div>
+          <div class="email"><a href="mailto:james.mann.24@ucl.ac.uk">james.mann.24@ucl.ac.uk</a></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Project Timeline (Gantt Chart) -->
+    <section>
+      <h2>Project Timeline</h2>
+      <div class="gantt-container">
+        <svg viewBox="0 0 880 440" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+          <!--
+            Timeline: Dec 1 2025 – Mar 27 2026 = 116 days
+            Chart area: x 220..860 (640px wide), y 40..420
+            Each day = 640 / 116 ≈ 5.517px
+            dayToX(d) = 220 + d * 5.517
+
+            Day 0 = Dec 1
+            Dec 9  = day 8    Jan 1  = day 31   Feb 1  = day 62
+            Jan 10 = day 40   Jan 15 = day 45   Jan 18 = day 48
+            Jan 28 = day 58   Feb 3  = day 64   Feb 5  = day 66
+            Feb 10 = day 71   Feb 20 = day 81   Mar 1  = day 90
+            Mar 12 = day 101  Mar 13 = day 102  Mar 14 = day 103
+            Mar 16 = day 105  Mar 27 = day 116
+          -->
+          <defs>
+            <style>
+              .axis-label { font-size: 13px; fill: #555; }
+              .phase-label { font-size: 13px; fill: #1a1a1a; }
+              .bar-label { font-size: 12px; fill: #fff; font-weight: 500; }
+              .month-label { font-size: 13px; fill: #333; font-weight: 600; }
+            </style>
+          </defs>
+
+          <!-- Background -->
+          <rect x="220" y="30" width="640" height="390" fill="#fafafa" rx="2"/>
+
+          <!-- Vertical grid lines (weekly, starting Dec 1) -->
+          <line x1="220.0" y1="30" x2="220.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 8 = day 7 -->
+          <line x1="258.6" y1="30" x2="258.6" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 15 = day 14 -->
+          <line x1="297.2" y1="30" x2="297.2" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 22 = day 21 -->
+          <line x1="335.9" y1="30" x2="335.9" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Dec 29 = day 28 -->
+          <line x1="374.5" y1="30" x2="374.5" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 5 = day 35 -->
+          <line x1="413.1" y1="30" x2="413.1" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 12 = day 42 -->
+          <line x1="451.7" y1="30" x2="451.7" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 19 = day 49 -->
+          <line x1="490.3" y1="30" x2="490.3" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Jan 26 = day 56 -->
+          <line x1="529.0" y1="30" x2="529.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 2 = day 63 -->
+          <line x1="567.6" y1="30" x2="567.6" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 9 = day 70 -->
+          <line x1="606.2" y1="30" x2="606.2" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 16 = day 77 -->
+          <line x1="644.8" y1="30" x2="644.8" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Feb 23 = day 84 -->
+          <line x1="683.4" y1="30" x2="683.4" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 2 = day 91 -->
+          <line x1="722.0" y1="30" x2="722.0" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 9 = day 98 -->
+          <line x1="760.7" y1="30" x2="760.7" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 16 = day 105 -->
+          <line x1="799.3" y1="30" x2="799.3" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+          <!-- Mar 23 = day 112 -->
+          <line x1="837.9" y1="30" x2="837.9" y2="420" stroke="#e0e0e0" stroke-width="0.5"/>
+
+          <!-- Month labels along the top -->
+          <!-- Dec: days 0-30, center ~day 15, x≈303 -->
+          <text x="303" y="20" class="month-label" text-anchor="middle">Dec</text>
+          <!-- Jan: days 31-61, center ~day 46, x≈474 -->
+          <text x="474" y="20" class="month-label" text-anchor="middle">Jan</text>
+          <!-- Feb: days 62-89, center ~day 75.5, x≈636 -->
+          <text x="636" y="20" class="month-label" text-anchor="middle">Feb</text>
+          <!-- Mar: days 90-116, center ~day 103, x≈788 -->
+          <text x="788" y="20" class="month-label" text-anchor="middle">Mar</text>
+
+          <!--
+            Phase bars: 10 phases, chart area y 40..420 → 380px
+            Row height = 38px, bar height = 24px, vertical padding = 7px
+            y_bar(i) = 40 + i*38 + 7
+
+            dayToX(d) = 220 + d * 5.517
+
+            Phase data (corrected from git history):
+            1. Initial Prototyping:     Dec 9 - Jan 10   x=264.1, w=176.5
+            2. Backend & Orchestrator:  Jan 11 - Feb 3   x=446.2, w=126.9
+            3. Canvas & Visual Editor:  Jan 15 - Feb 11  x=468.3, w=148.9
+            4. Tool System:             Jan 18 - Feb 6   x=484.8, w=104.8
+            5. Streaming (Socket.IO/SSE): Jan 20 - Mar 13 x=495.9, w=286.9
+            6. Subworkflows:            Jan 26 - Mar 14  x=529.0, w=259.3
+            7. Evaluation Framework:    Feb 6 - Mar 12   x=589.6, w=187.6
+            8. Security Hardening:      Mar 5 - Mar 16   x=738.6, w=60.7
+            9. Testing:                 Jan 19 - Mar 13  x=490.3, w=292.4
+            10. Docs & Deployment:      Mar 13 - Mar 20  x=782.7, w=38.6
+          -->
+
+          <!-- Phase labels (left side) -->
+          <text x="215" y="61" class="phase-label" text-anchor="end">Initial Prototyping</text>
+          <text x="215" y="99" class="phase-label" text-anchor="end">Backend &amp; Orchestrator</text>
+          <text x="215" y="137" class="phase-label" text-anchor="end">Canvas &amp; Visual Editor</text>
+          <text x="215" y="175" class="phase-label" text-anchor="end">Tool System</text>
+          <text x="215" y="213" class="phase-label" text-anchor="end">Streaming (Socket.IO/SSE)</text>
+          <text x="215" y="251" class="phase-label" text-anchor="end">Subworkflows</text>
+          <text x="215" y="289" class="phase-label" text-anchor="end">Evaluation Framework</text>
+          <text x="215" y="327" class="phase-label" text-anchor="end">Security Hardening</text>
+          <text x="215" y="365" class="phase-label" text-anchor="end">Testing</text>
+          <text x="215" y="403" class="phase-label" text-anchor="end">Docs &amp; Deployment</text>
+
+          <!-- Phase bars -->
+          <!-- 1. Initial Prototyping: Dec 9 - Jan 10 -->
+          <rect x="264.1" y="47" width="176.5" height="24" rx="3" fill="#4CAF50"/>
+
+          <!-- 2. Backend & Orchestrator: Jan 11 - Feb 3 -->
+          <rect x="446.2" y="85" width="126.9" height="24" rx="3" fill="#2196F3"/>
+
+          <!-- 3. Canvas & Visual Editor: Jan 15 - Feb 11 -->
+          <rect x="468.3" y="123" width="148.9" height="24" rx="3" fill="#9C27B0"/>
+
+          <!-- 4. Tool System: Jan 18 - Feb 6 -->
+          <rect x="484.8" y="161" width="104.8" height="24" rx="3" fill="#FF9800"/>
+
+          <!-- 5. Streaming (Socket.IO, then SSE): Jan 20 - Mar 13 -->
+          <rect x="495.9" y="199" width="286.9" height="24" rx="3" fill="#F44336"/>
+
+          <!-- 6. Subworkflows: Jan 26 - Mar 14 -->
+          <rect x="529.0" y="237" width="259.3" height="24" rx="3" fill="#00BCD4"/>
+
+          <!-- 7. Evaluation Framework: Feb 6 - Mar 12 -->
+          <rect x="589.6" y="275" width="187.6" height="24" rx="3" fill="#E91E63"/>
+
+          <!-- 8. Security Hardening: Mar 5 - Mar 16 -->
+          <rect x="738.6" y="313" width="60.7" height="24" rx="3" fill="#795548"/>
+
+          <!-- 9. Testing: Jan 19 - Mar 13 -->
+          <rect x="490.3" y="351" width="292.4" height="24" rx="3" fill="#607D8B"/>
+
+          <!-- 10. Docs & Deployment: Mar 13 - Mar 20 -->
+          <rect x="782.7" y="389" width="38.6" height="24" rx="3" fill="#8BC34A"/>
+        </svg>
+      </div>
+    </section>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

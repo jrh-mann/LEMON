@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Implementation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+
+    <h1>Implementation</h1>
+
+    <p>This section walks through how we built LEMON's main features, what libraries we used, and how the pieces fit together.</p>
+
+    <!-- LLM Orchestrator and Tool Use -->
+    <h2>LLM Orchestrator and Tool Use</h2>
+
+    <p>The orchestrator runs a loop: send the conversation to Claude along with the available tools, get back tool calls (like add_node or add_connection), execute them against the workflow, and feed the results back. This repeats until Claude responds with plain text instead of tool calls, or we hit the 50-iteration safety limit. The Orchestrator class keeps track of the workflow state, conversation history, and the full set of 20+ tools.</p>
+    <p>Libraries: Anthropic SDK for Claude API calls, Pydantic for tool parameter validation.</p>
+
+<pre>
+# Simplified main loop from orchestrator.py
+def run_turn(self, user_message):
+    self.conversation.add_user_message(user_message)
+    for _ in range(_MAX_TOOL_ITERATIONS):
+        response = call_llm(
+            self.conversation.messages,
+            self.tools.schemas
+        )
+        if response.has_text_only:
+            return response.text
+        for tool_call in response.tool_calls:
+            result = self.tools.execute(tool_call, self.workflow)
+            self.event_bus.emit("TOOL_COMPLETED", result)
+            self.conversation.add_tool_result(tool_call.id, result)
+</pre>
+
+    <!-- Real-time Streaming (SSE) -->
+    <h2>Real-time Streaming (SSE)</h2>
+
+    <p>Everything streams to the frontend in real time: LLM text, tool call updates, and workflow changes. The EventSink is a thread-safe queue that the ChatTask pushes events into as the orchestrator works. The FastAPI endpoint pulls from this queue and yields SSE-formatted strings via StreamingResponse. On the frontend, the browser's EventSource API picks up these events and updates the Zustand stores, which trigger re-renders.</p>
+    <p>We originally used Socket.IO but switched to SSE in March 2026 after realising we only ever stream server-to-client. SSE is simpler and doesn't need a WebSocket protocol upgrade.</p>
+    <p>Libraries: FastAPI StreamingResponse, native browser EventSource API.</p>
+
+<pre>
+# EventSink from sse.py
+class EventSink:
+    def __init__(self):
+        self._queue = queue.Queue()
+        self._closed = False
+
+    def push(self, event, data):
+        if not self._closed:
+            self._queue.put((event, data))
+
+    def __iter__(self):
+        while True:
+            item = self._queue.get(timeout=15)  # keepalive
+            if item is None:
+                break
+            event, data = item
+            yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
+</pre>
+
+    <!-- Visual Canvas -->
+    <h2>Visual Canvas</h2>
+
+    <p>The canvas renders workflow nodes as coloured SVG shapes and edges as routed paths. Users can drag nodes (collision detection stops them overlapping), draw connections between ports, pan and zoom, and use keyboard shortcuts for undo/redo. There's also an auto-layout button that arranges everything into a hierarchical tree. All canvas state lives in a Zustand store that updates from both user interactions and SSE events coming from the backend.</p>
+    <p>Libraries: React 19 for rendering, Zustand for state management, custom SVG utilities for layout, collision detection, and edge routing.</p>
+    <p>The canvas rendering logic is spread across several utility modules (layout.ts, collision.ts, edges.ts, geometry.ts) that handle the spatial calculations, while Canvas.tsx coordinates the React rendering and event handling.</p>
+
+    <!-- Expression Parser and Evaluator -->
+    <h2>Expression Parser and Evaluator</h2>
+
+    <p>Decision nodes have conditions like <code>Age >= 65 AND BMI < 30</code> that need to be evaluated at runtime. We built a custom parser for this. It works in three stages: first, a tokenizer splits the string into typed tokens (identifiers, numbers, comparators, AND/OR). Then a recursive descent parser turns those tokens into an AST. Finally, an evaluator walks the tree with the current variable values and returns true or false.</p>
+    <p>Libraries: Pure Python with no external dependencies.</p>
+
+<pre>
+# Token types from parser.py
+class TokenType(Enum):
+    IDENTIFIER = "IDENTIFIER"  # variable names
+    NUMBER = "NUMBER"          # 65, 18.5
+    STRING = "STRING"          # "high", "positive"
+    BOOL = "BOOL"              # true, false
+    GTE = "GTE"                # >=
+    LTE = "LTE"                # <=
+    EQ = "EQ"                  # ==
+    NEQ = "NEQ"                # !=
+    GT = "GT"                  # >
+    LT = "LT"                  # <
+    AND = "AND"
+    OR = "OR"
+    NOT = "NOT"
+
+# parse("Age >= 65 AND BMI < 30") -> BinaryOp(AND, ...)
+# evaluate(ast, {"Age": 70, "BMI": 25}) -> True
+</pre>
+
+    <!-- Subworkflows -->
+    <h2>Subworkflows</h2>
+
+    <p>Subprocess nodes let you call one workflow from inside another, passing in variables and getting a result back. This is how we handle complex clinical logic: break it into smaller, reusable pieces. When the TreeInterpreter hits a subprocess node, it loads the child workflow from the database, maps the parent's variables to the child's inputs, and runs it recursively. A depth limit stops circular references from causing infinite recursion. During authoring, subworkflows get their own independent BuilderTask running a separate orchestrator conversation in a background thread.</p>
+    <p>Libraries: FastAPI background tasks, SQLite for workflow storage.</p>
+    <p>Subworkflow execution follows a recursive pattern: the interpreter calls itself with the child workflow and mapped inputs, then injects the result back into the parent context. Depth limiting (default 2 levels) prevents infinite recursion from circular references.</p>
+
+    <!-- Image-to-Workflow -->
+    <h2>Image-to-Workflow</h2>
+
+    <p>Users can upload a photo of a flowchart (or a PDF) and the system will reconstruct it as an editable workflow. The backend detects the actual file type from magic bytes rather than trusting the file extension (a security measure), then passes the image to Claude's Vision API. The orchestrator looks at the image, figures out what the nodes, connections, and conditions are, and uses its normal tool-use loop to build the workflow on the canvas. It's the same process as building from text, just with an image as the starting point.</p>
+    <p>Libraries: Pillow for image format detection and processing, Anthropic Vision API for image understanding.</p>
+
+    <!-- Authentication -->
+    <h2>Authentication</h2>
+
+    <p>We use session-based auth. Passwords are hashed with PBKDF2 and a random salt. On login, a session token gets generated and stored in SQLite with an expiry. The token is sent to the client and attached to every subsequent request. FastAPI middleware checks it on each request. We also added rate limiting on the login and registration endpoints to prevent brute-force attacks.</p>
+    <p>Libraries: hashlib (PBKDF2), secrets (token generation), slowapi (rate limiting).</p>
+
+    <!-- Workflow Persistence -->
+    <h2>Workflow Persistence</h2>
+
+    <p>Workflows are stored as JSON blobs in SQLite. The WorkflowStore class handles all database operations, serializing the nodes, edges, variables, and outputs as JSON alongside scalar metadata like name and description. An important invariant is that these fields must stay in sync after every save, so the save logic updates all of them together.</p>
+    <p>The schema uses version-based migrations. We're currently on version 8, having added columns and tables over time for drafts, publication, build history, conversation linking, and uploaded file tracking.</p>
+    <p>Libraries: sqlite3 (standard library), json for serialization.</p>
+
+<pre>
+# Key fields from WorkflowRecord (workflows.py)
+@dataclass(frozen=True)
+class WorkflowRecord:
+    id: str
+    user_id: str
+    name: str
+    nodes: List[Dict]      # JSON: node definitions
+    edges: List[Dict]      # JSON: connections
+    inputs: List[Dict]     # JSON: typed variables
+    outputs: List[Dict]    # JSON: output definitions
+    tree: Dict             # JSON: tree representation
+    output_type: str       # string, number, boolean
+    building: bool         # True during orchestrator build
+    conversation_id: str   # Links to chat history
+</pre>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

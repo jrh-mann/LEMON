@@ -50,14 +50,17 @@ class LoginRateLimiter:
         self.block_seconds = block_seconds
         self._attempts: dict[str, dict[str, float]] = {}
         self._call_count = 0  # For periodic expired-entry cleanup
+        self._last_cleanup_at = time.time()
+        self._cleanup_interval = 300.0  # Also sweep every 5 minutes (low-traffic safety net)
 
     def is_allowed(self, key: str) -> Tuple[bool, int]:
         now = time.time()
 
-        # Periodic cleanup: every 100 calls, sweep all expired entries
+        # Periodic cleanup: every 100 calls OR every 5 minutes, sweep expired entries
         # so keys that never retry don't accumulate in memory forever
         self._call_count += 1
-        if self._call_count % 100 == 0:
+        if self._call_count % 100 == 0 or (now - self._last_cleanup_at) > self._cleanup_interval:
+            self._last_cleanup_at = now
             expired = [
                 k for k, v in self._attempts.items()
                 if now > v.get("reset_at", 0) and v.get("blocked_until", 0) <= now
