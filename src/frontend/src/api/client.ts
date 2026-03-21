@@ -8,16 +8,21 @@ const API_BASE = import.meta.env.VITE_API_URL || ''
 const SESSION_KEY = 'lemon_session_id'
 
 export function getSessionId(): string {
-  let sessionId = localStorage.getItem(SESSION_KEY)
-  if (!sessionId) {
-    sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
-    localStorage.setItem(SESSION_KEY, sessionId)
+  try {
+    let sessionId = localStorage.getItem(SESSION_KEY)
+    if (!sessionId) {
+      sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+      localStorage.setItem(SESSION_KEY, sessionId)
+    }
+    return sessionId
+  } catch {
+    // localStorage blocked (private browsing) or full — generate ephemeral ID
+    return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
   }
-  return sessionId
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(SESSION_KEY)
+  try { localStorage.removeItem(SESSION_KEY) } catch { /* storage blocked */ }
 }
 
 // API error class

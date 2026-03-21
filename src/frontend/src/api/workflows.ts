@@ -1,12 +1,16 @@
 import { api } from './client'
 import type {
-  Workflow,
   WorkflowDetailResponse,
   WorkflowSummary,
   SearchWorkflowsResponse,
   DomainsResponse,
   CreateWorkflowRequest,
   CreateWorkflowResponse,
+  FlowNode,
+  FlowEdge,
+  WorkflowVariable,
+  WorkflowOutput,
+  ToolCall,
 } from '../types'
 
 // List all workflows (returns summaries, not full workflows)
@@ -39,9 +43,11 @@ export async function updateWorkflow(
 // Incrementally patch a workflow without changing draft status
 // Use this for UI-triggered changes (edge labels, node positions, etc.)
 export interface PatchWorkflowRequest {
-  nodes?: any[]
-  edges?: any[]
-  variables?: any[]
+  nodes?: FlowNode[]
+  edges?: FlowEdge[]
+  variables?: WorkflowVariable[]
+  outputs?: WorkflowOutput[]
+  output_type?: string
 }
 
 export interface PatchWorkflowResponse {
@@ -111,11 +117,35 @@ export interface ValidationResponse {
 }
 
 export async function validateWorkflow(payload: {
-  nodes: any[]
-  edges: any[]
-  variables: any[]  // Workflow variables for template validation
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  variables: WorkflowVariable[]  // Workflow variables for template validation
 }): Promise<ValidationResponse> {
   return api.post<ValidationResponse>('/api/validate', payload)
+}
+
+// Fetch conversation history from the backend's in-memory ConversationStore.
+// Returns messages if the conversation is still alive in memory, 404 otherwise.
+export interface ConversationHistoryResponse {
+  id: string
+  messages: Array<{
+    id: string
+    role: 'user' | 'assistant'
+    content: string
+    timestamp: string
+    tool_calls: ToolCall[]
+  }>
+}
+
+export async function getConversationHistory(
+  conversationId: string
+): Promise<ConversationHistoryResponse | null> {
+  try {
+    return await api.get<ConversationHistoryResponse>(`/api/chat/${conversationId}`)
+  } catch {
+    // 404 = conversation evicted or server restarted — not an error
+    return null
+  }
 }
 
 // Compile workflow to Python code
@@ -124,13 +154,14 @@ export interface CompilePythonResponse {
   code: string | null
   error?: string
   warnings: string[]
+  partial_failure?: boolean
 }
 
 export interface CompilePythonRequest {
-  nodes: any[]
-  edges: any[]
-  variables: any[]
-  outputs?: any[]
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  variables: WorkflowVariable[]
+  outputs?: WorkflowOutput[]
   name?: string
   include_imports?: boolean
   include_docstring?: boolean
@@ -143,53 +174,3 @@ export async function compileToPython(
   return api.post<CompilePythonResponse>('/api/workflows/compile', payload)
 }
 
-// ============ Peer Review / Public Workflows ============
-
-// Response type for public workflow list
-export interface PublicWorkflowsResponse {
-  workflows: WorkflowSummary[]
-  count: number
-  publish_threshold: number  // Votes needed for "reviewed" status
-}
-
-// Response type for voting
-export interface VoteResponse {
-  success: boolean
-  net_votes: number
-  review_status: 'unreviewed' | 'reviewed'
-  user_vote: number | null  // +1, -1, or null if vote removed
-}
-
-// List published workflows for peer review
-// Can filter by review_status: 'unreviewed', 'reviewed', or all (no filter)
-// Returns workflows and the publish threshold
-export async function listPublicWorkflows(
-  reviewStatus?: 'unreviewed' | 'reviewed'
-): Promise<{ workflows: WorkflowSummary[], publishThreshold: number }> {
-  const params = new URLSearchParams()
-  if (reviewStatus) {
-    params.set('review_status', reviewStatus)
-  }
-  const query = params.toString()
-  const endpoint = query ? `/api/workflows/public?${query}` : '/api/workflows/public'
-
-  const response = await api.get<PublicWorkflowsResponse>(endpoint)
-  return {
-    workflows: response.workflows || [],
-    publishThreshold: response.publish_threshold ?? 1,  // Default to 1 if not provided
-  }
-}
-
-// Get a specific published workflow by ID
-export async function getPublicWorkflow(workflowId: string): Promise<Workflow> {
-  return api.get<Workflow>(`/api/workflows/public/${workflowId}`)
-}
-
-// Vote on a published workflow
-// vote: +1 for upvote, -1 for downvote, 0 to remove vote
-export async function voteOnWorkflow(
-  workflowId: string,
-  vote: number
-): Promise<VoteResponse> {
-  return api.post<VoteResponse>(`/api/workflows/public/${workflowId}/vote`, { vote })
-}

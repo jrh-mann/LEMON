@@ -1,7 +1,7 @@
 """Remove workflow variable tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -13,6 +13,7 @@ from typing import Any, Dict
 from ..core import WorkflowTool, ToolParameter
 from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
+from .reference_updates import find_variable_references
 
 
 class RemoveWorkflowVariableTool(WorkflowTool):
@@ -21,36 +22,28 @@ class RemoveWorkflowVariableTool(WorkflowTool):
     Only removes variables with source='input'. Subprocess/calculated variables
     should be removed by modifying or deleting the nodes that create them.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
 
     name = "remove_workflow_variable"
     description = (
-        "Remove a registered workflow input variable by name (case-insensitive). "
-        "Requires workflow_id. "
+        "Remove a registered input variable from the active workflow by name (case-insensitive). "
         "If the variable is used in decision node conditions, deletion will fail by default. "
-        "Use force=true to cascade delete (automatically clears condition from affected nodes)."
+        "Use force=true to cascade delete (automatically clears conditions from affected nodes)."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the variable (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",
-            "Name of the input variable to remove (case-insensitive)",
+            "Name of the variable to remove (case-insensitive)",
             required=True,
         ),
         ToolParameter(
             "force",
             "boolean",
-            "If true, removes input even if referenced by nodes (cascade delete). Default: false",
+            "If true, removes variable even if referenced by nodes (cascade delete). Default: false",
             required=False,
         ),
     ]
@@ -71,7 +64,7 @@ class RemoveWorkflowVariableTool(WorkflowTool):
 
         name = args.get("name")
 
-        # Explicitly convert force to boolean (handles string "true"/"false" from MCP)
+        # Explicitly convert force to boolean (handles string "true"/"false" from JSON)
         force_raw = args.get("force", False)
         if isinstance(force_raw, str):
             force = force_raw.lower() in ("true", "1", "yes")
@@ -96,28 +89,14 @@ class RemoveWorkflowVariableTool(WorkflowTool):
                 "error": f"Input variable '{name}' not found"
             }
 
-        # Check for nodes that reference this input in their condition
-        # Handles both simple conditions and compound (AND/OR) conditions
-        referencing_nodes = []
         var_id = found_var.get("id")
-        for node in nodes:
-            condition = node.get("condition")
-            if not condition:
-                continue
-            if "operator" in condition:
-                # Compound condition — check each sub-condition
-                for sub in condition.get("conditions", []):
-                    if isinstance(sub, dict) and sub.get("input_id") == var_id:
-                        referencing_nodes.append(node)
-                        break  # Only add node once
-            elif condition.get("input_id") == var_id:
-                referencing_nodes.append(node)
+        referencing_nodes = find_variable_references(nodes, str(var_id))
 
         # If references exist and force is not enabled, reject deletion
         if referencing_nodes and not force:
             node_labels = [
-                node.get("label", node.get("id", "unknown"))
-                for node in referencing_nodes[:3]  # Show first 3
+                ref["node_label"]
+                for ref in referencing_nodes[:3]
             ]
             more_count = len(referencing_nodes) - 3
 
@@ -132,29 +111,52 @@ class RemoveWorkflowVariableTool(WorkflowTool):
             return {
                 "success": False,
                 "error": error_msg,
-                "referencing_nodes": [node.get("id") for node in referencing_nodes],
+                "referencing_nodes": [ref["node_id"] for ref in referencing_nodes],
             }
 
-        # If force=true, clear condition from all referencing nodes.
+        # If force=true, clear all references (condition, calculation, output_variable)
+        # from nodes that use this variable.
         # For compound conditions referencing the variable in any sub-condition,
         # we clear the entire condition (partial removal would break the compound).
         nodes_modified = False
         affected_node_labels = []
         if referencing_nodes:
             for node in nodes:
+                node_touched = False
+
+                # Clear condition references
                 condition = node.get("condition")
-                if not condition:
-                    continue
-                should_clear = False
-                if "operator" in condition:
-                    for sub in condition.get("conditions", []):
-                        if isinstance(sub, dict) and sub.get("input_id") == var_id:
-                            should_clear = True
-                            break
-                elif condition.get("input_id") == var_id:
-                    should_clear = True
-                if should_clear:
-                    del node["condition"]
+                if condition:
+                    should_clear = False
+                    if "operator" in condition:
+                        for sub in condition.get("conditions", []):
+                            if isinstance(sub, dict) and sub.get("input_id") == var_id:
+                                should_clear = True
+                                break
+                    elif condition.get("input_id") == var_id:
+                        should_clear = True
+                    if should_clear:
+                        del node["condition"]
+                        node_touched = True
+
+                # Clear calculation operand references
+                calculation = node.get("calculation")
+                if isinstance(calculation, dict):
+                    operands = calculation.get("operands", [])
+                    new_operands = [
+                        op for op in operands
+                        if not (isinstance(op, dict) and op.get("kind") == "variable" and op.get("ref") == var_id)
+                    ]
+                    if len(new_operands) != len(operands):
+                        calculation["operands"] = new_operands
+                        node_touched = True
+
+                # Clear output_variable references
+                if node.get("output_variable") == var_id:
+                    del node["output_variable"]
+                    node_touched = True
+
+                if node_touched:
                     affected_node_labels.append(node.get("label", node.get("id", "unknown")))
                     nodes_modified = True
 

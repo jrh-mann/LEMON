@@ -1,97 +1,89 @@
-## LEMON
+# LEMON
 
-LEMON converts a **workflow diagram (image)** into **deterministic Python code** by:
-- extracting a structured workflow model (inputs / decision points / outputs)
-- generating comprehensive test cases
-- iteratively generating Python until it passes labeled tests
-- validating on additional edge cases
+A conversational AI system for building and executing clinical decision workflows. Describe a workflow in natural language or upload a flowchart image, and an LLM orchestrator builds a structured, executable decision tree on a visual canvas.
 
-The core implementation lives in `src/lemon/`.
+## Features
 
-### Requirements
-- Python 3.9+
-- [`uv`](https://github.com/astral-sh/uv) recommended (works with your `.venv`)
-- Anthropic credentials + E2B sandbox key
+- **Natural language workflow building** — describe what you want, the LLM builds it node-by-node using tool calls
+- **Image-to-workflow** — upload a flowchart photo or PDF and the system reconstructs it as an editable workflow
+- **Visual canvas editor** — interactive SVG canvas with drag-and-drop, connection drawing, and real-time updates as the LLM works
+- **Six node types** — start, process, decision, calculation, subprocess, and end nodes with conditional branching and expression evaluation
+- **Subworkflows** — extract reusable sub-procedures that can be called from parent workflows
+- **Stepped execution** — run workflows with test inputs and watch execution step through each node with live highlighting
+- **Workflow library** — save, browse, and reuse workflows across sessions
+- **Streaming** — SSE-based real-time streaming of LLM responses, tool calls, and canvas updates
 
-### Setup
+## Tech Stack
 
-1) Create a `.env` in the repo root:
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, TypeScript, Zustand, Vite |
+| Backend | FastAPI, Uvicorn, Python 3.10+ |
+| LLM | Anthropic Claude (tool use, streaming) |
+| Database | SQLite |
+| Streaming | Server-Sent Events (SSE) |
+| Auth | Session-based with PBKDF2 password hashing |
 
-```
-AZURE_OPENAI_ENDPOINT=https://newlemon.cognitiveservices.azure.com/
-AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-DEPLOYMENT_NAME=gpt-5
-E2B_API_KEY=...
-HAIKU_DEPLOYMENT_NAME=...  # optional (used for test labeling)
-```
+## Setup
 
-2) Install dependencies:
+### Prerequisites
 
-```bash
-uv pip install -r requirements.txt
-```
+- Python 3.10+
+- Node.js 18+
+- [uv](https://github.com/astral-sh/uv) for Python dependency management
+- Anthropic API key
 
-### Run the full pipeline (end-to-end)
-
-```bash
-uv run python refine_workflow_code.py --workflow-image workflow.jpeg --max-iterations 5
-```
-
-This will (re)create generated artifacts (gitignored):
-- `workflow_analysis.json`
-- `workflow_inputs.json`
-- `workflow_outputs.json`
-- `tests.json`
-- `final_tests.json`
-- `generated_code.py`
-
-### Validate the generated code against labeled tests
+### Install
 
 ```bash
-uv run python run_tests.py
+uv sync
+cd src/frontend && npm install
 ```
 
-### Analyze workflow only (no refinement loop)
+### Configure
+
+Copy `.env.example` to `.env` and fill in your keys:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-opus-4-6
+```
+
+## Running
 
 ```bash
-uv run python main.py
+./scripts/dev.sh            # start backend + frontend
+./scripts/dev.sh restart    # kill and restart
+./scripts/dev.sh stop       # stop all
 ```
 
-### Frontend
+- **Backend:** http://localhost:5001
+- **Frontend:** http://localhost:5173
+- **Logs:** `/tmp/lemon-backend.log`, `/tmp/lemon-frontend.log`
+
+Or start individually:
 
 ```bash
-cd src/frontend
-npm install
-npm run dev
+python run_api.py                        # backend
+cd src/frontend && npx vite --host       # frontend
 ```
 
-Then open `http://localhost:5173`.
-
-### Repo layout
-
-```
-LEMON/
-├── src/lemon/                 # core package
-│   ├── analysis/              # workflow image → WorkflowAnalysis
-│   ├── generation/            # WorkflowAnalysis → Python code
-│   ├── testing/               # test-case generation + sandbox harness
-│   ├── core/                  # pipeline orchestration + domain models
-│   └── api/                   # Anthropic + E2B integrations
-├── src/utils/                 # legacy compatibility wrappers
-├── refine_workflow_code.py    # CLI entrypoint → RefinementPipeline
-├── main.py                    # analysis-only CLI
-├── generate_test_cases.py     # test-case generator CLI (from workflow_inputs.json)
-├── run_tests.py               # validates generated_code.py vs tests.json
-├── workflow_prompts.py        # analysis prompt templates (repo-level)
-├── src/frontend/              # React + Vite frontend
-└── tests/                     # pytest unit tests
-```
-
-### Development
+## Testing
 
 ```bash
-uv run python -m black .
-uv run python -m isort .
-uv run python -m mypy --explicit-package-bases --namespace-packages src
+# Full backend test suite (~1200 tests)
+uv run python -m pytest tests/
+
+# Frontend unit tests
+cd src/frontend && npm test
+
+# Frontend E2E tests
+cd src/frontend && npm run test:e2e
+
+# Type check
+cd src/frontend && npx tsc --noEmit
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

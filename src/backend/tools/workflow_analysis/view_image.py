@@ -11,7 +11,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, tool_error
+from ...utils.image import detect_image_media_type
 
 
 class ViewImageTool(Tool):
@@ -20,9 +21,17 @@ class ViewImageTool(Tool):
     name = "view_image"
     description = (
         "Re-examine an uploaded workflow image. Returns the image so you can "
-        "look at it again during the conversation."
+        "look at it again during the conversation. When multiple images are "
+        "uploaded, pass the filename to select a specific one."
     )
-    parameters: List[ToolParameter] = []  # No params — uses session_state uploaded_files
+    parameters: List[ToolParameter] = [
+        ToolParameter(
+            name="filename",
+            type="string",
+            description="Name of the image file to view. If omitted, returns the first image. Use this when multiple images are uploaded.",
+            required=False,
+        ),
+    ]
 
     def __init__(self) -> None:
         self._logger = logging.getLogger(__name__)
@@ -30,14 +39,27 @@ class ViewImageTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         session_state = kwargs.get("session_state", {})
         uploaded_files = session_state.get("uploaded_files", [])
+        requested_name = args.get("filename")
 
-        # Find first image in uploaded files
-        image_file = next(
-            (f for f in uploaded_files if f.get("file_type") == "image"),
-            None,
-        )
-        if not image_file:
-            return {"success": False, "error": "No uploaded image found in session."}
+        # Collect all uploaded images
+        images = [f for f in uploaded_files if f.get("file_type") == "image"]
+        if not images:
+            return tool_error("No uploaded image found in session.", "NO_IMAGE")
+
+        # If a filename is specified, find that specific image
+        if requested_name:
+            image_file = next(
+                (f for f in images if f.get("name") == requested_name),
+                None,
+            )
+            if not image_file:
+                available = [f.get("name", "?") for f in images]
+                return tool_error(
+                    f"Image '{requested_name}' not found. Available images: {available}",
+                    "IMAGE_NOT_FOUND",
+                )
+        else:
+            image_file = images[0]
 
         image_path = Path(image_file["path"])
         if not image_path.is_absolute():
@@ -47,24 +69,23 @@ class ViewImageTool(Tool):
                 image_path = Path(repo_root) / image_path
 
         if not image_path.exists():
-            return {"success": False, "error": f"Image file not found: {image_path}"}
+            return tool_error(f"Image file not found: {image_path}", "FILE_NOT_FOUND")
 
         # Read and encode the image
         raw = image_path.read_bytes()
         b64 = base64.b64encode(raw).decode()
 
-        # Determine media type from extension
-        suffix = image_path.suffix.lower()
-        media_type_map = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-        }
-        media_type = media_type_map.get(suffix, f"image/{suffix.lstrip('.')}")
+        # Detect media type from magic bytes (file extension can be wrong)
+        media_type = detect_image_media_type(raw, image_path.suffix)
 
         self._logger.info("ViewImageTool returning image %s (%d bytes)", image_path.name, len(raw))
+
+        # List all available image names so the LLM knows what else is uploaded
+        available_names = [f.get("name", "?") for f in images]
+        label = image_file.get("name", image_path.name)
+        caption = f"Image: {label}"
+        if len(images) > 1:
+            caption += f" (uploaded images: {', '.join(available_names)})"
 
         return {
             "success": True,
@@ -75,7 +96,7 @@ class ViewImageTool(Tool):
                 },
                 {
                     "type": "text",
-                    "text": f"Image: {image_file.get('name', image_path.name)}",
+                    "text": caption,
                 },
             ],
         }

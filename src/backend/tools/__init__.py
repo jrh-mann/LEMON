@@ -2,7 +2,7 @@
 
 from .core import Tool, ToolParameter, ToolRegistry
 from .discovery import build_tool_registry, discover_tool_classes
-from .workflow_analysis import AskQuestionTool, ExtractGuidanceTool, ViewImageTool, UpdatePlanTool
+from .workflow_analysis import AskQuestionTool, CreateSubworkflowTool, UpdateSubworkflowTool, ExtractGuidanceTool, ViewImageTool, UpdatePlanTool
 from .workflow_edit import (
     GetCurrentWorkflowTool,
     AddNodeTool,
@@ -22,7 +22,7 @@ from .workflow_input import (
 from .workflow_output import SetWorkflowOutputTool
 from .validate_workflow import ValidateWorkflowTool
 from .execute_workflow import ExecuteWorkflowTool
-from .workflow_library import ListWorkflowsInLibrary, CreateWorkflowTool, SaveWorkflowToLibrary
+from .workflow_library import ListWorkflowsInLibrary, SaveWorkflowToLibrary
 
 __all__ = [
     "Tool",
@@ -31,6 +31,8 @@ __all__ = [
     "build_tool_registry",
     "discover_tool_classes",
     "AskQuestionTool",
+    "CreateSubworkflowTool",
+    "UpdateSubworkflowTool",
     "ExtractGuidanceTool",
     "ViewImageTool",
     "UpdatePlanTool",
@@ -50,6 +52,5 @@ __all__ = [
     "ValidateWorkflowTool",
     "ExecuteWorkflowTool",
     "ListWorkflowsInLibrary",
-    "CreateWorkflowTool",
     "SaveWorkflowToLibrary",
 ]

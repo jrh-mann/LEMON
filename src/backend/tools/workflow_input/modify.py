@@ -1,11 +1,11 @@
 """Modify workflow variable tool.
 
-This tool allows modifying existing variables, including derived variables
-from subprocess nodes. This is essential when the automatically inferred
-type is incorrect or needs adjustment.
+Only modifies user-input variables (source='input'). Derived variables
+(source='calculated' or 'subprocess') are managed by their producing nodes
+and cannot be modified directly — modify the node instead.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -19,39 +19,33 @@ from ..constants import USER_TYPE_TO_INTERNAL
 from ..workflow_edit.helpers import save_workflow_changes
 from .helpers import normalize_variable_name
 from .add import generate_variable_id
+from .reference_updates import rewrite_variable_references
 
 
 class ModifyWorkflowVariableTool(WorkflowTool):
-    """Modify an existing workflow variable's properties.
+    """Modify an existing workflow input variable's properties.
     
-    This tool can change the type, description, range, or enum values of any
-    variable, including derived variables created by subprocess nodes. Use this
-    when the auto-inferred type from a subprocess is incorrect.
+    Only operates on user-input variables (source='input'). Derived variables
+    from calculation or subprocess nodes are read-only — modify the producing
+    node instead to update them.
     
     IMPORTANT: Changing a variable's type will update its ID (since IDs include
     the type). Any decision nodes referencing the old ID will need to be updated.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
 
     name = "modify_workflow_variable"
     description = (
-        "Modify an existing workflow variable's properties (type, description, range, enum values). "
-        "Requires workflow_id. "
-        "Use this to correct auto-inferred types for subprocess outputs. For example, if a subprocess "
-        "output was inferred as 'string' but should be 'number', use this tool to fix it. "
-        "NOTE: Changing the type will also update the variable ID."
+        "Modify an existing user-input variable's properties in the active workflow (type, name, description, range, enum values). "
+        "ONLY works on user-input variables (source='input'). "
+        "Derived variables (from calculation or subprocess nodes) CANNOT be modified — "
+        "modify the producing node instead (e.g. change the calc output name or subprocess output_variable). "
+        "WARNING: Changing the type also changes the variable ID, so decision nodes using the old ID must be updated."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the variable (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",
@@ -61,26 +55,28 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         ToolParameter(
             "new_type",
             "string",
-            "New type: 'string', 'number', 'integer', 'boolean', 'enum', or 'date'. If not provided, type is unchanged.",
+            "New type for the variable. 'number' = float, 'integer' = int.",
             required=False,
+            enum=["string", "number", "integer", "boolean", "enum", "date"],
         ),
         ToolParameter(
             "new_name",
             "string",
-            "New name for the variable. If not provided, name is unchanged.",
+            "New name for the variable (optional)",
             required=False,
         ),
         ToolParameter(
             "description",
             "string",
-            "New description. If not provided, description is unchanged.",
+            "New description (optional)",
             required=False,
         ),
         ToolParameter(
             "enum_values",
             "array",
-            "For enum type: array of allowed values. Required if changing to enum type.",
+            "For enum type: array of allowed values",
             required=False,
+            items={"type": "string"},
         ),
         ToolParameter(
             "range_min",
@@ -104,6 +100,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         session_state = kwargs.get("session_state", {})
 
         # Extract variables from loaded workflow
+        nodes = list(workflow_data["nodes"])
         variables = list(workflow_data["variables"])
 
         name = args.get("name")
@@ -154,6 +151,18 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             return {
                 "success": False,
                 "error": f"Variable '{name}' not found. Available variables: {available}"
+            }
+
+        # Derived variables are read-only — managed by their producing nodes
+        var_source = target_var.get("source", "input")
+        if var_source != "input":
+            return {
+                "success": False,
+                "error": (
+                    f"Cannot modify derived variable '{name}' (source='{var_source}'). "
+                    f"Modify the producing node instead — the variable will update automatically."
+                ),
+                "error_code": "DERIVED_VARIABLE_READONLY",
             }
 
         # Track what changed for the message
@@ -234,18 +243,21 @@ class ModifyWorkflowVariableTool(WorkflowTool):
                 "variable": target_var,
             }
 
+        rewritten_reference_count = 0
+        if old_id != target_var["id"]:
+            nodes, rewritten_reference_count = rewrite_variable_references(
+                nodes,
+                old_variable_id=old_id,
+                new_variable_id=target_var["id"],
+            )
+
         # Auto-save changes to database
-        save_error = save_workflow_changes(workflow_id, session_state, variables=variables)
+        save_kwargs = {"variables": variables}
+        if rewritten_reference_count:
+            save_kwargs["nodes"] = nodes
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:
             return save_error
-
-        # Build warning about ID change if applicable
-        warning = None
-        if old_id != target_var["id"]:
-            warning = (
-                f"Variable ID changed from '{old_id}' to '{target_var['id']}'. "
-                f"Any decision nodes using condition.input_id='{old_id}' must be updated."
-            )
 
         result = {
             "success": True,
@@ -254,9 +266,10 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             "variable": target_var,
             "old_id": old_id,
             "new_id": target_var["id"],
+            "workflow_analysis": {"variables": variables},
         }
-        
-        if warning:
-            result["warning"] = warning
+        if rewritten_reference_count:
+            result["current_workflow"] = {"nodes": nodes}
+            result["message"] += f"; updated {rewritten_reference_count} node reference(s)"
 
         return result

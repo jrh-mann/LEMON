@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useValidationStore } from '../stores/validationStore'
@@ -9,9 +9,9 @@ import {
   pauseWorkflowExecution,
   resumeWorkflowExecution,
   stopWorkflowExecution,
-} from '../api/socket'
+} from '../api/streamActions'
 import WorkflowBrowser from './WorkflowBrowser'
-import type { WorkflowVariable } from '../types'
+import type { Flowchart, Workflow, WorkflowAnalysis, WorkflowVariable } from '../types'
 
 export default function Modals() {
   const { modalOpen, closeModal } = useUIStore()
@@ -73,7 +73,7 @@ function Modal({
 
 // Validation flow component
 function ValidationFlow() {
-  const { currentWorkflow } = useWorkflowStore()
+  const { currentWorkflow, currentAnalysis } = useWorkflowStore()
   const {
     sessionId,
     currentCase,
@@ -91,9 +91,9 @@ function ValidationFlow() {
   const [error, setError] = useState<string | null>(null)
 
   // Get possible outputs from workflow
-  const possibleOutputs = currentWorkflow?.blocks
-    .filter((b) => b.type === 'output')
-    .map((b) => (b as { value: string }).value) || []
+  const possibleOutputs = currentAnalysis?.outputs
+    ?.map((output) => output.name)
+    .filter((value): value is string => Boolean(value)) || []
 
   // Start validation session
   const handleStart = useCallback(async () => {
@@ -289,37 +289,45 @@ function ValidationFlow() {
 // Save workflow form component
 // Handles both creating new workflows and updating existing ones
 function SaveWorkflowForm() {
-  const { closeModal } = useUIStore()
   const { flowchart, currentAnalysis, currentWorkflow } = useWorkflowStore()
+
+  const formKey = `${currentWorkflow?.id ?? 'new'}:${currentWorkflow?.metadata?.updated_at ?? 'new'}`
+
+  return (
+    <SaveWorkflowFormContent
+      key={formKey}
+      flowchart={flowchart}
+      currentAnalysis={currentAnalysis}
+      currentWorkflow={currentWorkflow}
+    />
+  )
+}
+
+function SaveWorkflowFormContent({
+  flowchart,
+  currentAnalysis,
+  currentWorkflow,
+}: {
+  flowchart: Flowchart
+  currentAnalysis: WorkflowAnalysis | null
+  currentWorkflow: Workflow | null
+}) {
+  const { closeModal } = useUIStore()
 
   // Check if this is an existing workflow (has ID from LLM creation or previous load)
   const existingWorkflowId = currentWorkflow?.id
   const isUpdate = Boolean(existingWorkflowId)
 
-  // Pre-populate form with existing workflow metadata if updating
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [domain, setDomain] = useState('')
-  const [tags, setTags] = useState('')
-  const [outputType, setOutputType] = useState('string')  // Workflow-level output type
-  const [isPublished, setIsPublished] = useState(false)  // Publish to community library
+  const [name, setName] = useState(currentWorkflow?.metadata?.name ?? '')
+  const [description, setDescription] = useState(currentWorkflow?.metadata?.description ?? '')
+  const [domain, setDomain] = useState(currentWorkflow?.metadata?.domain ?? '')
+  const [tags, setTags] = useState((currentWorkflow?.metadata?.tags ?? []).join(', '))
+  const [outputType, setOutputType] = useState(currentWorkflow?.output_type || 'string')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[] | null>(null)
   const [showValidationWarning, setShowValidationWarning] = useState(false)
-
-  // Initialize form with existing workflow data when modal opens
-  useEffect(() => {
-    if (currentWorkflow?.metadata) {
-      setName(currentWorkflow.metadata.name || '')
-      setDescription(currentWorkflow.metadata.description || '')
-      setDomain(currentWorkflow.metadata.domain || '')
-      setTags((currentWorkflow.metadata.tags || []).join(', '))
-      setOutputType(currentWorkflow.output_type || 'string')
-      // Note: isPublished stays false on edit - republishing is a deliberate choice
-    }
-  }, [currentWorkflow])
 
   const handleSave = useCallback(async (skipValidation = false) => {
     if (!name.trim()) {
@@ -374,7 +382,6 @@ function SaveWorkflowForm() {
         validation_score: 0,
         validation_count: 0,
         is_validated: false,
-        is_published: isPublished,  // Peer review: publish to community library
       }
 
       // Always use createWorkflow - backend handles duplicates by falling back to update
@@ -387,23 +394,17 @@ function SaveWorkflowForm() {
       setSaveSuccess(true)
       setShowValidationWarning(false)
       setValidationErrors(null)
+      setIsSaving(false)
 
       // Close modal after short delay to show success message
       setTimeout(() => {
         closeModal()
-        setSaveSuccess(false)
-        setName('')
-        setDescription('')
-        setDomain('')
-        setTags('')
-        setOutputType('string')
-        setIsPublished(false)
       }, 1500)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isUpdate, isPublished])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId])
 
   if (flowchart.nodes.length === 0) {
     return (
@@ -497,24 +498,6 @@ function SaveWorkflowForm() {
         <small className="muted">Type of value this workflow returns when executed</small>
       </div>
 
-      {/* Publish to community library checkbox */}
-      <div className="form-group checkbox-group publish-option">
-        <label>
-          <input
-            id="workflow-publish"
-            type="checkbox"
-            checked={isPublished}
-            onChange={(e) => setIsPublished(e.target.checked)}
-            disabled={isSaving}
-          />
-          <span className="checkbox-label">Publish to Community Library</span>
-        </label>
-        <small className="muted">
-          Published workflows appear in the peer review section.
-          They will be reviewed by other users before becoming publicly available.
-        </small>
-      </div>
-
       {saveError && <p className="error-text">{saveError}</p>}
 
       {showValidationWarning && validationErrors && (
@@ -595,10 +578,11 @@ function ExecuteWorkflowForm() {
           case 'number':  // Unified numeric type
             initial[input.id] = input.range?.min ?? 0
             break
-          case 'enum':
+          case 'enum': {
             const enumVals = input.enum_values ?? []
             initial[input.id] = enumVals[0] ?? ''
             break
+          }
           case 'date':
             initial[input.id] = new Date().toISOString().split('T')[0]
             break
@@ -632,7 +616,7 @@ function ExecuteWorkflowForm() {
   )
 
   // Start execution - closes modal immediately so user can watch canvas
-  // Modal will reopen when execution completes or errors (handled by socket.ts)
+  // Modal will reopen when execution completes or errors (handled by streamActions.ts)
   const handleRun = useCallback(() => {
     // Persist input values before running
     setGlobalInputValues(inputValues)
@@ -686,7 +670,7 @@ function ExecuteWorkflowForm() {
           </div>
         )
 
-      case 'enum':
+      case 'enum': {
         const enumValues = input.enum_values ?? []
         return (
           <div className="form-group">
@@ -708,6 +692,7 @@ function ExecuteWorkflowForm() {
             </select>
           </div>
         )
+      }
 
       case 'date':
         return (
@@ -832,12 +817,12 @@ function ExecuteWorkflowForm() {
       {/* Speed control */}
       <div className="form-group speed-control-group">
         <label htmlFor="exec-speed">
-          Execution Speed: {execution.executionSpeed}ms
+          Execution Speed: {execution.executionSpeed === 0 ? 'Instant' : `${execution.executionSpeed}ms`}
         </label>
         <input
           id="exec-speed"
           type="range"
-          min="100"
+          min="0"
           max="2000"
           step="100"
           value={execution.executionSpeed}
@@ -845,7 +830,7 @@ function ExecuteWorkflowForm() {
           disabled={execution.isExecuting}
         />
         <div className="speed-labels">
-          <span className="muted small">Fast (100ms)</span>
+          <span className="muted small">Instant (0ms)</span>
           <span className="muted small">Slow (2000ms)</span>
         </div>
       </div>

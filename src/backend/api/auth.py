@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional, Tuple
 from uuid import uuid4
 
-from flask import Response, request
+from starlette.responses import JSONResponse, Response
 
 from ..storage.auth import AuthSession, AuthStore, AuthUser
 
@@ -49,15 +49,30 @@ class LoginRateLimiter:
         self.window_seconds = window_seconds
         self.block_seconds = block_seconds
         self._attempts: dict[str, dict[str, float]] = {}
+        self._call_count = 0  # For periodic expired-entry cleanup
 
     def is_allowed(self, key: str) -> Tuple[bool, int]:
         now = time.time()
+
+        # Periodic cleanup: every 100 calls, sweep all expired entries
+        # so keys that never retry don't accumulate in memory forever
+        self._call_count += 1
+        if self._call_count % 100 == 0:
+            expired = [
+                k for k, v in self._attempts.items()
+                if now > v.get("reset_at", 0) and v.get("blocked_until", 0) <= now
+            ]
+            for k in expired:
+                del self._attempts[k]
+
         entry = self._attempts.get(key)
         if entry:
             blocked_until = entry.get("blocked_until", 0)
             if blocked_until > now:
                 return False, int(blocked_until - now)
             if now > entry.get("reset_at", 0):
+                # Actually remove the expired entry from the dict
+                self._attempts.pop(key, None)
                 entry = None
         if not entry:
             self._attempts[key] = {
@@ -107,7 +122,7 @@ def _get_cookie_secure() -> bool:
     value = os.getenv("LEMON_SECURE_COOKIES")
     if value is not None:
         return value.lower() in {"1", "true", "yes"}
-    env = os.getenv("LEMON_ENV", "").lower() or os.getenv("FLASK_ENV", "").lower()
+    env = os.getenv("LEMON_ENV", "").lower()
     return env == "production"
 
 
@@ -234,8 +249,16 @@ def issue_session(
     return token, expires_at
 
 
-def get_session_from_request(auth_store: AuthStore) -> Optional[Tuple[AuthSession, AuthUser]]:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+def get_session_from_cookies(
+    auth_store: AuthStore, cookies: dict[str, str]
+) -> Optional[Tuple[AuthSession, AuthUser]]:
+    """Validate a session from a cookies dict (framework-agnostic).
+
+    Args:
+        auth_store: Auth store for session lookups.
+        cookies: Dict of cookie name → value (e.g. from request.cookies).
+    """
+    token = cookies.get(SESSION_COOKIE_NAME)
     if not token:
         return None
     token_hash = hash_session_token(token)
@@ -251,6 +274,7 @@ def get_session_from_request(auth_store: AuthStore) -> Optional[Tuple[AuthSessio
 
 
 def set_session_cookie(response: Response, token: str, expires_at: str, *, config: AuthConfig) -> None:
+    """Set the session cookie on a Starlette/FastAPI Response."""
     expires_dt = _parse_datetime(expires_at)
     max_age = None
     if expires_dt:
@@ -259,7 +283,6 @@ def set_session_cookie(response: Response, token: str, expires_at: str, *, confi
         SESSION_COOKIE_NAME,
         token,
         max_age=max_age,
-        expires=expires_dt,
         httponly=True,
         secure=config.cookie_secure,
         samesite=config.cookie_samesite,
@@ -268,6 +291,7 @@ def set_session_cookie(response: Response, token: str, expires_at: str, *, confi
 
 
 def clear_session_cookie(response: Response, *, config: AuthConfig) -> None:
+    """Remove the session cookie from a Starlette/FastAPI Response."""
     response.delete_cookie(
         SESSION_COOKIE_NAME,
         path="/",
@@ -276,17 +300,16 @@ def clear_session_cookie(response: Response, *, config: AuthConfig) -> None:
     )
 
 
-def apply_login_rate_limit(identifier: str) -> Optional[Response]:
+def apply_login_rate_limit(identifier: str) -> Optional[JSONResponse]:
+    """Check login rate limit; returns a 429 JSONResponse if blocked, else None."""
     allowed, retry_after = login_rate_limiter.is_allowed(identifier)
     if allowed:
         return None
-    response = Response(
-        response='{"error":"Too many attempts. Try again later."}',
-        status=429,
-        mimetype="application/json",
+    return JSONResponse(
+        {"error": "Too many attempts. Try again later."},
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
     )
-    response.headers["Retry-After"] = str(retry_after)
-    return response
 
 
 def note_login_failure(identifier: str) -> None:

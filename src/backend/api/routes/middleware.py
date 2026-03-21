@@ -1,59 +1,28 @@
-"""Before-request middleware for logging and authentication.
+"""Request logging middleware.
 
-Registers Flask before_request hooks that run before every
-API request to log access and enforce authentication.
+Auth enforcement is handled by FastAPI Depends() in each route — this
+middleware only logs incoming HTTP requests for observability.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from flask import Flask, jsonify, request, g
-
-from ..auth import get_session_from_request
-from ...storage.auth import AuthStore
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 logger = logging.getLogger("backend.api")
 
-# Paths that do not require authentication
-PUBLIC_PATHS = {
-    "/api/info",
-    "/api/auth/login",
-    "/api/auth/logout",
-    "/api/auth/register",
-}
 
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log every incoming HTTP request method, path, and client IP."""
 
-def register_middleware(app: Flask, *, auth_store: AuthStore) -> None:
-    """Register before_request hooks for logging and auth enforcement.
-
-    Args:
-        app: Flask application instance.
-        auth_store: Auth store for session validation.
-    """
-
-    @app.before_request
-    def log_request() -> None:
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
         logger.info(
             "HTTP %s %s from %s",
             request.method,
-            request.path,
-            request.remote_addr,
+            request.url.path,
+            request.client.host if request.client else "unknown",
         )
-
-    @app.before_request
-    def enforce_auth() -> Any:
-        if request.method == "OPTIONS":
-            return None
-        if not request.path.startswith("/api/"):
-            return None
-        if request.path in PUBLIC_PATHS:
-            return None
-        session_info = get_session_from_request(auth_store)
-        if not session_info:
-            return jsonify({"error": "Authentication required."}), 401
-        session, user = session_info
-        g.auth_session = session
-        g.auth_user = user
-        return None
+        return await call_next(request)

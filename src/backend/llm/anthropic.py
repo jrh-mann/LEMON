@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger("backend.llm")
 
@@ -27,6 +27,11 @@ def _extract_system(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str,
 
 
 def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
+    """Convert internal content representation to Anthropic API content blocks.
+
+    Handles: text, image (base64), document (PDF), tool_result.
+    All content is stored in native Anthropic format — no OpenAI conversion needed.
+    """
     if isinstance(content, str):
         return [{"type": "text", "text": content}] if content else []
     if isinstance(content, list):
@@ -39,183 +44,93 @@ def _to_anthropic_blocks(content: Any) -> List[Dict[str, Any]]:
                 text = part.get("text", "")
                 if text:
                     blocks.append({"type": "text", "text": text})
-            elif ptype == "image_url":
-                image = part.get("image_url") or {}
-                url = image.get("url", "")
-                if url.startswith("data:") and ";base64," in url:
-                    header, b64 = url.split(";base64,", 1)
-                    media_type = header.replace("data:", "") or "image/jpeg"
-                    blocks.append(
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": b64,
-                            },
-                        }
-                    )
-                else:
-                    logger.warning("Unsupported image_url for Anthropic: %s", url[:80])
             elif ptype == "image":
-                # Explicitly construct the image block to ensure clean structure
                 blocks.append({"type": "image", "source": part.get("source", {})})
             elif ptype == "document":
-                # Passthrough for Anthropic native PDF document content blocks
                 blocks.append({"type": "document", "source": part.get("source", {})})
+            elif ptype == "tool_result":
+                # Tool results are stored in native Anthropic format — pass through
+                blocks.append(part)
         return blocks
     fallback = json.dumps(content, ensure_ascii=True)
     return [{"type": "text", "text": fallback}] if fallback else []
 
 
-def _convert_openai_tools_to_anthropic(
-    tools: Optional[List[Dict[str, Any]]],
-) -> List[Dict[str, Any]]:
-    if not tools:
-        return []
-    converted: List[Dict[str, Any]] = []
-    for tool in tools:
-        fn = tool.get("function") if isinstance(tool, dict) else None
-        if not fn:
-            continue
-        converted.append(
-            {
-                "name": fn.get("name"),
-                "description": fn.get("description") or "",
-                "input_schema": fn.get("parameters") or {"type": "object", "properties": {}},
-            }
-        )
-    return converted
+def _build_message_blocks(msg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build Anthropic API content blocks for a single message.
+
+    Handles thinking blocks (assistant), text/image/document/tool_result content,
+    and tool_use blocks (assistant with tool_calls).
+    """
+    role = msg.get("role")
+    blocks: List[Dict[str, Any]] = []
+    # Thinking blocks must precede all other content per Anthropic API spec
+    if role == "assistant":
+        blocks.extend(msg.get("thinking_blocks") or [])
+    # Convert content (text, images, tool_results, etc.)
+    blocks.extend(_to_anthropic_blocks(msg.get("content", "")))
+    # Tool calls stored as {id, name, input} — add "type": "tool_use" for API
+    for call in (msg.get("tool_calls") or []):
+        blocks.append({
+            "type": "tool_use",
+            "id": call.get("id") or "",
+            "name": call.get("name"),
+            "input": call.get("input") or {},
+        })
+    return blocks
 
 
 def _to_anthropic_messages(
     messages: List[Dict[str, Any]],
 ) -> Tuple[str, List[Dict[str, Any]]]:
+    """Convert internal message history to Anthropic API format.
+
+    Extracts system messages, builds content blocks for each message,
+    and merges consecutive same-role messages (e.g. batched tool results).
+    """
     system, rest = _extract_system(messages)
     converted: List[Dict[str, Any]] = []
     for msg in rest:
         role = msg.get("role")
-        content = msg.get("content", "")
-        if role == "tool":
-            tool_call_id = msg.get("tool_call_id") or msg.get("id") or ""
-            converted.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": tool_call_id,
-                            "content": content if isinstance(content, (str, list)) else json.dumps(content, ensure_ascii=True),
-                        }
-                    ],
-                }
-            )
+        if role not in {"user", "assistant"}:
             continue
-        if role == "assistant" and msg.get("tool_calls"):
-            blocks = _to_anthropic_blocks(content)
-            for call in msg.get("tool_calls") or []:
-                fn = call.get("function") or {}
-                name = fn.get("name")
-                args_text = fn.get("arguments") or "{}"
-                if isinstance(args_text, str):
-                    try:
-                        args = json.loads(args_text)
-                    except json.JSONDecodeError:
-                        args = {}
-                else:
-                    args = args_text
-                blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": call.get("id") or "",
-                        "name": name,
-                        "input": args if isinstance(args, dict) else {},
-                    }
-                )
-            if blocks:
-                converted.append({"role": "assistant", "content": blocks})
-            continue
-        if role in {"user", "assistant"}:
-            blocks = _to_anthropic_blocks(content)
-            if blocks:
-                converted.append({"role": role, "content": blocks})
+        blocks = _build_message_blocks(msg)
+        if not blocks:
+            blocks = [{"type": "text", "text": "(empty)"}]
+        # Merge consecutive same-role messages (e.g. batched tool results)
+        if converted and converted[-1]["role"] == role:
+            converted[-1]["content"].extend(blocks)
+        else:
+            converted.append({"role": role, "content": blocks})
     return system, converted
 
 
-def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]], str]:
-    """Parse an Anthropic API response into (text, tool_calls, thinking_text).
+def _parse_anthropic_response(message: Any) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Parse an Anthropic SDK response into (text, tool_calls, thinking_blocks).
 
-    Extracts text, tool_use, and thinking content blocks from the response.
+    Input is always an SDK Message object from stream.get_final_message().
+    Content blocks are Pydantic models (TextBlock, ToolUseBlock, ThinkingBlock)
+    so we access attributes directly — no dict fallback needed.
     """
-    content_blocks = getattr(message, "content", []) or []
     text_parts: List[str] = []
     tool_calls: List[Dict[str, Any]] = []
-    thinking_parts: List[str] = []
-    for block in content_blocks:
-        # Parentheses required: without them `A or B if C else D` parses as
-        # `(A or B) if C else D`, returning None for non-dict SDK objects.
-        btype = getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)
-        if btype == "thinking":
-            # Extended thinking content block
-            thinking = getattr(block, "thinking", None) if not isinstance(block, dict) else block.get("thinking")
-            if thinking:
-                thinking_parts.append(thinking)
-        elif btype == "text":
-            text = getattr(block, "text", None) if not isinstance(block, dict) else block.get("text")
-            if text:
-                text_parts.append(text)
-        elif btype == "tool_use":
-            name = getattr(block, "name", None) if not isinstance(block, dict) else block.get("name")
-            tool_id = getattr(block, "id", None) if not isinstance(block, dict) else block.get("id")
-            tool_input = getattr(block, "input", None) if not isinstance(block, dict) else block.get("input")
-            try:
-                args_text = json.dumps(tool_input or {}, ensure_ascii=True)
-            except (TypeError, ValueError):
-                args_text = "{}"
-            tool_calls.append(
-                {
-                    "id": tool_id,
-                    "type": "function",
-                    "function": {"name": name, "arguments": args_text},
-                }
-            )
-    raw_tool_calls = getattr(message, "tool_calls", None)
-    if raw_tool_calls is None and isinstance(message, dict):
-        raw_tool_calls = message.get("tool_calls")
-    if isinstance(raw_tool_calls, list):
-        for call in raw_tool_calls:
-            if not isinstance(call, dict):
-                continue
-            if call.get("function"):
-                tool_calls.append(call)
-                continue
-            name = call.get("name")
-            args_text = call.get("arguments", "{}")
-            if isinstance(args_text, dict):
-                try:
-                    args_text = json.dumps(args_text, ensure_ascii=True)
-                except (TypeError, ValueError):
-                    args_text = "{}"
-            tool_calls.append(
-                {
-                    "id": call.get("id"),
-                    "type": "function",
-                    "function": {"name": name, "arguments": args_text},
-                }
-            )
-    if tool_calls:
-        merged: List[Dict[str, Any]] = []
-        seen: set[str] = set()
-        for call in tool_calls:
-            call_id = call.get("id")
-            if call_id:
-                key = f"id:{call_id}"
-            else:
-                fn = call.get("function") or {}
-                key = f"sig:{fn.get('name','')}:{fn.get('arguments','')}"
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(call)
-        tool_calls = merged
-    return "".join(text_parts), tool_calls, "".join(thinking_parts)
+    thinking_blocks: List[Dict[str, Any]] = []
+    for block in message.content or []:
+        if block.type == "thinking":
+            # Preserve full block including signature for API replay
+            if block.thinking:
+                thinking_blocks.append({
+                    "type": "thinking",
+                    "thinking": block.thinking,
+                    "signature": block.signature,
+                })
+        elif block.type == "text":
+            if block.text:
+                text_parts.append(block.text)
+        elif block.type == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "input": block.input or {},
+            })
+    return "".join(text_parts), tool_calls, thinking_blocks

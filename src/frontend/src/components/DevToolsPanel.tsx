@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useChatStore } from '../stores/chatStore'
-import { listMCPTools, executeMCPTool } from '../api/tools'
+import { listTools, executeTool } from '../api/tools'
 import type { ToolDefinition } from '../api/tools'
 
 /**
@@ -30,7 +30,7 @@ function ExecutionLogButton({ logCount }: { logCount: number }) {
  * Provides tools for debugging and testing:
  * - State Inspector: View current workflow/analysis state
  * - Message Log: View all chat messages with tool calls
- * - Tools: Browse and execute available MCP tools
+ * - Tools: Browse and execute available tools
  */
 export default function DevToolsPanel() {
     const { devMode } = useUIStore()
@@ -43,27 +43,31 @@ export default function DevToolsPanel() {
 
     const workflowStore = useWorkflowStore()
     const chatStore = useChatStore()
+    // Read messages from the active workflow's conversation
+    const activeWfId = chatStore.activeWorkflowId
+    const chatMessages = activeWfId ? (chatStore.conversations[activeWfId]?.messages ?? []) : []
+
+    const loadTools = useCallback(async () => {
+        setLoadingTools(true)
+        setToolsError(null)
+        try {
+            const toolList = await listTools()
+            setTools(toolList)
+        } catch (err) {
+            console.error('Failed to load tools:', err)
+            const message = err instanceof Error ? err.message : 'Failed to load tools'
+            setToolsError(message)
+        } finally {
+            setLoadingTools(false)
+        }
+    }, [])
 
     // Load tools when Tools tab is selected
     useEffect(() => {
         if (activeSection === 'tools' && tools.length === 0 && !loadingTools) {
-            loadTools()
+            void loadTools()
         }
-    }, [activeSection])
-
-    const loadTools = async () => {
-        setLoadingTools(true)
-        setToolsError(null)
-        try {
-            const toolList = await listMCPTools()
-            setTools(toolList)
-        } catch (err) {
-            console.error('Failed to load tools:', err)
-            setToolsError('Failed to load tools')
-        } finally {
-            setLoadingTools(false)
-        }
-    }
+    }, [activeSection, loadTools, loadingTools, tools.length])
 
     if (!devMode) return null
 
@@ -160,10 +164,10 @@ export default function DevToolsPanel() {
 
                 {activeSection === 'messages' && (
                     <div className="message-inspector">
-                        {chatStore.messages.length === 0 ? (
+                        {chatMessages.length === 0 ? (
                             <p className="empty-state">No messages yet</p>
                         ) : (
-                            chatStore.messages.map((msg, idx) => (
+                            chatMessages.map((msg, idx) => (
                                 <div key={msg.id} className="message-item">
                                     <div className="message-meta">
                                         <span className={`role-badge role-${msg.role}`}>{msg.role}</span>
@@ -256,7 +260,7 @@ function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: (
                 }
             }
 
-            const response = await executeMCPTool(tool.name, parsedArgs)
+            const response = await executeTool(tool.name, parsedArgs)
             if (response.success) {
                 setResult(response.result)
             } else {

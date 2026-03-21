@@ -1,4 +1,4 @@
-"""Tool for asking the user a clarification question inline in chat."""
+"""Tool for asking the user clarification questions inline in chat."""
 
 from __future__ import annotations
 
@@ -8,47 +8,87 @@ from ..core import Tool, ToolParameter
 
 
 class AskQuestionTool(Tool):
-    """Ask the user a question with optional clickable options.
+    """Ask the user one or more clarification questions.
 
-    Questions appear as inline cards in the chat — no image coordinates,
-    no annotation dots. The user clicks an option chip or types freely.
+    Questions appear as inline cards in the chat — the user clicks an
+    option chip or types freely via the auto-added "Other" button.
+    Multiple questions are shown sequentially; the model resumes only
+    after all are answered.
     """
 
     name = "ask_question"
     description = (
-        "Ask the user a clarification question. Use this whenever you are "
-        "UNSURE about any detail — a threshold, label, branch condition, or "
-        "ambiguous text. Provide options when possible so the user can click "
-        "instead of typing."
+        "Ask the user one or more clarification questions. Use this whenever "
+        "you are UNSURE about any detail — a threshold, label, branch condition, "
+        "or ambiguous text. Provide options when possible so the user can click "
+        "instead of typing. Do NOT guess; ask. You may batch multiple questions."
     )
     parameters = [
         ToolParameter(
-            name="question",
-            type="string",
-            description="The question to ask the user.",
-            required=True,
-        ),
-        ToolParameter(
-            name="options",
+            name="questions",
             type="array",
             description=(
-                "Optional clickable choices. Each item has 'label' (display text) "
-                "and 'value' (sent back when clicked). Omit for free-text only."
+                "Array of questions. Each has 'question' (text) and optional "
+                "'options' (clickable choices). Do NOT include 'Other' — the "
+                "UI adds one automatically."
             ),
-            required=False,
+            required=True,
+            items={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question text.",
+                    },
+                    "options": {
+                        "type": "array",
+                        "description": "Optional clickable choices (2-4 recommended).",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {
+                                    "type": "string",
+                                    "description": "Display text for the option.",
+                                },
+                                "value": {
+                                    "type": "string",
+                                    "description": "Value sent back when user clicks this option.",
+                                },
+                            },
+                            "required": ["label", "value"],
+                        },
+                    },
+                },
+                "required": ["question"],
+            },
         ),
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        question = args.get("question")
-        if not question:
-            raise ValueError("question is required")
+        questions = args.get("questions")
+        if not questions or not isinstance(questions, list):
+            return {"success": False, "error": "questions array is required"}
 
-        options: List[Dict[str, str]] = args.get("options", []) or []
+        # Normalize each question entry
+        normalized: List[Dict[str, Any]] = []
+        for q in questions:
+            if isinstance(q, str):
+                # Allow bare strings as shorthand for option-less questions
+                normalized.append({"question": q, "options": []})
+            elif isinstance(q, dict):
+                text = q.get("question", "")
+                if not text:
+                    continue
+                normalized.append({
+                    "question": str(text),
+                    "options": q.get("options", []) or [],
+                })
+
+        if not normalized:
+            return {"success": False, "error": "at least one question is required"}
 
         return {
             "success": True,
             "action": "question_asked",
-            "question": str(question),
-            "options": options,
+            "questions": normalized,
         }

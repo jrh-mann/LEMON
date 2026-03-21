@@ -3,49 +3,61 @@ import { marked } from 'marked'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import { cancelChatTask, sendChatMessage } from '../api/socket'
+import { cancelChatTask, sendChatMessage } from '../api/streamActions'
+import { syncConversationMessages, syncWorkflowState } from '../utils/conversationSync'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
+const EMPTY_MESSAGES: Message[] = []
+
 export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const [inputValue, setInputValue] = useState('')
+  const [showCustomAnswer, setShowCustomAnswer] = useState(false)
+  const [customAnswer, setCustomAnswer] = useState('')
+  // Collected answers for multi-question batches — only sent after the last answer
+  const collectedAnswers = useRef<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isUserScrolledUp = useRef(false)
   const isProgrammaticScroll = useRef(false)
 
-  const {
-    messages,
-    conversationId,
-    isStreaming,
-    streamingContent,
-    processingStatus,
-    thinkingContent,
-    currentTaskId,
-    pendingQuestion,
-    clearPendingQuestion,
-    sendUserMessage,
-    finalizeStreamingMessage,
-    markTaskCancelled,
-    clearCurrentTaskId,
-  } = useChatStore()
+  // Read from the active workflow's conversation — no dual-mode, same path for all workflows
+  const activeWorkflowId = useChatStore(s => s.activeWorkflowId)
+  const conv = useChatStore(s => activeWorkflowId ? s.conversations[activeWorkflowId] : undefined)
+  const messages = conv?.messages ?? EMPTY_MESSAGES
+  const isStreaming = conv?.isStreaming ?? false
+  const streamingContent = conv?.streamingContent ?? ''
+  const isInThinkingBlock = conv?._inThinkingBlock ?? false
+  const processingStatus = conv?.processingStatus ?? null
+  const currentTaskId = conv?.currentTaskId ?? null
+  const contextUsagePct = conv?.contextUsagePct ?? 0
+
+  // Global state (not per-workflow)
+  const pendingQuestions = useChatStore(s => s.pendingQuestions)
+  const clearPendingQuestion = useChatStore(s => s.clearPendingQuestion)
+  const sendUserMessage = useChatStore(s => s.sendUserMessage)
+  const markTaskCancelled = useChatStore(s => s.markTaskCancelled)
 
   const {
     pendingFiles,
     clearPendingFiles,
     addPendingFile,
+    filesSent,
+    markFilesSent,
     plan,
+    setPlan,
   } = useWorkflowStore()
+
+  const conversationId = conv?.conversationId ?? null
+
+  // Current question is the front of the queue (null if empty)
+  const pendingQuestion = pendingQuestions[0] ?? null
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { chatHeight, setChatHeight } = useUIStore()
 
-  // Ref for auto-scrolling the thinking stream to the bottom as new chunks arrive.
-  // Tracks whether the user has scrolled up inside the thinking container so we
-  // stop snapping to the bottom while they're reading earlier reasoning.
-  const thinkingRef = useRef<HTMLDivElement>(null)
-  const isThinkingScrolledUp = useRef(false)
 
   // Track the base text (before current speech session)
   const baseTextRef = useRef('')
@@ -58,12 +70,10 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     toggleListening: rawToggleListening,
   } = useVoiceInput({
     onTranscript: (text) => {
-      // Final transcript - commit to base text
       baseTextRef.current = baseTextRef.current ? `${baseTextRef.current} ${text}` : text
       setInputValue(baseTextRef.current)
     },
     onInterimTranscript: (text) => {
-      // Show interim results in real-time
       setInputValue(baseTextRef.current ? `${baseTextRef.current} ${text}` : text)
     },
   })
@@ -71,7 +81,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   // Wrap toggle to capture base text when starting
   const toggleListening = useCallback(() => {
     if (!isListening) {
-      // Starting - capture current input as base
       baseTextRef.current = inputValue
     }
     rawToggleListening()
@@ -94,18 +103,14 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       })
     }
     reader.readAsDataURL(file)
-    // Reset input so the same file can be re-selected
     e.target.value = ''
   }, [addPendingFile])
 
   // Track if user has scrolled up manually (ignore programmatic scrolls)
   const handleScroll = useCallback(() => {
-    // Ignore scroll events caused by our own scrollIntoView calls
     if (isProgrammaticScroll.current) return
-
     const container = messagesContainerRef.current
     if (!container) return
-    // Consider "at bottom" if within 100px of the bottom
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
     isUserScrolledUp.current = !atBottom
   }, [])
@@ -114,14 +119,12 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const scrollToBottom = useCallback(() => {
     isProgrammaticScroll.current = true
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    // Reset flag after scroll animation completes
     setTimeout(() => {
       isProgrammaticScroll.current = false
     }, 100)
   }, [])
 
   // Auto-scroll to bottom when new messages are added
-  // But only if user hasn't scrolled up manually
   useEffect(() => {
     if (!isUserScrolledUp.current) {
       scrollToBottom()
@@ -136,28 +139,34 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }, [isStreaming, scrollToBottom])
 
-  // Auto-scroll the thinking stream container to bottom when new chunks arrive,
-  // but only if the user hasn't scrolled up to read earlier reasoning.
+  // Heartbeat watchdog — detect stale tasks when no backend events arrive.
+  // Timeout is 60s to survive API rate-limit retries (429 retry-after can be ~50s).
+  // Clears streaming state so the user isn't stuck on "Thinking..." forever.
   useEffect(() => {
-    if (thinkingRef.current && !isThinkingScrolledUp.current) {
-      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
-    }
-  }, [thinkingContent])
+    if (!isStreaming || !activeWorkflowId) return
+    const HEARTBEAT_TIMEOUT_MS = 60_000
+    const interval = setInterval(() => {
+      const c = useChatStore.getState().conversations[activeWorkflowId]
+      if (!c?.isStreaming) return  // streaming ended naturally
+      const lastBeat = c.lastHeartbeatAt
+      if (lastBeat > 0 && Date.now() - lastBeat > HEARTBEAT_TIMEOUT_MS) {
+        console.warn('[Chat] Heartbeat timeout — clearing stale streaming state')
+        const cs = useChatStore.getState()
+        cs.finalizeStream(activeWorkflowId)
+        cs.setCurrentTaskId(activeWorkflowId, null)
+        useUIStore.getState().setError('Connection to backend lost — please try again')
+        // Sync with backend truth — recover messages and workflow state
+        // that may have been committed before the connection dropped.
+        const convId = cs.conversations[activeWorkflowId]?.conversationId
+        if (convId) {
+          syncConversationMessages(activeWorkflowId, convId)
+        }
+        syncWorkflowState(activeWorkflowId)
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [isStreaming, activeWorkflowId])
 
-  // Reset the scroll-up flag when thinking content is cleared (analysis finished)
-  useEffect(() => {
-    if (!thinkingContent) {
-      isThinkingScrolledUp.current = false
-    }
-  }, [thinkingContent])
-
-  // Detect manual scroll inside the thinking stream container
-  const handleThinkingScroll = useCallback(() => {
-    const el = thinkingRef.current
-    if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
-    isThinkingScrolledUp.current = !atBottom
-  }, [])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -173,32 +182,47 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     const trimmed = inputValue.trim()
     if (!trimmed || isStreaming) return
 
-    // Add user message to store
     sendUserMessage(trimmed)
 
-    // Send via socket - include pending files and annotations if available
+    // Send via streaming request — only include files on first send
+    const filesToSend = pendingFiles.length > 0 && !filesSent ? pendingFiles : undefined
     sendChatMessage(
       trimmed,
       conversationId,
-      pendingFiles.length > 0 ? pendingFiles : undefined,
+      filesToSend,
     )
 
-    // Keep pending files around so user can reference them in Source Image tab
-    // Files are only cleared when user explicitly clicks x or uploads new ones
+    if (filesToSend) {
+      markFilesSent()
+    }
 
-    // Clear input, pending question, and reset voice base text
     clearPendingQuestion()
     setInputValue('')
     baseTextRef.current = ''
   }
 
   // Handle clicking an option chip on a question card
-  const handleAnswerQuestion = (answer: string) => {
-    sendUserMessage(answer)
-    sendChatMessage(answer, conversationId)
+  const handleAnswerQuestion = (optionLabel: string) => {
+    const questionText = pendingQuestion?.question || ''
+    const answer = questionText
+      ? `${questionText}: ${optionLabel}`
+      : optionLabel
+
+    sendUserMessage(optionLabel)
+    collectedAnswers.current.push(answer)
     clearPendingQuestion()
+    setShowCustomAnswer(false)
+    setCustomAnswer('')
     setInputValue('')
     baseTextRef.current = ''
+
+    // If no more questions remain, send all collected answers to the backend
+    const remaining = pendingQuestions.length - 1
+    if (remaining <= 0) {
+      const fullMessage = collectedAnswers.current.join('\n')
+      sendChatMessage(fullMessage, conversationId)
+      collectedAnswers.current = []
+    }
   }
 
   const handleStop = () => {
@@ -206,8 +230,14 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       cancelChatTask(currentTaskId)
       markTaskCancelled(currentTaskId)
     }
-    finalizeStreamingMessage()
-    clearCurrentTaskId()
+    if (activeWorkflowId) {
+      const cs = useChatStore.getState()
+      cs.finalizeStream(activeWorkflowId)
+      // Clear currentTaskId immediately so the UI isn't stuck waiting
+      // for the backend's chat_cancelled ack to clear it.
+      cs.setCurrentTaskId(activeWorkflowId, null)
+    }
+    setPlan([])
     textareaRef.current?.focus()
   }
 
@@ -228,38 +258,75 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }
 
+  // Split streaming content into text and thinking segments for rendering.
+  // Thinking segments get rendered as collapsible dropdowns (completed) or
+  // expanded dimmed text (currently streaming).
+  type Segment = { type: 'text' | 'thinking'; content: string }
+  const splitIntoSegments = (raw: string): Segment[] => {
+    const segments: Segment[] = []
+    let remaining = raw
+    while (remaining) {
+      const startIdx = remaining.indexOf('<!--THINKING_START-->')
+      if (startIdx === -1) {
+        // No more thinking blocks — rest is text
+        if (remaining) segments.push({ type: 'text', content: remaining })
+        break
+      }
+      // Text before the thinking block
+      if (startIdx > 0) {
+        segments.push({ type: 'text', content: remaining.slice(0, startIdx) })
+      }
+      remaining = remaining.slice(startIdx + '<!--THINKING_START-->'.length)
+      const endIdx = remaining.indexOf('<!--THINKING_END-->')
+      if (endIdx === -1) {
+        // Unclosed thinking block (currently streaming)
+        if (remaining) segments.push({ type: 'thinking', content: remaining })
+        break
+      }
+      segments.push({ type: 'thinking', content: remaining.slice(0, endIdx) })
+      remaining = remaining.slice(endIdx + '<!--THINKING_END-->'.length)
+    }
+    return segments
+  }
+
   const isDragging = useRef(false)
   const startY = useRef(0)
   const startHeight = useRef(0)
 
-  // Handle resize drag
+  // Document-level drag listeners managed via useEffect to guarantee cleanup
+  // on unmount — prevents leaked listeners if user navigates mid-drag.
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const delta = startY.current - e.clientY
+      const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
+      setChatHeight(newHeight)
+    }
+    const onMouseUp = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      if (isDragging.current) {
+        document.body.style.userSelect = ''
+        document.body.style.cursor = ''
+      }
+    }
+  }, [setChatHeight])
+
   const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()  // Prevent text selection
+    e.preventDefault()
     isDragging.current = true
     startY.current = e.clientY
     startHeight.current = chatHeight
-    // Disable text selection and set cursor during drag
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'ns-resize'
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging.current) return
-    const delta = startY.current - e.clientY
-    // Min 0, max 60% of viewport to leave room for workspace
-    const newHeight = Math.min(Math.max(startHeight.current + delta, 0), window.innerHeight * 0.6)
-    setChatHeight(newHeight)
-  }
-
-  const handleMouseUp = () => {
-    isDragging.current = false
-    // Restore text selection and cursor
-    document.body.style.userSelect = ''
-    document.body.style.cursor = ''
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
   }
 
   const isCollapsed = chatHeight === 0
@@ -270,7 +337,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       </div>
 
       <div className="chat-messages" id="chatThread" ref={messagesContainerRef} onScroll={handleScroll}>
-        {messages.length === 0 ? (
+        {messages.length === 0 && !isStreaming ? (
           <div className="chat-empty">
             <p className="muted">
               Start by describing your workflow or uploading a flowchart image.
@@ -305,11 +372,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
           const windowStart = Math.max(0, anchor - 3)
           const visiblePlan = plan.slice(windowStart, windowStart + maxVisible)
 
-          // Reusable plan checklist rendered below the processing status
           const planChecklist = visiblePlan.length > 0 && (
             <div className="plan-checklist">
               {visiblePlan.map((item, i) => {
-                // First non-done item is the "current" one (orange)
                 const isActive = !item.done && (i === 0 || visiblePlan[i - 1]?.done)
                 return (
                   <div key={windowStart + i} className={`plan-item ${item.done ? 'done' : ''} ${isActive ? 'active' : ''}`}>
@@ -326,17 +391,32 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
               <div className="message-content">
                 {streamingContent ? (
                   <>
-                    {thinkingContent && (
-                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
-                        <span className="thinking-label">Reasoning</span>
-                        <div className="thinking-text">{thinkingContent}</div>
-                      </div>
-                    )}
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: renderMarkdown(streamingContent),
-                      }}
-                    />
+                    {splitIntoSegments(streamingContent).map((seg, i, arr) => {
+                      if (seg.type === 'text') {
+                        return (
+                          <div
+                            key={i}
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.content) }}
+                          />
+                        )
+                      }
+                      // Thinking segment — last one while still thinking = expanded live
+                      const isLive = isInThinkingBlock && i === arr.length - 1
+                      if (isLive) {
+                        return (
+                          <div key={i} className="reasoning reasoning-live">
+                            {seg.content}
+                          </div>
+                        )
+                      }
+                      // Completed thinking — collapsed dropdown
+                      return (
+                        <details key={i} className="reasoning-dropdown">
+                          <summary className="reasoning-summary">Reasoning</summary>
+                          <div className="reasoning">{seg.content}</div>
+                        </details>
+                      )
+                    })}
                     {processingStatus && (
                       <span className="processing-status">
                         <span className="status-dot"></span>
@@ -347,12 +427,6 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                   </>
                 ) : processingStatus ? (
                   <>
-                    {thinkingContent && (
-                      <div className="thinking-stream" ref={thinkingRef} onScroll={handleThinkingScroll}>
-                        <span className="thinking-label">Reasoning</span>
-                        <div className="thinking-text">{thinkingContent}</div>
-                      </div>
-                    )}
                     <span className="processing-status">
                       <span className="status-dot"></span>
                       {processingStatus}
@@ -400,20 +474,71 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
                   <button
                     key={i}
                     className="option-chip"
-                    onClick={() => handleAnswerQuestion(opt.value)}
+                    onClick={() => { setShowCustomAnswer(false); handleAnswerQuestion(opt.label) }}
                   >
                     {opt.label}
                   </button>
                 ))}
+                <button
+                  className={`option-chip option-chip-other ${showCustomAnswer ? 'active' : ''}`}
+                  onClick={() => setShowCustomAnswer(!showCustomAnswer)}
+                >
+                  Other
+                </button>
               </div>
             )}
+            {showCustomAnswer && (
+              <div className="custom-answer-row">
+                <input
+                  type="text"
+                  className="custom-answer-input"
+                  placeholder="Type your answer..."
+                  value={customAnswer}
+                  onChange={(e) => setCustomAnswer(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && customAnswer.trim()) {
+                      handleAnswerQuestion(customAnswer.trim())
+                      setCustomAnswer('')
+                      setShowCustomAnswer(false)
+                    }
+                  }}
+                  autoFocus
+                />
+                <button
+                  className="primary custom-answer-send"
+                  disabled={!customAnswer.trim()}
+                  onClick={() => {
+                    if (customAnswer.trim()) {
+                      handleAnswerQuestion(customAnswer.trim())
+                      setCustomAnswer('')
+                      setShowCustomAnswer(false)
+                    }
+                  }}
+                >
+                  Send
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {contextUsagePct > 50 && (
+          <div className="context-meter">
+            <div className="context-track">
+              <div
+                className={`context-fill${contextUsagePct > 80 ? ' warn' : ''}${contextUsagePct > 95 ? ' critical' : ''}`}
+                style={{ width: `${contextUsagePct}%` }}
+              />
+            </div>
+            <span className={`context-label${contextUsagePct > 80 ? ' warn' : ''}${contextUsagePct > 95 ? ' critical' : ''}`}>
+              {contextUsagePct}%
+            </span>
           </div>
         )}
         <div className="chat-input-wrapper">
           <textarea
             ref={textareaRef}
             id="chatInput"
-            placeholder="Describe your workflow..."
+            placeholder={isStreaming ? 'Agent is working...' : 'Describe your workflow...'}
             rows={1}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -501,35 +626,29 @@ function MessageBubble({
     }
   }
 
+  // Convert thinking markers to <details> dropdowns for finalized messages
+  const renderAssistantContent = (content: string): string => {
+    const html = renderMarkdown(
+      content
+        .replace(/<!--THINKING_START-->/g, '<details class="reasoning-dropdown"><summary class="reasoning-summary">Reasoning</summary><div class="reasoning">')
+        .replace(/<!--THINKING_END-->/g, '</div></details>')
+    )
+    return html
+  }
+
   return (
     <div className={`message ${message.role}`}>
       <div
         className="message-content"
         dangerouslySetInnerHTML={{
-          __html: isUser || isSystem ? message.content : renderMarkdown(message.content),
+          __html: isUser || isSystem ? message.content : renderAssistantContent(message.content),
         }}
       />
-      {message.tool_calls.length > 0 &&
-        (message.tool_calls.length > 3 ? (
-          <details className="tool-call-disclosure">
-            <summary className="tool-call-summary">
-              Tools ({message.tool_calls.length})
-            </summary>
-            <div className="tool-calls">
-              {message.tool_calls.map((tc, idx) => (
-                <div
-                  key={idx}
-                  className={`tool-call ${devMode ? 'clickable' : ''} ${tc.success === false ? 'failed' : ''}`}
-                  onClick={() => handleToolClick(tc)}
-                  title={devMode ? 'Click to inspect tool call' : undefined}
-                >
-                  <span className="tool-name">{tc.tool}</span>
-                  {tc.success === false && <span className="tool-failed-badge">✗</span>}
-                </div>
-              ))}
-            </div>
-          </details>
-        ) : (
+      {message.tool_calls.length > 0 && (
+        <details className="tool-call-disclosure" open>
+          <summary className="tool-call-summary">
+            Tools ({message.tool_calls.length})
+          </summary>
           <div className="tool-calls">
             {message.tool_calls.map((tc, idx) => (
               <div
@@ -543,7 +662,8 @@ function MessageBubble({
               </div>
             ))}
           </div>
-        ))}
+        </details>
+      )}
     </div>
   )
 }

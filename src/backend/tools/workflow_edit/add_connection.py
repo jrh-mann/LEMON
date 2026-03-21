@@ -1,7 +1,7 @@
 """Add connection tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import WorkflowTool, ToolParameter
+from ..core import WorkflowTool, ToolParameter, tool_error
 from .helpers import resolve_node_id, save_workflow_changes
 
 
@@ -18,14 +18,12 @@ class AddConnectionTool(WorkflowTool):
     """Connect two nodes with an edge."""
 
     name = "add_connection"
-    description = "Create an edge connecting two nodes. Requires workflow_id."
+    description = (
+        "Create an edge connecting two nodes in the active workflow. For decision nodes, use label "
+        "'true' or 'false'. "
+        "Validates that the connection creates a valid workflow."
+    )
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to add the connection to (from create_workflow)",
-            required=True,
-        ),
         ToolParameter("from_node_id", "string", "Source node ID", required=True),
         ToolParameter("to_node_id", "string", "Target node ID", required=True),
         ToolParameter(
@@ -52,7 +50,7 @@ class AddConnectionTool(WorkflowTool):
             from_id = resolve_node_id(args.get("from_node_id"), nodes)
             to_id = resolve_node_id(args.get("to_node_id"), nodes)
         except ValueError as exc:
-            return {"success": False, "error": str(exc), "error_code": "NODE_NOT_FOUND"}
+            return tool_error(str(exc), "NODE_NOT_FOUND")
         
         label = args.get("label", "")
         
@@ -74,31 +72,28 @@ class AddConnectionTool(WorkflowTool):
             if label:
                 # Enforce that label must be "true" or "false"
                 if label.lower() not in ("true", "false"):
-                    return {
-                        "success": False,
-                        "error": f"Decision node edges must have label 'true' or 'false', got: '{label}'",
-                        "error_code": "INVALID_EDGE_LABEL",
-                    }
+                    return tool_error(
+                        f"Decision node edges must have label 'true' or 'false', got: '{label}'",
+                        "INVALID_EDGE_LABEL",
+                    )
                 label = label.lower()  # Normalize to lowercase
                 
                 # Prevent duplicate labels
                 if label in existing_labels:
-                    return {
-                        "success": False,
-                        "error": f"Decision node '{source_node.get('label', from_id)}' already has a '{label}' branch",
-                        "error_code": "DUPLICATE_EDGE_LABEL",
-                    }
+                    return tool_error(
+                        f"Decision node '{source_node.get('label', from_id)}' already has a '{label}' branch",
+                        "DUPLICATE_EDGE_LABEL",
+                    )
             else:
                 # Auto-assign label based on target node position relative to existing sibling
                 # Convention: left target = false, right target = true
                 
                 # If both labels are already taken, reject (max 2 branches)
                 if "true" in existing_labels and "false" in existing_labels:
-                    return {
-                        "success": False,
-                        "error": f"Decision node '{source_node.get('label', from_id)}' already has both true and false branches",
-                        "error_code": "MAX_BRANCHES_REACHED",
-                    }
+                    return tool_error(
+                        f"Decision node '{source_node.get('label', from_id)}' already has both true and false branches",
+                        "MAX_BRANCHES_REACHED",
+                    )
                 
                 # If this is the first edge, we can't compare positions yet - use "true" as default
                 if not existing_edges_from_decision:
@@ -160,11 +155,7 @@ class AddConnectionTool(WorkflowTool):
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
         if not is_valid:
-            return {
-                "success": False,
-                "error": self.validator.format_errors(errors),
-                "error_code": "VALIDATION_FAILED",
-            }
+            return tool_error(self.validator.format_errors(errors), "VALIDATION_FAILED")
 
         # Auto-save changes to database
         save_error = save_workflow_changes(workflow_id, session_state, edges=new_edges)

@@ -15,7 +15,7 @@ from ..core import Tool, ToolParameter, extract_session_deps
 class SaveWorkflowToLibrary(Tool):
     """Save a draft workflow to the user's permanent library.
     
-    When the LLM creates a workflow using create_workflow, it starts as
+    When a workflow is auto-created by the canvas, it starts as
     a draft (is_draft=True). Drafts are visible to the LLM but not shown
     in the user's browse library. This tool publishes the draft to the
     user's permanent library by setting is_draft=False.
@@ -28,41 +28,37 @@ class SaveWorkflowToLibrary(Tool):
 
     name = "save_workflow_to_library"
     description = (
-        "Save a draft workflow to the user's permanent library. Drafts are workflows "
-        "you've created that haven't been saved yet. Once saved, the workflow will "
-        "appear in the user's browse library. Use this when the user asks to save "
-        "the workflow or confirms they want to keep it."
+        "Save the active workflow to the user's permanent library. "
+        "Drafts are workflows you've created that haven't been explicitly saved yet. "
+        "Once saved, the workflow appears in the user's browse library. "
+        "Use this when the user asks to save the workflow, confirms they want to keep it, "
+        "or says the workflow is complete and ready to use."
     )
     parameters = [
         ToolParameter(
-            "workflow_id",
-            "string",
-            "The ID of the workflow to save (from create_workflow)",
-            required=True,
-        ),
-        ToolParameter(
             "name",
             "string",
-            "Optional new name for the workflow (updates existing name if provided)",
+            "Optional new name for the workflow",
             required=False,
         ),
         ToolParameter(
             "description",
             "string",
-            "Optional new description (updates existing if provided)",
+            "Optional new description",
             required=False,
         ),
         ToolParameter(
             "domain",
             "string",
-            "Optional domain/category (updates existing if provided)",
+            "Optional domain/category",
             required=False,
         ),
         ToolParameter(
             "tags",
             "array",
-            "Optional list of tags (updates existing if provided)",
+            "Optional list of tags",
             required=False,
+            items={"type": "string"},
         ),
     ]
 
@@ -76,12 +72,13 @@ class SaveWorkflowToLibrary(Tool):
         Returns:
             Dict with success status and workflow info
         """
-        # Validate required parameters
-        workflow_id = args.get("workflow_id")
+        # Resolve workflow_id: check args first, then fall back to session_state
+        session_state = kwargs.get("session_state", {})
+        workflow_id = args.get("workflow_id") or session_state.get("current_workflow_id")
         if not workflow_id or not isinstance(workflow_id, str):
             return {
                 "success": False,
-                "error": "workflow_id is required",
+                "error": "No active workflow to save. Create a workflow first.",
                 "error_code": "MISSING_WORKFLOW_ID",
             }
         

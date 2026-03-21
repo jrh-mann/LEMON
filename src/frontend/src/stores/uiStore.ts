@@ -26,11 +26,11 @@ interface UIState {
   isLoading: boolean
   loadingMessage: string | null
   error: string | null
+  // Socket connection state — true when disconnected (non-intentional)
+  isDisconnected: boolean
 
   // Canvas zoom
   zoom: number
-  panX: number
-  panY: number
 
   // Chat panel height (for dynamic workspace sizing)
   chatHeight: number
@@ -65,13 +65,13 @@ interface UIState {
   setLoading: (loading: boolean, message?: string | null) => void
   setError: (error: string | null) => void
   clearError: () => void
+  setDisconnected: (disconnected: boolean) => void
 
   // Canvas
   setZoom: (zoom: number) => void
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
-  setPan: (x: number, y: number) => void
 
   // Chat
   setChatHeight: (height: number) => void
@@ -114,13 +114,12 @@ export const useUIStore = create<UIState>((set) => ({
   isLoading: false,
   loadingMessage: null,
   error: null,
+  isDisconnected: false,
   zoom: 1,
-  panX: 0,
-  panY: 0,
   chatHeight: 280,
-  devMode: typeof localStorage !== 'undefined' && localStorage.getItem('devMode') === 'true',
+  devMode: (() => { try { return localStorage.getItem('devMode') === 'true' } catch { return false } })(),
   selectedToolCall: null,
-  trackExecution: typeof localStorage !== 'undefined' && localStorage.getItem('trackExecution') !== 'false',  // Default on
+  trackExecution: (() => { try { return localStorage.getItem('trackExecution') !== 'false' } catch { return true } })(),  // Default on
   executionLogModalOpen: false,
   workspaceRevealed: false,
   homeExited: false,
@@ -153,6 +152,8 @@ export const useUIStore = create<UIState>((set) => ({
 
   clearError: () => set({ error: null }),
 
+  setDisconnected: (disconnected) => set({ isDisconnected: disconnected }),
+
   // Canvas
   setZoom: (zoom) =>
     set({ zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) }),
@@ -167,26 +168,20 @@ export const useUIStore = create<UIState>((set) => ({
       zoom: Math.max(MIN_ZOOM, state.zoom - ZOOM_STEP),
     })),
 
-  resetZoom: () => set({ zoom: 1, panX: 0, panY: 0 }),
-
-  setPan: (x, y) => set({ panX: x, panY: y }),
+  resetZoom: () => set({ zoom: 1 }),
 
   // Chat
   setChatHeight: (height) => set({ chatHeight: height }),
 
   // Dev mode
   setDevMode: (enabled) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('devMode', String(enabled))
-    }
+    try { localStorage.setItem('devMode', String(enabled)) } catch { /* storage full or blocked */ }
     set({ devMode: enabled })
   },
 
   toggleDevMode: () => set((state) => {
     const newValue = !state.devMode
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('devMode', String(newValue))
-    }
+    try { localStorage.setItem('devMode', String(newValue)) } catch { /* storage full or blocked */ }
     return { devMode: newValue }
   }),
 
@@ -194,9 +189,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   // Execution tracking
   setTrackExecution: (enabled) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('trackExecution', String(enabled))
-    }
+    try { localStorage.setItem('trackExecution', String(enabled)) } catch { /* storage full or blocked */ }
     set({ trackExecution: enabled })
   },
 
@@ -222,9 +215,8 @@ export const useUIStore = create<UIState>((set) => ({
       isLoading: false,
       loadingMessage: null,
       error: null,
+      isDisconnected: false,
       zoom: 1,
-      panX: 0,
-      panY: 0,
       chatHeight: 280,
       workspaceRevealed: false,
       homeExited: false,

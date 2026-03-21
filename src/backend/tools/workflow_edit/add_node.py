@@ -8,7 +8,7 @@ For calculation nodes, validates the operator and operands, and auto-registers
 the output variable with source='calculated'.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -45,21 +45,47 @@ ALL_COMPARATORS = [
 
 
 def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> str | None:
-    """Validate a single simple condition (input_id + comparator + value).
+    """Validate a single simple condition and resolve variable references.
+
+    Accepts either ``variable`` (name-based, preferred) or ``input_id`` (legacy ID).
+    When ``variable`` is provided, resolves it to an ``input_id`` via case-insensitive
+    name lookup so downstream code (execution engine) works unchanged.
 
     Args:
-        condition: Simple condition dict with input_id, comparator, value, value2.
+        condition: Condition dict with variable (or input_id), comparator, value, value2.
         variables: List of workflow variable definitions.
 
     Returns:
         Error message if invalid, None if valid.
     """
+    # Extract condition fields
+    var_name = condition.get("variable")
     input_id = condition.get("input_id")
     comparator = condition.get("comparator")
     value = condition.get("value")
 
-    if not input_id:
-        return "condition.input_id is required"
+    if var_name:
+        # Name-based lookup (case-insensitive)
+        normalized = var_name.strip().lower()
+        matched = None
+        for var in variables:
+            if var.get("name", "").strip().lower() == normalized:
+                matched = var
+                break
+        if not matched:
+            available = ", ".join(
+                v.get("name", "?") for v in variables
+            ) or "none"
+            return f"Variable '{var_name}' not found. Available: {available}"
+        # Inject resolved ID so the execution engine can use it
+        condition["input_id"] = matched["id"]
+        input_id = matched["id"]
+    elif not input_id:
+        return "condition.variable is required (name of the workflow variable to check)"
+
+    comparator = condition.get("comparator")
+    value = condition.get("value")
+
     if not comparator:
         return "condition.comparator is required"
     if value is None and comparator not in ("is_true", "is_false"):
@@ -77,7 +103,10 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
             break
 
     if not var_def:
-        return f"condition.input_id '{input_id}' not found in workflow variables"
+        available = ", ".join(
+            f"{v.get('name', '?')} ({v.get('id')})" for v in variables
+        ) or "none"
+        return f"Variable '{input_id}' not found. Available: {available}"
 
     # Check comparator is valid for this variable type
     var_type = var_def.get("type", "string")
@@ -99,7 +128,7 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
 def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
     """Validate a decision condition — simple or compound (AND/OR).
 
-    Simple conditions have input_id/comparator/value.
+    Simple conditions have variable/comparator/value.
     Compound conditions have operator ("and"/"or") and a conditions array
     of 2+ simple conditions.  Nesting is not allowed.
 
@@ -111,7 +140,7 @@ def validate_decision_condition(condition: Dict[str, Any], variables: list) -> s
         Error message if invalid, None if valid.
     """
     if not isinstance(condition, dict):
-        return "condition must be an object with input_id, comparator, and value"
+        return "condition must be an object with variable, comparator, and value"
 
     # Compound condition path
     if "operator" in condition:
@@ -242,129 +271,219 @@ def validate_calculation(
 
 class AddNodeTool(WorkflowTool):
     """Add a new node to the workflow.
-    
+
     Supports all node types including subprocess nodes that reference
     other workflows (subflows) and calculation nodes for mathematical operations.
-    
+
     For decision nodes, a 'condition' object is REQUIRED with:
-    - input_id: The workflow variable to compare (e.g., "var_age_int")
+    - variable: The workflow variable name to compare (e.g., "Age")
     - comparator: The comparison operator (e.g., "gte", "eq", "str_contains")
     - value: The value to compare against
     - value2: (optional) Second value for range comparisons
-    
+
     For calculation nodes, a 'calculation' object is REQUIRED with:
     - output: {"name": "ResultVar", "description": "Optional description"}
     - operator: The operator name (e.g., "add", "divide", "sqrt")
     - operands: Array of {"kind": "variable", "ref": "var_id"} or {"kind": "literal", "value": 123}
-    
+
     For subprocess nodes, the output_variable is automatically registered
     as a derived variable with type inferred from the subworkflow's output.
     """
 
     name = "add_node"
-    description = "Add a new node (block) to the workflow. Requires workflow_id."
+    description = (
+        "Add a new node (block) to the active workflow. Returns the created node with a real ID. "
+        "Note: Decision nodes should have 2 branches (true/false). You can add them separately "
+        "with add_node + add_connection, or use batch_edit_workflow to create the decision + branches "
+        "atomically with temporary IDs.\n\n"
+        "For SUBPROCESS nodes (subflows): Use subprocess type to call another workflow. "
+        "You MUST provide subworkflow_id, input_mapping, and output_variable. "
+        "The subworkflow's output will be available as a new input variable that "
+        "subsequent decision nodes can reference."
+    )
+    # Parameters list is kept for reference by other code but the schema is
+    # generated from _schema_override due to deeply nested condition/calculation objects.
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to add the node to (from create_workflow)",
-            required=True,
-        ),
-        ToolParameter(
-            "type",
-            "string",
-            "Node type: start, process, decision, subprocess, calculation, or end",
-            required=True,
-        ),
+        ToolParameter("type", "string", "Node type", required=True,
+                      enum=["start", "process", "decision", "subprocess", "calculation", "end"]),
         ToolParameter("label", "string", "Display text for the node", required=True),
-        ToolParameter(
-            "x",
-            "number",
-            "X coordinate (optional, auto-positions if omitted)",
-            required=False,
-        ),
-        ToolParameter(
-            "y",
-            "number",
-            "Y coordinate (optional, auto-positions if omitted)",
-            required=False,
-        ),
-        # Decision node condition (REQUIRED for decision nodes)
-        ToolParameter(
-            "condition",
-            "object",
-            (
-                "REQUIRED for decision nodes: Structured condition to evaluate. "
-                "Object with: input_id (string), comparator (string), value (any), value2 (optional for ranges). "
-                "Comparators by type: "
-                "int/float: eq,neq,lt,lte,gt,gte,within_range | "
-                "bool: is_true,is_false | "
-                "string: str_eq,str_neq,str_contains,str_starts_with,str_ends_with | "
-                "date: date_eq,date_before,date_after,date_between | "
-                "enum: enum_eq,enum_neq"
-            ),
-            required=False,
-        ),
-        # Calculation node config (REQUIRED for calculation nodes)
-        ToolParameter(
-            "calculation",
-            "object",
-            (
-                "REQUIRED for calculation nodes: Mathematical operation to perform. "
-                "Object with: output {name, description?}, operator (string), operands (array). "
-                "Each operand is {kind: 'variable', ref: 'var_id'} or {kind: 'literal', value: number}. "
-                "Operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average, etc."
-            ),
-            required=False,
-        ),
-        ToolParameter(
-"output_type",
-            "string",
-            (
-                "Optional: data type for output nodes (string, number, bool, json). "
-                "Use 'number' or 'bool' with output_variable for typed returns."
-            ),
-            required=False,
-        ),
-        ToolParameter(
-            "output_template",
-            "string",
-            (
-                "Optional: python f-string template for STRING outputs only (e.g., 'Patient BMI is {BMI}'). "
-                "Do NOT use for number/bool outputs - use output_variable instead."
-            ),
-            required=False,
-        ),
-        ToolParameter(
-            "output_value",
-            "any",
-            "Optional: static literal value to return (e.g., 42, true, 'fixed string')",
-            required=False,
-        ),
-        # Subprocess-specific parameters
-        ToolParameter(
-            "subworkflow_id",
-            "string",
-            "For subprocess: ID of the workflow to call as a subflow",
-            required=False,
-        ),
-        ToolParameter(
-            "input_mapping",
-            "object",
-            "For subprocess: dict mapping parent variable names to subworkflow input names",
-            required=False,
-        ),
-        ToolParameter(
-            "output_variable",
-            "string",
-            (
-                "For output/end nodes: variable name to return (e.g., 'BMI' returns the BMI variable's value). "
-                "For subprocess nodes: name for the variable that stores subworkflow output."
-            ),
-            required=False,
-        ),
+        ToolParameter("x", "number", "X coordinate (optional, auto-positions if omitted)", required=False),
+        ToolParameter("y", "number", "Y coordinate (optional, auto-positions if omitted)", required=False),
+        ToolParameter("output_type", "string", "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+                      required=False, enum=["string", "number", "bool", "json"]),
+        ToolParameter("output", "any",
+                      "For 'end' nodes: what to return. variable name, template with {vars}, or literal value.",
+                      required=False),
+        ToolParameter("output_variable", "string",
+                      "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
+                      required=False),
+        ToolParameter("condition", "object", "REQUIRED for 'decision' nodes.", required=False),
+        ToolParameter("calculation", "object", "REQUIRED for 'calculation' nodes.", required=False),
+        ToolParameter("subworkflow_id", "string", "For 'subprocess' nodes: ID of the workflow to call.", required=False),
+        ToolParameter("input_mapping", "object", "For 'subprocess' nodes: parent->subworkflow input mapping.", required=False),
     ]
+
+    # Full JSON Schema override — needed because condition and calculation have
+    # deeply nested oneOf / object schemas that ToolParameter can't express cleanly.
+    _schema_override = {
+        "type": "object",
+        "properties": {
+            "type": {
+                "type": "string",
+                "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
+                "description": "Node type",
+            },
+            "label": {
+                "type": "string",
+                "description": "Display text for the node",
+            },
+            "x": {
+                "type": "number",
+                "description": "X coordinate (optional, auto-positions if omitted)",
+            },
+            "y": {
+                "type": "number",
+                "description": "Y coordinate (optional, auto-positions if omitted)",
+            },
+            "output_type": {
+                "type": "string",
+                "enum": ["string", "number", "bool", "json"],
+                "description": "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+            },
+            "output": {
+                "description": (
+                    "For 'end' nodes: what to return. Smart routing: "
+                    "variable name (e.g., 'BMI') returns that variable's typed value; "
+                    "template with {vars} (e.g., 'Your BMI is {BMI}') does string interpolation; "
+                    "literal value (e.g., 42, true) returns a static value."
+                ),
+            },
+            "output_variable": {
+                "type": "string",
+                "description": "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
+            },
+            "condition": {
+                "description": (
+                    "REQUIRED for 'decision' nodes. Can be simple or compound.\n"
+                    "Simple: {variable, comparator, value, value2?}\n"
+                    "Compound: {operator: 'and'|'or', conditions: [simple, simple, ...]}\n"
+                    "Use compound when a decision checks MULTIPLE variables (e.g., 'Symptoms AND A1c > 58').\n"
+                    "Compound must have >= 2 sub-conditions. No nesting."
+                ),
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "description": "Simple condition",
+                        "properties": {
+                            "variable": {"type": "string", "description": "Name of the workflow variable to check (e.g., 'Age', 'Patient Name')"},
+                            "comparator": {
+                                "type": "string",
+                                "enum": [
+                                    "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
+                                    "is_true", "is_false",
+                                    "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
+                                    "date_eq", "date_before", "date_after", "date_between",
+                                    "enum_eq", "enum_neq",
+                                ],
+                                "description": "Comparison operator",
+                            },
+                            "value": {"description": "Value to compare against"},
+                            "value2": {"description": "Second value for range comparators (within_range, date_between)"},
+                        },
+                        "required": ["variable", "comparator"],
+                    },
+                    {
+                        "type": "object",
+                        "description": "Compound condition (AND/OR)",
+                        "properties": {
+                            "operator": {"type": "string", "enum": ["and", "or"]},
+                            "conditions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "variable": {"type": "string"},
+                                        "comparator": {"type": "string"},
+                                        "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                                        "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                                    },
+                                    "required": ["variable", "comparator"],
+                                },
+                                "minItems": 2,
+                            },
+                        },
+                        "required": ["operator", "conditions"],
+                    },
+                ],
+            },
+            "subworkflow_id": {
+                "type": "string",
+                "description": "For 'subprocess' nodes: ID of the workflow to call as a subflow.",
+            },
+            "input_mapping": {
+                "type": "object",
+                "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names. Example: {\"ParentAge\": \"SubAge\", \"ParentIncome\": \"SubIncome\"}",
+                "additionalProperties": {"type": "string"},
+            },
+            "calculation": {
+                "type": "object",
+                "description": (
+                    "For 'calculation' nodes: Defines a mathematical operation on variables. "
+                    "The result is stored in an output variable that can be used by subsequent nodes."
+                ),
+                "properties": {
+                    "output": {
+                        "type": "object",
+                        "description": "Output variable definition",
+                        "properties": {
+                            "name": {"type": "string", "description": "Name for the calculated result. Must be alphanumeric with underscores only, no spaces (e.g., 'BMI', 'Total_Score', 'DTI_Ratio')"},
+                            "description": {"type": "string", "description": "Description of what this value represents"},
+                        },
+                        "required": ["name"],
+                    },
+                    "operator": {
+                        "type": "string",
+                        "description": "Mathematical operator to apply. See system prompt for full list.",
+                        "enum": [
+                            "add", "subtract", "multiply", "divide", "floor_divide", "modulo", "power",
+                            "negate", "abs", "sqrt", "square", "cube", "reciprocal",
+                            "floor", "ceil", "round", "sign",
+                            "ln", "log10", "log", "exp",
+                            "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+                            "degrees", "radians",
+                            "min", "max", "sum", "average", "hypot",
+                            "geometric_mean", "harmonic_mean", "variance", "std_dev", "range",
+                        ],
+                    },
+                    "operands": {
+                        "type": "array",
+                        "description": "List of operands for the operator",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "kind": {
+                                    "type": "string",
+                                    "enum": ["variable", "literal"],
+                                    "description": "'variable' to reference a workflow variable, 'literal' for a constant number",
+                                },
+                                "ref": {
+                                    "type": "string",
+                                    "description": "For kind='variable': variable ID (e.g., 'var_weight_number')",
+                                },
+                                "value": {
+                                    "type": "number",
+                                    "description": "For kind='literal': the constant numeric value",
+                                },
+                            },
+                            "required": ["kind"],
+                        },
+                    },
+                },
+                "required": ["output", "operator", "operands"],
+            },
+        },
+        "required": ["type", "label"],
+    }
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)
@@ -428,5 +547,6 @@ class AddNodeTool(WorkflowTool):
             "workflow_id": workflow_id,
             "action": "add_node",
             "node": new_node,
+            "new_variables": new_variables,  # Auto-registered calc/subprocess output vars
             "message": f"Added {args['type']} node '{args['label']}' to workflow {workflow_id}",
         }

@@ -31,6 +31,7 @@ class CompilationResult:
     code: Optional[str] = None
     error: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
+    partial_failure: bool = False
 
 
 class CompilationError(Exception):
@@ -241,15 +242,81 @@ class ConditionCompiler:
     ) -> str:
         """Compile a DecisionCondition to a Python expression.
 
+        Handles both simple conditions (input_id/comparator/value) and
+        compound conditions (operator + conditions array).
+
         Args:
-            condition: DecisionCondition dict with input_id, comparator, value, value2
+            condition: DecisionCondition dict — simple or compound.
             resolver: Variable name resolver
+
+        Returns:
+            Python expression string like 'age >= 18' or
+            '(age >= 18 and weight > 50)'
+
+        Raises:
+            CompilationError: If condition is invalid
+        """
+        # Compound condition: {operator: "and"/"or", conditions: [...]}
+        if 'operator' in condition:
+            return self._compile_compound(condition, resolver)
+
+        return self._compile_simple(condition, resolver)
+
+    def _compile_compound(
+        self,
+        condition: Dict[str, Any],
+        resolver: VariableNameResolver,
+    ) -> str:
+        """Compile a compound (AND/OR) condition to a Python expression.
+
+        Args:
+            condition: Dict with 'operator' and 'conditions' keys.
+            resolver: Variable name resolver.
+
+        Returns:
+            Python expression like '(age >= 18 and weight > 50)'
+
+        Raises:
+            CompilationError: If compound condition is malformed.
+        """
+        operator = condition.get('operator', '').lower()
+        if operator not in ('and', 'or'):
+            raise CompilationError(
+                f"Compound condition operator must be 'and' or 'or', got '{operator}'"
+            )
+
+        sub_conditions = condition.get('conditions')
+        if not isinstance(sub_conditions, list) or len(sub_conditions) < 2:
+            raise CompilationError(
+                "Compound condition requires a 'conditions' array with at least 2 items"
+            )
+
+        # Compile each sub-condition (nesting not supported)
+        parts = []
+        for i, sub in enumerate(sub_conditions):
+            if not isinstance(sub, dict):
+                raise CompilationError(f"conditions[{i}] must be a dict")
+            parts.append(self._compile_simple(sub, resolver))
+
+        joiner = f' {operator} '
+        return f'({joiner.join(parts)})'
+
+    def _compile_simple(
+        self,
+        condition: Dict[str, Any],
+        resolver: VariableNameResolver,
+    ) -> str:
+        """Compile a simple condition (input_id/comparator/value).
+
+        Args:
+            condition: Dict with input_id, comparator, value, and optional value2.
+            resolver: Variable name resolver.
 
         Returns:
             Python expression string like 'age >= 18'
 
         Raises:
-            CompilationError: If condition is invalid
+            CompilationError: If condition is invalid.
         """
         input_id = condition.get('input_id')
         comparator = condition.get('comparator')
@@ -356,6 +423,7 @@ class PythonCodeGenerator:
             self._indent_level = 0
             self._lines = []
             self._warnings = []
+            self._has_partial_failure = False  # True only when parts of compilation are broken (e.g. missing subworkflows)
 
             # Create resolver
             # Filter to only input-source variables for function parameters
@@ -393,7 +461,11 @@ class PythonCodeGenerator:
                                 subflow_code_blocks.append(sub_result.code)
                             self._warnings.extend(["Subflow: " + w for w in sub_result.warnings])
                         else:
-                            self._warnings.append(f"Warning: Could not fetch subworkflow '{sub_id}'. Generated call will fail.")
+                            self._has_partial_failure = True
+                            self._warnings.append(
+                                f"Subworkflow '{sub_id}' could not be compiled because it could not be fetched. "
+                                "Generated code contains a placeholder comment instead."
+                            )
             
             # --- Compile Root Workflow ---
             # Generate imports
@@ -445,20 +517,23 @@ class PythonCodeGenerator:
             return CompilationResult(
                 success=True,
                 code=combined_code,
-                warnings=self._warnings
+                warnings=self._warnings,
+                partial_failure=self._has_partial_failure,
             )
             
         except CompilationError as e:
             return CompilationResult(
                 success=False,
                 error=str(e),
-                warnings=self._warnings
+                warnings=self._warnings,
+                partial_failure=self._has_partial_failure,
             )
         except Exception as e:
             return CompilationResult(
                 success=False,
                 error=f"Unexpected error: {str(e)}",
-                warnings=self._warnings
+                warnings=self._warnings,
+                partial_failure=self._has_partial_failure,
             )
 
     def _to_function_name(self, name: str) -> str:
@@ -706,12 +781,11 @@ class PythonCodeGenerator:
         try:
             condition_expr = self.condition_compiler.compile(condition, self.resolver)
         except CompilationError as e:
-            # Provide helpful error message with available variable IDs
+            # Provide helpful error message with the actual compilation error
             available_vars = list(self.resolver.id_to_python.keys())
-            input_id = condition.get('input_id', 'unknown')
             warning_msg = (
-                f"Decision '{node_label}' references variable '{input_id}' "
-                f"which is not defined. Available variables: {available_vars}"
+                f"Could not compile condition for decision '{node_label}': {e}. "
+                f"Available variables: {available_vars}"
             )
             self._warnings.append(warning_msg)
             self._add_line(f"# ERROR: {warning_msg}")
@@ -790,9 +864,10 @@ class PythonCodeGenerator:
         else:
             self._add_line(f"# TODO: Implement call to subworkflow '{subworkflow_id}'")
             self._add_line(f"{python_var} = None  # Placeholder for subprocess output")
+            self._has_partial_failure = True
             self._warnings.append(
-                f"Subprocess '{node_label}' requires manual implementation. "
-                f"Subworkflow ID: {subworkflow_id}"
+                f"Subprocess '{node_label}' could not be compiled and was left as a comment. "
+                f"Reason: subworkflow '{subworkflow_id}' was unavailable during export."
             )
 
         # Continue to children

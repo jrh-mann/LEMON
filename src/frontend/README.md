@@ -52,7 +52,7 @@ VITE_API_URL=https://api.example.com npm run build
 
 ```
 src/
-├── api/          # API client, Socket.IO, REST endpoints
+├── api/          # API client, SSE streaming, REST endpoints
 ├── stores/       # Zustand state management
 ├── hooks/        # Custom React hooks
 ├── types/        # TypeScript type definitions

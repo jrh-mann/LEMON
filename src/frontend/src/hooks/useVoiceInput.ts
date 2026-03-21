@@ -40,7 +40,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   const isSupported = !!SpeechRecognitionAPI
 
   // Analyze volume from microphone
-  const analyzeVolume = useCallback(() => {
+  const analyzeVolume = useCallback(function analyzeVolumeLoop() {
     if (!analyserRef.current) return
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
@@ -59,7 +59,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
 
     // Continue animation loop
     if (isListening) {
-      animationFrameRef.current = requestAnimationFrame(analyzeVolume)
+      animationFrameRef.current = requestAnimationFrame(analyzeVolumeLoop)
     }
   }, [isListening])
 

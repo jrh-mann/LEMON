@@ -13,7 +13,7 @@ export interface ExecutionState {
   executionPath: string[]    // Full path of executed nodes
   executionSpeed: number     // Delay between steps in ms (100-2000)
   executionError: string | null
-  executionOutput: any       // Final output of execution
+  executionOutput: unknown   // Final output of execution
   executionLogs: ExecutionLogEntry[]  // Detailed execution logs for dev tools
   logIndentationStack: string[] // Stack of subworkflow IDs to track indentation depth
 }
@@ -39,7 +39,6 @@ interface WorkflowState {
   currentWorkflow: Workflow | null
   flowchart: Flowchart
   currentAnalysis: WorkflowAnalysis | null
-  conversationId: string | null
   inputValues: Record<string, unknown>
 
   // Canvas state
@@ -63,9 +62,15 @@ interface WorkflowState {
   // Pending files for analysis (images and PDFs)
   pendingFiles: PendingFile[]
   pendingAnnotations: Annotation[]
+  filesSent: boolean  // Whether pendingFiles have already been sent to backend
 
   // Extraction plan items (from update_plan tool)
   plan: Array<{ text: string; done: boolean }>
+
+  // Library refresh trigger — incremented by streaming handlers when the library
+  // list needs re-fetching (subworkflow created, build finished, etc.)
+  libraryRefreshTrigger: number
+  incrementLibraryRefresh: () => void
 
   // Actions
   setWorkflows: (workflows: WorkflowSummary[]) => void
@@ -73,8 +78,9 @@ interface WorkflowState {
   setCurrentWorkflow: (workflow: Workflow | null) => void
   setCurrentWorkflowId: (workflowId: string) => void  // Set just the ID (when LLM creates workflow)
   setFlowchart: (flowchart: Flowchart) => void
+  setFlowchartSilent: (flowchart: Flowchart) => void  // Set flowchart without pushing undo history (for streamed server events)
+  persistFlowchart: () => Promise<void>
   setAnalysis: (analysis: WorkflowAnalysis | null) => void
-  setConversationId: (conversationId: string | null) => void
   setInputValues: (values: Record<string, unknown>) => void
 
   // Node operations
@@ -112,6 +118,7 @@ interface WorkflowState {
   addPendingFile: (file: PendingFile) => void
   removePendingFile: (fileId: string) => void
   clearPendingFiles: () => void
+  markFilesSent: () => void  // Mark that pendingFiles have been sent to backend
   setPendingAnnotations: (annotations: Annotation[]) => void
   clearPendingAnnotations: () => void
   setPlan: (items: Array<{ text: string; done: boolean }>) => void
@@ -129,7 +136,7 @@ interface WorkflowState {
   markNodeExecuted: (nodeId: string) => void
   setExecutionSpeed: (speed: number) => void
   setExecutionError: (error: string | null) => void
-  setExecutionOutput: (output: any) => void
+  setExecutionOutput: (output: unknown) => void
   clearExecution: () => void
 
   // Subflow execution actions
@@ -144,6 +151,27 @@ interface WorkflowState {
 }
 
 const emptyFlowchart: Flowchart = { nodes: [], edges: [] }
+
+/** Create a blank Workflow shell with all required fields populated. */
+function createEmptyWorkflow(id = '', name = 'New Workflow'): Workflow {
+  const now = new Date().toISOString()
+  return {
+    id,
+    metadata: {
+      name,
+      description: '',
+      tags: [],
+      created_at: now,
+      updated_at: now,
+      validation_score: 0,
+      validation_count: 0,
+      confidence: 'none',
+      is_validated: false,
+    },
+    blocks: [],
+    connections: [],
+  }
+}
 
 // Default execution state
 const initialExecutionState: ExecutionState = {
@@ -160,20 +188,24 @@ const initialExecutionState: ExecutionState = {
   logIndentationStack: [],
 }
 
-// Generate unique workflow ID (used for new workflows before they're saved)
-// Format matches backend: wf_{uuid hex}
-const generateWorkflowId = () => `wf_${crypto.randomUUID().replace(/-/g, '')}`
-
-// Helper to sync edges to backend (fire-and-forget, logs errors)
-// This persists UI-triggered edge changes without blocking the UI
-const syncEdgesToBackend = async (workflowId: string | undefined, edges: FlowEdge[]) => {
+const persistWorkflowGraph = async (
+  workflowId: string | undefined,
+  flowchart: Flowchart,
+  analysis: WorkflowAnalysis | null,
+  outputType?: string,
+) => {
   if (!workflowId) return
   try {
-    await patchWorkflow(workflowId, { edges })
-    console.log('[WorkflowStore] Synced edges to backend')
+    await patchWorkflow(workflowId, {
+      nodes: flowchart.nodes,
+      edges: flowchart.edges,
+      variables: analysis?.variables,
+      outputs: analysis?.outputs,
+      output_type: outputType,
+    })
+    console.log('[WorkflowStore] Synced workflow graph to backend')
   } catch (error) {
-    // Log but don't throw - UI updates should not be blocked by backend issues
-    console.error('[WorkflowStore] Failed to sync edges to backend:', error)
+    console.error('[WorkflowStore] Failed to sync workflow graph to backend:', error)
   }
 }
 
@@ -182,15 +214,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflows: [],
   isLoadingWorkflows: false,
 
-  currentWorkflow: {
-    id: generateWorkflowId(),
-    metadata: { name: 'New Workflow' },
-    blocks: [],
-    connections: [],
-  } as unknown as Workflow,
+  // ID starts empty — WorkflowPage sets it from the URL (single source of truth)
+  currentWorkflow: createEmptyWorkflow(),
   flowchart: emptyFlowchart,
   currentAnalysis: null,
-  conversationId: null,
   inputValues: {},
 
   selectedNodeId: null,
@@ -203,7 +230,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   historyIndex: -1,
   pendingFiles: [],
   pendingAnnotations: [],
+  filesSent: false,
   plan: [],
+  libraryRefreshTrigger: 0,
+  incrementLibraryRefresh: () => set((s) => ({ libraryRefreshTrigger: s.libraryRefreshTrigger + 1 })),
 
   // Execution state
   execution: { ...initialExecutionState },
@@ -220,12 +250,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setCurrentWorkflowId: (workflowId) => set((state) => {
     const workflow = state.currentWorkflow
       ? { ...state.currentWorkflow, id: workflowId }
-      : {
-        id: workflowId,
-        metadata: { name: '' },
-        blocks: [],
-        connections: [],
-      } as unknown as Workflow
+      : createEmptyWorkflow(workflowId, '')
     return { currentWorkflow: workflow }
   }),
 
@@ -235,8 +260,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ flowchart })
   },
 
+  // Set flowchart without pushing undo history — used for server-driven updates
+  // (streamed events like batch_edit) that shouldn't pollute the user's undo stack
+  setFlowchartSilent: (flowchart) => set({ flowchart }),
+  persistFlowchart: async () => {
+    const state = get()
+    await persistWorkflowGraph(state.currentWorkflow?.id, state.flowchart, state.currentAnalysis, state.currentWorkflow?.output_type)
+  },
+
   setAnalysis: (analysis) => set({ currentAnalysis: analysis }),
-  setConversationId: (conversationId) => set({ conversationId }),
   setInputValues: (inputValues) => set({ inputValues }),
 
   // Node operations
@@ -399,9 +431,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
     })
 
-    // Sync to backend asynchronously (fire-and-forget)
-    const workflowId = state.currentWorkflow?.id
-    syncEdgesToBackend(workflowId, newEdges)
+    void persistWorkflowGraph(state.currentWorkflow?.id, {
+      ...state.flowchart,
+      edges: newEdges,
+    }, state.currentAnalysis, state.currentWorkflow?.output_type)
   },
 
   // Swap edge labels for decision nodes (used for batch operations)
@@ -531,9 +564,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearHistory: () => set({ history: [], historyIndex: -1 }),
 
   // Pending files
-  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file] })),
+  addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file], filesSent: false })),
   removePendingFile: (fileId) => set((state) => ({ pendingFiles: state.pendingFiles.filter(f => f.id !== fileId) })),
-  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [] }),
+  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [], filesSent: false }),
+  markFilesSent: () => set({ filesSent: true }),
   setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
   clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
   setPlan: (items) => set({ plan: items }),
@@ -550,15 +584,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Reset
   reset: () =>
     set({
-      currentWorkflow: {
-        id: generateWorkflowId(),
-        metadata: { name: 'New Workflow' },
-        blocks: [],
-        connections: [],
-      } as unknown as Workflow,
+      // ID starts empty — WorkflowPage sets it from the URL
+      currentWorkflow: createEmptyWorkflow(),
       flowchart: emptyFlowchart,
       currentAnalysis: null,
-      conversationId: null,
       inputValues: {},
       selectedNodeId: null,
       selectedNodeIds: [],
@@ -568,6 +597,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       historyIndex: -1,
       pendingFiles: [],
       pendingAnnotations: [],
+      filesSent: false,
       plan: [],
       execution: { ...initialExecutionState },
     }),
@@ -638,7 +668,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setExecutionSpeed: (speed: number) => set((state) => ({
     execution: {
       ...state.execution,
-      executionSpeed: Math.max(100, Math.min(2000, speed)),  // Clamp to 100-2000ms
+      executionSpeed: Math.max(0, Math.min(2000, speed)),  // Clamp to 0-2000ms (0 = instant)
     },
   })),
 
@@ -652,7 +682,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   })),
 
   // Sets the final execution output
-  setExecutionOutput: (output: any) => set((state) => ({
+  setExecutionOutput: (output: unknown) => set((state) => ({
     execution: {
       ...state.execution,
       executionOutput: output,

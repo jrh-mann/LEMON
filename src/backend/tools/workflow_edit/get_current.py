@@ -1,7 +1,7 @@
 """Get current workflow tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database
 - Read-only - does not save changes
 """
@@ -147,15 +147,12 @@ class GetCurrentWorkflowTool(WorkflowTool):
     uses_validator = False
 
     name = "get_current_workflow"
-    description = "Get a workflow from the library as JSON (nodes, edges, variables). Requires workflow_id."
-    parameters: List[ToolParameter] = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to retrieve (from create_workflow)",
-            required=True,
-        ),
-    ]
+    description = (
+        "Get the active workflow's current state as JSON (nodes and edges). "
+        "Returns workflow structure with semantic descriptions to help you understand "
+        "node IDs and connections. Use this before making changes to see what exists."
+    )
+    parameters: List[ToolParameter] = []
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         workflow_data, error = self._load_workflow(args, **kwargs)
@@ -170,7 +167,7 @@ class GetCurrentWorkflowTool(WorkflowTool):
                     "workflow": {"nodes": [], "edges": []},
                     "node_count": 0,
                     "edge_count": 0,
-                    "message": "No workflow exists yet. Call create_workflow first to create one.",
+                    "message": "No workflow loaded yet. The workflow is created automatically when the canvas opens.",
                     "summary": {
                         "node_count": 0,
                         "edge_count": 0,

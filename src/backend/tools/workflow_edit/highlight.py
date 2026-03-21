@@ -9,21 +9,26 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, tool_error
 
 
 class HighlightNodeTool(Tool):
     name = "highlight_node"
-    description = "Highlight a node on the canvas to draw the user's attention to it. The node pulses briefly."
+    description = (
+        "Highlight a node on the canvas so the user can see which one you're "
+        "referring to. The node pulses briefly. Use this when answering "
+        "questions about specific nodes, when asking the user about a "
+        "particular node via `ask_question`, or when pointing out an issue "
+        "found by `validate_workflow`."
+    )
     parameters = [
-        ToolParameter("workflow_id", "string", "ID of the workflow containing the node"),
         ToolParameter("node_id", "string", "ID of the node to highlight"),
     ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         node_id = args.get("node_id")
         if not node_id:
-            return {"success": False, "error": "node_id is required"}
+            return tool_error("node_id is required", "MISSING_NODE_ID")
 
         return {
             "success": True,

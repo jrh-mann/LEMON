@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..core import Tool, ToolParameter
+from ..core import Tool, ToolParameter, tool_error
 
 
 class UpdatePlanTool(Tool):
@@ -17,17 +17,31 @@ class UpdatePlanTool(Tool):
 
     name = "update_plan"
     description = (
-        "Update the step-by-step plan shown to the user. Call this to outline "
-        "what you see in the image and mark items as done as you build the workflow."
+        "Update the step-by-step plan shown to the user. "
+        "Call this TWICE: once at the start to outline your DFS plan (Step 3), "
+        "and once at the end to mark all items done (Step 8). "
+        "Do NOT call after every tool — it interrupts your building flow."
     )
     parameters = [
         ToolParameter(
             name="items",
             type="array",
-            description=(
-                "List of plan items. Each item has 'text' (string) and 'done' (boolean)."
-            ),
+            description="List of plan items to display.",
             required=True,
+            items={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Description of this plan step.",
+                    },
+                    "done": {
+                        "type": "boolean",
+                        "description": "Whether this step is completed.",
+                    },
+                },
+                "required": ["text", "done"],
+            },
         ),
     ]
 
@@ -37,7 +51,7 @@ class UpdatePlanTool(Tool):
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         items = args.get("items", [])
         if not isinstance(items, list):
-            return {"success": False, "error": "items must be a list"}
+            return tool_error("items must be a list", "INVALID_ITEMS")
 
         self._logger.info("UpdatePlanTool: %d items", len(items))
         return {

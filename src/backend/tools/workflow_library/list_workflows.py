@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Set
 
-from ..core import Tool, extract_session_deps
+from ..core import Tool, ToolParameter, extract_session_deps
 
 
 class ListWorkflowsInLibrary(Tool):
@@ -12,10 +12,10 @@ class ListWorkflowsInLibrary(Tool):
 
     This tool allows the orchestrator to view workflows that the user has
     previously saved, including their metadata (name, description, domain, tags).
-    
+
     Also includes all open tabs with unsaved workflows (drafts), so the LLM can
     see what the user is currently working on across all tabs.
-    
+
     Useful for:
     - Discovering existing workflows before creating duplicates
     - Recommending relevant workflows to users
@@ -24,42 +24,37 @@ class ListWorkflowsInLibrary(Tool):
     - Getting the ID of the current workflow (even if unsaved)
     """
 
-    @property
-    def name(self) -> str:
-        return "list_workflows_in_library"
-
-    @property
-    def description(self) -> str:
-        return (
-            "List all workflows saved in the user's library, plus any open unsaved workflows "
-            "(drafts) from all tabs. Returns workflow metadata including name, description, "
-            "domain, tags, validation status, and input/output information. "
-            "Open drafts appear with status 'draft' or 'current (unsaved)' for the active tab. "
-            "Use this to see all workflows the user has, including work in progress."
-        )
-
-    @property
-    def parameters(self) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "search_query": {
-                    "type": "string",
-                    "description": "Optional text to search for in workflow names, descriptions, or domains",
-                },
-                "domain": {
-                    "type": "string",
-                    "description": "Optional domain filter (e.g., 'Healthcare', 'Finance')",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of workflows to return (default: 50, max: 100)",
-                    "minimum": 1,
-                    "maximum": 100,
-                },
-            },
-            "required": [],
-        }
+    name = "list_workflows_in_library"
+    description = (
+        "List all workflows in the user's library, PLUS the current canvas workflow (even if unsaved). "
+        "Returns workflow metadata including name, description, domain, tags, status, "
+        "validation status, and input/output information. "
+        "Status values: 'saved' (in DB), 'current' (on canvas and in DB), 'current (unsaved)' (on canvas, not in DB). "
+        "Use this to: check if similar workflows already exist before creating new ones, "
+        "find the workflow_id of an existing workflow, or get the ID of the current canvas workflow."
+    )
+    parameters = [
+        ToolParameter(
+            "search_query",
+            "string",
+            "Optional text to search for in workflow names, descriptions, or domains",
+            required=False,
+        ),
+        ToolParameter(
+            "domain",
+            "string",
+            "Optional domain filter (e.g., 'Healthcare', 'Finance')",
+            required=False,
+        ),
+        ToolParameter(
+            "limit",
+            "integer",
+            "Maximum number of workflows to return (default: 50, max: 100)",
+            required=False,
+            minimum=1,
+            maximum=100,
+        ),
+    ]
 
     def execute(self, args: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """Execute the list_workflows_in_library tool.

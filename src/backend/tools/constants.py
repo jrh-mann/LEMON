@@ -6,6 +6,17 @@ from multiple tool modules, avoiding duplicate definitions.
 
 from __future__ import annotations
 
+import uuid
+
+
+def generate_workflow_id() -> str:
+    """Generate a unique workflow ID.
+
+    Format: wf_{32_hex_chars} — canonical format used by frontend, backend,
+    and REST API. Uses full UUID4 hex for guaranteed uniqueness.
+    """
+    return f"wf_{uuid.uuid4().hex}"
+
 WORKFLOW_EDIT_TOOLS = frozenset(
     {
         "add_node",
@@ -24,13 +35,22 @@ WORKFLOW_INPUT_TOOLS = frozenset(
         "list_workflow_variables",
         "modify_workflow_variable",
         "remove_workflow_variable",
+        "set_workflow_output",
     }
+)
+
+# Tools that are "bound" to the orchestrator's current workflow.
+# The orchestrator auto-injects workflow_id into args for these tools,
+# so the LLM doesn't need to pass it explicitly.
+WORKFLOW_BOUND_TOOLS = (
+    WORKFLOW_EDIT_TOOLS
+    | WORKFLOW_INPUT_TOOLS
+    | {"get_current_workflow", "validate_workflow", "execute_workflow", "save_workflow_to_library"}
 )
 
 # Tools that create or modify workflow library entries
 WORKFLOW_LIBRARY_TOOLS = frozenset(
     {
-        "create_workflow",
         "save_workflow_to_library",
         "list_workflows_in_library",
     }
@@ -58,9 +78,32 @@ USER_TYPE_TO_INTERNAL = {
     "date": "date",
 }
 
-# Valid output types at the workflow level (create_workflow output_type param).
+# Valid output types at the workflow level (output_type param).
 # This is distinct from VALID_VARIABLE_TYPES — workflows can return "json"
 # but not "enum" or "date" at the top level.
 VALID_WORKFLOW_OUTPUT_TYPES = frozenset({"string", "number", "bool", "json"})
 
 
+# --- Background Builder Concurrency ---
+# Caps the number of concurrent background builder threads (create + update)
+# to prevent runaway thread spawning if the LLM calls create_subworkflow in a loop.
+import threading as _threading  # noqa: E402
+
+_MAX_CONCURRENT_BUILDERS = 5
+builder_semaphore = _threading.Semaphore(_MAX_CONCURRENT_BUILDERS)
+
+# Timeout for acquiring a semaphore slot. If all slots are held by slow/zombie
+# builders, new builders fail loudly after this many seconds instead of
+# blocking forever. Set to 30s — enough to wait for a slot to free up from
+# a finishing build, short enough to surface stuck builders quickly.
+SEMAPHORE_TIMEOUT_SECONDS = 30
+
+# Maximum build_history messages to persist in DB per workflow.
+# Prevents unbounded blob growth from long builder conversations.
+MAX_BUILD_HISTORY_MESSAGES = 100
+
+# Maximum nesting depth for subworkflow builders. A builder at depth N
+# can spawn children at depth N+1. Depth 0 is the parent ChatTask's
+# orchestrator. Prevents infinite recursion and semaphore deadlock
+# (5 builders each waiting for a child that can't acquire the semaphore).
+MAX_BUILD_DEPTH = 2

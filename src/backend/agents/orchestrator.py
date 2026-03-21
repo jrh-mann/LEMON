@@ -1,23 +1,42 @@
-"""Orchestrator for tool-based CLI use."""
+"""Orchestrator for tool-based CLI use.
+
+Single class that manages the LLM conversation loop:
+  1. Build system prompt + user message
+  2. Call LLM (optionally with tools)
+  3. Execute tool calls, feed results back to LLM
+  4. Repeat until LLM responds with text only
+"""
 
 from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-import os
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from ..tools import ToolRegistry
-from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS
-from ..mcp_bridge.client import call_mcp_tool
-from ..llm import call_llm_stream, call_llm_with_tools
+from ..tools.constants import WORKFLOW_EDIT_TOOLS, WORKFLOW_INPUT_TOOLS, WORKFLOW_BOUND_TOOLS
+from ..llm import call_llm
+from .conversation_manager import ConversationManager
 from .system_prompt import build_system_prompt
-from .tool_schemas import tool_descriptions
+from ..tools.schema_gen import generate_all_schemas
 from ..utils.cancellation import CancellationError
+from ..utils.image import detect_image_media_type
 from ..validation.workflow_validator import WorkflowValidator
+from ..events.bus import EventBus
+from ..events.types import TOOL_STARTED, TOOL_COMPLETED, TOOL_BATCH_COMPLETE
+
+if TYPE_CHECKING:
+    from .turn import Turn
+
+logger = logging.getLogger(__name__)
+
+_MAX_FILE_BYTES = {"image": 4_500_000, "pdf": 32_000_000}
+_MAX_TOOL_ITERATIONS = 50
+_MAX_TOOL_MESSAGES = 200
 
 
 @dataclass
@@ -32,141 +51,91 @@ class ToolResult:
 class Orchestrator:
     """Minimal orchestrator that uses the LLM to choose tools."""
 
-    def __init__(self, tools: ToolRegistry):
+    _validator = WorkflowValidator()
+
+    def __init__(self, tools: ToolRegistry, event_bus: Optional[EventBus] = None):
         self.tools = tools
-
-        # Single canonical workflow dict (nodes + edges + variables + outputs)
+        self.event_bus: EventBus = event_bus or EventBus()
         self.workflow: Dict[str, Any] = {
-            "nodes": [],
-            "edges": [],
-            "variables": [],
-            "outputs": [],
+            "nodes": [], "edges": [], "variables": [], "outputs": [],
         }
+        self.conversation = ConversationManager(context_limit=200_000)
 
-        self.history: List[Dict[str, str]] = []
-        self._logger = logging.getLogger(__name__)
-        self._tool_logger = logging.getLogger("backend.tool_calls")
-        # MCP mode is opt-in (must explicitly enable it)
-        self._use_mcp = os.environ.get("LEMON_USE_MCP", "").lower() in {"1", "true", "yes", "on"}
-
-        # Session context for tools (workflow_store, user_id)
+        # Session context — set by ChatTask before calling respond()
         self.workflow_store: Optional[Any] = None
         self.user_id: Optional[str] = None
-        # ID of current workflow on canvas (None if unsaved/new)
         self.current_workflow_id: Optional[str] = None
-        # All open tabs with workflows (for list_workflows_in_library to show drafts)
+        self.current_workflow_name: Optional[str] = None
         self.open_tabs: List[Dict[str, Any]] = []
+        self.uploaded_files: List[Dict[str, Any]] = []
+        self._guidance: List[Dict[str, Any]] = []
+        self.repo_root: Optional[Any] = None
+        self.event_sink: Optional[Any] = None
+        # Nesting depth for subworkflow builds. 0 = parent ChatTask's orchestrator.
+        # Builders increment this; create_subworkflow rejects if too deep.
+        self._build_depth: int = 0
+
+    # --- Workflow state views (used by ChatTask, tools, tests) ---
 
     @property
     def current_workflow(self) -> Dict[str, Any]:
-        """View of workflow structure (nodes/edges only) for session_state."""
-        return {
-            "nodes": self.workflow.get("nodes", []),
-            "edges": self.workflow.get("edges", [])
-        }
+        return {"nodes": self.workflow.get("nodes", []), "edges": self.workflow.get("edges", [])}
 
     @current_workflow.setter
     def current_workflow(self, value: Dict[str, Any]) -> None:
-        if not isinstance(value, dict):
-            return
-        nodes = value.get("nodes", [])
-        edges = value.get("edges", [])
-        if isinstance(nodes, list):
-            self.workflow["nodes"] = nodes
-        if isinstance(edges, list):
-            self.workflow["edges"] = edges
+        if isinstance(value, dict):
+            for key in ("nodes", "edges"):
+                if isinstance(value.get(key), list):
+                    self.workflow[key] = value[key]
 
     @property
     def workflow_analysis(self) -> Dict[str, Any]:
-        """View of workflow metadata (variables/outputs) for tools."""
-        return {
-            "variables": self.workflow.get("variables", []),
-            "outputs": self.workflow.get("outputs", []),
-        }
+        return {"variables": self.workflow.get("variables", []), "outputs": self.workflow.get("outputs", [])}
 
     @workflow_analysis.setter
     def workflow_analysis(self, value: Dict[str, Any]) -> None:
-        """Set workflow metadata from dict."""
-        if not isinstance(value, dict):
+        if isinstance(value, dict):
+            for key in ("variables", "outputs"):
+                if isinstance(value.get(key), list):
+                    self.workflow[key] = value[key]
+
+    # --- Workflow sync ---
+
+    def sync_workflow(self, provider: Optional[Callable[[], Dict[str, Any]]] = None) -> None:
+        """Sync nodes/edges from an external source (e.g. conversation state)."""
+        if provider is None:
             return
-        variables = value.get("variables", [])
-        outputs = value.get("outputs", [])
-        if isinstance(variables, list):
-            self.workflow["variables"] = variables
-        if isinstance(outputs, list):
-            self.workflow["outputs"] = outputs
-
-    def sync_workflow(
-        self,
-        workflow_provider: Optional[Callable[[], Dict[str, Any]]] = None
-    ) -> None:
-        """Sync workflow structure (nodes/edges) from external source.
-
-        Args:
-            workflow_provider: Callable that returns current workflow state.
-                              None = use existing memory state (no-op).
-
-        Design: Uses dependency injection to decouple from storage.
-                Caller controls WHERE state comes from.
-        """
-        if workflow_provider is None:
-            return  # No sync needed
-
         try:
-            workflow_data = workflow_provider()
+            self.current_workflow = provider()
         except Exception as exc:
-            self._logger.error("Failed to sync workflow: %s", exc)
+            logger.error("Failed to sync workflow: %s", exc)
+
+    def sync_workflow_analysis(self, provider: Optional[Callable[[], Dict[str, Any]]] = None) -> None:
+        """Sync variables/outputs from an external source."""
+        if provider is None:
             return
-
-        if not isinstance(workflow_data, dict):
-            return
-
-        nodes = workflow_data.get("nodes", [])
-        edges = workflow_data.get("edges", [])
-
-        if isinstance(nodes, list) and isinstance(edges, list):
-            # Update the unified workflow dict
-            self.workflow["nodes"] = nodes
-            self.workflow["edges"] = edges
-            self._logger.info(
-                "Synced workflow: %d nodes, %d edges",
-                len(nodes),
-                len(edges)
-            )
-
-    def sync_workflow_analysis(
-        self,
-        analysis_provider: Optional[Callable[[], Dict[str, Any]]] = None
-    ) -> None:
-        """Sync workflow metadata (variables/outputs) from external source.
-
-        Args:
-            analysis_provider: Callable that returns workflow analysis with 'variables' key.
-                              None = use existing memory state (no-op).
-        """
-        if analysis_provider is None:
-            return
-
         try:
-            analysis_data = analysis_provider()
+            self.workflow_analysis = provider()
         except Exception as exc:
-            self._logger.error("Failed to sync workflow analysis: %s", exc)
+            logger.error("Failed to sync workflow analysis: %s", exc)
+
+    def refresh_workflow_from_db(self) -> None:
+        """Reload full workflow state from DB after tool calls."""
+        if not self.workflow_store or not self.current_workflow_id:
             return
-
-        if not isinstance(analysis_data, dict):
+        try:
+            record = self.workflow_store.get_workflow(self.current_workflow_id, self.user_id)
+        except Exception as exc:
+            logger.error("refresh_workflow_from_db failed: %s", exc)
             return
+        if not record:
+            return
+        self.workflow["nodes"] = record.nodes or []
+        self.workflow["edges"] = record.edges or []
+        self.workflow["variables"] = record.inputs or []
+        self.workflow["outputs"] = record.outputs or []
 
-        variables = analysis_data.get("variables", [])
-        outputs = analysis_data.get("outputs", [])
-
-        if isinstance(variables, list) and isinstance(outputs, list):
-            self.workflow["variables"] = variables
-            self.workflow["outputs"] = outputs
-            self._logger.info(
-                "Synced workflow analysis: %d variables, %d outputs",
-                len(variables),
-                len(outputs)
-            )
+    # --- Tool execution ---
 
     def run_tool(
         self,
@@ -178,237 +147,76 @@ class Orchestrator:
         on_progress: Optional[Callable[[str], None]] = None,
         on_thinking: Optional[Callable[[str], None]] = None,
     ) -> ToolResult:
-        self._logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
-        self._tool_logger.info(
-            "tool_request name=%s args=%s",
-            tool_name,
-            json.dumps(args, ensure_ascii=True),
-        )
+        if tool_name in WORKFLOW_BOUND_TOOLS and self.current_workflow_id:
+            args.setdefault("workflow_id", self.current_workflow_id)
 
-        if self._use_mcp:
-            # MCP mode: Only pass serializable data (workflow_store can't be serialized)
-            # The MCP server should have its own workflow_store instance
-            mcp_args = {
-                **args,
-                "session_state": {
-                    "current_workflow": self.current_workflow,
-                    "workflow_analysis": self.workflow_analysis,
-                    "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
-                    "user_id": self.user_id,  # Serialize user_id (string)
-                    "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
-                    "uploaded_files": getattr(self, "uploaded_files", []),
-                },
-            }
-            data = call_mcp_tool(tool_name, mcp_args)
-        else:
-            # Direct mode: Pass workflow_store object reference
-            session_state = {
+        logger.info("Running tool name=%s args_keys=%s", tool_name, sorted(args.keys()))
+        self.event_bus.emit(TOOL_STARTED, {"tool": tool_name, "args": args})
+
+        data = self.tools.execute(
+            tool_name, args,
+            stream=stream, should_cancel=should_cancel,
+            on_progress=on_progress, on_thinking=on_thinking,
+            session_state={
                 "current_workflow": self.current_workflow,
                 "workflow_analysis": self.workflow_analysis,
-                "current_workflow_id": self.current_workflow_id,  # ID of workflow on canvas
-                "open_tabs": self.open_tabs,  # All open tabs for list_workflows_in_library
-                "uploaded_files": getattr(self, "uploaded_files", []),
-            }
-            # Add workflow_store and user_id if available
-            if self.workflow_store is not None:
-                session_state["workflow_store"] = self.workflow_store
-            if self.user_id is not None:
-                session_state["user_id"] = self.user_id
-
-            data = self.tools.execute(
-                tool_name,
-                args,
-                stream=stream,
-                should_cancel=should_cancel,
-                on_progress=on_progress,
-                on_thinking=on_thinking,
-                session_state=session_state,
-            )
-        result = self._normalize_tool_result(tool_name, data)
-        self._tool_logger.info(
-            "tool_response name=%s data=%s",
-            tool_name,
-            json.dumps(result.data, ensure_ascii=True),
+                "current_workflow_id": self.current_workflow_id,
+                "open_tabs": self.open_tabs,
+                "uploaded_files": self.uploaded_files,
+                "workflow_store": self.workflow_store,
+                "user_id": self.user_id,
+                "repo_root": self.repo_root,
+                "event_sink": self.event_sink,
+                "build_depth": self._build_depth,
+                "conversation_logger": getattr(self.conversation, "_conversation_logger", None),
+            },
         )
+        result = _normalize_tool_result(tool_name, data)
 
-        # Update current_workflow if this was a successful workflow manipulation tool
-        if result.success:
+        if result.success and tool_name in (WORKFLOW_EDIT_TOOLS | WORKFLOW_INPUT_TOOLS):
+            self.refresh_workflow_from_db()
             if tool_name in WORKFLOW_EDIT_TOOLS:
-                self._update_workflow_from_tool_result(tool_name, result.data)
-                # Post-tool structural validation (non-strict: workflow is still being built).
-                # Hard-fail so the LLM sees the error and can call corrective tools.
                 result = self._post_tool_validate(result)
 
-            # Update workflow_analysis if this was a successful input management tool
-            if tool_name in WORKFLOW_INPUT_TOOLS:
-                self._update_analysis_from_tool_result(tool_name, result.data)
+        if result.success and tool_name == "extract_guidance":
+            items = result.data.get("guidance")
+            if isinstance(items, list):
+                self._guidance = items
 
-        # Track current_workflow_id when create_workflow succeeds so that
-        # subsequent tool calls have the correct fallback workflow reference.
-        if tool_name == "create_workflow" and result.success and isinstance(result.data, dict):
-            new_wf_id = result.data.get("workflow_id")
-            if new_wf_id:
-                self.current_workflow_id = new_wf_id
-                self._logger.info("Updated current_workflow_id to %s after create_workflow", new_wf_id)
-
+        self.event_bus.emit(TOOL_COMPLETED, {
+            "tool": tool_name, "args": args,
+            "result": result.data, "success": result.success,
+        })
         return result
 
-    def _normalize_tool_result(self, tool_name: str, data: Any) -> ToolResult:
-        if not isinstance(data, dict):
-            data = {"result": data}
-        success = data.get("success")
-        if success is None:
-            success = "error" not in data
-            data["success"] = bool(success)
-        success = bool(success)
-        message = data.get("message") if isinstance(data.get("message"), str) else ""
-        error = data.get("error") if isinstance(data.get("error"), str) else ""
-        if not success and not error:
-            error = message or f"Tool {tool_name} failed."
-        return ToolResult(
-            tool=tool_name,
-            data=data,
-            success=success,
-            message=message,
-            error=error if not success else None,
-        )
-
-    def _format_tool_failure(self, result: ToolResult) -> str:
-        if result.error:
-            return result.error
-        if result.message:
-            return result.message
-        return f"Tool error ({result.tool})"
-
-    def _update_workflow_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update workflow structure based on successful tool execution."""
-        if tool_name == "add_node":
-            node = result.get("node")
-            if node:
-                self.workflow["nodes"].append(node)
-
-        elif tool_name == "modify_node":
-            node = result.get("node")
-            if node:
-                nodes = self.workflow["nodes"]
-                for i, n in enumerate(nodes):
-                    if n["id"] == node["id"]:
-                        nodes[i] = node
-                        break
-
-        elif tool_name == "delete_node":
-            node_id = result.get("node_id")
-            if node_id:
-                self.workflow["nodes"] = [
-                    n for n in self.workflow["nodes"] if n["id"] != node_id
-                ]
-                self.workflow["edges"] = [
-                    e for e in self.workflow["edges"]
-                    if e["from"] != node_id and e["to"] != node_id
-                ]
-
-        elif tool_name == "add_connection":
-            edge = result.get("edge")
-            if edge:
-                self.workflow["edges"].append(edge)
-
-        elif tool_name == "delete_connection":
-            from_id = result.get("from_node_id")
-            to_id = result.get("to_node_id")
-            if from_id and to_id:
-                self.workflow["edges"] = [
-                    e for e in self.workflow["edges"]
-                    if not (e["from"] == from_id and e["to"] == to_id)
-                ]
-
-        elif tool_name == "batch_edit_workflow":
-            new_workflow = result.get("workflow")
-            if new_workflow:
-                self.workflow["nodes"] = new_workflow.get("nodes", [])
-                self.workflow["edges"] = new_workflow.get("edges", [])
-
-    # Shared validator instance for post-tool checks (non-strict).
-    _workflow_validator = WorkflowValidator()
-
     def _post_tool_validate(self, result: ToolResult) -> ToolResult:
-        """Validate current workflow state after a WORKFLOW_EDIT_TOOL succeeds.
-
-        Uses ``strict=False`` because the workflow is still being built
-        incrementally — we only check invariants that should never be
-        violated: no self-loops, no duplicate IDs, valid node types,
-        valid edge references, no cycles.
-
-        Returns the original *result* if valid, or a new failed
-        ``ToolResult`` if validation errors are found (triggers the
-        orchestrator's existing retry mechanism).
-        """
+        """Non-strict validation after a workflow edit tool succeeds."""
         nodes = self.workflow.get("nodes", [])
         if not nodes:
-            # Nothing to validate yet
             return result
-
-        # Build a minimal workflow dict for the validator
-        workflow_dict = {
-            "nodes": nodes,
-            "edges": self.workflow.get("edges", []),
-            "variables": self.workflow.get("variables", []),
-        }
-        is_valid, errors = self._workflow_validator.validate(workflow_dict, strict=False)
+        is_valid, errors = self._validator.validate(
+            {"nodes": nodes, "edges": self.workflow.get("edges", []),
+             "variables": self.workflow.get("variables", [])},
+            strict=False,
+        )
         if is_valid:
             return result
-
         error_text = "; ".join(f"[{e.code}] {e.message}" for e in errors)
-        self._logger.warning(
-            "Post-tool validation failed (%d errors): %s", len(errors), error_text,
-        )
+        logger.warning("Post-tool validation failed (%d errors): %s", len(errors), error_text)
         return ToolResult(
             tool=result.tool,
             data={**result.data, "success": False, "error": error_text},
-            success=False,
-            message="",
+            success=False, message="",
             error=f"Workflow validation failed after tool execution: {error_text}",
         )
 
-    def _update_analysis_from_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
-        """Update workflow metadata based on successful input tool execution.
-
-        For direct tool calls: Tools modify session_state["workflow_analysis"] directly (by reference).
-        For MCP calls: Tools return workflow_analysis in response, we must sync it back.
-        """
-        if tool_name in WORKFLOW_INPUT_TOOLS:
-            # MCP mode: Extract workflow_analysis from response and sync
-            if "workflow_analysis" in result:
-                returned_analysis = result["workflow_analysis"]
-                if isinstance(returned_analysis, dict):
-                    if "variables" in returned_analysis:
-                        self.workflow["variables"] = returned_analysis["variables"]
-                    if "outputs" in returned_analysis:
-                        self.workflow["outputs"] = returned_analysis["outputs"]
-                    self._logger.debug(
-                        "Synced workflow_analysis from tool result: %d variables, %d outputs",
-                        len(self.workflow.get("variables", [])),
-                        len(self.workflow.get("outputs", [])),
-                    )
-
-            # CRITICAL: Also sync current_workflow if tool modified nodes/edges
-            # (e.g., remove_workflow_variable with force=true clears conditions from nodes)
-            if "current_workflow" in result:
-                returned_workflow = result["current_workflow"]
-                if isinstance(returned_workflow, dict):
-                    if "nodes" in returned_workflow:
-                        self.workflow["nodes"] = returned_workflow["nodes"]
-                    if "edges" in returned_workflow:
-                        self.workflow["edges"] = returned_workflow["edges"]
-                    self._logger.debug(
-                        "Synced current_workflow from tool result: %d nodes, %d edges",
-                        len(self.workflow.get("nodes", [])),
-                        len(self.workflow.get("edges", [])),
-                    )
+    # --- LLM conversation ---
 
     def respond(
         self,
         user_message: str,
         *,
+        turn: Optional["Turn"] = None,
         has_files: Optional[List[Dict[str, Any]]] = None,
         stream: Optional[Callable[[str], None]] = None,
         allow_tools: bool = True,
@@ -416,350 +224,325 @@ class Orchestrator:
         on_tool_event: Optional[
             Callable[[str, str, Dict[str, Any], Optional[Dict[str, Any]]], None]
         ] = None,
-        thinking_budget: Optional[int] = None,
+        thinking: bool = False,
         on_thinking: Optional[Callable[[str], None]] = None,
     ) -> str:
-        """Respond to a user message, optionally calling tools.
+        """Run one conversation turn: user message → LLM → tools → response.
 
-        Args:
-            thinking_budget: Token budget for extended thinking (reasoning).
-                When set, the LLM uses chain-of-thought before responding.
-            on_thinking: Callback receiving thinking/reasoning text chunks
-                as they stream from the LLM.
+        When a Turn is provided, the orchestrator:
+        - Records tool messages on the Turn (replaces turn_tool_messages)
+        - Raises CancellationError on cancel (caller handles via turn.cancel())
+        - Re-raises exceptions on error (caller handles via turn.fail())
+        - Does NOT call save_turn/finalize_cancel/save_error (caller uses turn.commit())
+
+        When turn=None, falls back to the legacy self-contained behavior.
         """
-        self._logger.info("Received message bytes=%d history_len=%d has_files=%s", len(user_message.encode("utf-8")), len(self.history), has_files)
-        # Store uploaded files metadata for tool access
-        self.uploaded_files = has_files or []
-        self._logger.info("uploaded_files count=%d files=%s", len(self.uploaded_files), [f.get("name") for f in self.uploaded_files])
+        new_files = has_files or []
+        if new_files:
+            self.uploaded_files = new_files
 
+        # Cancellation helpers
         def is_cancelled() -> bool:
             return bool(should_cancel and should_cancel())
+
         did_stream = False
         streamed_chunks: List[str] = []
+
         def finalize_cancel() -> str:
-            partial = "".join(streamed_chunks)
-            self.history.append({"role": "user", "content": user_message})
-            if partial:
-                self.history.append({"role": "assistant", "content": partial})
-            return partial
-        tool_desc = tool_descriptions()
+            """Handle cancellation. With Turn: raises. Without: saves to history."""
+            if turn:
+                raise CancellationError("Turn cancelled by user")
+            return self.conversation.finalize_cancel(user_message, streamed_chunks)
 
+        def on_delta(delta: str) -> None:
+            nonlocal did_stream
+            if is_cancelled():
+                return
+            did_stream = True
+            streamed_chunks.append(delta)
+            if stream:
+                stream(delta)
+
+        tool_desc = generate_all_schemas(self.tools) if allow_tools else None
         system = build_system_prompt(
-            has_files=self.uploaded_files,
-            allow_tools=allow_tools,
+            has_files=self.uploaded_files, allow_tools=allow_tools,
+            current_workflow_id=self.current_workflow_id,
+            current_workflow_name=self.current_workflow_name,
+            guidance=self._guidance or None,
         )
+        self.conversation.compact_if_needed()
+        effective_message = _build_user_content(user_message, new_files)
+        messages = self.conversation.build_messages(system, effective_message)
 
-        # Limit history to last 20 messages (10 exchanges) to prevent context overflow
-        limited_history = self.history[-20:] if len(self.history) > 20 else self.history
-        if len(self.history) > 20:
-            self._logger.warning(
-                "History truncated from %d to 20 messages to fit context window",
-                len(self.history)
-            )
-
-        # Build user message content — inject base64 image if uploaded files contain images.
-        # The LLM sees the image directly in the conversation (vision-driven extraction).
-        # Anthropic limit: ~5MB per image (before base64). We cap at 4.5MB to be safe.
-        _MAX_IMAGE_BYTES = 4_500_000
-        effective_message: Any = user_message
-        if self.uploaded_files:
-            content_blocks: List[Dict[str, Any]] = []
-            for f in self.uploaded_files:
-                if f.get("file_type") == "image":
-                    image_path = Path(f["path"])
-                    if not image_path.exists():
-                        self._logger.warning("Image file not found: %s", image_path)
-                        continue
-                    raw_bytes = image_path.read_bytes()
-                    if len(raw_bytes) > _MAX_IMAGE_BYTES:
-                        self._logger.warning(
-                            "Image %s too large (%d bytes > %d), skipping",
-                            image_path.name, len(raw_bytes), _MAX_IMAGE_BYTES,
-                        )
-                        continue
-                    b64 = base64.b64encode(raw_bytes).decode()
-                    suffix = image_path.suffix.lower()
-                    media = "image/jpeg" if suffix in (".jpg", ".jpeg") else f"image/{suffix.lstrip('.')}"
-                    self._logger.info(
-                        "Injecting image %s (%d bytes, media=%s)", image_path.name, len(raw_bytes), media,
-                    )
-                    content_blocks.append({
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": media, "data": b64},
-                    })
-            if content_blocks:
-                # Append the text after the image(s) so the LLM sees both
-                content_blocks.append({"type": "text", "text": user_message})
-                effective_message = content_blocks
-
-        messages = [
-            {"role": "system", "content": system},
-            *limited_history,
-            {"role": "user", "content": effective_message},
-        ]
+        # --- Initial LLM call ---
         try:
-            def on_delta(delta: str) -> None:
-                nonlocal did_stream
-                if is_cancelled():
-                    return
-                did_stream = True
-                streamed_chunks.append(delta)
-                if stream:
-                    stream(delta)
-
-            if allow_tools:
-                raw, tool_calls = call_llm_with_tools(
-                    messages,
-                    tools=tool_desc,
-                    tool_choice=None,
-                    on_delta=on_delta if stream else None,
-                    caller="orchestrator",
-                    request_tag="initial",
-                    should_cancel=should_cancel,
-                    thinking_budget=thinking_budget,
-                    on_thinking=on_thinking,
-                )
-            else:
-                if stream:
-                    raw = call_llm_stream(
-                        messages,
-                        on_delta=on_delta,
-                        caller="orchestrator",
-                        request_tag="initial_stream",
-                        should_cancel=should_cancel,
-                        thinking_budget=thinking_budget,
-                        on_thinking=on_thinking,
-                    )
-                    raw = raw.strip()
-                    tool_calls = []
-                else:
-                    raw, tool_calls = call_llm_with_tools(
-                        messages,
-                        tools=None,
-                        tool_choice="none",
-                        caller="orchestrator",
-                        request_tag="initial_no_tools",
-                        should_cancel=should_cancel,
-                        thinking_budget=thinking_budget,
-                        on_thinking=on_thinking,
-                    )
+            resp = call_llm(
+                messages,
+                tools=tool_desc, tool_choice=None if allow_tools else "none",
+                on_delta=on_delta if stream else None,
+                caller="orchestrator", request_tag="initial",
+                should_cancel=should_cancel,
+                thinking=thinking, on_thinking=on_thinking,
+            )
+            raw, tool_calls = resp.text, resp.tool_calls
+            thinking_blocks = resp.thinking_blocks  # Preserve for tool loop replay
+            if resp.usage:
+                self.conversation.update_token_estimate(resp.usage.get("input_tokens", 0))
             if is_cancelled():
                 return finalize_cancel()
         except CancellationError:
             return finalize_cancel()
         except Exception as exc:
-            self._logger.exception("LLM error while responding")
-            error_msg = f"LLM error: {exc}"
-            # Save to history before returning error
-            self.history.append({"role": "user", "content": user_message})
-            self.history.append({"role": "assistant", "content": error_msg})
-            return error_msg
+            logger.exception("LLM error while responding")
+            if turn:
+                raise  # Caller handles via turn.fail()
+            self.conversation.save_error(user_message, f"LLM error: {exc}")
+            return f"LLM error: {exc}"
 
-        tool_iterations = 0
+        # --- Tool loop ---
         tool_results: List[ToolResult] = []
+        # turn_tool_messages: only used when turn=None (legacy path)
+        turn_tool_messages: List[Dict[str, Any]] = []
+        asked_question = False
+        iterations = 0
+
         while allow_tools and tool_calls:
             if is_cancelled():
                 return finalize_cancel()
-            tool_iterations += 1
-            if tool_iterations > 50:
-                self._logger.error(
-                    "Max tool iterations reached. Tools called: %s",
-                    [r.tool for r in tool_results]
-                )
-                error_msg = (
-                    "Reached maximum tool iterations (50). "
-                    f"Executed {len(tool_results)} tools successfully before stopping."
-                )
-                # Save to history before returning error
-                self.history.append({"role": "user", "content": user_message})
-                self.history.append({"role": "assistant", "content": error_msg})
-                return error_msg
+            iterations += 1
+            if iterations > _MAX_TOOL_ITERATIONS:
+                logger.error("Max tool iterations. Tools: %s", [r.tool for r in tool_results])
+                if turn:
+                    raise CancellationError(f"Max tool iterations ({_MAX_TOOL_ITERATIONS})")
+                self.conversation.save_error(user_message, f"Max tool iterations ({_MAX_TOOL_ITERATIONS}).")
+                return finalize_cancel()
 
-            self._logger.info("Tool iteration %d, calling %d tools", tool_iterations, len(tool_calls))
+            # Transition: CALLING_LLM → EXECUTING_TOOLS
+            if turn:
+                turn.begin_tool_execution()
 
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": raw or "",
-                    "tool_calls": tool_calls,
-                }
-            )
+            # In-flight message includes thinking blocks for API replay
+            asst_msg = {"role": "assistant", "content": raw or "", "tool_calls": tool_calls}
+            if thinking_blocks:
+                asst_msg["thinking_blocks"] = thinking_blocks
+            messages.append(asst_msg)
 
-            tool_failure: Optional[ToolResult] = None
+            # Persisted message strips thinking (ephemeral for tool loop only)
+            persist_msg = {"role": "assistant", "content": raw or "", "tool_calls": tool_calls}
+            if turn:
+                turn.add_assistant_tool_use(persist_msg)
+            else:
+                turn_tool_messages.append(persist_msg)
+
+            # Execute each tool in the batch
+            tool_failure = None
             skipped_calls: List[Dict[str, Any]] = []
-            for idx, call in enumerate(tool_calls):
+            for idx, tc in enumerate(tool_calls):
                 if is_cancelled():
                     return finalize_cancel()
-                fn = call.get("function") or {}
-                tool_name = fn.get("name")
-                args_text = fn.get("arguments") or "{}"
-                if isinstance(args_text, str):
-                    try:
-                        args = json.loads(args_text)
-                    except json.JSONDecodeError:
-                        args = {}
-                elif isinstance(args_text, dict):
-                    args = args_text
-                else:
-                    args = {}
+
+                # Tool calls are native Anthropic format: {id, name, input: dict}
+                tool_name = tc.get("name")
+                args = tc.get("input") or {}
+
                 try:
                     if on_tool_event:
                         on_tool_event("tool_start", tool_name, args, None)
 
-                    # Build a progress callback that relays phase updates via on_tool_event
-                    def _on_progress(status: str) -> None:
-                        if on_tool_event:
-                            on_tool_event("tool_progress", tool_name, {"status": status}, None)
-
-                    # Forward LLM thinking chunks to the frontend via on_tool_event
-                    def _on_thinking(chunk: str) -> None:
-                        if on_tool_event:
-                            on_tool_event("tool_thinking", tool_name, {"chunk": chunk}, None)
-
+                    tool_start = time.perf_counter()
                     result = self.run_tool(
                         tool_name, args, stream=None, should_cancel=should_cancel,
-                        on_progress=_on_progress, on_thinking=_on_thinking,
+                        on_progress=lambda s, n=tool_name: on_tool_event and on_tool_event("tool_progress", n, {"status": s}, None),
+                        on_thinking=lambda c, n=tool_name: on_tool_event and on_tool_event("tool_thinking", n, {"chunk": c}, None),
                     )
+                    duration_ms = (time.perf_counter() - tool_start) * 1000
                     tool_results.append(result)
-                    # If tool returned image blocks (list content), pass through directly
-                    # so the LLM sees the image. Otherwise json.dumps the result dict.
-                    tool_content = (
-                        result.data.get("content")
-                        if isinstance(result.data.get("content"), list)
-                        else json.dumps(result.data)
-                    )
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call.get("id"),
+
+                    # Image blocks pass through directly; otherwise json.dumps
+                    raw_content = result.data.get("content")
+                    tool_content = raw_content if isinstance(raw_content, list) else json.dumps(result.data)
+                    # Native Anthropic format: tool results are user messages
+                    # with tool_result content blocks
+                    tool_msg = {
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tc.get("id"),
                             "content": tool_content,
-                        }
-                    )
+                        }],
+                    }
+                    messages.append(tool_msg)
+
+                    if turn:
+                        turn.add_tool_result(
+                            tc.get("id"), tool_name, args, result.data,
+                            success=result.success, duration_ms=duration_ms,
+                            content=tool_content,
+                        )
+                    else:
+                        turn_tool_messages.append(tool_msg)
+
                     if on_tool_event:
                         on_tool_event("tool_complete", tool_name, args, result.data)
+
+                    if tool_name == "ask_question" and result.success:
+                        asked_question = True
+                        break
                     if not result.success:
                         tool_failure = result
                         skipped_calls = tool_calls[idx + 1:]
                         break
-                    if is_cancelled():
-                        return finalize_cancel()
                 except CancellationError:
                     return finalize_cancel()
                 except Exception as exc:
-                    self._tool_logger.error(
-                        "tool_error name=%s error=%s",
-                        tool_name,
-                        str(exc),
-                        exc_info=True,
-                    )
-                    error_msg = f"Tool error ({tool_name}): {exc}"
-                    # Save to history before returning error
-                    self.history.append({"role": "user", "content": user_message})
-                    self.history.append({"role": "assistant", "content": error_msg})
-                    return error_msg
+                    logger.error("tool_error name=%s error=%s", tool_name, exc, exc_info=True)
+                    if turn:
+                        raise  # Caller handles via turn.fail()
+                    self.conversation.save_error(user_message, f"Tool error ({tool_name}): {exc}")
+                    return f"Tool error ({tool_name}): {exc}"
 
-            if tool_failure and skipped_calls:
-                for skipped in skipped_calls:
-                    fn = skipped.get("function") or {}
-                    skipped_tool = fn.get("name")
-                    skipped_args_text = fn.get("arguments") or "{}"
-                    if isinstance(skipped_args_text, str):
-                        try:
-                            skipped_args = json.loads(skipped_args_text)
-                        except json.JSONDecodeError:
-                            skipped_args = {}
-                    elif isinstance(skipped_args_text, dict):
-                        skipped_args = skipped_args_text
-                    else:
-                        skipped_args = {}
-                    skipped_payload = {
-                        "success": False,
-                        "skipped": True,
-                        "error": (
-                            f"Skipped {skipped_tool or 'tool'} because a previous tool failed."
-                        ),
-                    }
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": skipped.get("id"),
-                            "content": json.dumps(skipped_payload),
-                        }
-                    )
-                    if on_tool_event:
-                        on_tool_event("tool_complete", skipped_tool, skipped_args, skipped_payload)
+            # Inject skipped-tool placeholders
+            for skipped in skipped_calls:
+                sname = skipped.get("name")
+                sargs = skipped.get("input") or {}
+                sp = {"success": False, "skipped": True, "error": f"Skipped {sname} — previous tool failed."}
+                skip_msg = {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": skipped.get("id"),
+                        "content": json.dumps(sp),
+                    }],
+                }
+                messages.append(skip_msg)
+                if turn:
+                    turn.add_skipped_tool(skipped.get("id"), sname, sargs)
+                else:
+                    turn_tool_messages.append(skip_msg)
+                if on_tool_event:
+                    on_tool_event("tool_complete", sname, sargs, sp)
 
             if on_tool_event:
                 on_tool_event("tool_batch_complete", "", {}, None)
+            self.event_bus.emit(TOOL_BATCH_COMPLETE, {})
 
+            if asked_question or is_cancelled():
+                break
+
+            # Trim messages if too large
+            if len(messages) > _MAX_TOOL_MESSAGES:
+                logger.info("Tool loop messages trimmed from %d to %d", len(messages), _MAX_TOOL_MESSAGES)
+                messages[:] = [messages[0]] + messages[-(_MAX_TOOL_MESSAGES - 1):]
+
+            # Transition: EXECUTING_TOOLS → CALLING_LLM
+            if turn:
+                turn.begin_llm_call()
+
+            # Next LLM call — stream thinking so the frontend shows activity.
+            # Thinking renders inline as dimmed text alongside regular output.
+            try:
+                resp = call_llm(
+                    messages, tools=tool_desc,
+                    on_delta=on_delta if stream else None,
+                    caller="orchestrator", request_tag="post_tool",
+                    should_cancel=should_cancel,
+                    thinking=thinking, on_thinking=on_thinking,
+                )
+                raw, tool_calls = resp.text, resp.tool_calls
+                thinking_blocks = resp.thinking_blocks
+                self.conversation.update_token_estimate(resp.usage.get("input_tokens", 0))
+            except CancellationError:
+                return finalize_cancel()
             if is_cancelled():
                 return finalize_cancel()
 
-            messages.append(
-                {
-                    "role": "system",
-                    "content": (
-                        "A tool call failed. The tool result and error details are provided above. "
-                        "Explain the failure clearly to the user and suggest next steps. "
-                        "If you can recover with additional tool calls, you may call them. "
-                        "Otherwise respond in plain text."
-                        if tool_failure
-                        else "Tool execution succeeded. The tool results are provided above. "
-                        "If additional tool calls are required to complete the user's request, "
-                        "you may call them (including multiple tool calls). Otherwise respond in "
-                        "plain text only, summarizing "
-                        "inputs, outputs, and doubts."
-                    ),
-                }
-            )
-            raw, tool_calls = call_llm_with_tools(
-                messages,
-                tools=tool_desc,
-                tool_choice=None,
-                on_delta=on_delta if stream else None,
-                caller="orchestrator",
-                request_tag="post_tool",
-                should_cancel=should_cancel,
-                thinking_budget=thinking_budget,
-                on_thinking=on_thinking,
-            )
-            if is_cancelled():
-                return finalize_cancel()
-
-        final_text = raw or (_summarize_tool_results(tool_results) if tool_results else "")
-
-        # Ensure we never return empty response when tools were executed
-        if tool_results and not final_text.strip():
-            final_text = f"Completed {len(tool_results)} tool operation(s)."
-            self._logger.warning("Empty final response after %d tool calls - using fallback", len(tool_results))
+        # --- Assemble final response ---
+        if asked_question:
+            final_text = raw or ""
+        else:
+            final_text = raw or (_summarize(tool_results) if tool_results else "")
+            if tool_results and not final_text.strip():
+                final_text = f"Completed {len(tool_results)} tool operation(s)."
+            if not final_text.strip():
+                final_text = "I wasn't able to generate a response. Could you rephrase or provide more details?"
 
         if stream and final_text and not did_stream:
-            _emit_stream(stream, final_text)
+            for i in range(0, len(final_text), 800):
+                stream(final_text[i:i + 800])
 
-        self.history.append({"role": "user", "content": user_message})
-        self.history.append({"role": "assistant", "content": final_text})
-        self._logger.debug("History now has %d messages", len(self.history))
+        # Persist turn to history — when Turn is active, caller handles via turn.commit()
+        if not turn:
+            self.conversation.save_turn(
+                user_message, final_text,
+                tool_messages=turn_tool_messages or None,
+            )
         return final_text
 
 
-
-def _emit_stream(stream: Callable[[str], None], text: str, *, chunk_size: int = 800) -> None:
-    if not text:
-        return
-    for idx in range(0, len(text), chunk_size):
-        stream(text[idx : idx + chunk_size])
+# --- Module helpers ---
 
 
-def _summarize_tool_results(results: List[ToolResult]) -> str:
-    """Build a brief summary of tool results as fallback text."""
-    parts: List[str] = []
-    for result in results:
-        if isinstance(result.data, dict) and result.data.get("skipped"):
+def _build_user_content(user_message: str, files: List[Dict[str, Any]]) -> Any:
+    """Build LLM message content, injecting base64 files for new uploads."""
+    if not files:
+        return user_message
+    blocks: List[Dict[str, Any]] = []
+    for f in files:
+        block = _encode_file(f)
+        if block:
+            blocks.append(block)
+    if not blocks:
+        return user_message
+    blocks.append({"type": "text", "text": user_message})
+    return blocks
+
+
+def _encode_file(file_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Encode an image or PDF as a base64 content block."""
+    file_type = file_info.get("file_type", "")
+    path = Path(file_info.get("path", ""))
+    if not path.exists():
+        logger.warning("File not found: %s", path)
+        return None
+    raw = path.read_bytes()
+    max_bytes = _MAX_FILE_BYTES.get(file_type, 0)
+    if max_bytes and len(raw) > max_bytes:
+        logger.warning("File %s too large (%d bytes), skipping", path.name, len(raw))
+        return None
+    b64 = base64.b64encode(raw).decode()
+    if file_type == "image":
+        media = detect_image_media_type(raw, path.suffix)
+        return {"type": "image", "source": {"type": "base64", "media_type": media, "data": b64}}
+    elif file_type == "pdf":
+        return {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
+    return None
+
+
+def _normalize_tool_result(tool_name: str, data: Any) -> ToolResult:
+    if not isinstance(data, dict):
+        data = {"result": data}
+    success = data.get("success")
+    if success is None:
+        success = "error" not in data
+        data["success"] = bool(success)
+    success = bool(success)
+    message = data.get("message", "") if isinstance(data.get("message"), str) else ""
+    error = data.get("error", "") if isinstance(data.get("error"), str) else ""
+    if not success and not error:
+        error = message or f"Tool {tool_name} failed."
+    return ToolResult(
+        tool=tool_name, data=data, success=success,
+        message=message, error=error if not success else None,
+    )
+
+
+def _summarize(results: List[ToolResult]) -> str:
+    parts = []
+    for r in results:
+        if isinstance(r.data, dict) and r.data.get("skipped"):
             continue
-        if not result.success:
-            error_text = result.error or result.message or "Tool failed."
-            parts.append(f"Tool failed ({result.tool}): {error_text}")
-            continue
-        if result.message:
-            parts.append(result.message)
+        if not r.success:
+            parts.append(f"Tool failed ({r.tool}): {r.error or r.message or 'failed'}")
+        elif r.message:
+            parts.append(r.message)
     return "\n\n".join(parts)

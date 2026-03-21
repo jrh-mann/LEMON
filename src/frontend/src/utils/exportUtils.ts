@@ -104,6 +104,10 @@ export async function exportAsPNG(ctx: ExportContext): Promise<string | null> {
     }
 
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement
+    // Remove the off-screen positioning style from the clone — its
+    // width:1px/height:1px would override the explicit width/height
+    // attributes we set below, causing the SVG to render at 1x1px.
+    clonedSvg.removeAttribute('style')
     const connectionPorts = clonedSvg.querySelectorAll('.connection-port')
     connectionPorts.forEach(port => port.remove())
 
@@ -140,9 +144,12 @@ export async function exportAsPNG(ctx: ExportContext): Promise<string | null> {
     clonedSvg.setAttribute('width', String(width))
     clonedSvg.setAttribute('height', String(height))
 
+    // Background rect must cover the full viewBox area (not just 100% from origin)
     const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-    bgRect.setAttribute('width', '100%')
-    bgRect.setAttribute('height', '100%')
+    bgRect.setAttribute('x', String(viewBox.x))
+    bgRect.setAttribute('y', String(viewBox.y))
+    bgRect.setAttribute('width', String(viewBox.width))
+    bgRect.setAttribute('height', String(viewBox.height))
     bgRect.setAttribute('fill', cssVars['--cream'])
     clonedSvg.insertBefore(bgRect, clonedSvg.firstChild)
 

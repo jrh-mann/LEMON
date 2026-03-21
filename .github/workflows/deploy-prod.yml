@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - prod
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,8 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: src/frontend/package-lock.json
 
       - name: Remove local env override
         run: rm -f src/frontend/.env.local
@@ -40,10 +39,7 @@ jobs:
             src/backend \
             src/frontend/dist \
             scripts \
-            requirements.txt \
-            run_mcp.py \
             run_api.py \
-            main.py \
             pyproject.toml \
             uv.lock
 

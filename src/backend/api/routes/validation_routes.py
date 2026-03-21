@@ -1,29 +1,38 @@
-"""Validation routes: validate workflow structure and validation stubs.
+"""Validation routes: validate workflow structure.
 
-Provides the /api/validate endpoint for pre-save structural checks
-and stub endpoints for the future validation session system.
+Provides the /api/validate endpoint for pre-save structural checks.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import JSONResponse
 
-from flask import Flask, jsonify, request
+from ..deps import require_auth
+from ...storage.auth import AuthUser
 
 
-def register_validation_routes(app: Flask) -> None:
-    """Register validation endpoints on the Flask app.
+def register_validation_routes(app: FastAPI) -> None:
+    """Register validation endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
     """
+    router = APIRouter()
 
-    @app.post("/api/validate")
-    def validate_workflow_endpoint() -> Any:
+    @router.post("/api/validate")
+    async def validate_workflow_endpoint(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Validate a workflow structure before saving/exporting."""
         from ...validation.workflow_validator import WorkflowValidator
 
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
         nodes = payload.get("nodes", [])
         edges = payload.get("edges", [])
         variables = payload.get("variables", [])
@@ -39,7 +48,7 @@ def register_validation_routes(app: Flask) -> None:
         is_valid, errors = validator.validate(workflow_to_validate, strict=True)
 
         if is_valid:
-            return jsonify({
+            return JSONResponse({
                 "success": True,
                 "valid": True,
                 "message": (
@@ -49,7 +58,7 @@ def register_validation_routes(app: Flask) -> None:
             })
         else:
             error_message = validator.format_errors(errors)
-            return jsonify({
+            return JSONResponse({
                 "success": True,
                 "valid": False,
                 "errors": [
@@ -63,14 +72,4 @@ def register_validation_routes(app: Flask) -> None:
                 "message": error_message,
             })
 
-    @app.post("/api/validation/start")
-    def start_validation() -> Any:
-        return jsonify({"error": "Validation not implemented."}), 501
-
-    @app.post("/api/validation/submit")
-    def submit_validation() -> Any:
-        return jsonify({"error": "Validation not implemented."}), 501
-
-    @app.get("/api/validation/<session_id>")
-    def validation_status(session_id: str) -> Any:
-        return jsonify({"error": "Validation not implemented."}), 501
+    app.include_router(router)

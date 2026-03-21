@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..execution.interpreter import TreeInterpreter
-from ..utils.flowchart import tree_from_flowchart
+from ..execution.preparation import prepare_workflow_execution
 from .core import WorkflowTool, ToolParameter
 
 
@@ -20,23 +20,17 @@ class ExecuteWorkflowTool(WorkflowTool):
 
     name = "execute_workflow"
     description = (
-        "Run a workflow with the given input values and return the result. "
-        "Provide the workflow_id and input values as a JSON object mapping "
-        "variable names (or IDs) to their values. Returns the output, the "
-        "path of nodes visited, and the final variable context."
+        "Run the active workflow with the given input values and return the result. "
+        "Provide input values as a JSON object mapping variable names to their values. "
+        "Returns the output, the path of nodes visited, and the final variable context. "
+        "Use this when the user asks to run, execute, test, or try the workflow."
     )
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to execute",
-            required=True,
-        ),
         ToolParameter(
             "input_values",
             "object",
             (
-                "Input values for the workflow, keyed by variable name or ID. "
+                "Input values keyed by variable name or ID. "
                 "Example: {\"Age\": 25, \"Smoker\": false}"
             ),
             required=True,
@@ -61,30 +55,22 @@ class ExecuteWorkflowTool(WorkflowTool):
                 "error": "Workflow has no nodes. Build the workflow first.",
             }
 
-        # Validate before executing
-        workflow_for_validation = {
-            "nodes": nodes,
-            "edges": edges,
-            "variables": variables,
-        }
-        is_valid, errors = self.validator.validate(
-            workflow_for_validation, strict=True,
+        tree, preparation_error, validation_errors = prepare_workflow_execution(
+            nodes=nodes,
+            edges=edges,
+            variables=variables,
         )
-        if not is_valid:
+        if preparation_error:
             return {
                 "success": False,
                 "error": (
                     "Workflow validation failed — fix these before executing:\n"
-                    + self.validator.format_errors(errors)
+                    + preparation_error
                 ),
-            }
-
-        # Build execution tree from nodes/edges
-        tree = tree_from_flowchart(nodes, edges)
-        if not tree or "start" not in tree:
-            return {
-                "success": False,
-                "error": "Workflow has no start node.",
+                "validation_errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors or []
+                ],
             }
 
         # Resolve input values: accept variable names or IDs

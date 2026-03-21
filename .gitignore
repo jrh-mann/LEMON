@@ -1,5 +1,6 @@
 # Environment and secrets
 .env
+CLAUDE.md
 .venv/
 vision.md
 .azure/
@@ -57,12 +58,8 @@ src/frontend/.orchestrator_state.json
 src/frontend/uploads/
 src/frontend/runs/
 
-# Backend logs and local state
-.lemon/logs/
-.lemon/history.sqlite
-.lemon/uploads/
-.lemon/tokens.json
-.lemon/tokens_usage.json
+# Local runtime state (databases, logs, uploads, tokens)
+.lemon/
 
 # Local deployment artifacts
 frontend.zip
@@ -71,18 +68,24 @@ job-logs.zip
 publishprofile.xml
 *.publishsettings
 
-#akel
-.lemon/auth.sqlite
-.lemon/tokens_usage.json
-.lemon/workflows.sqlite
-.lemon/convo_test_*
-.lemon/e2e_test_*
-.lemon/harness_test_*
 .mcp.json
 .cursor/
-.claude/settings.local.json
+.claude/
+.claude-co.json
+.dev-pids
+REVIEW.md
+agent_demands.md
 status.md
 
 # Local tool outputs
 pytest_output.txt
 src/frontend/lint_output.txt
+
+# Vite cache (scripts dev server)
+scripts/.vite/
+
+# Scratch files
+problem.md
+
+# Playwright test artifacts
+src/frontend/test-results/

@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef } from 'react'
+import { useMemo } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import type { SubflowExecutionState } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
@@ -103,8 +103,6 @@ function SubflowModal({
     level: number  // 0 = bottom, higher = on top
 }) {
     const { trackExecution, setTrackExecution } = useUIStore()
-    const [animatedViewBox, setAnimatedViewBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
-    const svgRef = useRef<SVGSVGElement>(null)
 
     const { nodes, edges, executingNodeId, executedNodeIds, subworkflowName } = subflow
 
@@ -117,17 +115,12 @@ function SubflowModal({
         [nodes, executingNodeId]
     )
 
-    // Animate viewBox when tracking
-    useEffect(() => {
-        if (trackExecution && executingNode) {
-            const tracked = calculateTrackedViewBox(executingNode, fullViewBox)
-            setAnimatedViewBox(tracked)
-        } else {
-            setAnimatedViewBox(null)
-        }
-    }, [trackExecution, executingNode, fullViewBox])
-
-    const viewBox = animatedViewBox || fullViewBox
+    const viewBox = useMemo(
+        () => trackExecution && executingNode
+            ? calculateTrackedViewBox(executingNode, fullViewBox)
+            : fullViewBox,
+        [trackExecution, executingNode, fullViewBox]
+    )
     const viewBoxStr = `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`
 
     // Calculate size based on level (smaller for nested, larger offset from edge)
@@ -219,7 +212,6 @@ function SubflowModal({
 
                 <div className="subflow-modal-canvas">
                     <svg
-                        ref={svgRef}
                         viewBox={viewBoxStr}
                         preserveAspectRatio="xMidYMid meet"
                         className="subflow-svg"

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .agents.orchestrator import Orchestrator
 from .agents.orchestrator_factory import build_orchestrator
+from .agents.turn import Turn
 from .utils.logging import setup_logging
 
 
@@ -21,7 +22,16 @@ def run_repl(orchestrator: Orchestrator) -> None:
             continue
         if user_message.lower() in {"exit", "quit"}:
             break
-        response = orchestrator.respond(user_message)
+        turn = Turn(user_message, "cli")
+        turn.start()
+        try:
+            response = orchestrator.respond(user_message, turn=turn)
+            turn.complete(response)
+        except Exception as exc:
+            turn.fail(str(exc))
+            response = f"Error: {exc}"
+        finally:
+            turn.commit(orchestrator.conversation)
         print(response)
 
 
@@ -35,7 +45,17 @@ def main() -> None:
     orchestrator = build_orchestrator(repo_root)
 
     if args.one_shot:
-        print(orchestrator.respond(args.one_shot))
+        turn = Turn(args.one_shot, "cli")
+        turn.start()
+        try:
+            resp = orchestrator.respond(args.one_shot, turn=turn)
+            turn.complete(resp)
+        except Exception as exc:
+            turn.fail(str(exc))
+            resp = f"Error: {exc}"
+        finally:
+            turn.commit(orchestrator.conversation)
+        print(resp)
         return
 
     run_repl(orchestrator)

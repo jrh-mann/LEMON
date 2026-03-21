@@ -1,16 +1,60 @@
 """Shared test fixtures for workflow tool tests.
 
-All workflow tools now require workflow_id parameter and load/save from database.
+All workflow tools require workflow_id parameter and load/save from database.
 These fixtures provide a standard way to set up test workflows.
+
+Also provides the orchestrator_with_workflow fixture used by integration,
+workflow, and feature tests that exercise orchestrator.run_tool().
 """
+
+# Load .env before anything else so opt-in live LLM suites can pick up
+# ANTHROPIC_API_KEY, ANTHROPIC_ENDPOINT, etc.
+from dotenv import load_dotenv
+load_dotenv()
 
 import pytest
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Generator, Tuple
+from uuid import uuid4
 
+from src.backend.agents.orchestrator import Orchestrator
+from src.backend.agents.orchestrator_factory import build_orchestrator
 from src.backend.storage.workflows import WorkflowStore
-from src.backend.tools import CreateWorkflowTool
+from src.backend.tools.constants import generate_workflow_id
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-live-llm",
+        action="store_true",
+        default=False,
+        help="run tests that require a live Anthropic-backed LLM",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "live_llm: requires live Anthropic credentials and network access",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--run-live-llm"):
+        return
+
+    skip_live = pytest.mark.skip(
+        reason="requires a live Anthropic-backed LLM; rerun with --run-live-llm",
+    )
+    for item in items:
+        if "live_llm" in item.keywords:
+            item.add_marker(skip_live)
+
+
+def _repo_root() -> Path:
+    """Return the project root (parent of the tests/ directory)."""
+    return Path(__file__).parent.parent
 
 
 @pytest.fixture
@@ -38,18 +82,13 @@ def session_state(workflow_store: WorkflowStore, test_user_id: str) -> Dict[str,
 
 
 @pytest.fixture
-def create_workflow_tool() -> CreateWorkflowTool:
-    """Create workflow tool instance."""
-    return CreateWorkflowTool()
-
-
-@pytest.fixture
 def create_test_workflow(
-    create_workflow_tool: CreateWorkflowTool,
+    workflow_store: WorkflowStore,
+    test_user_id: str,
     session_state: Dict[str, Any],
 ):
-    """Factory fixture to create test workflows.
-    
+    """Factory fixture to create test workflows via the DB directly.
+
     Returns a function that creates a workflow and returns (workflow_id, session_state).
     """
     def _create(
@@ -57,13 +96,16 @@ def create_test_workflow(
         output_type: str = "string",
         description: str = "",
     ) -> Tuple[str, Dict[str, Any]]:
-        result = create_workflow_tool.execute(
-            {"name": name, "output_type": output_type, "description": description},
-            session_state=session_state,
+        wf_id = generate_workflow_id()
+        workflow_store.create_workflow(
+            workflow_id=wf_id,
+            user_id=test_user_id,
+            name=name,
+            description=description,
+            output_type=output_type,
         )
-        assert result["success"], f"Failed to create workflow: {result}"
-        return result["workflow_id"], session_state
-    
+        return wf_id, session_state
+
     return _create
 
 
@@ -77,29 +119,71 @@ def make_session_with_workflow(
     name: str = "Test Workflow",
 ) -> Tuple[str, Dict[str, Any]]:
     """Helper to create a workflow with initial data and return (workflow_id, session_state).
-    
+
     This is useful for tests that need a workflow with pre-existing nodes/edges.
     """
-    # Create the workflow
-    create_tool = CreateWorkflowTool()
     session_state = {"workflow_store": workflow_store, "user_id": user_id}
-    
-    result = create_tool.execute(
-        {"name": name, "output_type": output_type},
-        session_state=session_state,
+    wf_id = generate_workflow_id()
+    workflow_store.create_workflow(
+        workflow_id=wf_id,
+        user_id=user_id,
+        name=name,
+        description="",
+        output_type=output_type,
     )
-    assert result["success"], f"Failed to create workflow: {result}"
-    workflow_id = result["workflow_id"]
-    
+
     # If we need to add initial nodes/edges, update the workflow directly
     if nodes or edges or variables:
-        record = workflow_store.get_workflow(workflow_id, user_id)
+        record = workflow_store.get_workflow(wf_id, user_id)
         workflow_store.update_workflow(
-            workflow_id=workflow_id,
+            workflow_id=wf_id,
             user_id=user_id,
             nodes=nodes if nodes else record.nodes,
             edges=edges if edges else record.edges,
             inputs=variables if variables else record.inputs,
         )
-    
-    return workflow_id, session_state
+
+    return wf_id, session_state
+
+
+@pytest.fixture
+def orchestrator_with_workflow(tmp_path) -> Orchestrator:
+    """Create an orchestrator backed by a real SQLite WorkflowStore.
+
+    Sets up:
+    - WorkflowStore with a test workflow record in the DB
+    - orchestrator.current_workflow_id pointing to that workflow
+    - orchestrator.user_id set to a test user
+
+    This is the standard fixture for any test that exercises workflow
+    tools (add_node, add_connection, add_workflow_variable, etc.).
+    """
+    orch = build_orchestrator(repo_root=_repo_root())
+
+    # Create real SQLite workflow store in tmp_path
+    db_path = tmp_path / "test_workflows.sqlite"
+    workflow_store = WorkflowStore(db_path)
+
+    test_user_id = f"test_user_{uuid4().hex[:8]}"
+    workflow_id = f"wf_test_{uuid4().hex[:8]}"
+
+    # Create the workflow record directly in the DB — no "create_workflow"
+    # tool needed. This is what the frontend/API does before tools run.
+    workflow_store.create_workflow(
+        workflow_id=workflow_id,
+        user_id=test_user_id,
+        name="Test Workflow",
+        description="Test workflow for integration tests",
+        output_type="string",
+        is_draft=False,
+    )
+
+    # Wire up the orchestrator
+    orch.workflow_store = workflow_store
+    orch.user_id = test_user_id
+    orch.current_workflow_id = workflow_id
+
+    # Load initial (empty) state from DB so orchestrator.workflow is populated
+    orch.refresh_workflow_from_db()
+
+    return orch

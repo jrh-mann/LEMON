@@ -6,7 +6,7 @@ workflow calls this one as a subprocess, the output type determines the type
 of the derived variable.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -27,26 +27,19 @@ class SetWorkflowOutputTool(WorkflowTool):
     workflow is used as a subprocess, the calling workflow needs to know what
     type of value to expect.
     
-    Requires workflow_id - the workflow must exist in the library first.
+    Uses the current workflow from session state.
     """
 
     uses_validator = False
 
     name = "set_workflow_output"
     description = (
-        "Declare the workflow's output with a name, type, and optional description. "
-        "Requires workflow_id. "
-        "The output type is REQUIRED and determines the type of the derived variable "
-        "when this workflow is called as a subprocess. Common types: string, int, float, bool."
+        "Declare the active workflow's output with a name and REQUIRED type. "
+        "The output type is critical for subprocess variable inference - when this workflow "
+        "is used as a subprocess, the calling workflow uses this type for the derived variable. "
+        "Use this to ensure proper type inference when workflows are called as subprocesses."
     )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to set output for (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "name",
             "string",
@@ -56,8 +49,9 @@ class SetWorkflowOutputTool(WorkflowTool):
         ToolParameter(
             "type",
             "string",
-            "Output type: 'string', 'number', 'bool', 'enum', or 'date'. This is REQUIRED.",
+            "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values.",
             required=True,
+            enum=["string", "number", "bool", "enum", "date"],
         ),
         ToolParameter(
             "description",
@@ -126,14 +120,25 @@ class SetWorkflowOutputTool(WorkflowTool):
             outputs.append(output_def)
 
         # Auto-save changes to database
-        save_error = save_workflow_changes(workflow_id, session_state, outputs=outputs)
+        save_error = save_workflow_changes(
+            workflow_id,
+            session_state,
+            outputs=outputs,
+            output_type=output_type,
+        )
         if save_error:
             return save_error
 
+        # Return workflow_analysis so the orchestrator can sync its in-memory
+        # outputs list.
         action = "Updated" if found else "Set"
         return {
             "success": True,
             "workflow_id": workflow_id,
             "message": f"{action} workflow output '{name}' (type: {output_type}) for workflow {workflow_id}",
             "output": output_def,
+            "workflow_analysis": {
+                "variables": workflow_data.get("variables", []),
+                "outputs": outputs,
+            },
         }

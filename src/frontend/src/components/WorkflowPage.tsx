@@ -8,42 +8,48 @@ import Modals from './Modals'
 import SubflowExecutionModal from './SubflowExecutionModal'
 import ToolInspectorModal from './ToolInspectorModal'
 import { ExecutionLogModal } from './ExecutionLogModal'
-import { ApiError } from '../api/client'
+import { ApiError, API_BASE, getSessionId } from '../api/client'
 import { getCurrentUser } from '../api/auth'
 import { getWorkflow } from '../api/workflows'
+import { syncConversationMessages } from '../utils/conversationSync'
 import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { transformFlowchartFromBackend } from '../utils/canvas'
-import { sendChatMessage } from '../api/socket'
+import { hydrateWorkflowDetail } from '../utils/workflowHydration'
+import { sendChatMessage } from '../api/streamActions'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
-import type { WorkflowAnalysis, Workflow } from '../types'
+
 import '../styles/HomePage.css'
+
 
 export default function WorkflowPage() {
     const { id: workflowId } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const [authReady, setAuthReady] = useState(false)
-    
+
     // UI Store state
     const workspaceRevealed = useUIStore(s => s.workspaceRevealed)
     const homeExited = useUIStore(s => s.homeExited)
     const isTransitioning = useUIStore(s => s.isTransitioning)
     const chatHeight = useUIStore(s => s.chatHeight)
     const error = useUIStore(s => s.error)
-    
+
     // UI Store actions
     const revealWorkspace = useUIStore(s => s.revealWorkspace)
     const setHomeExited = useUIStore(s => s.setHomeExited)
     const setIsTransitioning = useUIStore(s => s.setIsTransitioning)
     const setError = useUIStore(s => s.setError)
     const clearError = useUIStore(s => s.clearError)
-    
+
     // Workflow Store
-    const { setCurrentWorkflow, setFlowchart, setAnalysis, addPendingFile } = useWorkflowStore()
+    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
+    // Ref for the build-completion poll interval — stored here so the
+    // useEffect cleanup can clear it on unmount (prevents leaked intervals).
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     // Trigger reveal with transition tracking
     const triggerReveal = useCallback(() => {
@@ -54,14 +60,20 @@ export default function WorkflowPage() {
     }, [revealWorkspace, setIsTransitioning])
 
     /**
+     * Generate a canonical workflow ID: wf_{32_hex_chars}.
+     * This is the single ID format used by frontend, backend, and DB.
+     */
+    const generateWorkflowId = () => `wf_${crypto.randomUUID().replace(/-/g, '')}`
+
+    /**
      * Orchestrates the transition from Home to Workspace:
      * 1. Trigger Home Exit animation
      * 2. Wait for animation to finish
-     * 3. Navigate to route with ID (generate if needed)
+     * 3. Navigate to route with ID (generate canonical wf_ ID if needed)
      * 4. Trigger Workspace Reveal animation
      */
     const startWorkflowSession = useCallback(async (existingId?: string) => {
-        const id = existingId || crypto.randomUUID()
+        const id = existingId || generateWorkflowId()
 
         // Mark new (unsaved) IDs as "already loaded" so the useEffect
         // that fetches workflow data from the API doesn't fire a 404.
@@ -69,6 +81,12 @@ export default function WorkflowPage() {
         if (!existingId) {
             loadedWorkflowIdRef.current = id
         }
+
+        // Set activeWorkflowId early so sendUserMessage routes to the right conversation.
+        // Also sync workflowStore so sendChatMessage picks up the correct workflow ID
+        // (it reads workflowStore.currentWorkflow?.id before chatStore.activeWorkflowId).
+        useChatStore.getState().setActiveWorkflowId(id)
+        setCurrentWorkflowId(id)
 
         // 1. Play Home Exit animation
         setHomeExited(true)
@@ -81,14 +99,14 @@ export default function WorkflowPage() {
 
         // 4. Trigger Workspace Reveal (sidebars slide in)
         triggerReveal()
-    }, [navigate, setHomeExited, triggerReveal])
+    }, [navigate, setCurrentWorkflowId, setHomeExited, triggerReveal])
 
     // Home chatbox state
     const [homeChatInput, setHomeChatInput] = useState('')
     const [isHomeSending, setIsHomeSending] = useState(false)
     const homeFileInputRef = useRef<HTMLInputElement>(null)
 
-    // Initialize session and socket connection
+    // Initialize session and streaming session state
     useSession(authReady)
 
     useEffect(() => {
@@ -111,40 +129,140 @@ export default function WorkflowPage() {
         return () => { isActive = false }
     }, [setError, navigate])
 
-    // Load workflow from URL params
+    // Load workflow from URL params, or sync URL ID to store for new workflows
     useEffect(() => {
         if (!authReady || !workflowId) {
             return
         }
-        
+
         if (loadedWorkflowIdRef.current === workflowId) return
 
         let isActive = true
+
         const loadWorkflow = async () => {
+            // Eagerly set the workflow ID so SSE event guards reject
+            // events from the previous workflow during the async fetch.
+            setCurrentWorkflowId(workflowId)
+
             try {
                 const workflowData = await getWorkflow(workflowId)
                 if (!isActive) return
 
-                const workflow: Workflow = {
-                    id: workflowData.id,
-                    metadata: workflowData.metadata,
-                    blocks: [],
-                    connections: [],
-                }
+                const { workflow, flowchart, analysis } = hydrateWorkflowDetail(workflowData)
                 setCurrentWorkflow(workflow)
-
-                const fc = transformFlowchartFromBackend({
-                    nodes: workflowData.nodes || [],
-                    edges: workflowData.edges || [],
-                })
-                setFlowchart(fc)
-
-                const analysis: WorkflowAnalysis = {
-                    variables: workflowData.variables || [],
-                    outputs: workflowData.outputs || [],
-                }
+                setFlowchart(flowchart)
                 setAnalysis(analysis)
                 loadedWorkflowIdRef.current = workflowId
+
+                // Set active workflow in chatStore so Chat.tsx reads this workflow's conversation.
+                // All events (normal chat and builder) route to conversations[workflowId].
+                const cs = useChatStore.getState()
+                cs.setActiveWorkflowId(workflowId)
+
+                // Restore conversation_id so new messages continue the same thread
+                if (workflowData.conversation_id) {
+                    cs.setConversationId(workflowId, workflowData.conversation_id)
+                }
+
+                // If a backend task is still running, set up streaming and polling.
+                // Detect SPA navigation vs page refresh: after SPA nav, builder
+                // events have already been flowing into chatStore (isStreaming/
+                // streamingContent are set). After refresh, persist middleware
+                // resets them to false/''. Only fire resumeTask on refresh.
+                if (workflowData.building) {
+                    const conv = cs.conversations?.[workflowId]
+                    const needsResume = !conv?.isStreaming && !conv?.streamingContent
+
+                    if (needsResume) {
+                        // Page refresh — reconnect to the running task's SSE stream.
+                        // resumeTask uses fetch/SSE, so no connection wait needed.
+                        cs.setStreaming(workflowId, true)
+                        cs.setProcessingStatus(workflowId, 'Reconnecting...')
+                        import('../api/streamActions').then(({ resumeTask }) => {
+                            if (isActive) resumeTask(workflowId)
+                        })
+                    }
+                    // else: SPA navigation — events are already flowing, no resume needed
+
+                    // Poll until the task completes, then fetch the final response.
+                    // Stored in ref so the useEffect cleanup can clear it on unmount.
+                    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+                    pollIntervalRef.current = setInterval(async () => {
+                        try {
+                            const fresh = await getWorkflow(workflowId)
+                            if (!fresh.building) {
+                                clearInterval(pollIntervalRef.current!)
+                                pollIntervalRef.current = null
+                                const chatStore = useChatStore.getState()
+                                chatStore.setStreaming(workflowId, false)
+                                chatStore.setProcessingStatus(workflowId, null)
+                                chatStore.setCurrentTaskId(workflowId, null)
+                                const convId = fresh.conversation_id || workflowData.conversation_id
+                                if (convId) {
+                                    syncConversationMessages(workflowId, convId)
+                                }
+                                const hydrated = hydrateWorkflowDetail(fresh)
+                                setFlowchart(hydrated.flowchart)
+                                setAnalysis(hydrated.analysis)
+                            }
+                        } catch {
+                            clearInterval(pollIntervalRef.current!)
+                            pollIntervalRef.current = null
+                        }
+                    }, 2000)
+                }
+
+                // Fetch conversation history (runs in parallel with resume above).
+                // Merges any backend messages that arrived while the page was closed.
+                const localMessages = cs.conversations?.[workflowId]?.messages ?? []
+                if (workflowData.conversation_id) {
+                    await syncConversationMessages(workflowId, workflowData.conversation_id)
+                } else if (!localMessages.length && workflowData.building && workflowData.metadata?.description) {
+                    // Building in progress, but the build_user_message stream event was
+                    // missed (page refresh / late navigation). Recover the brief from
+                    // the workflow description so the chat isn't empty.
+                    cs.addMessage(workflowId, {
+                        id: `brief_${Date.now()}`,
+                        role: 'user',
+                        content: workflowData.metadata.description,
+                        timestamp: new Date().toISOString(),
+                        tool_calls: [],
+                    })
+                }
+
+                // Clear previous workflow's pending files before restoring new ones.
+                // Without this, switching workflows accumulates images from all visited workflows.
+                clearPendingFiles()
+
+                // Restore uploaded files (images/PDFs) so they reappear after refresh.
+                // Fetches each file from the backend uploads endpoint and converts
+                // to a data URL for the image viewer.
+                if (workflowData.uploaded_files?.length) {
+                    for (const uf of workflowData.uploaded_files) {
+                        try {
+                            const resp = await fetch(`${API_BASE}/api/uploads/${uf.rel_path}`, {
+                                credentials: 'include',
+                                headers: { 'X-Session-Id': getSessionId() },
+                            })
+                            if (!resp.ok) continue
+                            const blob = await resp.blob()
+                            const dataUrl = await new Promise<string>((resolve) => {
+                                const reader = new FileReader()
+                                reader.onloadend = () => resolve(reader.result as string)
+                                reader.readAsDataURL(blob)
+                            })
+                            addPendingFile({
+                                id: `restored_${uf.rel_path}`,
+                                name: uf.name,
+                                dataUrl,
+                                type: uf.file_type === 'pdf' ? 'pdf' : 'image',
+                                purpose: (uf.purpose as 'flowchart' | 'guidance' | 'mixed' | 'unclassified') || 'unclassified',
+                            })
+                        } catch {
+                            // Non-critical — skip files that can't be restored
+                        }
+                    }
+                }
 
                 // After state is set, trigger the staggered reveal if we are still hidden
                 // and NOT currently in a card-zoom transition
@@ -156,13 +274,65 @@ export default function WorkflowPage() {
                     setTimeout(triggerReveal, 50)
                 }
             } catch (err) {
+                if (!isActive) return
+
+                // 404 = new workflow (not in DB yet) — sync URL ID to store
+                if (err instanceof ApiError && err.status === 404) {
+                    clearPendingFiles()
+                    setCurrentWorkflowId(workflowId)
+                    useChatStore.getState().setActiveWorkflowId(workflowId)
+                    loadedWorkflowIdRef.current = workflowId
+                    return
+                }
+
                 const msg = err instanceof Error ? err.message : 'Unknown error'
                 setError(`Failed to load workflow (${workflowId}): ${msg}`)
             }
         }
         loadWorkflow()
-        return () => { isActive = false }
-    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setError, setFlowchart, triggerReveal, setHomeExited])
+        return () => {
+            isActive = false
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current)
+                pollIntervalRef.current = null
+            }
+        }
+    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles])
+
+    // Re-fetch workflow when a background subworkflow build completes.
+    // Loads final nodes/edges and merges conversation history (with tool calls).
+    useEffect(() => {
+        if (!workflowId) return
+
+        const handleBuildComplete = async (e: Event) => {
+            const detail = (e as CustomEvent).detail
+            if (detail.workflowId !== workflowId) return
+
+            try {
+                const workflowData = await getWorkflow(workflowId)
+
+                // Update flowchart with final state
+                const fc = transformFlowchartFromBackend({
+                    nodes: workflowData.nodes || [],
+                    edges: workflowData.edges || [],
+                })
+                setFlowchart(fc)
+
+                // Load messages via ConversationLogger (includes tool calls).
+                if (workflowData.conversation_id) {
+                    await syncConversationMessages(workflowId, workflowData.conversation_id)
+                }
+            } catch (err) {
+                console.error('[WorkflowPage] Failed to re-fetch after build complete:', err)
+            }
+        }
+
+        window.addEventListener('subworkflow-build-complete', handleBuildComplete)
+        return () => window.removeEventListener('subworkflow-build-complete', handleBuildComplete)
+    }, [workflowId, setFlowchart])
+
+    // No cleanup needed on unmount — conversation state persists in chatStore
+    // across navigations. In-flight streaming tasks continue emitting events.
 
     // Error toast auto-dismiss
     useEffect(() => {
@@ -179,13 +349,14 @@ export default function WorkflowPage() {
 
         setIsHomeSending(true)
 
+        // Orchestrate exit sequence — sets activeWorkflowId BEFORE adding
+        // the user message so sendUserMessage can route to the right conversation.
+        await startWorkflowSession()
+
         // Add user message to store locally so it appears in chat history right away
         sendUserMessage(text)
 
-        // Orchestrate exit sequence
-        await startWorkflowSession()
-
-        // Small delay to let transition begin and socket initialize
+        // Small delay to let the transition begin before opening the stream
         setTimeout(() => {
             sendChatMessage(text)
             setIsHomeSending(false)
@@ -254,7 +425,7 @@ export default function WorkflowPage() {
                 ? `File "${names[0]}" uploaded. You can now ask me to analyse it.`
                 : `Uploaded ${names.length} files: ${names.join(', ')}.`
             addAssistantMessage(msg)
-            
+
             // Orchestrate exit sequence
             startWorkflowSession()
         }

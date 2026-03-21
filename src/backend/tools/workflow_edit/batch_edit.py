@@ -1,7 +1,7 @@
 """Batch edit workflow tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -13,72 +13,98 @@ from typing import Any, Dict, List
 from ..core import WorkflowTool, ToolParameter
 from .helpers import (
     build_new_node,
+    build_modified_node,
     resolve_node_id,
     save_workflow_changes,
 )
-from .add_node import validate_decision_condition
+
+
+ALLOWED_MODIFY_NODE_FIELDS = {
+    "label",
+    "type",
+    "x",
+    "y",
+    "condition",
+    "calculation",
+    "output_type",
+    "output",
+    "output_template",
+    "output_variable",
+    "output_value",
+    "subworkflow_id",
+    "input_mapping",
+    "color",
+}
 
 
 class BatchEditWorkflowTool(WorkflowTool):
     """Apply multiple workflow changes atomically.
-    
-    Requires workflow_id - the workflow must exist in the library first
-    (create it with create_workflow tool).
+
+    Uses the current workflow from session state.
     """
 
     name = "batch_edit_workflow"
-    description = """
-    Apply multiple workflow changes in a single atomic operation.
-    Requires workflow_id - workflow must exist in library first.
-    Validation uses lenient mode - you can create decision nodes without branches, then add connections later.
-
-    Use this for efficient bulk operations:
-    - Add multiple nodes at once
-    - Add node + connections together
-    - Modify edge labels (e.g., set "true"/"false" on decision branches)
-    - Complex multi-step changes
-
-    DECISION NODE EDGES: Decision nodes MUST have exactly two outgoing edges with labels "true" and "false".
-    When adding connections from decision nodes, use add_connection with label "true" or "false".
-    To change an edge label, use modify_connection.
-
-    For decision nodes, include a 'condition' object with: input_id, comparator, value, value2 (optional).
-    Comparators by type:
-    - int/float: eq, neq, lt, lte, gt, gte, within_range
-    - bool: is_true, is_false
-    - string: str_eq, str_neq, str_contains, str_starts_with, str_ends_with
-    - date: date_eq, date_before, date_after, date_between
-    - enum: enum_eq, enum_neq
-
-    Example: Add decision with condition and both branches
-    {
-      "workflow_id": "wf_abc123",
-      "operations": [
-        {"op": "add_node", "type": "decision", "label": "Age >= 18?", "id": "temp_decision", "x": 100, "y": 100,
-         "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
-        {"op": "add_node", "type": "end", "label": "Child", "id": "temp_child", "x": 50, "y": 200},
-        {"op": "add_node", "type": "end", "label": "Adult", "id": "temp_adult", "x": 150, "y": 200},
-        {"op": "add_connection", "from": "temp_decision", "to": "temp_child", "label": "false"},
-        {"op": "add_connection", "from": "temp_decision", "to": "temp_adult", "label": "true"}
-      ]
-    }
-
-    Example: Modify an edge label
-    {"op": "modify_connection", "from": "node_abc", "to": "node_xyz", "label": "true"}
-    """
+    description = (
+        "Apply multiple changes to the active workflow in a single atomic operation. "
+        "All changes are validated together - if any fail, none are applied. "
+        "\n\n"
+        "PRIMARY USE CASE - Temporary ID References: "
+        "When you need to create nodes and immediately connect them in the same operation, "
+        "use temporary IDs (like 'temp_decision', 'temp_start') instead of real node IDs. "
+        "The tool automatically maps temp IDs to real UUIDs and updates all references. "
+        "\n\n"
+        "Common scenarios: "
+        "(1) Decision nodes with branches - create decision + 2 branch nodes + 2 connections atomically, "
+        "(2) Node chains - create start->process->end with connections in one operation, "
+        "(3) Complex multi-step changes that should succeed or fail together, "
+        "(4) Subprocess nodes with their connections - create subprocess and connect it atomically."
+    )
     parameters = [
-        # workflow_id is REQUIRED and must be first
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow to edit (from create_workflow)",
-            required=True,
-        ),
         ToolParameter(
             "operations",
             "array",
-            "List of operations to perform. Each operation has 'op' and parameters.",
+            (
+                "List of operations. Each operation is an object with 'op' field plus operation-specific fields.\n\n"
+                "add_node: {op, type, label, id (temp ID for referencing), x, y, condition?, output_type?, output?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                "modify_node: {op, node_id, label?, type?, x?, y?, condition?, output_type?, output?, subworkflow_id?, input_mapping?, output_variable?, calculation?}\n"
+                "delete_node: {op, node_id}\n"
+                "add_connection: {op, from (node_id or temp_id), to (node_id or temp_id), label}\n"
+                "delete_connection: {op, from (node_id), to (node_id)}"
+            ),
             required=True,
+            items={
+                "type": "object",
+                "properties": {
+                    "op": {
+                        "type": "string",
+                        "enum": [
+                            "add_node",
+                            "modify_node",
+                            "delete_node",
+                            "add_connection",
+                            "delete_connection",
+                        ],
+                    },
+                    "id": {"type": "string", "description": "Temp ID for new nodes (e.g., temp_1)"},
+                    "type": {"type": "string", "enum": ["start", "process", "decision", "subprocess", "calculation", "end"]},
+                    "label": {"type": "string"},
+                    "x": {"type": "number"},
+                    "y": {"type": "number"},
+                    "condition": {
+                        "description": "For decision nodes: simple {variable, comparator, value} or compound {operator, conditions: [...]}",
+                    },
+                    "output_type": {"type": "string", "enum": ["string", "number", "bool", "json"]},
+                    "output": {"description": "For end nodes: variable name, template with {vars}, or literal value"},
+                    "subworkflow_id": {"type": "string", "description": "For subprocess: workflow ID to call"},
+                    "input_mapping": {"type": "object", "description": "For subprocess: parent->subworkflow input mapping"},
+                    "output_variable": {"type": "string", "description": "For subprocess only: name for output variable"},
+                    "calculation": {"type": "object", "description": "For calculation nodes: {output, operator, operands} - see add_node for full schema"},
+                    "node_id": {"type": "string", "description": "Existing node ID"},
+                    "from": {"type": "string", "description": "Source node ID or temp ID"},
+                    "to": {"type": "string", "description": "Target node ID or temp ID"},
+                },
+                "required": ["op"],
+            },
         ),
     ]
 
@@ -87,7 +113,7 @@ class BatchEditWorkflowTool(WorkflowTool):
         Operations format:
         [
             {"op": "add_node", "type": "decision", "label": "Age check?", "id": "temp_1",
-             "condition": {"input_id": "input_age_int", "comparator": "gte", "value": 18}},
+             "condition": {"variable": "Age", "comparator": "gte", "value": 18}},
             {"op": "add_connection", "from": "input_age", "to": "temp_1", "label": "true"},
             {"op": "modify_connection", "from": "temp_1", "to": "output_1", "label": "false"},
             {"op": "modify_node", "node_id": "node_abc", "label": "Updated label"},
@@ -161,25 +187,30 @@ class BatchEditWorkflowTool(WorkflowTool):
                         raise ValueError(f"Node not found: {node_id}")
 
                     updates = {k: v for k, v in op.items() if k not in ["op", "node_id"]}
-                    nodes[node_idx].update(updates)
-                    
-                    # Validate condition if node is/becomes decision type
-                    updated_node = nodes[node_idx]
-                    if updated_node.get("type") == "decision":
-                        condition = updated_node.get("condition")
-                        if condition:
-                            condition_error = validate_decision_condition(condition, variables)
-                            if condition_error:
-                                raise ValueError(f"Invalid condition for decision node: {condition_error}")
-
-                    # Validate calculation if node is/becomes calculation type
-                    if updated_node.get("type") == "calculation":
-                        calculation = updated_node.get("calculation")
-                        if calculation:
-                            from .add_node import validate_calculation
-                            calculation_error = validate_calculation(calculation, variables)
-                            if calculation_error:
-                                raise ValueError(f"Invalid calculation for node: {calculation_error}")
+                    unknown_fields = sorted(set(updates) - ALLOWED_MODIFY_NODE_FIELDS)
+                    if unknown_fields:
+                        raise ValueError(
+                            f"modify_node does not allow fields: {', '.join(unknown_fields)}"
+                        )
+                    updated_node, added_variables, removed_variable_ids, build_error = build_modified_node(
+                        nodes[node_idx],
+                        updates,
+                        variables,
+                        session_state,
+                    )
+                    if build_error:
+                        raise ValueError(build_error)
+                    nodes[node_idx] = updated_node
+                    if removed_variable_ids:
+                        removed_variable_id_set = set(removed_variable_ids)
+                        variables = [
+                            var for var in variables
+                            if var.get("id") not in removed_variable_id_set
+                        ]
+                        variables_modified = True
+                    if added_variables:
+                        variables.extend(added_variables)
+                        variables_modified = True
                     
                     applied_operations.append(
                         {"op": "modify_node", "node_id": node_id, "updates": updates}
@@ -193,6 +224,11 @@ class BatchEditWorkflowTool(WorkflowTool):
                         for e in edges
                         if e["from"] != node_id and e["to"] != node_id
                     ]
+                    # Clean up derived variables whose producing node is deleted
+                    removed = [v for v in variables if v.get("source_node_id") == node_id]
+                    if removed:
+                        variables = [v for v in variables if v.get("source_node_id") != node_id]
+                        variables_modified = True
                     applied_operations.append({"op": "delete_node", "node_id": node_id})
 
                 elif op_type == "add_connection":

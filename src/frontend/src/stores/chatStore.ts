@@ -1,63 +1,137 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Message, ToolCall } from '../types'
 import { useWorkflowStore } from './workflowStore'
 
-interface ChatState {
-  // Conversation — conversationId is per-tab in workflowStore, mirrored here for socket operations
+// Max messages persisted per conversation. Older messages are trimmed on save
+// to keep localStorage usage bounded and prevent quota-exceeded errors.
+const MAX_PERSISTED_MESSAGES = 100
+
+type PersistedConversationLike = {
+  messages?: Array<{ timestamp?: string }>
+}
+
+// Resilient localStorage wrapper — catches quota errors so the app keeps
+// working even when storage is full.  On quota failure it evicts the
+// oldest conversations from the persisted blob and retries once.
+//
+// NOTE: This is a raw string-based storage adapter (StateStorage interface).
+// It must be wrapped with createJSONStorage() so zustand's persist middleware
+// can serialize/deserialize objects correctly.  Passing it directly as
+// `storage: resilientLocalStorage` would corrupt localStorage (objects get
+// stored as "[object Object]" since localStorage.setItem auto-stringifies).
+const resilientLocalStorage = {
+  getItem: (name: string) => localStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    try {
+      localStorage.setItem(name, value)
+    } catch {
+      // QuotaExceededError — evict old data and retry once
+      console.warn('[chatStore] localStorage quota exceeded, evicting old conversations')
+      try {
+        const existing = localStorage.getItem(name)
+        if (existing) {
+          const parsed = JSON.parse(existing)
+          const convs = parsed?.state?.conversations
+          if (convs && typeof convs === 'object') {
+            // Keep only the 3 most recently-touched conversations
+            const entries = Object.entries(convs) as [string, PersistedConversationLike][]
+            const sorted = entries.sort((a, b) => {
+              const lastA = a[1]?.messages?.at(-1)?.timestamp ?? ''
+              const lastB = b[1]?.messages?.at(-1)?.timestamp ?? ''
+              return lastB.localeCompare(lastA)
+            })
+            parsed.state.conversations = Object.fromEntries(sorted.slice(0, 3))
+            localStorage.setItem(name, JSON.stringify(parsed))
+            return  // successfully evicted + saved
+          }
+        }
+        // Fallback: just remove the key entirely so the app can continue
+        localStorage.removeItem(name)
+      } catch {
+        // If even eviction fails, remove the key so the app doesn't stay broken
+        try { localStorage.removeItem(name) } catch { /* give up */ }
+      }
+      console.warn('[chatStore] Storage eviction complete — app will continue without persisted chat')
+    }
+  },
+  removeItem: (name: string) => localStorage.removeItem(name),
+}
+
+// Shape of a single inline question from the ask_question tool
+type PendingQuestion = { question: string; options: { label: string; value: string }[] }
+
+// Per-workflow conversation state — each workflow gets its own independent conversation.
+// Background builder conversations and user orchestrator conversations use the same structure.
+export interface ConversationState {
   messages: Message[]
   conversationId: string | null
-
-  // Streaming state
   isStreaming: boolean
   streamingContent: string
-  currentTaskId: string | null
-  cancelledTaskIds: Record<string, number>
-
-  // Processing status (what the orchestrator is currently doing)
+  // Whether the last appended chunk was thinking (used to open/close <span class="reasoning"> tags)
+  _inThinkingBlock: boolean
   processingStatus: string | null
+  currentTaskId: string | null
+  contextUsagePct: number  // 0-100, percentage of context window used
+  lastHeartbeatAt: number  // Date.now() of last backend event, 0 when idle
+}
 
-  // Live reasoning stream from LLM extended thinking
-  thinkingContent: string
+// Default empty conversation for new entries
+const emptyConversation: ConversationState = {
+  messages: [],
+  conversationId: null,
+  isStreaming: false,
+  streamingContent: '',
+  _inThinkingBlock: false,
+  processingStatus: null,
+  currentTaskId: null,
+  contextUsagePct: 0,
+  lastHeartbeatAt: 0,
+}
 
-  // Inline question from ask_question tool (rendered as a card with option chips)
-  pendingQuestion: { question: string; options: { label: string; value: string }[] } | null
+interface ChatState {
+  // Per-workflow conversations keyed by workflow_id.
+  // Both normal orchestrator chats and background builder chats live here.
+  conversations: Record<string, ConversationState>
 
-  // Actions
-  addMessage: (message: Message) => void
-  updateLastMessage: (content: string) => void
-  setConversationId: (id: string | null) => void
-  ensureConversationId: () => void
-  setMessages: (messages: Message[]) => void
+  // Which workflow's conversation is currently displayed in Chat.tsx
+  activeWorkflowId: string | null
 
-  // Streaming
-  setStreaming: (streaming: boolean) => void
-  appendStreamContent: (content: string) => void
-  clearStreamContent: () => void
-  setCurrentTaskId: (taskId: string | null) => void
-  clearCurrentTaskId: () => void
-  markTaskCancelled: (taskId: string) => void
-  isTaskCancelled: (taskId: string) => boolean
-  finalizeStreamingMessage: () => void
+  // Global state (not per-workflow)
+  cancelledTaskIds: Record<string, number>
+  pendingQuestions: PendingQuestion[]
 
-  // Processing status
-  setProcessingStatus: (status: string | null) => void
+  // Workflow targeting
+  setActiveWorkflowId: (id: string | null) => void
 
-  // Thinking stream
-  appendThinkingContent: (content: string) => void
-  clearThinkingContent: () => void
+  // Per-workflow actions — all take workflowId to target the right conversation
+  addMessage: (workflowId: string, message: Message) => void
+  setMessages: (workflowId: string, messages: Message[]) => void
+  setConversationId: (workflowId: string, id: string | null) => void
+  ensureConversationId: (workflowId: string) => string
+  setStreaming: (workflowId: string, streaming: boolean) => void
+  appendStreamContent: (workflowId: string, content: string) => void
+  setCurrentTaskId: (workflowId: string, taskId: string | null) => void
+  // Append thinking content inline into streamingContent, wrapped in <span class="reasoning">
+  appendThinkingInline: (workflowId: string, content: string) => void
+  setProcessingStatus: (workflowId: string, status: string | null) => void
+  setContextUsage: (workflowId: string, pct: number) => void
+  // Record that a backend event arrived — used by the heartbeat watchdog to detect stale tasks
+  touchHeartbeat: (workflowId: string) => void
+  // Finalize streaming: convert accumulated streamContent into a Message with tool_calls
+  finalizeStream: (workflowId: string, toolCalls?: ToolCall[]) => void
 
-  // Inline question
-  setPendingQuestion: (question: { question: string; options: { label: string; value: string }[] } | null) => void
-  clearPendingQuestion: () => void
-
-  // User message helper
+  // Active-workflow convenience — uses activeWorkflowId
   sendUserMessage: (content: string) => Message
 
-  // Snapshot: save/restore chat state when switching workflow tabs
-  getSnapshot: () => { conversationId: string | null; messages: Message[] }
-  restoreState: (conversationId: string | null, messages: Message[]) => void
+  // Global actions
+  markTaskCancelled: (taskId: string) => void
+  isTaskCancelled: (taskId: string) => boolean
+  enqueuePendingQuestion: (question: PendingQuestion) => void
+  clearPendingQuestion: () => void
 
-  // Reset
+  // Cleanup
+  clearConversation: (workflowId: string) => void
   reset: () => void
 }
 
@@ -74,70 +148,159 @@ const pruneCancelledTaskIds = (ids: Record<string, number>, now: number) => {
   return next
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  // Initial state
-  messages: [],
-  conversationId: null,
-  isStreaming: false,
-  streamingContent: '',
-  currentTaskId: null,
-  cancelledTaskIds: {},
-  processingStatus: null,
-  thinkingContent: '',
-  pendingQuestion: null,
-  // Actions
-  addMessage: (message) =>
-    set((state) => ({
-      messages: [...state.messages, message],
-    })),
+// Helper: get conversation or return empty default (does NOT mutate state)
+const getConv = (state: ChatState, workflowId: string): ConversationState =>
+  state.conversations[workflowId] || emptyConversation
 
-  updateLastMessage: (content) =>
+// Helper: produce a new conversations map with one conversation updated
+const updateConv = (
+  state: ChatState,
+  workflowId: string,
+  patch: Partial<ConversationState>,
+): { conversations: Record<string, ConversationState> } => ({
+  conversations: {
+    ...state.conversations,
+    [workflowId]: {
+      ...getConv(state, workflowId),
+      ...patch,
+    },
+  },
+})
+
+export const useChatStore = create<ChatState>()(persist((set, get) => ({
+  // Initial state
+  conversations: {},
+  activeWorkflowId: null,
+  cancelledTaskIds: {},
+  pendingQuestions: [],
+
+  // --- Workflow targeting ---
+
+  setActiveWorkflowId: (id) => set({ activeWorkflowId: id }),
+
+  // --- Per-workflow actions ---
+
+  addMessage: (workflowId, message) =>
     set((state) => {
-      const messages = [...state.messages]
-      if (messages.length > 0) {
-        messages[messages.length - 1] = {
-          ...messages[messages.length - 1],
-          content,
-        }
-      }
-      return { messages }
+      const conv = getConv(state, workflowId)
+      return updateConv(state, workflowId, {
+        messages: [...conv.messages, message],
+      })
     }),
 
-  setConversationId: (id) => {
-    set({ conversationId: id })
-    // Also update the workflowStore's conversationId
-    if (id) {
-      useWorkflowStore.getState().setConversationId(id)
+  setMessages: (workflowId, messages) =>
+    set((state) => updateConv(state, workflowId, { messages })),
+
+  setConversationId: (workflowId, id) =>
+    set((state) => updateConv(state, workflowId, { conversationId: id })),
+
+  ensureConversationId: (workflowId) => {
+    const conv = getConv(get(), workflowId)
+    if (conv.conversationId) return conv.conversationId
+
+    // Generate a new ID — chatStore.conversations is the single source of truth
+    const conversationId = crypto.randomUUID()
+    set((state) => updateConv(state, workflowId, { conversationId }))
+    return conversationId
+  },
+
+  setStreaming: (workflowId, streaming) =>
+    set((state) => updateConv(state, workflowId, { isStreaming: streaming })),
+
+  appendStreamContent: (workflowId, content) =>
+    set((state) => {
+      const conv = getConv(state, workflowId)
+      // Close any open thinking block before appending text
+      const prefix = conv._inThinkingBlock ? '<!--THINKING_END-->' : ''
+      return updateConv(state, workflowId, {
+        streamingContent: conv.streamingContent + prefix + content,
+        _inThinkingBlock: false,
+      })
+    }),
+
+  setCurrentTaskId: (workflowId, taskId) =>
+    set((state) => updateConv(state, workflowId, { currentTaskId: taskId })),
+
+  // Append thinking content inline — delimited by HTML comment markers.
+  // Chat.tsx splits on these markers to render reasoning as collapsible dropdowns.
+  appendThinkingInline: (workflowId, content) =>
+    set((state) => {
+      const conv = getConv(state, workflowId)
+      const prefix = conv._inThinkingBlock ? '' : '<!--THINKING_START-->'
+      return updateConv(state, workflowId, {
+        streamingContent: conv.streamingContent + prefix + content,
+        _inThinkingBlock: true,
+      })
+    }),
+
+  setProcessingStatus: (workflowId, status) =>
+    set((state) => updateConv(state, workflowId, { processingStatus: status })),
+
+  setContextUsage: (workflowId, pct) =>
+    set((state) => updateConv(state, workflowId, { contextUsagePct: pct })),
+
+  touchHeartbeat: (workflowId) =>
+    set((state) => updateConv(state, workflowId, { lastHeartbeatAt: Date.now() })),
+
+  // Finalize streaming: convert streamContent (including inline reasoning) into a Message.
+  finalizeStream: (workflowId, toolCalls) => {
+    const conv = getConv(get(), workflowId)
+    // Close any open thinking block
+    let content = conv.streamingContent
+    if (conv._inThinkingBlock) {
+      content += '<!--THINKING_END-->'
+    }
+    if (content) {
+      const msg: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content,
+        timestamp: new Date().toISOString(),
+        tool_calls: toolCalls || [],
+      }
+      set((state) => updateConv(state, workflowId, {
+        messages: [...getConv(state, workflowId).messages, msg],
+        streamingContent: '',
+        _inThinkingBlock: false,
+        isStreaming: false,
+        processingStatus: null,
+      }))
+    } else {
+      set((state) => updateConv(state, workflowId, {
+        isStreaming: false,
+        _inThinkingBlock: false,
+        processingStatus: null,
+      }))
     }
   },
 
-  // Ensure conversationId exists before sync operations
-  ensureConversationId: () => {
-    const workflowStore = useWorkflowStore.getState()
-    let conversationId = workflowStore.conversationId
-    if (!conversationId) {
-      conversationId = crypto.randomUUID()
-      workflowStore.setConversationId(conversationId)
+  // --- Active-workflow convenience ---
+
+  sendUserMessage: (content) => {
+    // Resolve workflow ID using the SAME logic as sendChatMessage in
+    // streamActions.ts: prefer workflowStore (the canonical canvas ID)
+    // over chatStore.activeWorkflowId. This ensures the user message is
+    // stored under the same ID that the backend will use for responses.
+    const wfStoreId = useWorkflowStore.getState().currentWorkflow?.id || null
+    const workflowId = wfStoreId || get().activeWorkflowId
+    const message: Message = {
+      id: generateId(),
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString(),
+      tool_calls: [],
     }
-    // Sync to chatStore's local state
-    set({ conversationId })
+    if (workflowId) {
+      // Sync activeWorkflowId so Chat.tsx reads the right conversation
+      if (get().activeWorkflowId !== workflowId) {
+        get().setActiveWorkflowId(workflowId)
+      }
+      get().addMessage(workflowId, message)
+    }
+    return message
   },
 
-  setMessages: (messages) => set({ messages }),
-
-  // Streaming
-  setStreaming: (streaming) => set({ isStreaming: streaming }),
-
-  appendStreamContent: (content) =>
-    set((state) => ({
-      streamingContent: state.streamingContent + content,
-    })),
-
-  clearStreamContent: () => set({ streamingContent: '' }),
-
-  setCurrentTaskId: (taskId) => set({ currentTaskId: taskId }),
-
-  clearCurrentTaskId: () => set({ currentTaskId: null }),
+  // --- Global actions ---
 
   markTaskCancelled: (taskId) =>
     set((state) => {
@@ -151,9 +314,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const now = Date.now()
     const state = get()
     const timestamp = state.cancelledTaskIds[taskId]
-    if (!timestamp) {
-      return false
-    }
+    if (!timestamp) return false
     if (now - timestamp >= CANCELLED_TASK_TTL_MS) {
       set({ cancelledTaskIds: pruneCancelledTaskIds(state.cancelledTaskIds, now) })
       return false
@@ -161,81 +322,68 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return true
   },
 
-  finalizeStreamingMessage: () => {
-    const content = get().streamingContent
-    if (content) {
-      addAssistantMessage(content)
-    }
-    set({ streamingContent: '', isStreaming: false, processingStatus: null, thinkingContent: '' })
-  },
+  enqueuePendingQuestion: (question) =>
+    set((state) => ({ pendingQuestions: [...state.pendingQuestions, question] })),
 
-  // Processing status — clear thinking content when processing ends
-  setProcessingStatus: (status) => set(status === null
-    ? { processingStatus: null, thinkingContent: '' }
-    : { processingStatus: status }),
+  clearPendingQuestion: () =>
+    set((state) => ({ pendingQuestions: state.pendingQuestions.slice(1) })),
 
-  // Thinking stream
-  appendThinkingContent: (content) =>
-    set((state) => ({ thinkingContent: state.thinkingContent + content })),
-  clearThinkingContent: () => set({ thinkingContent: '' }),
+  // --- Cleanup ---
 
-  // Inline question
-  setPendingQuestion: (question) => set({ pendingQuestion: question }),
-
-  clearPendingQuestion: () => set({ pendingQuestion: null }),
-
-  // User message helper
-  sendUserMessage: (content) => {
-    const message: Message = {
-      id: generateId(),
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-      tool_calls: [],
-    }
-    get().addMessage(message)
-    return message
-  },
-
-  // Snapshot: returns current chat state for saving into a workflow tab
-  getSnapshot: () => {
-    const state = get()
-    return { conversationId: state.conversationId, messages: state.messages }
-  },
-
-  // Restore: loads chat state from a workflow tab (single atomic update)
-  restoreState: (conversationId, messages) =>
-    set({
-      conversationId,
-      messages,
-      isStreaming: false,
-      streamingContent: '',
-      currentTaskId: null,
-      processingStatus: null,
-      thinkingContent: '',
-      pendingQuestion: null,
+  clearConversation: (workflowId) =>
+    set((state) => {
+      const rest = Object.fromEntries(
+        Object.entries(state.conversations).filter(([id]) => id !== workflowId)
+      )
+      return { conversations: rest }
     }),
 
-  // Reset
   reset: () =>
     set({
-      messages: [],
-      conversationId: null,
-      isStreaming: false,
-      streamingContent: '',
-      currentTaskId: null,
+      conversations: {},
+      activeWorkflowId: null,
       cancelledTaskIds: {},
-      processingStatus: null,
-      thinkingContent: '',
-      pendingQuestion: null,
+      pendingQuestions: [],
     }),
+}), {
+  name: 'lemon-chat',
+  // createJSONStorage wraps the raw string-based adapter with JSON
+  // serialization so the persist middleware can read/write objects correctly.
+  storage: createJSONStorage(() => resilientLocalStorage),
+  // Only persist durable state — skip transient streaming/processing fields.
+  // Trim messages to MAX_PERSISTED_MESSAGES to prevent localStorage bloat.
+  partialize: (state) => ({
+    activeWorkflowId: state.activeWorkflowId,
+    pendingQuestions: state.pendingQuestions,
+    conversations: Object.fromEntries(
+      Object.entries(state.conversations).map(([wfId, conv]) => [
+        wfId,
+        {
+          messages: conv.messages.slice(-MAX_PERSISTED_MESSAGES),
+          conversationId: conv.conversationId,
+          // Reset transient fields so they don't leak across sessions
+          isStreaming: false,
+          streamingContent: '',
+          _inThinkingBlock: false,
+          processingStatus: null,
+          currentTaskId: null,
+          contextUsagePct: conv.contextUsagePct,
+          lastHeartbeatAt: 0,
+        } satisfies ConversationState,
+      ]),
+    ),
+  }),
 }))
 
-// Helper to add assistant message
+// Helper to add an assistant message to a specific workflow's conversation.
+// Falls back to activeWorkflowId if no workflowId provided.
 export const addAssistantMessage = (
   content: string,
-  toolCalls: ToolCall[] = []
+  toolCalls: ToolCall[] = [],
+  workflowId?: string,
 ): Message => {
+  const store = useChatStore.getState()
+  const wfId = workflowId || store.activeWorkflowId
   const message: Message = {
     id: generateId(),
     role: 'assistant',
@@ -243,6 +391,8 @@ export const addAssistantMessage = (
     timestamp: new Date().toISOString(),
     tool_calls: toolCalls,
   }
-  useChatStore.getState().addMessage(message)
+  if (wfId) {
+    store.addMessage(wfId, message)
+  }
   return message
 }

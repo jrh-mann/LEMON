@@ -1,7 +1,7 @@
 """Delete node tool.
 
 Multi-workflow architecture:
-- Requires workflow_id parameter (workflow must exist in library)
+- Uses current_workflow_id from session_state (implicit binding)
 - Loads workflow from database at start
 - Auto-saves changes back to database when done
 """
@@ -18,14 +18,11 @@ class DeleteNodeTool(WorkflowTool):
     """Delete a node from the workflow."""
 
     name = "delete_node"
-    description = "Remove a node and all connected edges from the workflow. Requires workflow_id."
+    description = (
+        "Remove a node and all connected edges from the active workflow. "
+        "Validates that the result is still a valid workflow structure."
+    )
     parameters = [
-        ToolParameter(
-            "workflow_id",
-            "string",
-            "ID of the workflow containing the node (from create_workflow)",
-            required=True,
-        ),
         ToolParameter("node_id", "string", "ID of the node to delete", required=True),
     ]
 
@@ -54,10 +51,20 @@ class DeleteNodeTool(WorkflowTool):
             if e["from"] != node_id and e["to"] != node_id
         ]
         
+        # Remove derived variables whose producing node is being deleted
+        removed_variable_ids = [
+            v["id"] for v in variables
+            if v.get("source_node_id") == node_id
+        ]
+        new_variables = [
+            v for v in variables
+            if v.get("source_node_id") != node_id
+        ]
+
         new_workflow = {
             "nodes": new_nodes,
             "edges": new_edges,
-            "variables": variables,
+            "variables": new_variables,
         }
 
         is_valid, errors = self.validator.validate(new_workflow, strict=False)
@@ -69,11 +76,10 @@ class DeleteNodeTool(WorkflowTool):
             }
 
         # Auto-save changes to database
-        save_error = save_workflow_changes(
-            workflow_id, session_state, 
-            nodes=new_nodes, 
-            edges=new_edges
-        )
+        save_kwargs = {"nodes": new_nodes, "edges": new_edges}
+        if removed_variable_ids:
+            save_kwargs["variables"] = new_variables
+        save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:
             return save_error
 
@@ -82,5 +88,6 @@ class DeleteNodeTool(WorkflowTool):
             "workflow_id": workflow_id,
             "action": "delete_node",
             "node_id": node_id,
+            "removed_variable_ids": removed_variable_ids,
             "message": f"Deleted node {node_id} and connected edges from workflow {workflow_id}",
         }

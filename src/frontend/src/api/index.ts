@@ -1,8 +1,7 @@
 // Re-export all API modules
 export * from './client'
-export * from './socket'
+export * from './streamActions'
 export * from './workflows'
-export * from './execution'
 export * from './validation'
-export * from './chat'
 export * from './auth'
+export * from './tools'

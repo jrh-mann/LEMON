@@ -9,14 +9,19 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from flask import Flask, jsonify, request, g
+from fastapi import APIRouter, Depends, FastAPI, Request
+from starlette.responses import FileResponse, JSONResponse
 
+from ..deps import require_auth
+from ...storage.auth import AuthUser
 from .helpers import _calculate_confidence, _infer_outputs_from_nodes
 from ...storage.workflows import WorkflowStore
 from ...utils.flowchart import tree_from_flowchart
+from ...utils.paths import lemon_data_dir
 from ...validation.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger("backend.api")
@@ -33,43 +38,59 @@ def _serialize_workflow_summary(wf: Any) -> Dict[str, Any]:
 
 
 def register_workflow_routes(
-    app: Flask,
+    app: FastAPI,
     *,
     workflow_store: WorkflowStore,
+    repo_root: Optional[Path] = None,
 ) -> None:
-    """Register workflow CRUD endpoints on the Flask app.
+    """Register workflow CRUD endpoints on the FastAPI app.
 
     Args:
-        app: Flask application instance.
+        app: FastAPI application instance.
         workflow_store: Workflow storage backend.
+        repo_root: Repository root for resolving upload paths.
     """
+    router = APIRouter()
 
-    @app.get("/api/workflows")
-    def list_workflows() -> Any:
+    @router.get("/api/workflows")
+    async def list_workflows(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """List all workflows for the authenticated user.
 
         All workflows in the database are considered "saved" workflows.
         The current canvas workflow (if unsaved) is not included - use the
         LLM's list_workflows_in_library tool to see that.
         """
-        user_id = g.auth_user.id
-        limit = min(int(request.args.get("limit", 100)), 500)
-        offset = max(int(request.args.get("offset", 0)), 0)
+        try:
+            limit = min(int(request.query_params.get("limit", 100)), 500)
+        except (ValueError, TypeError):
+            limit = 100
+        try:
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
 
         workflows, total_count = workflow_store.list_workflows(
-            user_id,
+            user.id,
             limit=limit,
             offset=offset,
         )
 
         summaries = [_serialize_workflow_summary(wf) for wf in workflows]
-        return jsonify({"workflows": summaries, "count": total_count})
+        return JSONResponse({"workflows": summaries, "count": total_count})
 
-    @app.post("/api/workflows")
-    def create_workflow() -> Any:
+    @router.post("/api/workflows")
+    async def create_workflow(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Save a new workflow for the authenticated user."""
-        user_id = g.auth_user.id
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
 
         # Extract workflow data from payload
         workflow_id = payload.get("id") or f"wf_{uuid4().hex}"
@@ -98,9 +119,6 @@ def register_workflow_routes(
         validation_count = payload.get("validation_count") or 0
         is_validated = payload.get("is_validated") or False
 
-        # Peer review: check if user wants to publish to community
-        is_published = payload.get("is_published") or False
-
         # Validate workflow structure before saving
         workflow_to_validate = {
             "nodes": nodes,
@@ -112,19 +130,22 @@ def register_workflow_routes(
         )
         if not is_valid:
             error_message = _workflow_validator.format_errors(validation_errors)
-            return jsonify({
-                "error": "Workflow validation failed",
-                "message": error_message,
-                "validation_errors": [
-                    {"code": e.code, "message": e.message, "node_id": e.node_id}
-                    for e in validation_errors
-                ],
-            }), 400
+            return JSONResponse(
+                {
+                    "error": "Workflow validation failed",
+                    "message": error_message,
+                    "validation_errors": [
+                        {"code": e.code, "message": e.message, "node_id": e.node_id}
+                        for e in validation_errors
+                    ],
+                },
+                status_code=400,
+            )
 
         try:
             workflow_store.create_workflow(
                 workflow_id=workflow_id,
-                user_id=user_id,
+                user_id=user.id,
                 name=name,
                 description=description,
                 domain=domain,
@@ -139,13 +160,12 @@ def register_workflow_routes(
                 validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
-                is_published=is_published,
             )
         except sqlite3.IntegrityError:
             # Workflow ID already exists, try updating instead
             success = workflow_store.update_workflow(
                 workflow_id=workflow_id,
-                user_id=user_id,
+                user_id=user.id,
                 name=name,
                 description=description,
                 domain=domain,
@@ -160,10 +180,9 @@ def register_workflow_routes(
                 validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
-                is_published=is_published,
             )
             if not success:
-                return jsonify({"error": "Failed to save workflow"}), 500
+                return JSONResponse({"error": "Failed to save workflow"}, status_code=500)
 
         response = {
             "workflow_id": workflow_id,
@@ -176,16 +195,18 @@ def register_workflow_routes(
             "edges": edges,
             "message": "Workflow saved successfully.",
         }
-        return jsonify(response), 201
+        return JSONResponse(response, status_code=201)
 
-    @app.get("/api/workflows/<workflow_id>")
-    def get_workflow(workflow_id: str) -> Any:
+    @router.get("/api/workflows/{workflow_id}")
+    async def get_workflow(
+        workflow_id: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Get a specific workflow by ID."""
-        user_id = g.auth_user.id
-        workflow = workflow_store.get_workflow(workflow_id, user_id)
+        workflow = workflow_store.get_workflow(workflow_id, user.id)
 
         if not workflow:
-            return jsonify({"error": "Workflow not found"}), 404
+            return JSONResponse({"error": "Workflow not found"}, status_code=404)
 
         # Convert to full Workflow format with metadata
         response = {
@@ -212,22 +233,34 @@ def register_workflow_routes(
             "outputs": workflow.outputs,
             "tree": workflow.tree,
             "doubts": workflow.doubts,
+            "build_history": workflow.build_history,
+            "building": workflow.building,
+            "conversation_id": workflow.conversation_id,
+            "uploaded_files": workflow.uploaded_files,
         }
-        return jsonify(response)
+        return JSONResponse(response)
 
-    @app.delete("/api/workflows/<workflow_id>")
-    def delete_workflow(workflow_id: str) -> Any:
+    @router.delete("/api/workflows/{workflow_id}")
+    async def delete_workflow(
+        workflow_id: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Delete a workflow."""
-        user_id = g.auth_user.id
-        success = workflow_store.delete_workflow(workflow_id, user_id)
+        success = workflow_store.delete_workflow(workflow_id, user.id)
 
         if not success:
-            return jsonify({"error": "Workflow not found or unauthorized"}), 404
+            return JSONResponse(
+                {"error": "Workflow not found or unauthorized"}, status_code=404
+            )
 
-        return jsonify({"message": "Workflow deleted successfully"}), 200
+        return JSONResponse({"message": "Workflow deleted successfully"})
 
-    @app.patch("/api/workflows/<workflow_id>")
-    def patch_workflow(workflow_id: str) -> Any:
+    @router.patch("/api/workflows/{workflow_id}")
+    async def patch_workflow(
+        workflow_id: str,
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Incrementally update a workflow without changing draft status.
 
         Use this for UI-triggered changes (edge labels, node positions, etc.)
@@ -235,13 +268,17 @@ def register_workflow_routes(
 
         Unlike PUT, this preserves is_draft status.
         """
-        user_id = g.auth_user.id
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
 
         # Check workflow exists and belongs to user
-        existing = workflow_store.get_workflow(workflow_id, user_id)
+        existing = workflow_store.get_workflow(workflow_id, user.id)
         if not existing:
-            return jsonify({"error": "Workflow not found or unauthorized"}), 404
+            return JSONResponse(
+                {"error": "Workflow not found or unauthorized"}, status_code=404
+            )
 
         # Build update kwargs - only include provided fields
         update_kwargs: Dict[str, Any] = {}
@@ -255,7 +292,7 @@ def register_workflow_routes(
 
         # If nothing to update, return success immediately
         if not update_kwargs:
-            return jsonify({"message": "No changes to apply"}), 200
+            return JSONResponse({"message": "No changes to apply"})
 
         # Recompute tree if nodes/edges changed
         nodes = update_kwargs.get("nodes") or existing.nodes
@@ -265,34 +302,46 @@ def register_workflow_routes(
         # Attempt the update (preserves is_draft by not passing it)
         try:
             success = workflow_store.update_workflow(
-                workflow_id, user_id, **update_kwargs
+                workflow_id, user.id, **update_kwargs
             )
             if not success:
-                return jsonify({"error": "Failed to update workflow"}), 500
+                return JSONResponse(
+                    {"error": "Failed to update workflow"}, status_code=500
+                )
         except Exception as e:
             logger.exception("PATCH workflow failed: %s", e)
-            return jsonify({"error": f"Database error: {e}"}), 500
+            return JSONResponse({"error": f"Database error: {e}"}, status_code=500)
 
-        return jsonify({
-            "workflow_id": workflow_id,
-            "message": "Workflow updated successfully",
-            "updated_fields": list(update_kwargs.keys()),
-        }), 200
+        return JSONResponse(
+            {
+                "workflow_id": workflow_id,
+                "message": "Workflow updated successfully",
+                "updated_fields": list(update_kwargs.keys()),
+            }
+        )
 
-    @app.put("/api/workflows/<workflow_id>")
-    def update_workflow(workflow_id: str) -> Any:
+    @router.put("/api/workflows/{workflow_id}")
+    async def update_workflow(
+        workflow_id: str,
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
         """Update an existing workflow.
 
         This also marks the workflow as non-draft (is_draft=False) since
         the user is explicitly saving it.
         """
-        user_id = g.auth_user.id
-        payload = request.get_json(force=True, silent=True) or {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
 
         # Check workflow exists and belongs to user
-        existing = workflow_store.get_workflow(workflow_id, user_id)
+        existing = workflow_store.get_workflow(workflow_id, user.id)
         if not existing:
-            return jsonify({"error": "Workflow not found or unauthorized"}), 404
+            return JSONResponse(
+                {"error": "Workflow not found or unauthorized"}, status_code=404
+            )
 
         # Extract workflow data from payload
         name = payload.get("name") or existing.name
@@ -326,9 +375,6 @@ def register_workflow_routes(
         )
         is_validated = payload.get("is_validated", existing.is_validated)
 
-        # Peer review: check if user wants to publish to community
-        is_published = payload.get("is_published", existing.is_published)
-
         # Validate workflow structure before saving
         workflow_to_validate = {
             "nodes": nodes,
@@ -340,19 +386,22 @@ def register_workflow_routes(
         )
         if not is_valid:
             error_message = _workflow_validator.format_errors(validation_errors)
-            return jsonify({
-                "error": "Workflow validation failed",
-                "message": error_message,
-                "validation_errors": [
-                    {"code": e.code, "message": e.message, "node_id": e.node_id}
-                    for e in validation_errors
-                ],
-            }), 400
+            return JSONResponse(
+                {
+                    "error": "Workflow validation failed",
+                    "message": error_message,
+                    "validation_errors": [
+                        {"code": e.code, "message": e.message, "node_id": e.node_id}
+                        for e in validation_errors
+                    ],
+                },
+                status_code=400,
+            )
 
         # Update workflow - also marks as non-draft (saved)
         success = workflow_store.update_workflow(
             workflow_id=workflow_id,
-            user_id=user_id,
+            user_id=user.id,
             name=name,
             description=description,
             domain=domain,
@@ -368,11 +417,10 @@ def register_workflow_routes(
             is_validated=is_validated,
             output_type=output_type,
             is_draft=False,  # Explicitly saving marks it as non-draft
-            is_published=is_published,
         )
 
         if not success:
-            return jsonify({"error": "Failed to update workflow"}), 500
+            return JSONResponse({"error": "Failed to update workflow"}, status_code=500)
 
         response = {
             "workflow_id": workflow_id,
@@ -385,4 +433,25 @@ def register_workflow_routes(
             "edges": edges,
             "message": "Workflow updated successfully.",
         }
-        return jsonify(response), 200
+        return JSONResponse(response)
+
+    @router.get("/api/uploads/{file_path:path}")
+    async def serve_upload(
+        file_path: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> FileResponse:
+        """Serve an uploaded file from the data directory.
+
+        Only serves files under the uploads/ subdirectory to prevent
+        path traversal attacks.
+        """
+        data_dir = lemon_data_dir(repo_root)
+        resolved = (data_dir / file_path).resolve()
+        # Guard: must be inside the data directory
+        if not str(resolved).startswith(str(data_dir.resolve())):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if not resolved.is_file():
+            return JSONResponse({"error": "file not found"}, status_code=404)
+        return FileResponse(resolved)
+
+    app.include_router(router)

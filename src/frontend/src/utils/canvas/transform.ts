@@ -1,10 +1,10 @@
-import type { FlowNode, FlowNodeColor, Flowchart, DecisionCondition } from '../../types'
+import type { FlowNode, FlowNodeColor, Flowchart, DecisionCondition, CalculationConfig } from '../../types'
 import { BLOCK_TYPE_MAP, BLOCK_TYPE_COLORS, NODE_SIZES } from './constants'
 import { autoLayoutFlowchart } from './layout'
 
 // Sanitize labels - remove JSON artifacts, clean up text
 function sanitizeLabel(label: string | undefined | null): string {
-  if (!label) return 'Node'
+  if (label === undefined || label === null) return ''
 
   let clean = String(label)
 
@@ -15,7 +15,7 @@ function sanitizeLabel(label: string | undefined | null): string {
 
   // Trim and fallback
   clean = clean.trim()
-  return clean || 'Node'
+  return clean
 }
 
 // Transform a single node from backend format to frontend format
@@ -63,6 +63,11 @@ function transformNode(rawNode: Record<string, unknown>): FlowNode {
   }
   if (rawNode.output_variable) {
     node.output_variable = rawNode.output_variable as string
+  }
+
+  // Preserve calculation configuration if present (for calculation nodes)
+  if (rawNode.calculation) {
+    node.calculation = rawNode.calculation as CalculationConfig
   }
 
   return node

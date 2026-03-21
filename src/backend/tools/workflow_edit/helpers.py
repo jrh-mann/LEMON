@@ -16,6 +16,8 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 def resolve_node_id(
     identifier: str,
     nodes: List[Dict[str, Any]],
@@ -99,47 +101,59 @@ def variable_ref_error(var_ref: Optional[str], session_state: Dict[str, Any]) ->
 def get_subworkflow_output_type(
     subworkflow_id: str,
     session_state: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Get the output definition from a subworkflow.
-    
+
     Used to infer the type of subprocess output variables.
-    
+
     Args:
         subworkflow_id: ID of the subworkflow to query
         session_state: Current session state with workflow_store and user_id
-        
+
     Returns:
-        Output definition dict with 'name' and 'type', or None if not found
+        Output definition dict with 'name' and 'type', or dict with 'error' key on failure.
+        For building workflows, uses the workflow's output_type field as fallback.
     """
     workflow_store = session_state.get("workflow_store")
     user_id = session_state.get("user_id")
-    
-    if not workflow_store or not user_id or not subworkflow_id:
-        return None
-    
+
+    if not workflow_store or not user_id:
+        return {"error": "No workflow_store or user_id in session — cannot look up subworkflow"}
+    if not subworkflow_id:
+        return {"error": "No subworkflow_id provided"}
+
     try:
         subworkflow = workflow_store.get_workflow(subworkflow_id, user_id)
         if subworkflow is None:
-            return None
-        
+            return {"error": f"Subworkflow '{subworkflow_id}' not found in user's library"}
+
+        # If subworkflow is still being built, use its declared output_type
+        if getattr(subworkflow, "building", False):
+            return {
+                "name": "output",
+                "type": subworkflow.output_type or "string",
+                "description": None,
+                "building": True,
+            }
+
         # Get the first output (workflows typically have one primary output)
         outputs = subworkflow.outputs
         if outputs and len(outputs) > 0:
             output = outputs[0]
             return {
                 "name": output.get("name", "output"),
-                "type": output.get("type", "string"),  # Default to string if no type
+                "type": output.get("type", "string"),
                 "description": output.get("description"),
             }
-        
-        # No outputs defined - return default
+
+        # No outputs defined — fall back to workflow's declared output_type
         return {
             "name": "output",
-            "type": "string",
+            "type": subworkflow.output_type or "string",
             "description": None,
         }
-    except Exception:
-        return None
+    except Exception as exc:
+        return {"error": f"Failed to look up subworkflow '{subworkflow_id}': {exc}"}
 
 
 def validate_subprocess_node(
@@ -195,9 +209,14 @@ def validate_subprocess_node(
         
         for parent_var_name in input_mapping.keys():
             if parent_var_name.strip().lower() not in parent_var_names:
+                # List available variable names so the LLM can self-correct
+                available = sorted(
+                    var.get("name", "") for var in parent_variables if var.get("name")
+                )
                 errors.append(
                     f"Subprocess node '{node_id}': input_mapping references "
-                    f"non-existent parent variable '{parent_var_name}'"
+                    f"non-existent parent variable '{parent_var_name}'. "
+                    f"Available variables: {available}"
                 )
     
     # Optionally validate subworkflow exists in database
@@ -215,6 +234,9 @@ def validate_subprocess_node(
                             f"Subprocess node '{node_id}': subworkflow_id '{subworkflow_id}' "
                             f"not found in user's workflow library"
                         )
+                    elif getattr(subworkflow, "building", False):
+                        # Subworkflow is still being built — valid reference, skip output check
+                        pass
                     else:
                         # Validate subworkflow has output type defined
                         outputs = subworkflow.outputs
@@ -269,7 +291,95 @@ def get_available_workflows_for_subflow(session_state: Dict[str, Any]) -> List[D
             })
         return result
     except Exception:
+        logger.exception("Failed to list workflows for subprocess node dropdown")
         return []
+
+
+# ============================================================================
+# Derived Variable Lifecycle Helpers
+# ============================================================================
+#
+# These helpers determine what derived variables a node *should* produce,
+# enabling ``modify_node`` to detect when variables need to be added,
+# removed, or replaced after a node's configuration changes.
+# ============================================================================
+
+
+def derive_variables_for_node(
+    node: Dict[str, Any],
+    existing_variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Determine the derived variables a node should produce.
+
+    Returns a list of variable dicts (may be empty) that the given node
+    would auto-register.  This is a *pure query* — it does not mutate
+    ``existing_variables``.
+
+    Used by ``modify_node`` to compare before/after state and sync
+    variable changes.
+
+    Supports:
+    * **calculation** nodes → one variable with ``source='calculated'``
+    * **subprocess** nodes → one variable with ``source='subprocess'``
+    """
+    # Lazy imports to avoid circular deps at module level
+    from ..workflow_input.add import generate_variable_id
+    from ..workflow_input.helpers import normalize_variable_name
+
+    node_type = node.get("type")
+    node_id = node.get("id", "")
+    label = node.get("label", "")
+    result: List[Dict[str, Any]] = []
+
+    # --- Calculation node: always produces a number variable ---
+    if node_type == "calculation":
+        calc = node.get("calculation")
+        if calc:
+            output_def = calc.get("output", {})
+            output_name = output_def.get("name")
+            if output_name:
+                var_id = generate_variable_id(output_name, "number", "calculated")
+                result.append({
+                    "id": var_id,
+                    "name": output_name,
+                    "type": "number",
+                    "source": "calculated",
+                    "source_node_id": node_id,
+                    "description": (
+                        output_def.get("description")
+                        or f"Calculated by '{label}'"
+                    ),
+                })
+
+    # --- Subprocess node: infer type from subworkflow outputs ---
+    elif node_type == "subprocess":
+        output_variable = node.get("output_variable")
+        subworkflow_id = node.get("subworkflow_id")
+        if output_variable:
+            output_info = get_subworkflow_output_type(
+                subworkflow_id or "", session_state,
+            )
+            output_type_val = (
+                output_info.get("type", "string") if output_info else "string"
+            )
+            output_desc = output_info.get("description") if output_info else None
+            var_id = generate_variable_id(
+                output_variable, output_type_val, "subprocess",
+            )
+            result.append({
+                "id": var_id,
+                "name": output_variable,
+                "type": output_type_val,
+                "source": "subprocess",
+                "source_node_id": node_id,
+                "subworkflow_id": subworkflow_id,
+                "description": (
+                    output_desc or f"Output from subprocess '{label}'"
+                ),
+            })
+
+    return result
 
 
 # ============================================================================
@@ -341,7 +451,7 @@ def build_new_node(
         if not condition:
             return {}, [], (
                 f"Decision node '{label}' requires a 'condition' object. "
-                "Provide: {input_id: '<var_id>', comparator: '<comparator>', value: <value>}"
+                "Provide: {variable: '<name>', comparator: '<comparator>', value: <value>}"
             )
         cond_err = validate_decision_condition(condition, variables)
         if cond_err:
@@ -411,6 +521,30 @@ def build_new_node(
     # ------------------------------------------------------------------
     # 6. End-node output config
     # ------------------------------------------------------------------
+    # Desugar unified `output` param into internal fields for end nodes.
+    # Smart routing: template if contains {}, variable if name matches, else literal.
+    if node_type == "end" and "output" in params:
+        raw_output = params["output"]
+        if isinstance(raw_output, str) and "{" in raw_output and "}" in raw_output:
+            # Template string — e.g., "Your BMI is {BMI}"
+            params["output_template"] = raw_output
+        elif isinstance(raw_output, str):
+            # Check if it matches a workflow variable name (case-insensitive)
+            normalized = raw_output.strip().lower()
+            matched_var = None
+            for var in variables:
+                if var.get("name", "").strip().lower() == normalized:
+                    matched_var = var
+                    break
+            if matched_var:
+                params["output_variable"] = raw_output
+            else:
+                # Plain string literal
+                params["output_value"] = raw_output
+        else:
+            # Literal value (number, bool, etc.)
+            params["output_value"] = raw_output
+
     if node_type == "end":
         new_node["output_type"] = params.get("output_type", "string")
         if params.get("output_variable"):
@@ -458,10 +592,11 @@ def build_new_node(
                 output_info = get_subworkflow_output_type(
                     subworkflow_id_param or "", session_state,
                 )
-                output_type_val = (
-                    output_info.get("type", "string") if output_info else "string"
-                )
-                output_desc = output_info.get("description") if output_info else None
+                # If subworkflow lookup failed, return the error to the LLM
+                if "error" in output_info:
+                    return {}, [], output_info["error"]
+                output_type_val = output_info.get("type", "string")
+                output_desc = output_info.get("description")
 
                 var_id = generate_variable_id(
                     output_variable, output_type_val, "subprocess",
@@ -501,6 +636,46 @@ def build_new_node(
     return new_node, new_variables, None
 
 
+def build_modified_node(
+    current_node: Dict[str, Any],
+    updates: Dict[str, Any],
+    variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[str], Optional[str]]:
+    """Apply updates through the canonical node builder.
+
+    Reuses ``build_new_node`` so add and modify paths produce the same node
+    schema and derived-variable behavior.
+    """
+    merged = dict(current_node)
+    merged.update(updates)
+    if not merged.get("type"):
+        return {}, [], [], "Modified node is missing type"
+    if not merged.get("label"):
+        return {}, [], [], "Modified node is missing label"
+
+    rebuilt_node, rebuilt_variables, error = build_new_node(
+        merged,
+        variables,
+        session_state,
+        node_id=current_node.get("id"),
+    )
+    if error:
+        return {}, [], [], error
+
+    old_derived = derive_variables_for_node(current_node, variables, session_state)
+    old_derived_ids = {
+        v.get("id")
+        for v in variables
+        if v.get("source_node_id") == current_node.get("id") and v.get("id")
+    }
+    old_derived_ids.update(v["id"] for v in old_derived)
+    new_derived_ids = {v["id"] for v in rebuilt_variables}
+    removed_variable_ids = sorted(old_derived_ids - new_derived_ids)
+    added_variables = [v for v in rebuilt_variables if v["id"] not in old_derived_ids]
+    return rebuilt_node, added_variables, removed_variable_ids, None
+
+
 # ============================================================================
 # Workflow Load/Save Helpers for Multi-Workflow ID-Centric Architecture
 # ============================================================================
@@ -517,6 +692,88 @@ def build_new_node(
 # ============================================================================
 
 _load_logger = logging.getLogger(__name__)
+
+
+def _rederive_subprocess_variable_types(
+    nodes: List[Dict[str, Any]],
+    variables: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
+    workflow_id: str,
+) -> List[Dict[str, Any]]:
+    """Re-derive subprocess variable types from their subworkflows.
+
+    For each subprocess node, queries the subworkflow's current output type
+    and updates the corresponding derived variable if it's stale. Persists
+    changes to DB if any variable was updated.
+
+    Args:
+        nodes: Workflow node list (read-only)
+        variables: Workflow variable list (may be replaced)
+        session_state: Session state with workflow_store and user_id
+        workflow_id: Parent workflow ID (for saving back)
+
+    Returns:
+        The (possibly updated) variables list.
+    """
+    from ..workflow_input.add import generate_variable_id
+
+    # Build index: source_node_id → variable index for subprocess vars
+    subprocess_var_idx: Dict[str, int] = {}
+    for i, var in enumerate(variables):
+        if var.get("source") == "subprocess" and var.get("source_node_id"):
+            subprocess_var_idx[var["source_node_id"]] = i
+
+    if not subprocess_var_idx:
+        return variables  # No subprocess variables — nothing to re-derive
+
+    dirty = False  # Track whether any variable was updated
+
+    for node in nodes:
+        if node.get("type") != "subprocess":
+            continue
+        node_id = node.get("id", "")
+        if node_id not in subprocess_var_idx:
+            continue
+        subworkflow_id = node.get("subworkflow_id")
+        if not subworkflow_id:
+            continue  # Can't look up type without a subworkflow reference
+
+        output_info = get_subworkflow_output_type(subworkflow_id, session_state)
+        if output_info is None or "error" in output_info:
+            continue  # Subworkflow not found or inaccessible — leave as-is
+
+        current_type = output_info.get("type", "string")
+        idx = subprocess_var_idx[node_id]
+        existing_var = variables[idx]
+
+        if existing_var.get("type") == current_type:
+            continue  # Already up to date
+
+        # Type changed — rebuild the variable with the new type and ID
+        output_variable_name = existing_var.get("name", "")
+        new_var_id = generate_variable_id(
+            output_variable_name, current_type, "subprocess",
+        )
+        variables[idx] = {
+            **existing_var,
+            "id": new_var_id,
+            "type": current_type,
+        }
+        dirty = True
+        _load_logger.info(
+            "Re-derived subprocess variable '%s' on node '%s': "
+            "type %s -> %s (subworkflow %s)",
+            output_variable_name, node_id,
+            existing_var.get("type"), current_type, subworkflow_id,
+        )
+
+    # Persist updated variables to DB so the fix sticks across loads
+    if dirty:
+        save_workflow_changes(
+            workflow_id, session_state, variables=variables,
+        )
+
+    return variables
 
 
 def load_workflow_for_tool(
@@ -563,7 +820,7 @@ def load_workflow_for_tool(
             "success": False,
             "error": "workflow_id is required",
             "error_code": "MISSING_WORKFLOW_ID",
-            "message": "You must provide a workflow_id. Create a workflow first using create_workflow.",
+            "message": "You must provide a workflow_id. The workflow is created automatically when the canvas opens.",
         }
     
     # Get workflow_store and user_id from session
@@ -611,12 +868,23 @@ def load_workflow_for_tool(
     
     # Convert WorkflowRecord to tool-friendly dict format
     # Note: Storage uses 'inputs' but tools use 'variables' (unified format)
+    variables = record.inputs
+    nodes = record.nodes
+
+    # --- Lazy re-derive subprocess variable types ---
+    # When a subworkflow's output type changes (via set_workflow_output),
+    # the parent workflow's derived subprocess variable becomes stale.
+    # Re-derive on every load so tools always see the current type.
+    variables = _rederive_subprocess_variable_types(
+        nodes, variables, session_state, workflow_id,
+    )
+
     workflow_data = {
         "workflow_id": workflow_id,
         "name": record.name,
-        "nodes": record.nodes,
+        "nodes": nodes,
         "edges": record.edges,
-        "variables": record.inputs,  # Expose as 'variables', stored as 'inputs'
+        "variables": variables,
         "outputs": record.outputs,
         "output_type": record.output_type,
         "tree": record.tree,
@@ -634,6 +902,7 @@ def save_workflow_changes(
     edges: Optional[List[Dict[str, Any]]] = None,
     variables: Optional[List[Dict[str, Any]]] = None,
     outputs: Optional[List[Dict[str, Any]]] = None,
+    output_type: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Save workflow changes back to database.
     
@@ -646,6 +915,7 @@ def save_workflow_changes(
         edges: Updated list of edges (optional)
         variables: Updated list of variables (optional, stored as 'inputs')
         outputs: Updated list of outputs (optional)
+        output_type: Updated workflow-level output type (optional)
         
     Returns:
         None on success, or an error dict on failure.
@@ -684,6 +954,32 @@ def save_workflow_changes(
         update_kwargs["inputs"] = variables  # Store as 'inputs' in database
     if outputs is not None:
         update_kwargs["outputs"] = outputs
+    if output_type is not None:
+        update_kwargs["output_type"] = output_type
+
+    if nodes is not None or edges is not None:
+        resolved_nodes = nodes
+        resolved_edges = edges
+        if resolved_nodes is None or resolved_edges is None:
+            record = workflow_store.get_workflow(workflow_id, user_id)
+            if record is None:
+                return {
+                    "success": False,
+                    "error": f"Failed to load workflow '{workflow_id}' for tree sync",
+                    "error_code": "WORKFLOW_NOT_FOUND",
+                    "message": f"Workflow '{workflow_id}' not found or unauthorized.",
+                }
+            if resolved_nodes is None:
+                resolved_nodes = record.nodes
+            if resolved_edges is None:
+                resolved_edges = record.edges
+
+        from ...utils.flowchart import tree_from_flowchart
+
+        update_kwargs["tree"] = tree_from_flowchart(
+            resolved_nodes or [],
+            resolved_edges or [],
+        )
     
     # If nothing to update, return success
     if not update_kwargs:
