@@ -144,17 +144,17 @@
 
             dayToX(d) = 220 + d * 5.517
 
-            Phase data (days from Dec 1):
-            1. Initial Prototyping:     Dec 9 = day 8,   Jan 10 = day 40  → x=264.1, w=176.5
-            2. Backend & Orchestrator:  Jan 10 = day 40,  Jan 28 = day 58  → x=440.7, w=99.3
-            3. Canvas & Visual Editor:  Jan 15 = day 45,  Feb 5 = day 66   → x=468.3, w=115.9
-            4. Tool System:             Jan 18 = day 48,  Feb 10 = day 71  → x=484.8, w=126.9
-            5. Streaming (SSE):         Feb 3 = day 64,   Mar 12 = day 101 → x=573.1, w=204.1
-            6. Subworkflows:            Feb 20 = day 81,  Mar 13 = day 102 → x=666.9, w=115.9
-            7. Evaluation Framework:    Mar 1 = day 90,   Mar 12 = day 101 → x=716.5, w=60.7
-            8. Security Hardening:      Mar 14 = day 103, Mar 16 = day 105 → x=788.2, w=11.0
-            9. Testing:                 Jan 18 = day 48,  Mar 16 = day 105 → x=484.8, w=314.5
-            10. Docs & Deployment:      Mar 13 = day 102, Mar 27 = day 116 → x=782.7, w=77.2
+            Phase data (corrected from git history):
+            1. Initial Prototyping:     Dec 9 - Jan 10   x=264.1, w=176.5
+            2. Backend & Orchestrator:  Jan 11 - Feb 3   x=446.2, w=126.9
+            3. Canvas & Visual Editor:  Jan 15 - Feb 3   x=468.3, w=104.8
+            4. Tool System:             Jan 18 - Feb 6   x=484.8, w=104.8
+            5. Streaming (Socket.IO/SSE): Jan 20 - Mar 13 x=495.9, w=286.9
+            6. Subworkflows:            Jan 26 - Mar 14  x=529.0, w=259.3
+            7. Evaluation Framework:    Feb 6 - Mar 12   x=589.6, w=187.6
+            8. Security Hardening:      Mar 5 - Mar 16   x=738.6, w=60.7
+            9. Testing:                 Jan 19 - Mar 13  x=490.3, w=292.4
+            10. Docs & Deployment:      Mar 13 - Mar 20  x=782.7, w=38.6
           -->
 
           <!-- Phase labels (left side) -->
@@ -162,7 +162,7 @@
           <text x="215" y="99" class="phase-label" text-anchor="end">Backend &amp; Orchestrator</text>
           <text x="215" y="137" class="phase-label" text-anchor="end">Canvas &amp; Visual Editor</text>
           <text x="215" y="175" class="phase-label" text-anchor="end">Tool System</text>
-          <text x="215" y="213" class="phase-label" text-anchor="end">Streaming (SSE)</text>
+          <text x="215" y="213" class="phase-label" text-anchor="end">Streaming (Socket.IO/SSE)</text>
           <text x="215" y="251" class="phase-label" text-anchor="end">Subworkflows</text>
           <text x="215" y="289" class="phase-label" text-anchor="end">Evaluation Framework</text>
           <text x="215" y="327" class="phase-label" text-anchor="end">Security Hardening</text>
@@ -170,35 +170,35 @@
           <text x="215" y="403" class="phase-label" text-anchor="end">Docs &amp; Deployment</text>
 
           <!-- Phase bars -->
-          <!-- 1. Initial Prototyping: #4CAF50 -->
+          <!-- 1. Initial Prototyping: Dec 9 - Jan 10 -->
           <rect x="264.1" y="47" width="176.5" height="24" rx="3" fill="#4CAF50"/>
 
-          <!-- 2. Backend & Orchestrator: #2196F3 -->
-          <rect x="440.7" y="85" width="99.3" height="24" rx="3" fill="#2196F3"/>
+          <!-- 2. Backend & Orchestrator: Jan 11 - Feb 3 -->
+          <rect x="446.2" y="85" width="126.9" height="24" rx="3" fill="#2196F3"/>
 
-          <!-- 3. Canvas & Visual Editor: #9C27B0 -->
-          <rect x="468.3" y="123" width="115.9" height="24" rx="3" fill="#9C27B0"/>
+          <!-- 3. Canvas & Visual Editor: Jan 15 - Feb 3 -->
+          <rect x="468.3" y="123" width="104.8" height="24" rx="3" fill="#9C27B0"/>
 
-          <!-- 4. Tool System: #FF9800 -->
-          <rect x="484.8" y="161" width="126.9" height="24" rx="3" fill="#FF9800"/>
+          <!-- 4. Tool System: Jan 18 - Feb 6 -->
+          <rect x="484.8" y="161" width="104.8" height="24" rx="3" fill="#FF9800"/>
 
-          <!-- 5. Streaming (Socket.IO, then SSE): #F44336 -->
-          <rect x="573.1" y="199" width="204.1" height="24" rx="3" fill="#F44336"/>
+          <!-- 5. Streaming (Socket.IO, then SSE): Jan 20 - Mar 13 -->
+          <rect x="495.9" y="199" width="286.9" height="24" rx="3" fill="#F44336"/>
 
-          <!-- 6. Subworkflows: #00BCD4 -->
-          <rect x="666.9" y="237" width="115.9" height="24" rx="3" fill="#00BCD4"/>
+          <!-- 6. Subworkflows: Jan 26 - Mar 14 -->
+          <rect x="529.0" y="237" width="259.3" height="24" rx="3" fill="#00BCD4"/>
 
-          <!-- 7. Evaluation Framework: #E91E63 -->
-          <rect x="716.5" y="275" width="60.7" height="24" rx="3" fill="#E91E63"/>
+          <!-- 7. Evaluation Framework: Feb 6 - Mar 12 -->
+          <rect x="589.6" y="275" width="187.6" height="24" rx="3" fill="#E91E63"/>
 
-          <!-- 8. Security Hardening: #795548 -->
-          <rect x="788.2" y="313" width="11.0" height="24" rx="3" fill="#795548"/>
+          <!-- 8. Security Hardening: Mar 5 - Mar 16 -->
+          <rect x="738.6" y="313" width="60.7" height="24" rx="3" fill="#795548"/>
 
-          <!-- 9. Testing: #607D8B -->
-          <rect x="484.8" y="351" width="314.5" height="24" rx="3" fill="#607D8B"/>
+          <!-- 9. Testing: Jan 19 - Mar 13 -->
+          <rect x="490.3" y="351" width="292.4" height="24" rx="3" fill="#607D8B"/>
 
-          <!-- 10. Documentation & Deployment: #8BC34A -->
-          <rect x="782.7" y="389" width="77.2" height="24" rx="3" fill="#8BC34A"/>
+          <!-- 10. Docs & Deployment: Mar 13 - Mar 20 -->
+          <rect x="782.7" y="389" width="38.6" height="24" rx="3" fill="#8BC34A"/>
         </svg>
       </div>
     </section>
