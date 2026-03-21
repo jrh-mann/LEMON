@@ -121,7 +121,9 @@ def register_workflow_routes(
         is_validated = payload.get("is_validated") or False
 
         # Peer review: check if user wants to publish to community
+        # Use sentinel to distinguish "not provided" from "explicitly False"
         is_published = payload.get("is_published") or False
+        _is_published_in_payload = "is_published" in payload
 
         # Validate workflow structure before saving
         workflow_to_validate = {
@@ -168,7 +170,9 @@ def register_workflow_routes(
             )
         except sqlite3.IntegrityError:
             # Workflow ID already exists, try updating instead
-            success = workflow_store.update_workflow(
+            # Only pass is_published if explicitly provided, to avoid
+            # silently un-publishing a previously published workflow
+            update_kwargs: Dict[str, Any] = dict(
                 workflow_id=workflow_id,
                 user_id=user.id,
                 name=name,
@@ -185,8 +189,10 @@ def register_workflow_routes(
                 validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
-                is_published=is_published,
             )
+            if _is_published_in_payload:
+                update_kwargs["is_published"] = is_published
+            success = workflow_store.update_workflow(**update_kwargs)
             if not success:
                 return JSONResponse({"error": "Failed to save workflow"}, status_code=500)
 

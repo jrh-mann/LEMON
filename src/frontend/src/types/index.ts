@@ -582,6 +582,7 @@ export interface CreateWorkflowRequest {
   validation_score?: number
   validation_count?: number
   is_validated?: boolean
+  is_published?: boolean  // Publish to community library for peer review
 }
 
 export interface CreateWorkflowResponse {

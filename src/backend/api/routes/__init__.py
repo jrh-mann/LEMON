@@ -81,14 +81,16 @@ def register_routes(
         workflow_store=workflow_store,
     )
 
+    # Peer review (public workflows, voting)
+    # Must be registered BEFORE workflow CRUD so /api/workflows/public
+    # is matched before the /api/workflows/{workflow_id} wildcard.
+    register_peer_review_routes(app, workflow_store=workflow_store)
+
     # Workflow CRUD (list, create, get, delete, patch, update)
     register_workflow_routes(app, workflow_store=workflow_store, repo_root=repo_root)
 
     # Search and domain listing
     register_search_routes(app, workflow_store=workflow_store)
-
-    # Peer review (public workflows, voting)
-    register_peer_review_routes(app, workflow_store=workflow_store)
 
     # Dev tools (list/execute tools)
     register_dev_tools_routes(

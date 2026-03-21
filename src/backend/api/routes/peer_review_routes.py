@@ -107,6 +107,7 @@ def register_peer_review_routes(
 
         response = {
             "id": workflow.id,
+            "output_type": workflow.output_type or "string",
             "metadata": {
                 "name": workflow.name,
                 "description": workflow.description,

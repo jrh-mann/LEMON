@@ -723,7 +723,17 @@ class WorkflowStore:
             ).fetchone()
 
             if not existing:
-                return {"success": False, "error": "No vote to remove"}
+                # Idempotent: no vote to remove is not an error
+                updated = conn.execute(
+                    "SELECT net_votes, review_status FROM workflows WHERE id = ?",
+                    (workflow_id,),
+                ).fetchone()
+                return {
+                    "success": True,
+                    "net_votes": updated["net_votes"] if updated else 0,
+                    "review_status": updated["review_status"] if updated else "unreviewed",
+                    "user_vote": None,
+                }
 
             old_vote = existing["vote"]
 

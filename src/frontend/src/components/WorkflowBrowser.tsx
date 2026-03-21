@@ -313,7 +313,7 @@ export default function WorkflowBrowser() {
       )}
 
       {/* Delete button (only for my workflows) */}
-      {!showVoting && (
+      {!showVoting && !showVoteCount && (
         <button
           className="workflow-delete-btn"
           onClick={(e) => handleDeleteWorkflow(workflow.id, workflow.name, e)}
