@@ -116,6 +116,14 @@ class TokenType(Enum):
     <p>We use session-based auth. Passwords are hashed with PBKDF2 and a random salt. On login, a session token gets generated and stored in SQLite with an expiry. The token is sent to the client and attached to every subsequent request. FastAPI middleware checks it on each request. We also added rate limiting on the login and registration endpoints to prevent brute-force attacks.</p>
     <p>Libraries: hashlib (PBKDF2 [9]), secrets (token generation), slowapi [10] (rate limiting).</p>
 
+    <!-- Peer Review and Workflow Publishing -->
+    <h2>Peer Review and Workflow Publishing</h2>
+
+    <p>Users can publish workflows to a community gallery when saving. The save dialog includes a "Publish to Community Library" checkbox. Published workflows get <code>is_published=true</code>, <code>review_status='unreviewed'</code>, and <code>net_votes=0</code> in the database.</p>
+    <p>The library UI has three tabs: My Workflows (personal), Peer Review (all published workflows with voting buttons), and Published (only workflows that have reached the vote threshold). Other users can upvote or downvote published workflows. Each user gets one vote per workflow, tracked in the <code>workflow_votes</code> table with a unique constraint on (workflow_id, user_id). When a workflow's net votes reach the threshold (currently 1), it is automatically promoted from "unreviewed" to "reviewed" and appears in the Published tab. If votes drop back below the threshold, the workflow is demoted.</p>
+    <p>The voting endpoint (<code>POST /api/workflows/public/{id}/vote</code>) accepts +1, -1, or 0 (remove vote), recalculates <code>net_votes</code>, and handles promotion/demotion in a single transaction. The frontend shows vote counts and progress toward the threshold on each workflow card.</p>
+    <p>Libraries: FastAPI [3] for the peer review API routes, SQLite [11] for vote storage with foreign key constraints.</p>
+
     <!-- Workflow Persistence -->
     <h2>Workflow Persistence</h2>
 
