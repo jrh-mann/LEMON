@@ -49,6 +49,54 @@
     padding: 24px 32px;
 }
 
+/* Tabs */
+.library-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--edge);
+    padding-bottom: 0;
+}
+
+.library-tab {
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.library-tab:hover {
+    color: var(--ink);
+}
+
+.library-tab.active {
+    color: var(--teal);
+    border-bottom-color: var(--teal);
+}
+
+.library-tab-count {
+    background: var(--edge);
+    color: var(--muted);
+    font-size: 0.75rem;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-weight: 400;
+}
+
+.library-tab.active .library-tab-count {
+    background: var(--teal-light);
+    color: var(--teal);
+}
+
 /* Search */
 .library-search {
     display: flex;
@@ -207,8 +255,8 @@
     margin-left: 8px;
     font-size: 0.7rem;
     font-weight: 500;
-    color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--teal);
+    background: color-mix(in srgb, var(--teal) 12%, transparent);
     padding: 1px 8px;
     border-radius: 999px;
     animation: building-pulse 1.5s ease-in-out infinite;
@@ -217,5 +265,47 @@
 @keyframes building-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+}
+
+.library-card-votes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--edge);
+}
+
+.library-card-votes .vote-btn {
+    border: 1px solid var(--edge);
+    background: transparent;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.15s ease;
+}
+
+.library-card-votes .vote-btn:hover {
+    border-color: var(--teal);
+    color: var(--teal);
+}
+
+.library-card-votes .vote-btn.voted {
+    background: var(--teal-light);
+    border-color: var(--teal);
+    color: var(--teal);
+}
+
+.library-card-votes .vote-btn.down:hover {
+    border-color: var(--rose);
+    color: var(--rose);
+}
+
+.library-card-votes .vote-btn.down.voted {
+    background: var(--rose-light);
+    border-color: var(--rose);
+    color: var(--rose);
 }
 

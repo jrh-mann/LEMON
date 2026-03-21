@@ -2,56 +2,99 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
-import { listWorkflows, deleteWorkflow } from '../api/workflows'
+import { listWorkflows, deleteWorkflow, listPublicWorkflows, voteOnWorkflow } from '../api/workflows'
 import type { WorkflowSummary } from '../types'
 import '../styles/LibraryPage.css'
+
+type BrowserTab = 'mine' | 'published' | 'peer_review'
 
 export default function LibraryPage() {
     const navigate = useNavigate()
     const { setZoomingCard, setZoomPhase } = useUIStore()
     const currentWorkflowId = useWorkflowStore(s => s.currentWorkflow?.id)
     // When streaming handlers signal library changes (subworkflow created/finished),
-    // this counter increments and triggers a re-fetch
+    // this counter increments and triggers a re-fetch of all cached tabs
     const libraryRefreshTrigger = useWorkflowStore(s => s.libraryRefreshTrigger)
 
-    const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null)
+    const [activeTab, setActiveTab] = useState<BrowserTab>('mine')
+    const [myWorkflows, setMyWorkflows] = useState<WorkflowSummary[] | null>(null)
+    const [publicWorkflows, setPublicWorkflows] = useState<WorkflowSummary[] | null>(null)
+    const [peerReviewWorkflows, setPeerReviewWorkflows] = useState<WorkflowSummary[] | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
-    // Fetch workflows
-    const fetchWorkflows = useCallback(async () => {
-        if (workflows !== null) return
+    // Fetch workflows for a specific tab if not already loaded
+    const fetchTabData = useCallback(async (tab: BrowserTab) => {
+        // Skip if already loaded
+        if (tab === 'mine' && myWorkflows !== null) return
+        if (tab === 'published' && publicWorkflows !== null) return
+        if (tab === 'peer_review' && peerReviewWorkflows !== null) return
+
         setIsLoading(true)
         try {
-            const result = await listWorkflows()
-            setWorkflows(result)
+            switch (tab) {
+                case 'mine': {
+                    const mineResult = await listWorkflows()
+                    setMyWorkflows(mineResult)
+                    break
+                }
+                case 'published': {
+                    const publishedResult = await listPublicWorkflows('reviewed')
+                    setPublicWorkflows(publishedResult.workflows)
+                    break
+                }
+                case 'peer_review': {
+                    const reviewResult = await listPublicWorkflows('unreviewed')
+                    setPeerReviewWorkflows(reviewResult.workflows)
+                    break
+                }
+            }
         } catch (err) {
-            console.error('Failed to fetch workflows:', err)
+            console.error(`Failed to fetch ${tab} workflows:`, err)
         } finally {
             setIsLoading(false)
         }
-    }, [workflows])
+    }, [myWorkflows, publicWorkflows, peerReviewWorkflows])
 
-    // Load on mount
+    // Load active tab data on mount or tab change
     useEffect(() => {
-        fetchWorkflows()
-    }, [fetchWorkflows])
+        fetchTabData(activeTab)
+    }, [activeTab, fetchTabData])
 
-    // When streaming events signal library changes, invalidate cache
+    // When streaming events signal library changes (subworkflow created/finished),
+    // invalidate all cached tabs so they re-fetch fresh data
     useEffect(() => {
         if (libraryRefreshTrigger === 0) return // skip initial render
-        setWorkflows(null)
+        setMyWorkflows(null)
+        setPublicWorkflows(null)
+        setPeerReviewWorkflows(null)
+        // fetchTabData re-runs automatically: nulling data recreates fetchTabData
+        // (via useCallback deps), which re-triggers the [activeTab, fetchTabData] effect
     }, [libraryRefreshTrigger])
 
-    // Force refresh
-    const refreshWorkflows = useCallback(async () => {
+    // Force refresh the active tab
+    const refreshActiveTab = useCallback(async () => {
         setIsLoading(true)
         try {
-            setWorkflows(await listWorkflows())
+            switch (activeTab) {
+                case 'mine':
+                    setMyWorkflows(await listWorkflows())
+                    break
+                case 'published': {
+                    const published = await listPublicWorkflows('reviewed')
+                    setPublicWorkflows(published.workflows)
+                    break
+                }
+                case 'peer_review': {
+                    const review = await listPublicWorkflows('unreviewed')
+                    setPeerReviewWorkflows(review.workflows)
+                    break
+                }
+            }
         } catch { /* ignore */ }
         finally { setIsLoading(false) }
-    }, [])
+    }, [activeTab])
 
     // Filter by search
     const filterBySearch = (wf: WorkflowSummary) => {
@@ -94,13 +137,39 @@ export default function LibraryPage() {
         try {
             await deleteWorkflow(id)
             setDeleteConfirm(null)
-            await refreshWorkflows()
+            // Refresh current tab
+            await refreshActiveTab()
         } catch (err) {
             console.error('Failed to delete:', err)
         }
-    }, [refreshWorkflows])
+    }, [refreshActiveTab])
 
-    const displayWorkflows = (workflows ?? []).filter(filterBySearch)
+    // Handle vote
+    const handleVote = useCallback(async (id: string, vote: number) => {
+        try {
+            await voteOnWorkflow(id, vote)
+            // Refresh current tab
+            await refreshActiveTab()
+        } catch (err) {
+            console.error('Failed to vote:', err)
+        }
+    }, [refreshActiveTab])
+
+    const getDisplayWorkflows = () => {
+        let list: WorkflowSummary[] | null = null
+        switch (activeTab) {
+            case 'mine': list = myWorkflows; break
+            case 'published': list = publicWorkflows; break
+            case 'peer_review': list = peerReviewWorkflows; break
+        }
+        if (!list) return []
+        return list.filter(filterBySearch)
+    }
+
+    const workflows = getDisplayWorkflows()
+    const isTabLoaded = (activeTab === 'mine' && myWorkflows !== null) ||
+                       (activeTab === 'published' && publicWorkflows !== null) ||
+                       (activeTab === 'peer_review' && peerReviewWorkflows !== null)
     const workflowReturnPath = currentWorkflowId ? `/workflow/${currentWorkflowId}` : '/workflow'
 
     return (
@@ -118,11 +187,29 @@ export default function LibraryPage() {
                         <span className="logo-text">LEMON</span>
                     </div>
                 </div>
-                <h1 className="library-title">My Workflows</h1>
+                <h1 className="library-title">Library</h1>
                 <div className="library-header-right" />
             </header>
 
             <div className="library-body">
+                {/* Tabs */}
+                <div className="library-tabs">
+                    {(['mine', 'published', 'peer_review'] as BrowserTab[]).map(tab => (
+                        <button
+                            key={tab}
+                            className={`library-tab ${activeTab === tab ? 'active' : ''}`}
+                            onClick={() => setActiveTab(tab)}
+                        >
+                            {tab === 'mine' ? 'My Workflows' : tab === 'published' ? 'Published' : 'Peer Review'}
+                            <span className="library-tab-count">
+                                {tab === 'mine' ? (myWorkflows?.length ?? '...') :
+                                 tab === 'published' ? (publicWorkflows?.length ?? '...') :
+                                 (peerReviewWorkflows?.length ?? '...')}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
                 {/* Search */}
                 <div className="library-search">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -138,15 +225,15 @@ export default function LibraryPage() {
                 </div>
 
                 {/* Grid */}
-                {workflows === null && isLoading ? (
+                {!isTabLoaded && isLoading ? (
                     <div className="library-loading">
                         <div className="spinner-small" />
-                        <span>Loading your workflows...</span>
+                        <span>Loading {activeTab === 'mine' ? 'your' : activeTab} workflows...</span>
                     </div>
-                ) : displayWorkflows.length === 0 ? (
+                ) : workflows.length === 0 ? (
                     <div className="library-empty">
                         <p>{searchQuery ? 'No workflows match your search.' : 'No workflows found.'}</p>
-                        {!searchQuery && (
+                        {activeTab === 'mine' && !searchQuery && (
                             <button className="primary" onClick={() => navigate('/workflow')}>
                                 Create your first workflow
                             </button>
@@ -154,7 +241,7 @@ export default function LibraryPage() {
                     </div>
                 ) : (
                     <div className="library-grid">
-                        {displayWorkflows.map(wf => (
+                        {workflows.map(wf => (
                             <div key={wf.id} className="library-card" onClick={(e) => handleSelect(wf, e)}>
                                 <div className="library-card-header">
                                     <h3 className="library-card-name">
@@ -163,21 +250,23 @@ export default function LibraryPage() {
                                             <span className="library-card-building">Building...</span>
                                         )}
                                     </h3>
-                                    <button
-                                        className="library-card-delete"
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            if (deleteConfirm === wf.id) {
-                                                handleDelete(wf.id)
-                                            } else {
-                                                setDeleteConfirm(wf.id)
-                                                setTimeout(() => setDeleteConfirm(null), 3000)
-                                            }
-                                        }}
-                                        title={deleteConfirm === wf.id ? 'Click again to confirm' : 'Delete workflow'}
-                                    >
-                                        {deleteConfirm === wf.id ? '✓ Confirm' : '✕'}
-                                    </button>
+                                    {activeTab === 'mine' && (
+                                        <button
+                                            className="library-card-delete"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                if (deleteConfirm === wf.id) {
+                                                    handleDelete(wf.id)
+                                                } else {
+                                                    setDeleteConfirm(wf.id)
+                                                    setTimeout(() => setDeleteConfirm(null), 3000)
+                                                }
+                                            }}
+                                            title={deleteConfirm === wf.id ? 'Click again to confirm' : 'Delete workflow'}
+                                        >
+                                            {deleteConfirm === wf.id ? '✓ Confirm' : '✕'}
+                                        </button>
+                                    )}
                                 </div>
                                 {wf.description && (
                                     <p className="library-card-desc">{wf.description}</p>
@@ -193,6 +282,22 @@ export default function LibraryPage() {
                                         <span className="library-card-validated">✓ Validated</span>
                                     )}
                                 </div>
+                                {activeTab === 'peer_review' && (
+                                    <div className="library-card-votes">
+                                        <button
+                                            className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`}
+                                            onClick={(e) => { e.stopPropagation(); handleVote(wf.id, wf.user_vote === 1 ? 0 : 1) }}
+                                        >
+                                            ▲ {(wf.net_votes || 0) > 0 ? `+${wf.net_votes}` : wf.net_votes || 0}
+                                        </button>
+                                        <button
+                                            className={`vote-btn down ${wf.user_vote === -1 ? 'voted' : ''}`}
+                                            onClick={(e) => { e.stopPropagation(); handleVote(wf.id, wf.user_vote === -1 ? 0 : -1) }}
+                                        >
+                                            ▼
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

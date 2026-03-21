@@ -120,6 +120,9 @@ def register_workflow_routes(
         validation_count = payload.get("validation_count") or 0
         is_validated = payload.get("is_validated") or False
 
+        # Peer review: check if user wants to publish to community
+        is_published = payload.get("is_published") or False
+
         # Validate workflow structure before saving
         workflow_to_validate = {
             "nodes": nodes,
@@ -161,6 +164,7 @@ def register_workflow_routes(
                 validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
+                is_published=is_published,
             )
         except sqlite3.IntegrityError:
             # Workflow ID already exists, try updating instead
@@ -181,6 +185,7 @@ def register_workflow_routes(
                 validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
+                is_published=is_published,
             )
             if not success:
                 return JSONResponse({"error": "Failed to save workflow"}, status_code=500)
@@ -376,6 +381,9 @@ def register_workflow_routes(
         )
         is_validated = payload.get("is_validated", existing.is_validated)
 
+        # Peer review: check if user wants to publish to community
+        is_published = payload.get("is_published", existing.is_published)
+
         # Validate workflow structure before saving
         workflow_to_validate = {
             "nodes": nodes,
@@ -418,6 +426,7 @@ def register_workflow_routes(
             is_validated=is_validated,
             output_type=output_type,
             is_draft=False,  # Explicitly saving marks it as non-draft
+            is_published=is_published,
         )
 
         if not success:

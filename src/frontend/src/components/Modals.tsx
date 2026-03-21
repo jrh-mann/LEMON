@@ -354,6 +354,7 @@ function SaveWorkflowFormContent({
   const [domain, setDomain] = useState(currentWorkflow?.metadata?.domain ?? '')
   const [tags, setTags] = useState((currentWorkflow?.metadata?.tags ?? []).join(', '))
   const [outputType, setOutputType] = useState(currentWorkflow?.output_type || 'string')
+  const [isPublished, setIsPublished] = useState(false)  // Publish to community library
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -413,6 +414,7 @@ function SaveWorkflowFormContent({
         validation_score: 0,
         validation_count: 0,
         is_validated: false,
+        is_published: isPublished,  // Peer review: publish to community library
       }
 
       // Always use createWorkflow - backend handles duplicates by falling back to update
@@ -442,7 +444,7 @@ function SaveWorkflowFormContent({
       setSaveError(err instanceof Error ? err.message : 'Failed to save workflow')
       setIsSaving(false)
     }
-  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, markSavedSnapshot, pendingPostSaveAction, reset, resetChat, setPendingPostSaveAction])
+  }, [name, description, domain, tags, outputType, flowchart, currentAnalysis, closeModal, existingWorkflowId, isPublished, markSavedSnapshot, pendingPostSaveAction, reset, resetChat, setPendingPostSaveAction])
 
   if (flowchart.nodes.length === 0) {
     return (
@@ -534,6 +536,24 @@ function SaveWorkflowFormContent({
           <option value="json">JSON</option>
         </select>
         <small className="muted">Type of value this workflow returns when executed</small>
+      </div>
+
+      {/* Publish to community library checkbox */}
+      <div className="form-group checkbox-group publish-option">
+        <label>
+          <input
+            id="workflow-publish"
+            type="checkbox"
+            checked={isPublished}
+            onChange={(e) => setIsPublished(e.target.checked)}
+            disabled={isSaving}
+          />
+          <span className="checkbox-label">Publish to Community Library</span>
+        </label>
+        <small className="muted">
+          Published workflows appear in the peer review section.
+          They will be reviewed by other users before becoming publicly available.
+        </small>
       </div>
 
       {saveError && <p className="error-text">{saveError}</p>}

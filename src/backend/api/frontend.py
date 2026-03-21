@@ -28,6 +28,15 @@ def register_frontend_routes(app: FastAPI, frontend_dist: Path) -> None:
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
+    # Mount the project report website at /report
+    report_dir = frontend_dist.parent.parent.parent / "website"
+    if report_dir.exists():
+        app.mount(
+            "/report",
+            StaticFiles(directory=report_dir, html=True),
+            name="report",
+        )
+
     # SPA catch-all — serves index.html for all non-API, non-WS paths
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str) -> FileResponse:
