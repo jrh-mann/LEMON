@@ -255,7 +255,48 @@
     </table>
 
     <h3>Known Bugs</h3>
-    <div class="placeholder">Known bugs will be listed here.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50px;">ID</th>
+          <th style="width:180px;">Bug</th>
+          <th style="width:70px;">Severity</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>BUG-002</td>
+          <td>Workflow sync state mismatch</td>
+          <td style="color:#d97706;font-weight:600;">Medium</td>
+          <td>There is a synchronisation issue between the frontend and the orchestrator's view of a workflow. The frontend may show nodes that the orchestrator does not see, causing the orchestrator to treat the workflow as empty even when the user has added nodes. This can lead to the LLM rebuilding a workflow from scratch rather than editing the existing one.</td>
+        </tr>
+        <tr>
+          <td>BUG-003</td>
+          <td>Subprocess compilation produces placeholder code</td>
+          <td style="color:#d97706;font-weight:600;">Medium</td>
+          <td>When exporting a workflow to Python, subprocess nodes that reference unavailable subworkflows are compiled as <code>TODO</code> comments with <code>None</code> placeholders instead of actual function calls. The exported code will run but skip subprocess logic entirely, producing incorrect results without raising an error.</td>
+        </tr>
+        <tr>
+          <td>BUG-004</td>
+          <td>Inputs/variables terminology inconsistency</td>
+          <td style="color:#d97706;font-weight:600;">Medium</td>
+          <td>The database layer stores workflow parameters under the field name "inputs", while the frontend, API types, and tool layer use "variables". The interpreter includes a comment acknowledging the mismatch. This does not cause runtime failures but makes the codebase harder to maintain and can confuse contributors.</td>
+        </tr>
+        <tr>
+          <td>BUG-005</td>
+          <td>Generic error messages on workflow load failure</td>
+          <td style="color:#2563eb;font-weight:600;">Low</td>
+          <td>When a workflow fails to load due to validation or tree-preparation errors, the API returns a generic error message rather than actionable guidance. Users cannot tell whether the problem is a malformed file, a missing field, or something else.</td>
+        </tr>
+        <tr>
+          <td>BUG-006</td>
+          <td>Debug console.log statements in production frontend</td>
+          <td style="color:#2563eb;font-weight:600;">Low</td>
+          <td>Over 20 <code>console.log</code> calls with the <code>[SSE]</code> prefix remain in <code>streamActions.ts</code>. These were used during development to trace server-sent event handling and should be removed or replaced with a proper logging utility before release.</td>
+        </tr>
+      </tbody>
+    </table>
 
     <h3>Individual Contribution Table (System Development)</h3>
     <table>

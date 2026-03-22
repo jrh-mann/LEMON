@@ -34,7 +34,223 @@
     <div class="placeholder">Hand-drawn sketches will be added here. These should show early design explorations for the canvas layout, chat interface, and overall page structure.</div>
 
     <h2>Wireframes and Prototypes</h2>
-    <div class="placeholder">High-fidelity wireframes or Figma prototype link will be added here.</div>
+    <p>The frontend went through seven distinct iterations as we refined the interaction model. Early versions treated the tool as a pipeline dashboard; later iterations shifted toward a canvas-based workflow builder with an LLM chat assistant.</p>
+
+    <h3>Early Wireframes</h3>
+    <p>Before building the first prototypes, we sketched out two candidate layouts to explore how users would interact with the pipeline. The first treated the system as a vertical, linear pipeline; the second broke stages into independent cards.</p>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 620" width="520" height="620" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <!-- Background -->
+        <rect width="520" height="620" rx="6" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+
+        <!-- Title bar -->
+        <rect x="20" y="16" width="480" height="44" rx="6" fill="#6366f1"/>
+        <text x="260" y="43" text-anchor="middle" fill="#fff" font-size="16" font-weight="600">LEMON</text>
+
+        <!-- Pipeline Controls -->
+        <rect x="20" y="72" width="480" height="60" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="36" y="93" fill="#374151" font-size="11" font-weight="600">Pipeline Controls</text>
+        <rect x="36" y="102" width="72" height="20" rx="3" fill="#6366f1"/>
+        <text x="72" y="116" text-anchor="middle" fill="#fff" font-size="9">START</text>
+        <rect x="116" y="102" width="52" height="20" rx="3" fill="#e5e7eb"/>
+        <text x="142" y="116" text-anchor="middle" fill="#6b7280" font-size="9">STOP</text>
+        <rect x="400" y="102" width="84" height="20" rx="3" fill="#f3f4f6" stroke="#d1d5db" stroke-width="0.5"/>
+        <text x="442" y="116" text-anchor="middle" fill="#6b7280" font-size="9">Max iters: 5</text>
+
+        <!-- Pipeline Progress -->
+        <rect x="20" y="144" width="480" height="152" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="36" y="166" fill="#374151" font-size="11" font-weight="600">Pipeline Progress</text>
+        <!-- Steps -->
+        <line x1="48" y1="180" x2="48" y2="280" stroke="#d1d5db" stroke-width="1.5"/>
+        <circle cx="48" cy="186" r="4" fill="#6366f1"/><text x="62" y="190" fill="#374151" font-size="10">Setup</text>
+        <circle cx="48" cy="210" r="4" fill="#d1d5db"/><text x="62" y="214" fill="#374151" font-size="10">Workflow Analysis</text>
+        <circle cx="48" cy="234" r="4" fill="#d1d5db"/><text x="62" y="238" fill="#374151" font-size="10">Test Case Generation</text>
+        <circle cx="48" cy="258" r="4" fill="#d1d5db"/><text x="62" y="262" fill="#374151" font-size="10">Code Refinement</text>
+        <circle cx="48" cy="282" r="4" fill="#d1d5db"/><text x="62" y="286" fill="#374151" font-size="10">Final Validation</text>
+
+        <!-- Live Log -->
+        <rect x="20" y="308" width="480" height="56" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="36" y="330" fill="#374151" font-size="11" font-weight="600">Live Progress Log</text>
+        <rect x="36" y="338" width="448" height="16" rx="2" fill="#f3f4f6"/>
+        <text x="44" y="349" fill="#9ca3af" font-size="9" font-family="monospace">Ready to start pipeline...</text>
+
+        <!-- Metrics row -->
+        <rect x="20" y="376" width="480" height="72" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="36" y="398" fill="#374151" font-size="11" font-weight="600">Metrics Dashboard</text>
+        <rect x="36" y="408" width="84" height="30" rx="3" fill="#f9fafb" stroke="#e5e7eb" stroke-width="0.5"/>
+        <text x="78" y="420" text-anchor="middle" fill="#9ca3af" font-size="8">ITERATION</text>
+        <text x="78" y="432" text-anchor="middle" fill="#6b7280" font-size="10">&mdash;</text>
+        <rect x="130" y="408" width="84" height="30" rx="3" fill="#f9fafb" stroke="#e5e7eb" stroke-width="0.5"/>
+        <text x="172" y="420" text-anchor="middle" fill="#9ca3af" font-size="8">PASS RATE</text>
+        <text x="172" y="432" text-anchor="middle" fill="#6b7280" font-size="10">&mdash;</text>
+        <rect x="224" y="408" width="84" height="30" rx="3" fill="#f9fafb" stroke="#e5e7eb" stroke-width="0.5"/>
+        <text x="266" y="420" text-anchor="middle" fill="#9ca3af" font-size="8">PASSED</text>
+        <text x="266" y="432" text-anchor="middle" fill="#6b7280" font-size="10">&mdash;</text>
+        <rect x="318" y="408" width="84" height="30" rx="3" fill="#f9fafb" stroke="#e5e7eb" stroke-width="0.5"/>
+        <text x="360" y="420" text-anchor="middle" fill="#9ca3af" font-size="8">TOTAL</text>
+        <text x="360" y="432" text-anchor="middle" fill="#6b7280" font-size="10">&mdash;</text>
+        <rect x="412" y="408" width="84" height="30" rx="3" fill="#f9fafb" stroke="#e5e7eb" stroke-width="0.5"/>
+        <text x="454" y="420" text-anchor="middle" fill="#9ca3af" font-size="8">TOKENS</text>
+        <text x="454" y="432" text-anchor="middle" fill="#6b7280" font-size="10">&mdash;</text>
+
+        <!-- Generated Code -->
+        <rect x="20" y="460" width="480" height="60" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="36" y="482" fill="#374151" font-size="11" font-weight="600">Generated Code</text>
+        <rect x="36" y="492" width="448" height="18" rx="2" fill="#1e293b"/>
+        <text x="44" y="504" fill="#94a3b8" font-size="9" font-family="monospace"># Generated code will appear here...</text>
+
+        <!-- Test Results -->
+        <rect x="20" y="532" width="480" height="48" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="36" y="554" fill="#374151" font-size="11" font-weight="600">Test Results</text>
+        <text x="260" y="570" text-anchor="middle" fill="#9ca3af" font-size="9">Test results will appear here...</text>
+
+        <!-- Label -->
+        <text x="260" y="608" text-anchor="middle" fill="#9ca3af" font-size="11" font-style="italic">Wireframe A: Linear pipeline layout</text>
+      </svg>
+    </div>
+    <span class="caption">Wireframe for the linear pipeline runner. All stages execute top-to-bottom in a fixed order, with metrics, code output, and test results stacked beneath.</span>
+
+    <br><br>
+
+    <div class="diagram">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 440" width="580" height="440" style="max-width:100%;height:auto;" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+        <!-- Background -->
+        <rect width="580" height="440" rx="6" fill="#f8f9fa" stroke="#d1d5db" stroke-width="1.5"/>
+
+        <!-- Header bar -->
+        <rect x="16" y="12" width="548" height="36" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <circle cx="36" cy="30" r="10" fill="#fbbf24"/>
+        <text x="52" y="34" fill="#374151" font-size="12" font-weight="600">LEMON</text>
+        <text x="116" y="33" fill="#9ca3af" font-size="9">Workflow to Code Pipeline</text>
+        <text x="470" y="33" fill="#9ca3af" font-size="9">Token Usage: 0</text>
+
+        <!-- Section label -->
+        <text x="32" y="72" fill="#374151" font-size="12" font-weight="600">Pipeline Flow</text>
+        <!-- Run button -->
+        <rect x="438" y="58" width="120" height="24" rx="4" fill="#22c55e"/>
+        <text x="498" y="74" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">Run Full Pipeline</text>
+
+        <!-- Row 1: 3 cards -->
+        <rect x="16" y="90" width="172" height="100" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="32" y="112" fill="#374151" font-size="10" font-weight="600">Analyze Workflow</text>
+        <text x="32" y="126" fill="#9ca3af" font-size="8">Extract structure from</text>
+        <text x="32" y="136" fill="#9ca3af" font-size="8">flowchart</text>
+        <rect x="140" y="94" width="38" height="14" rx="3" fill="#f3f4f6"/>
+        <text x="159" y="104" text-anchor="middle" fill="#9ca3af" font-size="7">pending</text>
+        <rect x="32" y="156" width="80" height="22" rx="4" fill="#6366f1"/>
+        <text x="72" y="170" text-anchor="middle" fill="#fff" font-size="9">Run</text>
+
+        <rect x="204" y="90" width="172" height="100" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="220" y="112" fill="#374151" font-size="10" font-weight="600">Generate Tests</text>
+        <text x="220" y="126" fill="#9ca3af" font-size="8">Create comprehensive</text>
+        <text x="220" y="136" fill="#9ca3af" font-size="8">test cases</text>
+        <rect x="328" y="94" width="38" height="14" rx="3" fill="#f3f4f6"/>
+        <text x="347" y="104" text-anchor="middle" fill="#9ca3af" font-size="7">pending</text>
+        <rect x="220" y="156" width="80" height="22" rx="4" fill="#6366f1"/>
+        <text x="260" y="170" text-anchor="middle" fill="#fff" font-size="9">Run</text>
+
+        <rect x="392" y="90" width="172" height="100" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="408" y="112" fill="#374151" font-size="10" font-weight="600">Label Tests</text>
+        <text x="408" y="126" fill="#9ca3af" font-size="8">Label with majority</text>
+        <text x="408" y="136" fill="#9ca3af" font-size="8">voting</text>
+        <rect x="516" y="94" width="38" height="14" rx="3" fill="#f3f4f6"/>
+        <text x="535" y="104" text-anchor="middle" fill="#9ca3af" font-size="7">pending</text>
+        <rect x="408" y="156" width="80" height="22" rx="4" fill="#6366f1"/>
+        <text x="448" y="170" text-anchor="middle" fill="#fff" font-size="9">Run</text>
+
+        <!-- Arrow row -->
+        <text x="110" y="210" text-anchor="middle" fill="#d1d5db" font-size="16">&#x2192;</text>
+        <text x="198" y="210" text-anchor="middle" fill="#d1d5db" font-size="16">&#x2192;</text>
+        <text x="290" y="210" text-anchor="middle" fill="#d1d5db" font-size="16">&#x2192;</text>
+        <text x="382" y="210" text-anchor="middle" fill="#d1d5db" font-size="16">&#x2192;</text>
+        <text x="474" y="210" text-anchor="middle" fill="#d1d5db" font-size="16">&#x2192;</text>
+
+        <!-- Row 2: 3 cards -->
+        <rect x="16" y="224" width="172" height="100" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="32" y="246" fill="#374151" font-size="10" font-weight="600">Generate Code</text>
+        <text x="32" y="260" fill="#9ca3af" font-size="8">Create Python</text>
+        <text x="32" y="270" fill="#9ca3af" font-size="8">implementation</text>
+        <rect x="140" y="228" width="38" height="14" rx="3" fill="#f3f4f6"/>
+        <text x="159" y="238" text-anchor="middle" fill="#9ca3af" font-size="7">pending</text>
+        <rect x="32" y="290" width="80" height="22" rx="4" fill="#6366f1"/>
+        <text x="72" y="304" text-anchor="middle" fill="#fff" font-size="9">Run</text>
+
+        <rect x="204" y="224" width="172" height="100" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="220" y="246" fill="#374151" font-size="10" font-weight="600">Test Code</text>
+        <text x="220" y="260" fill="#9ca3af" font-size="8">Run in E2B sandbox</text>
+        <rect x="328" y="228" width="38" height="14" rx="3" fill="#f3f4f6"/>
+        <text x="347" y="238" text-anchor="middle" fill="#9ca3af" font-size="7">pending</text>
+        <rect x="220" y="290" width="80" height="22" rx="4" fill="#6366f1"/>
+        <text x="260" y="304" text-anchor="middle" fill="#fff" font-size="9">Run</text>
+
+        <rect x="392" y="224" width="172" height="100" rx="6" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="408" y="246" fill="#374151" font-size="10" font-weight="600">Refine</text>
+        <text x="408" y="260" fill="#9ca3af" font-size="8">Iteratively improve</text>
+        <rect x="516" y="228" width="38" height="14" rx="3" fill="#f3f4f6"/>
+        <text x="535" y="238" text-anchor="middle" fill="#9ca3af" font-size="7">pending</text>
+        <rect x="408" y="290" width="80" height="22" rx="4" fill="#6366f1"/>
+        <text x="448" y="304" text-anchor="middle" fill="#fff" font-size="9">Run</text>
+
+        <!-- Live Logs -->
+        <rect x="16" y="346" width="548" height="72" rx="4" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+        <text x="32" y="368" fill="#374151" font-size="11" font-weight="600">Live Logs</text>
+        <text x="536" y="368" text-anchor="end" fill="#9ca3af" font-size="9">Clear</text>
+        <rect x="28" y="378" width="524" height="28" rx="3" fill="#f9fafb"/>
+        <text x="40" y="394" fill="#9ca3af" font-size="9" font-family="monospace">Dashboard initialized</text>
+
+        <!-- Label -->
+        <text x="290" y="434" text-anchor="middle" fill="#9ca3af" font-size="11" font-style="italic">Wireframe B: Card-based pipeline layout</text>
+      </svg>
+    </div>
+    <span class="caption">Wireframe for the card-based dashboard. Each pipeline stage is an independent card that can be run individually, with arrows showing the recommended execution order.</span>
+
+    <h3>Prototype Screenshots</h3>
+    <p>Below are representative screenshots from each major iteration.</p>
+
+    <div class="prototype-gallery">
+      <h3>Iteration 1 &mdash; Dark Pipeline Runner</h3>
+      <p>The first prototype used a dark theme and presented the system as a linear pipeline. Users could start/stop execution and watch progress through discrete stages (setup, workflow analysis, test case generation, code refinement, final validation). A metrics dashboard and code output panel sat below.</p>
+      <figure>
+        <img src="images/1-dark-pipeline-runner-fullpage.png" alt="Iteration 1: Dark Pipeline Runner showing pipeline controls, progress steps, live log, metrics dashboard, generated code panel, and test results" class="screenshot">
+        <figcaption><strong>Iteration 1.</strong> Full-page view of the dark pipeline runner, showing the linear stage-by-stage execution model.</figcaption>
+      </figure>
+
+      <h3>Iteration 2 &mdash; Glassmorphism Dashboard</h3>
+      <p>The second iteration broke the pipeline into individually runnable cards arranged in a two-row grid. Each stage (Analyze Workflow, Generate Tests, Label Tests, Generate Code, Test Code, Refine) could be triggered independently, giving users more control over execution order.</p>
+      <figure>
+        <img src="images/2-glassmorphism-dashboard-viewport.png" alt="Iteration 2: Glassmorphism Dashboard with six pipeline stage cards and live logs" class="screenshot">
+        <figcaption><strong>Iteration 2.</strong> Card-based pipeline flow with individually runnable stages and a live log panel.</figcaption>
+      </figure>
+
+      <h3>Iteration 3 &mdash; Cream Editorial</h3>
+      <p>A major visual departure: the third iteration adopted a light, editorial aesthetic. The focus shifted to a simple upload-driven workflow where users drop in a flowchart image and the system handles the rest. Pipeline stages appeared as subtle tiles rather than prominent cards.</p>
+      <figure>
+        <img src="images/3-cream-editorial-with-upload.png" alt="Iteration 3: Cream Editorial design with workflow image upload area and pipeline stage tiles" class="screenshot">
+        <figcaption><strong>Iteration 3.</strong> The cream editorial layout with its image upload interface and muted pipeline stage tiles.</figcaption>
+      </figure>
+
+      <h3>Iteration 4 &mdash; Flowchart Studio</h3>
+      <p>This iteration introduced the canvas concept for the first time: users could drag nodes (Process, Decision, Sub-process, End) onto a canvas to build workflows visually. A toolbox panel on the left provided node types and canvas controls alongside colour customisation.</p>
+      <figure>
+        <img src="images/4-flowchart-studio-with-nodes.png" alt="Iteration 4: Flowchart Studio with draggable node toolbox, canvas area, and workflow controls" class="screenshot">
+        <figcaption><strong>Iteration 4.</strong> The flowchart studio canvas with its node toolbox, showing the first drag-and-drop workflow builder.</figcaption>
+      </figure>
+
+      <h3>Iteration 5 &mdash; Clinical Workflow Studio</h3>
+      <p>The fifth iteration refined the canvas builder with a cleaner layout, a workflow library panel, and an LLM chat assistant at the bottom. This was the first version to combine visual workflow building with conversational AI interaction, and to include domain-specific features like a nephrology workflow library.</p>
+      <figure>
+        <img src="images/5-clinical-workflow-studio-with-upload.png" alt="Iteration 5: Clinical Workflow Studio with canvas, block palette, workflow library, and chat assistant showing a loaded workflow" class="screenshot">
+        <figcaption><strong>Iteration 5.</strong> The clinical workflow studio with a loaded workflow on the canvas and the chat assistant panel below.</figcaption>
+      </figure>
+
+      <h3>Iteration 7 &mdash; Final Form</h3>
+      <p>The final iteration carried forward the canvas-plus-chat layout from iterations 5 and 6, with a polished UI: a clean block palette on the left, tabbed Library/Inputs panel on the right, and the Orchestrator chat panel at the bottom. This is the version that shipped.</p>
+      <figure>
+        <img src="images/7-final-form-viewport.png" alt="Iteration 7: Final production UI with block palette, canvas, library panel, and Orchestrator chat" class="screenshot">
+        <figcaption><strong>Iteration 7.</strong> The final production interface with its block palette, canvas, library panel, and Orchestrator chat.</figcaption>
+      </figure>
+    </div>
   </div>
   <script src="nav.js"></script>
 </body>
