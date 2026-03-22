@@ -57,9 +57,35 @@
 
     <!-- Requirement Gathering -->
     <h2>Requirement Gathering</h2>
-    <p>We gathered requirements through regular meetings with CloudSurge and Avanade throughout the project. These sessions helped us narrow the scope, sort out priorities, and check our technical direction. The outcome was a formal requirements specification document, reviewed and signed off by all stakeholders.</p>
+    <p>We gathered requirements through regular meetings with CloudSurge throughout the project. These sessions helped us narrow the scope, sort out priorities, and check our technical direction. The outcome was a formal requirements specification document, reviewed and signed off by all stakeholders.</p>
     <p>No formal user survey was conducted. Requirements were collected through direct stakeholder meetings and iterative discussion with the project partners.</p>
-    <div class="placeholder">Detailed meeting notes and requirement evolution will be added here.</div>
+    <h3>Meeting 1: Initial Kickoff (17 October 2025)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge)</p>
+    <p>Mostly exploratory. Ilyas talked about the problem clinicians have formalising their decision-making processes and we discussed a few possible directions: a general-purpose decision engine, a documentation tool, or something more interactive. He was clear that the target users would be clinicians with no programming background, which ruled out anything that required code. We left without firm requirements but with a sense that the project should be about workflow authoring, not large-scale execution.</p>
+
+    <h3>Meeting 2: Scope Discussion (31 October 2025)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge)</p>
+    <p>We pitched the idea of using an LLM to help build workflows through a chat interface, and Ilyas was keen on it. We agreed early on that the system would not touch real patient data: authoring and validation only, no connection to EHRs or live datasets. Ilyas brought up image uploads, suggesting clinicians could photograph paper flowcharts and have them converted. We noted it as a stretch goal since we were not sure it was technically feasible yet. JSON and some form of executable export came up as desirable outputs. We agreed to draft an initial requirements list for next time.</p>
+
+    <h3>Meeting 3: First Requirements Review (14 November 2025)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge)</p>
+    <p>We presented a short first draft of functional requirements covering basic workflow creation, a visual editor, and export. Ilyas pushed for stronger validation, arguing that in a clinical setting people need to trust that a workflow is structurally sound before relying on it. We had originally proposed just start, process, decision, and end nodes, but he thought calculation nodes and some kind of subprocess support would be needed for realistic scenarios. Natural-language authoring via chat was discussed as important but secondary to the visual editor. We also talked about performance given the reliance on external LLM APIs. We agreed to come back with a proper MoSCoW-prioritised list.</p>
+
+    <h3>Meeting 4: Technical Direction (28 November 2025)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge), Haider (Trigger Point Labs)</p>
+    <p>Haider's first meeting. He walked us through real triage scenarios and pointed out that clinical workflows frequently check multiple conditions at once, so we added compound conditions (AND/OR) as a requirement. He also stressed typed variables: if a workflow compares a patient's age against a threshold, the system needs to know age is a number. We discussed how the orchestrator should order its operations (e.g. registering variables before building nodes that use them). On the technical side, we mentioned we were prototyping with OpenAI but finding its tool-call generation inconsistent. No switch yet, but we flagged it.</p>
+
+    <h3>Meeting 5: Mid-Project Check-in (16 January 2026)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge), Haider (Trigger Point Labs)</p>
+    <p>We demoed the working prototype: basic authoring, canvas editor, some validation. The orchestrator had around a dozen tools at this point and we showed how the tool-use loop worked in practice. We were streaming tool calls to the frontend in real time using Socket.IO so the canvas updated as the LLM worked. Ilyas asked about the image upload feature from earlier and we showed early results of passing images to the LLM for analysis. Haider suggested a community gallery with peer review, which we noted as a "Should" priority. We also discussed the problems we were having with OpenAI's tool-call generation and said we were evaluating Claude as an alternative. Ilyas asked about stepping through a workflow to trace its execution path, so we agreed to look into stepped execution. We mentioned we had started writing automated tests alongside development and planned to keep building the test suite as we went.</p>
+
+    <h3>Meeting 6: Subworkflows and Export (6 February 2026)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge), Haider (Trigger Point Labs)</p>
+    <p>Driven by a complex clinical scenario Haider described that needed multiple smaller workflows composed together. We had already started on subprocess nodes but the discussion clarified that proper input/output mapping between parent and child workflows was essential. Haider asked whether exported Python code would be usable by an engineer integrating it into an existing system; we confirmed it would preserve the decision logic and control flow. A scenario involving potential infinite loops led us to add a max step limit and cycle detection as non-functional requirements. We also raised the idea of building an evaluation framework to measure how well the LLM extracts workflows from descriptions, since we had no good way of knowing whether prompt changes helped or hurt. Both thought it was worth doing.</p>
+
+    <h3>Meeting 7: Pre-Submission Review (6 March 2026)</h3>
+    <p><strong>Attendees:</strong> Team 27, Ilyas (CloudSurge), Haider (Trigger Point Labs)</p>
+    <p>Final requirements meeting. We walked through the complete system and demoed all major features, including early evaluation framework results. We had recently migrated from Flask and Socket.IO to FastAPI with native WebSocket support, and were planning to move to SSE next. On security, rate limiting and auth were in place and we had just completed a security audit, with further hardening (XSS prevention, ownership enforcement) planned for the following weeks. Both were satisfied with the core authoring and validation. We reviewed the full MoSCoW table together: the community gallery features (publish, browse, vote) were confirmed as "Should" rather than "Must". We discussed the risk of clinicians treating an authored workflow as an approved clinical protocol and agreed to document it in the risk register. The requirements spec was signed off.</p>
 
     <!-- Personas -->
     <h2>Personas</h2>
