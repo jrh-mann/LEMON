@@ -26,16 +26,19 @@ def hydrate_uploaded_files(
         rel_path = file_info.get("rel_path")
         if not isinstance(rel_path, str) or not rel_path:
             continue
-        abs_path = data_dir / rel_path
-        uploaded_files.append(
-            {
-                "name": file_info.get("name", ""),
-                "path": str(abs_path),
-                "file_type": file_info.get("file_type", "image"),
-                "purpose": file_info.get("purpose", "unclassified"),
-                "data_url": file_to_data_url(abs_path),
-            }
-        )
+        try:
+            abs_path = data_dir / rel_path
+            uploaded_files.append(
+                {
+                    "name": file_info.get("name", ""),
+                    "path": str(abs_path),
+                    "file_type": file_info.get("file_type", "image"),
+                    "purpose": file_info.get("purpose", "unclassified"),
+                    "data_url": file_to_data_url(abs_path),
+                }
+            )
+        except Exception:
+            continue
     return uploaded_files
 
 

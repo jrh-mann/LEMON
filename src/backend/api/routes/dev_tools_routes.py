@@ -175,6 +175,7 @@ def register_dev_tools_routes(
             if isinstance(context.get("open_tabs"), list)
             else []
         )
+        has_live_workflow = bool(workflow_data) or bool(workflow_analysis)
 
         if current_workflow_id and workflow_data:
             try:
@@ -213,7 +214,7 @@ def register_dev_tools_routes(
                 uploaded_files=uploaded_files,
                 workflow_data=workflow_data,
                 workflow_analysis=workflow_analysis,
-                refresh_from_db=bool(current_workflow_id),
+                refresh_from_db=bool(current_workflow_id) and not has_live_workflow,
             )
 
             result = orchestrator.run_tool(tool_name, args)
