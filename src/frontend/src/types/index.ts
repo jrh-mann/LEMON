@@ -478,47 +478,6 @@ export type ExecutionLogEntry = DecisionLogEntry | CalculationLogEntry | StepLog
 
 // ============ Validation Models ============
 
-export interface ValidationCase {
-  case_id: string
-  inputs: Record<string, unknown>
-  workflow_output: string
-}
-
-export interface ValidationAnswer {
-  case_id: string
-  user_answer: string
-  workflow_output: string
-  matched: boolean
-  timestamp: string
-}
-
-export interface ValidationProgress {
-  total: number
-  current: number
-  remaining?: number
-}
-
-export interface ValidationScore {
-  matches: number
-  total: number
-  score: number
-  confidence?: ValidationConfidence
-  is_validated?: boolean
-}
-
-export interface ValidationSession {
-  id: string
-  workflow_id: string
-  strategy: string
-  cases: ValidationCase[]
-  answers: ValidationAnswer[]
-  current_index: number
-  status: 'in_progress' | 'completed' | 'abandoned'
-  created_at: string
-  is_complete: boolean
-  progress: ValidationProgress
-}
-
 // ============ Chat/Conversation Models ============
 
 export interface ToolCall {
@@ -600,39 +559,12 @@ export interface ExecuteWorkflowRequest {
   [inputName: string]: unknown
 }
 
-export interface StartValidationRequest {
-  workflow_id: string
-  case_count?: number
-  strategy?: 'random' | 'boundary' | 'comprehensive'
-}
-
-export interface StartValidationResponse {
-  session_id: string
-  progress: ValidationProgress
-  current_case: ValidationCase
-}
-
-export interface SubmitValidationRequest {
-  session_id: string
-  answer: string
-}
-
-export interface SubmitValidationResponse {
-  matched: boolean
-  user_answer: string
-  workflow_output: string
-  progress: ValidationProgress
-  current_score: ValidationScore
-  next_case: ValidationCase | null
-  session_complete: boolean
-}
-
 export interface ApiError {
   error: string
 }
 
 // ============ UI State Types ============
 
-export type ModalType = 'validation' | 'save' | 'execute' | 'saveChanges' | 'none'
+export type ModalType = 'save' | 'execute' | 'saveChanges' | 'none'
 
 export type SidebarTab = 'library' | 'variables' | 'properties' | 'devtools'
