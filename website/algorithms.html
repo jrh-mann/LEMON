@@ -141,7 +141,9 @@ class TokenType(Enum):
     <p>This catches cases where the workflow structure differs from the golden reference but the behavior is equivalent, as well as cases where the structure appears correct but conditions are subtly wrong.</p>
 
     <h3>Results</h3>
-    <div class="placeholder">Detailed evaluation results (tables and charts comparing model performance across dimensions) will be added here after final evaluation runs are complete.</div>
+    <p>We ran the evaluation across three Claude model tiers (Haiku 4.5, Sonnet 4.6, Opus 4.6) on 3 clinical workflows with 5 runs per model, giving 45 total evaluations. The chart below plots overall extraction accuracy against cost per run.</p>
+    <img src="images/eval.jpeg" alt="Extraction Accuracy vs Cost: Haiku 4.5 at 42% and $0.06/run, Sonnet 4.6 at 61% and $0.20/run, Opus 4.6 at 63% and $0.37/run" class="screenshot">
+    <p>Haiku is cheap but noticeably worse at getting the workflow structure right (42% average accuracy). Sonnet and Opus are much closer to each other (61% vs 63%), but Opus costs nearly twice as much per run. For most use cases Sonnet is probably the sweet spot. The scatter shows individual runs: there's quite a bit of variance, especially with Sonnet, where some runs hit 79% and others drop below 40%.</p>
 
     <!-- Discussion -->
     <h2>Discussion</h2>
