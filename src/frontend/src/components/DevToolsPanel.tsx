@@ -3,7 +3,28 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useChatStore } from '../stores/chatStore'
 import { listTools, executeTool } from '../api/tools'
-import type { ToolDefinition } from '../api/tools'
+import { getWorkflow } from '../api/workflows'
+import type { DevToolExecutionContext, DevToolOpenTab, ToolDefinition } from '../api/tools'
+import { hydrateWorkflowDetail } from '../utils/workflowHydration'
+
+function schemaTypeLabel(schema: { type?: string; oneOf?: unknown[]; anyOf?: unknown[] } | undefined): string {
+    if (!schema) return 'string'
+    if (schema.type) return schema.type
+    if (schema.oneOf) return 'oneOf'
+    if (schema.anyOf) return 'anyOf'
+    return 'string'
+}
+
+function exampleValueForSchema(schema: { type?: string } | undefined): string {
+    switch (schema?.type) {
+        case 'object':
+            return '{\n  \n}'
+        case 'array':
+            return '[\n  \n]'
+        default:
+            return ''
+    }
+}
 
 /**
  * Execution Log Button - opens the ExecutionLogModal to view detailed logs
@@ -232,39 +253,109 @@ export default function DevToolsPanel() {
  */
 function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: () => void }) {
     const [args, setArgs] = useState<Record<string, string>>({})
+    const [rawMode, setRawMode] = useState(false)
+    const [rawArgs, setRawArgs] = useState('{}')
     const [executing, setExecuting] = useState(false)
     const [result, setResult] = useState<unknown>(null)
     const [error, setError] = useState<string | null>(null)
+    const workflowStore = useWorkflowStore()
+    const chatStore = useChatStore()
+    const { setCurrentWorkflow, setFlowchartSilent, setAnalysis, markSavedSnapshot } = workflowStore
+
+    const buildExecutionContext = (): DevToolExecutionContext => {
+        const currentWorkflowId = workflowStore.currentWorkflow?.id || chatStore.activeWorkflowId || undefined
+        const currentWorkflow = workflowStore.currentWorkflow
+        const flowchart = workflowStore.flowchart
+        const analysis = workflowStore.currentAnalysis
+
+        const openTabs: DevToolOpenTab[] = currentWorkflowId ? [{
+            workflow_id: currentWorkflowId,
+            title: currentWorkflow?.metadata?.name || 'New Workflow',
+            node_count: flowchart.nodes.length,
+            edge_count: flowchart.edges.length,
+            is_active: true,
+        }] : []
+
+        return {
+            current_workflow_id: currentWorkflowId,
+            workflow: currentWorkflowId ? {
+                nodes: flowchart.nodes,
+                edges: flowchart.edges,
+                variables: analysis?.variables || [],
+                outputs: analysis?.outputs || [],
+                output_type: currentWorkflow?.output_type || 'string',
+            } : undefined,
+            analysis,
+            open_tabs: openTabs,
+        }
+    }
+
+    const buildParsedArgs = (): Record<string, unknown> => {
+        if (rawMode) {
+            let parsed: unknown
+            try {
+                parsed = JSON.parse(rawArgs)
+            } catch {
+                throw new Error('Raw JSON mode requires valid JSON')
+            }
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('Raw JSON arguments must be a JSON object')
+            }
+            return parsed as Record<string, unknown>
+        }
+
+        const parsedArgs: Record<string, unknown> = {}
+        for (const [key, value] of Object.entries(args)) {
+            if (!value.trim()) continue
+            const propSchema = tool.inputSchema.properties?.[key]
+            if (propSchema?.type === 'number' || propSchema?.type === 'integer') {
+                const parsedNumber = Number(value)
+                if (Number.isNaN(parsedNumber)) {
+                    throw new Error(`${key} must be a valid number`)
+                }
+                parsedArgs[key] = parsedNumber
+            } else if (propSchema?.type === 'boolean') {
+                parsedArgs[key] = value.toLowerCase() === 'true'
+            } else if (propSchema?.type === 'object' || propSchema?.type === 'array' || propSchema?.type === 'any' || propSchema?.oneOf || propSchema?.anyOf) {
+                try {
+                    parsedArgs[key] = JSON.parse(value)
+                } catch {
+                    throw new Error(`${key} must be valid JSON`)
+                }
+            } else {
+                parsedArgs[key] = value
+            }
+        }
+        return parsedArgs
+    }
 
     const handleExecute = async () => {
         setExecuting(true)
         setError(null)
         setResult(null)
         try {
-            // Parse string values to appropriate types
-            const parsedArgs: Record<string, unknown> = {}
-            for (const [key, value] of Object.entries(args)) {
-                const propSchema = tool.inputSchema.properties?.[key]
-                if (propSchema?.type === 'number' || propSchema?.type === 'integer') {
-                    parsedArgs[key] = Number(value)
-                } else if (propSchema?.type === 'boolean') {
-                    parsedArgs[key] = value.toLowerCase() === 'true'
-                } else if (propSchema?.type === 'object' || propSchema?.type === 'array') {
-                    try {
-                        parsedArgs[key] = JSON.parse(value)
-                    } catch {
-                        parsedArgs[key] = value
-                    }
-                } else {
-                    parsedArgs[key] = value
-                }
-            }
-
-            const response = await executeTool(tool.name, parsedArgs)
+            const response = await executeTool(tool.name, buildParsedArgs(), buildExecutionContext())
             if (response.success) {
                 setResult(response.result)
+                const workflowId =
+                    response.result && typeof response.result === 'object' && 'workflow_id' in response.result
+                        ? String(response.result.workflow_id || '')
+                        : ''
+                if (workflowId && workflowStore.currentWorkflow?.id === workflowId) {
+                    const fresh = await getWorkflow(workflowId)
+                    const hydrated = hydrateWorkflowDetail(fresh)
+                    setCurrentWorkflow(hydrated.workflow)
+                    setFlowchartSilent(hydrated.flowchart)
+                    setAnalysis(hydrated.analysis)
+                    markSavedSnapshot()
+                }
             } else {
-                setError(response.error || 'Execution failed')
+                setResult(response.result)
+                const resultError =
+                    response.result && typeof response.result === 'object' && 'error' in response.result
+                        ? String(response.result.error || '')
+                        : ''
+                setError(response.error || resultError || 'Execution failed')
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error')
@@ -293,9 +384,37 @@ function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: (
                 <div className="tool-executor-content">
                     <p className="tool-description">{tool.description || 'No description'}</p>
 
+                    <div className="devtools-tabs">
+                        <button
+                            className={`devtools-tab ${!rawMode ? 'active' : ''}`}
+                            onClick={() => setRawMode(false)}
+                            type="button"
+                        >
+                            Form
+                        </button>
+                        <button
+                            className={`devtools-tab ${rawMode ? 'active' : ''}`}
+                            onClick={() => setRawMode(true)}
+                            type="button"
+                        >
+                            Raw JSON
+                        </button>
+                    </div>
+
                     <div className="tool-args">
                         <h4>Arguments</h4>
-                        {Object.keys(properties).length === 0 ? (
+                        {rawMode ? (
+                            <div className="arg-field">
+                                <label>args <span className="arg-type">(object)</span></label>
+                                <p className="arg-description">Enter the full tool argument object as JSON.</p>
+                                <textarea
+                                    value={rawArgs}
+                                    onChange={(e) => setRawArgs(e.target.value)}
+                                    rows={14}
+                                    spellCheck={false}
+                                />
+                            </div>
+                        ) : Object.keys(properties).length === 0 ? (
                             <p className="no-args">No arguments required</p>
                         ) : (
                             Object.entries(properties).map(([name, schema]) => (
@@ -303,10 +422,13 @@ function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: (
                                     <label>
                                         {name}
                                         {requiredFields.includes(name) && <span className="required">*</span>}
-                                        <span className="arg-type">({schema.type || 'string'})</span>
+                                        <span className="arg-type">({schemaTypeLabel(schema)})</span>
                                     </label>
                                     {schema.description && (
                                         <p className="arg-description">{schema.description}</p>
+                                    )}
+                                    {(schema.oneOf || schema.anyOf) && (
+                                        <p className="arg-description">Accepts multiple JSON shapes; use Raw JSON mode if easier.</p>
                                     )}
                                     {schema.enum ? (
                                         <select
@@ -318,6 +440,14 @@ function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: (
                                                 <option key={opt} value={opt}>{opt}</option>
                                             ))}
                                         </select>
+                                    ) : schema.type === 'object' || schema.type === 'array' || schema.type === 'any' || schema.oneOf || schema.anyOf ? (
+                                        <textarea
+                                            value={args[name] || ''}
+                                            onChange={(e) => setArgs(prev => ({ ...prev, [name]: e.target.value }))}
+                                            placeholder={exampleValueForSchema(schema)}
+                                            rows={schema.type === 'array' ? 8 : 6}
+                                            spellCheck={false}
+                                        />
                                     ) : (
                                         <input
                                             type="text"
