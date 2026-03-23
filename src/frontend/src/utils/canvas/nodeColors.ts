@@ -1,5 +1,5 @@
 // Shared node color helpers used by Canvas, FlowchartPreview,
-// FlowchartPreviewAnnotated, and SubflowExecutionModal.
+// and SubflowExecutionModal.
 
 import type { FlowNodeType } from '../../types'
 
