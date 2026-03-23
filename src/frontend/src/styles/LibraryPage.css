@@ -309,3 +309,11 @@
     color: var(--rose);
 }
 
+.library-card-votes .vote-count {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--muted);
+    min-width: 20px;
+    text-align: center;
+}
+

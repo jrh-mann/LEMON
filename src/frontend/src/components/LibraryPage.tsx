@@ -288,8 +288,11 @@ export default function LibraryPage() {
                                             className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); handleVote(wf.id, wf.user_vote === 1 ? 0 : 1) }}
                                         >
-                                            ▲ {(wf.net_votes || 0) > 0 ? `+${wf.net_votes}` : wf.net_votes || 0}
+                                            ▲
                                         </button>
+                                        <span className="vote-count">
+                                            {(wf.net_votes || 0) > 0 ? `+${wf.net_votes}` : wf.net_votes || 0}
+                                        </span>
                                         <button
                                             className={`vote-btn down ${wf.user_vote === -1 ? 'voted' : ''}`}
                                             onClick={(e) => { e.stopPropagation(); handleVote(wf.id, wf.user_vote === -1 ? 0 : -1) }}

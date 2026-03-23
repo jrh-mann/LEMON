@@ -247,14 +247,121 @@
     <p>This gives us actual numbers instead of just "it seems to work". When we change a prompt or tool schema, we can run the eval suite and see exactly which dimensions got better or worse.</p>
 
     <h2>User Acceptance Testing</h2>
-    <div class="placeholder">
-      User acceptance testing details will be added here, including:
-      <ul>
-        <li>Test cases and scenarios tested with project partners</li>
-        <li>Feedback from CloudSurge, Avanade, and Haider Khokhar</li>
-        <li>Issues identified and how they were addressed</li>
-      </ul>
-    </div>
+
+    <h3>Why</h3>
+    <p>Passing tests doesn't mean the system is actually useful. We needed people with different backgrounds to sit down with LEMON and tell us what worked and what didn't: a doctor for clinical correctness, a technical advisor for robustness, and a classmate for a fresh pair of eyes on the UI.</p>
+
+    <h3>Participants</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Tester</th>
+          <th>Background</th>
+          <th>Focus</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Dr Valeed</td>
+          <td>Medical doctor</td>
+          <td>Clinical accuracy: do the workflows reflect how decisions are actually made?</td>
+        </tr>
+        <tr>
+          <td>Haider Khokhar</td>
+          <td>Project partner (Trigger Point Labs), medicine and technology</td>
+          <td>Both: does the system handle real clinical pathways and is the implementation solid?</td>
+        </tr>
+        <tr>
+          <td>Luca</td>
+          <td>Philosophy student, no prior exposure to LEMON</td>
+          <td>UI/UX: can someone pick this up and use it without being told how?</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>How Tests Were Conducted</h3>
+    <p>All sessions were in person. We sat with Dr Valeed and Haider together and demo'd the system, then let them drive. Luca tested separately with minimal instruction so we could see where he'd get stuck on his own. In each case we watched what they did, wrote down where they paused or got confused, and asked follow-up questions at the end.</p>
+
+    <h3>Test Scenarios</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Scenario</th>
+          <th>Task</th>
+          <th>What we wanted to learn</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>UAT-1</td>
+          <td>Chat-driven workflow creation</td>
+          <td>Describe a clinical workflow in plain language and have the system build it</td>
+          <td>Does the orchestrator understand how clinicians actually talk about their processes?</td>
+        </tr>
+        <tr>
+          <td>UAT-2</td>
+          <td>Reviewing and editing</td>
+          <td>Look at the generated workflow and fix anything that's wrong, using chat or the canvas</td>
+          <td>Can users read the visual output and correct it without help?</td>
+        </tr>
+        <tr>
+          <td>UAT-3</td>
+          <td>Decision logic</td>
+          <td>Check branching conditions on a workflow with thresholds (e.g. lab value cutoffs)</td>
+          <td>Are the branch conditions clinically right, and can the tester tell?</td>
+        </tr>
+        <tr>
+          <td>UAT-4</td>
+          <td>Stepped execution</td>
+          <td>Run a workflow step-by-step, enter inputs, follow the highlighted path</td>
+          <td>Is the execution trace clear enough to catch logic errors?</td>
+        </tr>
+        <tr>
+          <td>UAT-5</td>
+          <td>Export</td>
+          <td>Export as Python and as a PNG</td>
+          <td>Are the exports actually useful outside of LEMON?</td>
+        </tr>
+        <tr>
+          <td>UAT-6</td>
+          <td>Cold start</td>
+          <td>Use the system from scratch with no guidance</td>
+          <td>How far does someone get before they need help?</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Results and Feedback</h3>
+
+    <h4>Dr Valeed</h4>
+    <p>Dr Valeed's main point was about priorities. He felt we should be spending our time getting the core workflow logic right, making sure decisions branch correctly and the execution engine handles real clinical pathways, rather than adding extra features or polishing the interface. From his perspective, a tool like this is only useful if the underlying logic is trustworthy. A nicer UI doesn't matter much if a decision node sends a patient down the wrong path. This pushed us to put more time into the execution engine and validation layer in the final stretch of the project.</p>
+
+    <h4>Luca</h4>
+    <p>Luca had no trouble with the chat side of things. Typing a description and watching the workflow appear on the canvas made sense to him straight away, and the stepped execution view where nodes light up as they run was easy for him to follow. The parts that tripped him up were more on the manual editing side. Connecting nodes by dragging between ports wasn't obvious until we pointed it out, and some of the terminology in the right sidebar (things like "subprocess" and "calculated" as variable sources) didn't mean much to him. He also wasn't sure what the difference between the node types was at first, or why a decision is a diamond and a calculation is a rectangle. None of this stopped him from using the system through chat, but it would have been a barrier if he'd tried to build a workflow entirely by hand.</p>
+
+    <h3>Issues Identified and Actions Taken</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Raised By</th>
+          <th>What We Did</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>TBD</td>
+          <td>TBD</td>
+          <td>TBD</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Analysis</h3>
+    <p>The two perspectives gave us quite different things to work on. Dr Valeed cared about substance: get the decision logic right before worrying about anything else. Luca cared about surface: the chat path worked well, but the manual editing tools assumed knowledge he didn't have. Both were fair, and they pointed in the same direction. The AI-assisted path was the stronger experience, and that's where our effort was best spent.</p>
+    <p>In terms of what actually changed: in early February we overhauled decision node edge labels so that true/false branches are enforced and auto-assigned, and fixed a bug where empty labels caused the wrong branch to be taken. In late February we redesigned the layout with a tabbed navigation structure and improved canvas interactions. Through early March we simplified compound condition labels (replacing verbose AND/OR with &amp; and |, and using "Else" instead of negating every condition), thickened connection arrows for visibility, and added inline reasoning so users can see why the AI made the choices it did. Not all of this was directly prompted by the UAT sessions, but the feedback confirmed we were fixing the right things.</p>
+    <p>The main takeaway was that the chat interface is the real onboarding mechanism. Luca, with no technical background, could describe what he wanted and get a working workflow. The visual editor is there for refinement, but the way in is the conversation, not the canvas. That's worth knowing if the project were to continue.</p>
 
     <!-- References -->
     <h2>References</h2>

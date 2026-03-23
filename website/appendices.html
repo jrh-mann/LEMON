@@ -13,50 +13,53 @@
     <!-- ================================================================ -->
     <h2>User Manual</h2>
 
+    <p><strong>Live Application:</strong> <a href="https://lemon-backend.azurewebsites.net">https://lemon-backend.azurewebsites.net</a></p>
     <div class="placeholder">
-      <strong>Live Application:</strong> [Azure URL to be added]<br>
-      <strong>Test Account:</strong> [Username and password to be added]
+      <strong>Test Account:</strong><br>
+      Email: [FILL IN - create with: python scripts/create_user.py --email examiner@lemon-test.com --name Examiner --password LemonTest2026!]<br>
+      Password: [FILL IN]
     </div>
 
     <h3>1. Logging In</h3>
     <p>Navigate to the application URL. Enter your email address and password, then click Login. New users can register by clicking the Register tab and providing an email, name, and password.</p>
-    <div class="placeholder">Screenshot: Login page</div>
+    <img src="images/screenshots/01-login-page.png" alt="Login page with email and password form" class="screenshot">
 
     <h3>2. Creating a Workflow via Chat</h3>
     <p>Type a description of your workflow in the chat panel on the left side of the screen. For example: "Create a diabetes treatment workflow that checks HbA1c levels and recommends medication adjustments." The orchestrator will build nodes and connections on the canvas in real time. You can see each tool call as it executes.</p>
-    <div class="placeholder">Screenshot: Chat panel with workflow being built on canvas</div>
+    <img src="images/screenshots/02-chat-panel-with-workflow.png" alt="Workspace showing chat panel and workflow on canvas" class="screenshot">
 
     <h3>3. Uploading a Flowchart Image</h3>
-    <p>Click the upload button (paperclip icon) in the chat input area. Select an image file (PNG, JPG) or PDF of a flowchart. The system will analyze the image and reconstruct it as an editable workflow on the canvas.</p>
-    <div class="placeholder">Screenshot: Image upload and reconstruction</div>
+    <p>Click the Upload Files button on the home screen, or use the paperclip icon in the chat input. Select an image file (PNG, JPG) or PDF of a flowchart. The system will analyze the image and reconstruct it as an editable workflow on the canvas.</p>
+    <img src="images/screenshots/03-image-upload.png" alt="Home screen with Upload Files button" class="screenshot">
 
     <h3>4. Editing on the Canvas</h3>
     <p>Drag nodes to reposition them. Right-click a node to open its context menu (edit, delete, connect). Draw connections by clicking the output port of one node and dragging to the input of another. Use scroll wheel to zoom and click-drag on empty space to pan.</p>
-    <div class="placeholder">Screenshot: Canvas with nodes and connections</div>
+    <img src="images/screenshots/04-canvas-with-nodes.png" alt="Canvas with diabetes treatment workflow nodes and connections" class="screenshot">
 
     <h3>5. Managing Variables</h3>
     <p>Open the right sidebar to view workflow variables. Each variable has a name, type (string, number, boolean, date, enum), and optional description. Variables are used in decision conditions and calculation nodes. The orchestrator creates variables automatically, but you can also add or edit them manually.</p>
-    <div class="placeholder">Screenshot: Variable panel in sidebar</div>
+    <img src="images/screenshots/05-variable-panel.png" alt="Right sidebar showing workflow variables" class="screenshot">
+    <img src="images/screenshots/05b-add-variable-modal.png" alt="New Variable dialog with name, type, source, and description fields" class="screenshot">
 
     <h3>6. Using Subworkflows</h3>
     <p>Create a subprocess node to reference another saved workflow. Configure the input mapping to connect parent variables to the child workflow's inputs. When executed, the subprocess runs the referenced workflow and returns its output as a derived variable.</p>
-    <div class="placeholder">Screenshot: Subprocess node configuration</div>
+    <img src="images/screenshots/06-subprocess-node.png" alt="Workflow with a subprocess node for BP Assessment" class="screenshot">
 
     <h3>7. Executing with Test Inputs</h3>
-    <p>Click the Execute button. Enter values for each input variable in the dialog that appears. Click Run to start execution. The system steps through each node, highlighting the active node and the execution path on the canvas. The final output and execution context are displayed when complete.</p>
-    <div class="placeholder">Screenshot: Execution dialog and path highlighting</div>
+    <p>Click the Run Workflow button in the left sidebar. Enter values for each input variable in the dialog that appears. Click Run to start execution. The system steps through each node, highlighting the active node and the execution path on the canvas. The final output and execution context are displayed when complete.</p>
+    <img src="images/screenshots/07-execution.png" alt="Run Workflow dialog with input fields" class="screenshot">
 
     <h3>8. Saving to Library</h3>
-    <p>Click Save in the header to store your workflow in the personal library. You can access saved workflows later from the Library page (/library). Each workflow stores its full state including nodes, edges, variables, and conversation history.</p>
-    <div class="placeholder">Screenshot: Library page</div>
+    <p>Click Save in the header to store your workflow in the personal library. You can access saved workflows later from the Library page. Each workflow stores its full state including nodes, edges, variables, and conversation history.</p>
+    <img src="images/screenshots/08-library-page.png" alt="Library page showing saved workflows" class="screenshot">
 
     <h3>9. Publishing a Workflow</h3>
     <p>When saving a workflow, check the "Publish to Community Library" checkbox in the save dialog. This makes your workflow visible to other users in the Peer Review tab. Published workflows start as "unreviewed" and can be promoted to "reviewed" status through community voting.</p>
-    <div class="placeholder">Screenshot: Save dialog with publish checkbox</div>
+    <img src="images/screenshots/09-save-dialog.png" alt="Save dialog" class="screenshot">
 
     <h3>10. Browsing and Voting on Public Workflows</h3>
     <p>In the Library page, switch to the Peer Review tab to browse all published workflows. Use the upvote and downvote buttons on each workflow card to vote on quality. The Published tab shows only workflows that have reached the vote threshold. Clicking on a published workflow lets you view its full structure.</p>
-    <div class="placeholder">Screenshot: Peer Review tab with voting buttons</div>
+    <img src="images/screenshots/10-peer-review.png" alt="Peer Review tab in the Library" class="screenshot">
 
     <h3>11. Exporting</h3>
     <p>Navigate to the Export page. Choose your export format:</p>
@@ -65,7 +68,7 @@
       <li><strong>Python</strong>: Compiled executable code that reproduces the workflow logic</li>
       <li><strong>PNG</strong>: Visual image of the workflow canvas</li>
     </ul>
-    <div class="placeholder">Screenshot: Export page with format options</div>
+    <img src="images/screenshots/11-export-page.png" alt="Export page with JSON, PNG, and Python options" class="screenshot">
 
     <!-- ================================================================ -->
     <h2>Deployment Manual</h2>
@@ -179,7 +182,7 @@ ANTHROPIC_MODEL=claude-opus-4-6</code></pre>
     <p>Rewrote end-to-end tests to run against a real backend instead of mocks. Switched the internal tool format from OpenAI-style to native Anthropic format. Added stepped execution with pause, resume, and stop controls.</p>
 
     <h3>March 10-16, 2026: Architecture Migration, Evaluation and Hardening</h3>
-    <p>Completed the migration from Socket.IO to Server-Sent Events, simplifying the real-time communication infrastructure. Built the six-dimension evaluation framework for measuring workflow extraction quality (variables, nodes, topology, conditions, outputs, functional routing). Implemented comprehensive security hardening: XSS prevention, path traversal mitigation, CSRF headers, rate limiting, and user ownership enforcement on all API endpoints.</p>
+    <p>Completed the migration from Socket.IO to Server-Sent Events, which simplified the real-time communication layer. Built the six-dimension evaluation framework for measuring workflow extraction quality (variables, nodes, topology, conditions, outputs, functional routing). Added security hardening across the backend: XSS prevention, path traversal mitigation, CSRF headers, rate limiting, and user ownership enforcement on all API endpoints.</p>
 
     <!-- ================================================================ -->
     <h2>Monthly Videos</h2>
