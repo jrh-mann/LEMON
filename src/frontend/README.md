@@ -63,8 +63,7 @@ src/
 │   ├── Header.tsx       # App header with actions
 │   ├── Palette.tsx      # Block palette sidebar
 │   ├── RightSidebar.tsx # Library & inputs panel
-│   ├── Modals.tsx       # Library & validation modals
-│   └── WorkflowBrowser.tsx
+│   └── Modals.tsx       # Save and execute modals
 ├── App.tsx       # Main app component
 └── main.tsx      # Entry point
 ```
