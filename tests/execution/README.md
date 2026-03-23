@@ -122,7 +122,7 @@ Wire up tree walking:
 
 ### Phase 4: Integration
 Connect to API:
-1. Implement `/api/execute/<workflow_id>` endpoint
+1. Implement `/api/workflows/{workflow_id}/execute` SSE endpoint
 2. Return `ExecutionResult` type
 3. Add error handling
 
