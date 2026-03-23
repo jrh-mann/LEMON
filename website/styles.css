@@ -276,6 +276,15 @@ pre code {
   color: #9ca3af;
 }
 
+.team-photo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto;
+  display: block;
+}
+
 /* ---------------------------------------------------------
    Gantt Chart
    --------------------------------------------------------- */

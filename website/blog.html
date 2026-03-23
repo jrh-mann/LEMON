@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEMON - Development Blog</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .blog-entry { margin-bottom: 48px; }
+    .blog-entry h3 { margin-bottom: 4px; }
+    .blog-date { color: #6b7280; font-size: 0.9rem; margin-bottom: 12px; }
+    .blog-author { font-style: italic; color: #6b7280; font-size: 0.85rem; margin-top: 12px; }
+    .blog-entry pre { background: #f8f5f0; border: 1px solid #e5e0d5; border-radius: 6px; padding: 16px; overflow-x: auto; font-size: 0.85rem; }
+    .blog-entry code { font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Development Blog</h1>
+
+    <p>This blog tracks our progress on LEMON from the start of term through to submission. Some entries are rougher than others. The early ones are mostly us trying to figure out what we're building; the later ones get more into the weeds.</p>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Getting started and figuring out the problem</h3>
+      <p class="blog-date">October 25 - November 8, 2025</p>
+
+      <p>Had our first meeting with Ilyas. He's explaining the core problem: clinicians write their decision workflows as flowcharts on paper or in Word docs, and there's no straightforward way to turn those into something executable. That gap is basically the whole project.</p>
+
+      <p>Spending the first couple of weeks on requirements. Ilyas is good at pushing us to think about things we wouldn't have considered on our own, like typed variables in clinical workflows, the need for strict branching logic, and why auditability matters in this space. We also need to think about the non-clinical stuff: auth, data ownership, export formats.</p>
+
+      <p>We're doing the HCI coursework at the same time, which is actually helpful because it's making us do personas and use cases properly before writing any code. We've got three personas: a GP digitising her workflows, a clinical researcher reviewing and sharing them, and an IT admin deploying the system. Think these will be useful to come back to.</p>
+
+      <p class="blog-author">Jude, Jeet</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Research and early experiments</h3>
+      <p class="blog-date">November 9 - November 25, 2025</p>
+
+      <p>Mostly reading and comparing things. Looking at Camunda (BPMN workflow engine), OpenCDS (clinical decision support), LangChain, LangGraph. Main thing from Camunda: BPMN is way too complex for non-technical users. OpenCDS is interesting for the clinical standards side but we're going to focus on the authoring experience rather than integration.</p>
+
+      <p>Comparing LLM providers. We need the model to call functions that build a workflow (add nodes, draw connections, set conditions), not just spit out text. Claude's tool-use API feels the most natural for this so we're going with Anthropic.</p>
+
+      <p>Jeet's got the repo going and is messing around with ground truth workflows. He has this idea of having reference workflows (like a diabetes treatment pathway) to score against. Not sure where it's going yet but it feels like it could be useful down the line.</p>
+
+      <p>Also sketching UI ideas. We've got a dark theme pipeline runner thing, a glassmorphism dashboard, a bunch of others. None of them feel right yet but they're helping us converge on the basic layout: canvas right, chat bottom, tools left.</p>
+
+      <p class="blog-author">Axel, Jeet</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>First code</h3>
+      <p class="blog-date">December 9 - December 20, 2025</p>
+
+      <p>First real commits. Got the project structure set up and we're trying to get the LLM to generate Python code directly from a workflow description. Not working great. The generated code is hard to visualise and you can't edit it interactively at all.</p>
+
+      <p>We're switching to a structured approach instead: the LLM outputs a tree of nodes and edges as JSON, we render that on a canvas, and code generation can happen as a separate export step at the end. Feels like the right call.</p>
+
+      <p>James has got a basic React frontend going with a canvas component. No drag-and-drop yet, just rendering nodes at fixed positions. We're figuring out the node types we need: start, process, decision, end. Might need more later.</p>
+
+      <p class="blog-author">Jeet, James</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Connecting everything together</h3>
+      <p class="blog-date">January 7 - January 14, 2026</p>
+
+      <p>Back from break. I've hooked the frontend up to a proper backend and we've switched from OpenAI to Claude. The tool-use API is the reason. Instead of making the LLM output JSON and parsing it ourselves (which was flaky), we just define tools like <code>add_node</code> and <code>add_connection</code> and Claude calls them directly. Way more reliable.</p>
+
+      <p>Backend is in Flask for now. Got the first version of image upload working: you can upload a photo of a flowchart and the system has a go at reconstructing it. Results are rough but you can see the potential.</p>
+
+      <p>The rough split right now is: me on frontend + tools, Jeet on image analysis + eval, Axel on orchestrator + streaming, Jude on architecture + system prompt. In reality we're all touching everything.</p>
+
+      <p class="blog-author">James</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Building the visual editor</h3>
+      <p class="blog-date">January 15 - January 20, 2026</p>
+
+      <p>Bit of a sprint this week. 25+ commits on January 15th alone. We now have drag-and-drop, collision detection, a hierarchical auto-layout thing (we're calling it "beautify"), connection drawing, colour-coded node types, orthogonal edge routing, and pan/zoom.</p>
+
+      <p>The beautify algorithm took a few tries. First version just spaced everything evenly which looked awful for tree-shaped workflows. Current version finds the root, does a BFS to assign layers, spaces children under parents. Orphans go in a row at the top.</p>
+
+      <p>There's a node palette in the left sidebar now so you can click to add blocks manually. Not everything has to go through the chat. Sometimes you just want to drop a node and connect it yourself.</p>
+
+      <p>The beautify button has a flower icon with a pulsing glow. Completely unnecessary but it's fun.</p>
+
+      <p class="blog-author">James</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Expression parser and execution engine</h3>
+      <p class="blog-date">January 21 - January 29, 2026</p>
+
+      <p>Hardest couple of weeks so far. Decision nodes need to evaluate conditions like <code>HbA1c >= 48 AND Age > 30</code>, so we've had to build an actual expression parser. Tokenisation, AST with operator precedence, evaluation with variable bindings. It supports numeric comparators, booleans, string matching, dates, enums, compound conditions with AND/OR.</p>
+
+      <p>We've also built the TreeInterpreter on top of that. It walks the workflow from the start node, evaluates conditions at decision points, follows the right branch. Tracks the path so we can highlight it on the canvas afterwards. Has cycle detection and a 1000-node visit limit so a broken workflow can't loop forever.</p>
+
+      <p>Tool count is at about 20 now. The main ones: <code>add_node</code>, <code>add_connection</code>, <code>modify_node</code>, <code>delete_node</code>, <code>batch_edit_workflow</code>, <code>validate_workflow</code>, <code>execute_workflow</code>, <code>ask_question</code>.</p>
+
+      <p>Also cleaning up the variable system. We've had "inputs" and "variables" as separate concepts which is confusing everyone. Unifying it: variables are either "input" (user provides at runtime) or "derived" (computed by calc/subprocess nodes). Derived ones are read-only.</p>
+
+      <p class="blog-author">James, Jude</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Library, peer review, first deploy</h3>
+      <p class="blog-date">February 2 - February 6, 2026</p>
+
+      <p>Got it running on Azure. Took a while to sort out the Oryx build scripts and uvicorn paths but having a live URL to show Ilyas is worth the pain.</p>
+
+      <p>Built out the workflow library. You can save workflows, browse them, switch between them. There's also a peer review thing now: publish to a community gallery, other users upvote/downvote, workflows get promoted once they hit a threshold. Set it to 1 net upvote because we've only got a handful of users.</p>
+
+      <p>Added three export formats: JSON, Python, PNG. The Python compiler turns the workflow tree into a standalone function with if/else blocks. You can actually run it outside of LEMON, which is the whole point.</p>
+
+      <p>Also added calculation nodes. Before this we only had process nodes (just a label) and decisions (branching). Calc nodes let you do things like <code>BMI = weight / (height * height)</code> and the result becomes a variable that downstream nodes can use.</p>
+
+      <p class="blog-author">James</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Image analysis overhaul and subworkflows</h3>
+      <p class="blog-date">February 20 - February 27, 2026</p>
+
+      <p>Nothing happened between Feb 6 and Feb 23. We had coursework for other modules.</p>
+
+      <p>Back now. Redoing the image analysis from scratch. Multi-file upload (several pages of a flowchart as separate images), PDF preview, two-phase pipeline. First phase classifies what you uploaded (flowchart? legend? side notes?), second phase extracts the workflow using Claude's vision.</p>
+
+      <p>Also adding annotation dots on images. When the LLM isn't sure about something in the uploaded flowchart, it sticks a dot on the image and asks you about it. This came from watching people upload messy diagrams with legends and side notes that were confusing the model.</p>
+
+      <p>On the frontend side, the layout is getting redone. Going from everything on one page to tabs: workflow builder, library, export. Also reworking the right sidebar and adding a proper variable editing modal.</p>
+
+      <p>Subworkflow support is going in too. A subprocess node points to another saved workflow. The parent calls the child with mapped inputs and gets the output back as a derived variable. We're capping it at 2 levels deep so you can't get infinite recursion.</p>
+
+      <p class="blog-author">Jeet, Axel</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>The big migration</h3>
+      <p class="blog-date">March 1 - March 9, 2026</p>
+
+      <p>Replacing Flask with FastAPI and Socket.IO with Server-Sent Events in the same week. Probably shouldn't be doing both at once but here we are.</p>
+
+      <p>The FastAPI swap is six phases in a day (March 4). Dependencies, app factory, routes, entry point, frontend client, cleanup. Running tests after each phase. The fact that we have decent coverage is what's making this not terrifying.</p>
+
+      <p>Socket.IO to SSE is simpler than it sounds. We only need server-to-client streaming, not bidirectional. SSE does that natively with less moving parts. Axel is handling most of it and it's going fine because we already have an event bus between the transport and the business logic.</p>
+
+      <p>Switching the tool format from OpenAI-style to Anthropic native too. Getting rid of a translation layer we don't need anymore.</p>
+
+      <p>On the prompt side, the system prompt is getting broken into composable sections. Before it was one massive string. Now there are sections for the data model, tool rules, execution, image analysis. Much easier to change one thing without breaking something else.</p>
+
+      <p>Axel is also rewriting the E2E tests to hit a real backend instead of mocking Socket.IO. Already finding bugs the mocked tests were hiding.</p>
+
+      <p class="blog-author">Jude, Axel</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Testing, security, eval framework</h3>
+      <p class="blog-date">March 10 - March 16, 2026</p>
+
+      <p>Architecture is stable so we're spending the week hardening things. Rate limiting (60 req/min/IP), CSP headers, XSS prevention, path traversal checks on uploads, ownership enforcement on all endpoints. That last one is overdue: right now if you know a workflow ID you can access it regardless of who owns it. Fixing that.</p>
+
+      <p>Moving all the tests into one <code>tests/</code> directory (they've ended up in about four different places) and we're past 1,300 now. Mix of execution engine tests, tool tests, validation, storage, integration, and Playwright E2E.</p>
+
+      <p>The eval framework is finally coming together. Jeet's ground truth workflows from November plus a scoring system across six dimensions:</p>
+
+      <ol>
+        <li><strong>Variables</strong> - right inputs, right types?</li>
+        <li><strong>Nodes</strong> - right count and types?</li>
+        <li><strong>Topology</strong> - edges connecting the right things?</li>
+        <li><strong>Conditions</strong> - right comparators and thresholds?</li>
+        <li><strong>Outputs</strong> - end nodes producing the right values?</li>
+        <li><strong>Functional</strong> - same inputs reach the same end node?</li>
+      </ol>
+
+      <p>Two benchmarks so far: diabetes treatment and liver pathology. Run it after any prompt change and you can see what gets better and what gets worse.</p>
+
+      <p class="blog-author">Jude, Jeet</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>User testing</h3>
+      <p class="blog-date">March 12 - March 16, 2026</p>
+
+      <p>Testing in person with Dr Valeed (doctor), Haider (project partner), and Luca (philosophy student, no CS). Want three different angles: clinical correctness, technical robustness, usability from cold.</p>
+
+      <p>Dr Valeed basically says: stop adding features and make sure the logic is right. Fair point. A workflow tool that sends a patient down the wrong branch is worse than useless.</p>
+
+      <p>Luca is fine with the chat path. Describes a workflow, watches it appear, understands the execution highlighting. But he's getting stuck on the manual editing. Dragging between ports to connect nodes isn't obvious to him, and sidebar terms like "subprocess" and "calculated" mean nothing. Confirms what we suspected: the chat is the way in for non-technical users, the canvas is for tweaking after.</p>
+
+      <p class="blog-author">Jude</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <div class="blog-entry">
+      <h3>Writing it all up</h3>
+      <p class="blog-date">March 17 - March 23, 2026</p>
+
+      <p>Final week. Jude did the website. Stylesheet, nav, then each page one by one. Had to go back and fix a bunch of numbers that were wrong in the first draft (tool counts, timeline claims).</p>
+
+      <p>Jeet dug up screenshots from all seven frontend iterations for the UI design page. Wild to see how much it changed. Dark pipeline runner, glassmorphism thing, cream editorial layout, a few flowchart studio versions, then the final design.</p>
+
+      <p>Fixed the last bugs: compound condition edge labels, right sidebar JSX, output type sync. Cleaned up the console.log statements we'd left everywhere from debugging.</p>
+
+      <p>690 commits, 54 active days, four people, 1,300+ tests, all 30 requirements done. Deployed at <a href="https://lemon-backend.azurewebsites.net">lemon-backend.azurewebsites.net</a>.</p>
+
+      <p>Best moment of the project: watching Dr Valeed describe a clinical workflow in English and seeing the system build it on the canvas in real time. That was the thing we wanted from the beginning.</p>
+
+      <p class="blog-author">Jude, Jeet, Axel, James</p>
+    </div>
+
+  </div>
+  <script src="nav.js"></script>
+</body>
+</html>

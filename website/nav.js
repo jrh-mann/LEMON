@@ -11,6 +11,7 @@
     { href: 'evaluation.html', label: 'Evaluation' },
     { href: 'conclusion.html', label: 'Conclusion' },
     { href: 'appendices.html', label: 'Appendices' },
+    { href: 'blog.html', label: 'Blog' },
   ];
 
   var pathname = window.location.pathname;

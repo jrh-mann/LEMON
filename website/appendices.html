@@ -153,36 +153,9 @@ ANTHROPIC_MODEL=claude-opus-4-6</code></pre>
     <!-- ================================================================ -->
     <h2>Development Blog</h2>
 
-    <p>The development blog documents the team's progress throughout the project. Each entry summarizes the key work completed during that period.</p>
+    <p>The development blog documents the team's progress throughout the project with bi-weekly entries covering research, technical decisions, and implementation milestones.</p>
 
-    <div class="placeholder">
-      <strong>External Blog URL:</strong> [Link to external blog platform to be added]<br>
-      The university requires the development blog to be hosted on a public external site (e.g. WordPress, UCL blogging tools).
-    </div>
-
-    <h3>December 9-15, 2025: Project Kickoff</h3>
-    <p>Initial repository setup and exploration of the problem space. Early prototyping of the frontend and code generation pipeline, including a workflow executor and test harness. First experiments with LLM-based workflow refinement began.</p>
-
-    <h3>January 7-14, 2026: Building the Foundation</h3>
-    <p>Connected the frontend prototype to a new backend architecture. Switched from the initial LLM approach to Claude as the primary provider, taking advantage of its native tool-use API. Separated the backend into a standalone Flask service. Added workflow upload and image analysis capabilities.</p>
-
-    <h3>January 15-20, 2026: The Visual Editor Takes Shape</h3>
-    <p>Major canvas development sprint. Implemented drag-and-drop node positioning, collision detection to prevent overlapping nodes, a hierarchical auto-layout algorithm, connection drawing between nodes, and color-coded node types. Added a node palette for creating nodes manually and JSON import for loading existing workflows.</p>
-
-    <h3>January 21-29, 2026: Workflow Execution Engine</h3>
-    <p>Built the expression parser and evaluator for decision node conditions. Implemented the TreeInterpreter for walking workflows and producing execution results. Added the validation framework for checking workflow correctness before save or export. Expanded the tool system to over 20 tools. Added subprocess nodes and compound conditions.</p>
-
-    <h3>February 3-11, 2026: Scaling Up</h3>
-    <p>Intensive development period. Built end-to-end test infrastructure using Playwright. Added workflow library features for saving and browsing workflows. Implemented prompt caching to reduce API costs on repeated interactions. Added task cancellation and conversation state management for long-running orchestrator sessions.</p>
-
-    <h3>February 20-27, 2026: Subworkflows and Streaming</h3>
-    <p>Implemented independent subworkflow builders with recursive execution and input/output mapping between parent and child workflows. Added build depth limits to prevent infinite recursion. Improved frontend resilience with localStorage quota handling and event routing fixes.</p>
-
-    <h3>March 1-9, 2026: Execution Controls and Tool Format</h3>
-    <p>Rewrote end-to-end tests to run against a real backend instead of mocks. Switched the internal tool format from OpenAI-style to native Anthropic format. Added stepped execution with pause, resume, and stop controls.</p>
-
-    <h3>March 10-16, 2026: Architecture Migration, Evaluation and Hardening</h3>
-    <p>Completed the migration from Socket.IO to Server-Sent Events, which simplified the real-time communication layer. Built the six-dimension evaluation framework for measuring workflow extraction quality (variables, nodes, topology, conditions, outputs, functional routing). Added security hardening across the backend: XSS prevention, path traversal mitigation, CSRF headers, rate limiting, and user ownership enforcement on all API endpoints.</p>
+    <p><a href="blog.html">Read the full development blog here.</a></p>
 
     <!-- ================================================================ -->
     <h2>Monthly Videos</h2>
