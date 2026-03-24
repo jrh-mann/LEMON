@@ -561,3 +561,208 @@ class TestCompileWorkflowToPython:
         )
 
         assert not result.success
+
+
+# --- DAG Compilation Tests ---
+
+
+class TestDAGCompilation:
+    """Tests for DAG-aware compilation (convergent branches)."""
+
+    def test_diamond_dag_no_code_duplication(self):
+        """Diamond DAG: decision branches converge on a shared end node.
+
+        Expected output should have return ONCE after the if/else, not
+        duplicated inside each branch.
+        """
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "dec", "type": "decision", "label": "Check?",
+             "condition": {"input_id": "var_x_bool", "comparator": "is_true"}},
+            {"id": "a", "type": "process", "label": "Send Confirmation"},
+            {"id": "b", "type": "process", "label": "Send Rejection"},
+            {"id": "end", "type": "end", "label": "Complete", "output_value": "Done", "output_type": "string"},
+        ]
+        edges = [
+            {"from": "start", "to": "dec"},
+            {"from": "dec", "to": "a", "label": "true"},
+            {"from": "dec", "to": "b", "label": "false"},
+            {"from": "a", "to": "end"},
+            {"from": "b", "to": "end"},
+        ]
+        variables = [{"id": "var_x_bool", "name": "X", "type": "bool", "source": "input"}]
+
+        result = compile_workflow_to_python(nodes=nodes, edges=edges, variables=variables)
+        assert result.success
+
+        # The return should appear exactly ONCE — after the if/else block
+        assert result.code.count("return 'Done'") == 1
+
+        # Process nodes should appear as print() calls
+        assert "print('Send Confirmation')" in result.code
+        assert "print('Send Rejection')" in result.code
+
+    def test_process_nodes_generate_print(self):
+        """Process nodes should emit print() statements."""
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "proc", "type": "process", "label": "Do Something"},
+            {"id": "end", "type": "end", "label": "Done"},
+        ]
+        edges = [
+            {"from": "start", "to": "proc"},
+            {"from": "proc", "to": "end"},
+        ]
+        variables = []
+
+        result = compile_workflow_to_python(nodes=nodes, edges=edges, variables=variables)
+        assert result.success
+        assert "print('Do Something')" in result.code
+
+    def test_non_convergent_branches_return_independently(self):
+        """When branches don't converge, each should return independently."""
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "dec", "type": "decision", "label": "Check?",
+             "condition": {"input_id": "var_x_bool", "comparator": "is_true"}},
+            {"id": "end_yes", "type": "end", "label": "Approved", "output_value": "Yes", "output_type": "string"},
+            {"id": "end_no", "type": "end", "label": "Rejected", "output_value": "No", "output_type": "string"},
+        ]
+        edges = [
+            {"from": "start", "to": "dec"},
+            {"from": "dec", "to": "end_yes", "label": "true"},
+            {"from": "dec", "to": "end_no", "label": "false"},
+        ]
+        variables = [{"id": "var_x_bool", "name": "X", "type": "bool", "source": "input"}]
+
+        result = compile_workflow_to_python(nodes=nodes, edges=edges, variables=variables)
+        assert result.success
+        assert "return 'Yes'" in result.code
+        assert "return 'No'" in result.code
+
+    def test_complex_dag_multiple_convergence_points(self):
+        """Two sequential decisions, each with convergent branches.
+
+        Start -> D1 -> A/B -> M -> D2 -> C/D -> End
+        Both D1 and D2 have branches that converge.
+        """
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "d1", "type": "decision", "label": "First?",
+             "condition": {"input_id": "var_x_bool", "comparator": "is_true"}},
+            {"id": "a", "type": "process", "label": "Path A"},
+            {"id": "b", "type": "process", "label": "Path B"},
+            {"id": "m", "type": "process", "label": "Middle"},
+            {"id": "d2", "type": "decision", "label": "Second?",
+             "condition": {"input_id": "var_y_bool", "comparator": "is_true"}},
+            {"id": "c", "type": "process", "label": "Path C"},
+            {"id": "d", "type": "process", "label": "Path D"},
+            {"id": "end", "type": "end", "label": "Done", "output_value": "Complete", "output_type": "string"},
+        ]
+        edges = [
+            {"from": "start", "to": "d1"},
+            {"from": "d1", "to": "a", "label": "true"},
+            {"from": "d1", "to": "b", "label": "false"},
+            {"from": "a", "to": "m"},
+            {"from": "b", "to": "m"},
+            {"from": "m", "to": "d2"},
+            {"from": "d2", "to": "c", "label": "true"},
+            {"from": "d2", "to": "d", "label": "false"},
+            {"from": "c", "to": "end"},
+            {"from": "d", "to": "end"},
+        ]
+        variables = [
+            {"id": "var_x_bool", "name": "X", "type": "bool", "source": "input"},
+            {"id": "var_y_bool", "name": "Y", "type": "bool", "source": "input"},
+        ]
+
+        result = compile_workflow_to_python(nodes=nodes, edges=edges, variables=variables)
+        assert result.success
+
+        # Each node should be compiled exactly once
+        assert result.code.count("print('Path A')") == 1
+        assert result.code.count("print('Path B')") == 1
+        assert result.code.count("print('Middle')") == 1
+        assert result.code.count("print('Path C')") == 1
+        assert result.code.count("print('Path D')") == 1
+        assert result.code.count("return 'Complete'") == 1
+
+    def test_three_path_convergence_handled_by_nesting(self):
+        """When 3 paths converge on the same node via nested decisions,
+        the post-dominator approach handles it through nested convergence
+        — no helper extraction needed.
+
+        Start -> D1 -> A -> D2 -> C/D -> Review -> End
+                   \\-> B ---------> Review -> End
+        Review has 3 incoming edges (B, C, D), but nested convergence
+        resolves it: D1's IPDOM is Review, D2's branches stop before Review.
+        """
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "d1", "type": "decision", "label": "First?",
+             "condition": {"input_id": "var_x_bool", "comparator": "is_true"}},
+            {"id": "a", "type": "process", "label": "Path A"},
+            {"id": "b", "type": "process", "label": "Path B"},
+            {"id": "d2", "type": "decision", "label": "Second?",
+             "condition": {"input_id": "var_y_bool", "comparator": "is_true"}},
+            {"id": "c", "type": "process", "label": "Path C"},
+            {"id": "d", "type": "process", "label": "Path D"},
+            {"id": "review", "type": "process", "label": "Standard Review"},
+            {"id": "end", "type": "end", "label": "Done", "output_value": "Complete", "output_type": "string"},
+        ]
+        edges = [
+            {"from": "start", "to": "d1"},
+            {"from": "d1", "to": "a", "label": "true"},
+            {"from": "d1", "to": "b", "label": "false"},
+            {"from": "a", "to": "d2"},
+            {"from": "d2", "to": "c", "label": "true"},
+            {"from": "d2", "to": "d", "label": "false"},
+            {"from": "b", "to": "review"},
+            {"from": "c", "to": "review"},
+            {"from": "d", "to": "review"},
+            {"from": "review", "to": "end"},
+        ]
+        variables = [
+            {"id": "var_x_bool", "name": "X", "type": "bool", "source": "input"},
+            {"id": "var_y_bool", "name": "Y", "type": "bool", "source": "input"},
+        ]
+
+        result = compile_workflow_to_python(nodes=nodes, edges=edges, variables=variables)
+        assert result.success
+
+        # Each node compiled exactly once — post-dominator handles the 3-path convergence
+        assert result.code.count("print('Standard Review')") == 1
+        assert result.code.count("return 'Complete'") == 1
+        assert result.code.count("print('Path A')") == 1
+        assert result.code.count("print('Path B')") == 1
+        assert result.code.count("print('Path C')") == 1
+        assert result.code.count("print('Path D')") == 1
+
+    def test_fixture_workflow_compiles_correctly(self):
+        """Test the fixtures/workflow.json diamond DAG compiles correctly."""
+        import json
+        from pathlib import Path
+
+        fixture_path = Path(__file__).resolve().parent.parent.parent / "fixtures" / "workflow.json"
+        if not fixture_path.exists():
+            pytest.skip("fixtures/workflow.json not found")
+
+        with open(fixture_path) as f:
+            data = json.load(f)
+
+        result = compile_workflow_to_python(
+            nodes=data["flowchart"]["nodes"],
+            edges=data["flowchart"]["edges"],
+            variables=data.get("variables", []),
+            outputs=data.get("outputs"),
+            include_main=True,
+        )
+
+        assert result.success
+
+        # Process nodes should appear as print()
+        assert "print('Send Confirmation')" in result.code
+        assert "print('Send Rejection')" in result.code
+
+        # Return should appear once (shared end node)
+        assert result.code.count("return 'Complete'") == 1

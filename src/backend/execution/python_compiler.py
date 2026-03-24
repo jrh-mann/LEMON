@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import deque
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
 
@@ -411,6 +412,10 @@ class PythonCodeGenerator:
         self._indent_level = 0
         self._lines: List[str] = []
         self._warnings: List[str] = []
+        # Helper function extraction for DAG nodes visited more than once
+        self._extracted_helpers: Dict[str, str] = {}  # node_id -> func_name
+        self._helper_blocks: List[str] = []  # compiled helper function code
+        self._compiling_helper_for: Optional[str] = None  # node ID currently being compiled as helper
 
     def compile(self) -> CompilationResult:
         """Compile the workflow to Python code.
@@ -467,6 +472,21 @@ class PythonCodeGenerator:
                                 "Generated code contains a placeholder comment instead."
                             )
             
+            # --- Pre-pass: identify and extract helper functions for DAG nodes ---
+            # Nodes visited more than once during tree-walking compilation would
+            # cause code duplication. Extract them as helper functions.
+            self._extracted_helpers = {}
+            self._helper_blocks = []
+            visits = self._count_node_visits()
+            for nid, count in visits.items():
+                if count > 1 and nid not in self._extracted_helpers:
+                    # Don't extract trivial end/output nodes — they're just a return
+                    # statement and are cleaner inlined at each call site.
+                    node = self.nodes.get(nid)
+                    if node and node.get('type') in ('end', 'output'):
+                        continue
+                    self._compile_helper(nid)
+
             # --- Compile Root Workflow ---
             # Generate imports
             self._generate_imports(self.variables)
@@ -508,11 +528,24 @@ class PythonCodeGenerator:
                 self._add_line("")
                 self._generate_main_block(self.workflow_name, input_vars)
             
-            # Append subflow helper functions to the start of the final string
-            combined_code = "\n\n".join(subflow_code_blocks)
-            if combined_code:
-                combined_code += "\n\n"
-            combined_code += "\n".join(self._lines)
+            # Assemble final code: imports (in _lines) come first, then subflows,
+            # then extracted helpers, then the main function definition.
+            # Split _lines at the first blank line after imports to insert helpers.
+            main_code = "\n".join(self._lines)
+            helper_code = "\n\n".join(subflow_code_blocks + self._helper_blocks)
+            if helper_code:
+                # Insert helpers after the import block (first blank line)
+                import_end = main_code.find("\n\n")
+                if import_end != -1:
+                    combined_code = (
+                        main_code[:import_end] + "\n\n" +
+                        helper_code + "\n" +
+                        main_code[import_end:]
+                    )
+                else:
+                    combined_code = helper_code + "\n\n" + main_code
+            else:
+                combined_code = main_code
             
             return CompilationResult(
                 success=True,
@@ -658,32 +691,219 @@ class PythonCodeGenerator:
         children.sort(key=lambda n: n.get('edge_label', '') + n.get('id', ''))
         return children
 
-    def _visit_node(self, node: Dict[str, Any]) -> None:
+    def _reachable_from(self, start_id: str) -> Set[str]:
+        """Return all node IDs reachable from start_id via BFS."""
+        visited: Set[str] = set()
+        queue = deque([start_id])
+        while queue:
+            nid = queue.popleft()
+            if nid in visited:
+                continue
+            visited.add(nid)
+            for edge in self.edges:
+                if edge.get('from') == nid:
+                    target = edge.get('to')
+                    if target and target not in visited:
+                        queue.append(target)
+        return visited
+
+    def _find_convergence_point(self, node: Dict[str, Any]) -> Optional[str]:
+        """Find the immediate post-dominator (convergence point) of a decision node.
+
+        For a decision node with true/false branches, returns the first node
+        reachable from BOTH branches — i.e., where the divergent paths rejoin.
+        Returns None if branches don't converge (each ends independently).
+
+        Uses topological order to pick the closest convergence point.
+        """
+        children = self._get_children(node)
+        if len(children) < 2:
+            return None
+
+        # Collect reachable sets from each branch (excluding the decision node itself)
+        branch_reachable = []
+        for child in children:
+            child_id = child.get('id')
+            if child_id:
+                branch_reachable.append(self._reachable_from(child_id))
+
+        if len(branch_reachable) < 2:
+            return None
+
+        # Convergence = intersection of all branches' reachable sets
+        common = branch_reachable[0]
+        for s in branch_reachable[1:]:
+            common = common & s
+
+        if not common:
+            return None
+
+        # Pick the closest convergence point (smallest topological distance).
+        # BFS from the decision node, return the first node in the common set.
+        decision_id = node.get('id')
+        queue = deque([decision_id])
+        visited: Set[str] = set()
+        while queue:
+            nid = queue.popleft()
+            if nid in visited:
+                continue
+            visited.add(nid)
+            for edge in self.edges:
+                if edge.get('from') == nid:
+                    target = edge.get('to')
+                    if target and target not in visited:
+                        if target in common:
+                            return target
+                        queue.append(target)
+
+        return None
+
+    def _count_node_visits(self) -> Dict[str, int]:
+        """Simulate the compilation walk to count how many times each node is visited.
+
+        Used to identify nodes that need extraction as helper functions.
+        Nodes visited more than once would cause code duplication without extraction.
+        """
+        visits: Dict[str, int] = {}
+
+        def count(node_id: str, stop_before: Optional[str] = None) -> None:
+            if stop_before and node_id == stop_before:
+                return
+            visits[node_id] = visits.get(node_id, 0) + 1
+            if visits[node_id] > 1:
+                return  # Already counted — don't recurse further
+            node = self.nodes.get(node_id)
+            if not node:
+                return
+            node_type = node.get('type')
+            if node_type in ('output', 'end'):
+                return
+            elif node_type == 'decision':
+                children = self._get_children(node)
+                convergence_id = self._find_convergence_point(node)
+                for child in children:
+                    cid = child.get('id')
+                    if cid:
+                        count(cid, stop_before=convergence_id)
+                if convergence_id:
+                    count(convergence_id, stop_before=stop_before)
+            else:
+                children = self._get_children(node)
+                if children:
+                    cid = children[0].get('id')
+                    if cid:
+                        count(cid, stop_before=stop_before)
+
+        start_nodes = [n for n in self.nodes.values() if n.get('type') == 'start']
+        if start_nodes:
+            children = self._get_children(start_nodes[0])
+            if children:
+                cid = children[0].get('id')
+                if cid:
+                    count(cid)
+        return visits
+
+    def _compile_helper(self, node_id: str) -> str:
+        """Pre-compile a node's subtree as a helper function.
+
+        When a node would be visited more than once during compilation (DAG
+        with 3+ paths converging), extracting it as a helper eliminates all
+        duplication. Each call site emits ``return _helper(args)`` instead.
+
+        Returns the helper function name.
+        """
+        node = self.nodes[node_id]
+        label = node.get('label', node_id)
+        func_name = f"_{re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')}"
+
+        # Ensure unique name
+        base = func_name
+        counter = 2
+        while any(func_name == name for name in self._extracted_helpers.values()):
+            func_name = f"{base}_{counter}"
+            counter += 1
+
+        # Save compiler state
+        saved_lines = self._lines
+        saved_indent = self._indent_level
+
+        # Compile helper function body
+        self._lines = []
+        self._indent_level = 0
+
+        # Parameter list: all input variables (always correct, slightly verbose)
+        input_vars = [v for v in self.variables if v.get('source', 'input') == 'input']
+        params = []
+        for var in input_vars:
+            python_name = self.resolver.resolve(var['id'])
+            python_type = self.resolver.get_type(var['id'])
+            params.append(f"{python_name}: {python_type}")
+
+        self._add_line(f"def {func_name}({', '.join(params)}) -> Union[str, int, float, bool]:")
+        self._indent_level = 1
+        # Mark as extracted BEFORE visiting so recursive convergence works.
+        # But also set _compiling_helper_for so _visit_node doesn't redirect
+        # the root node of this helper back to itself (infinite recursion).
+        self._extracted_helpers[node_id] = func_name
+        self._compiling_helper_for = node_id
+        self._visit_node(node)
+        self._compiling_helper_for = None
+        self._indent_level = 0
+
+        self._helper_blocks.append("\n".join(self._lines))
+
+        # Restore state
+        self._lines = saved_lines
+        self._indent_level = saved_indent
+
+        return func_name
+
+    def _visit_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
         """Visit a node and generate appropriate code.
 
         Args:
-            node: Tree node to visit
+            node: Node to visit.
+            stop_before: If set, stop compilation when reaching this node ID
+                (used for DAG convergence — the convergence point is compiled
+                after the if/else block, not inside each branch).
         """
         node_type = node.get('type')
         node_id = node.get('id', 'unknown')
+
+        # DAG convergence: stop before the convergence point
+        if stop_before and node_id == stop_before:
+            return
+
+        # Helper function extraction: if this node was pre-compiled as a helper
+        # (because it would be visited more than once), emit a call instead of
+        # inlining the subtree. Skip if we're currently compiling this node's helper.
+        if node_id in self._extracted_helpers and node_id != self._compiling_helper_for:
+            func_name = self._extracted_helpers[node_id]
+            input_vars = [v for v in self.variables if v.get('source', 'input') == 'input']
+            args = [self.resolver.resolve(v['id']) for v in input_vars]
+            self._add_line(f"return {func_name}({', '.join(args)})")
+            return
 
         if node_type in ('output', 'end'):
             self._visit_end_node(node)
 
         elif node_type == 'decision':
-            self._visit_decision_node(node)
+            self._visit_decision_node(node, stop_before=stop_before)
 
         elif node_type == 'subprocess':
-            self._visit_subprocess_node(node)
+            self._visit_subprocess_node(node, stop_before=stop_before)
 
         elif node_type == 'calculation':
-            self._visit_calculation_node(node)
+            self._visit_calculation_node(node, stop_before=stop_before)
 
         elif node_type in ('start', 'action', 'process'):
-            # Pass-through nodes - continue to children
+            # Process nodes emit a print statement so they appear in the compiled output
+            if node_type == 'process':
+                label = node.get('label', node_id)
+                self._add_line(f"print({repr(label)})")
             children = self._get_children(node)
             if children:
-                self._visit_node(children[0])
+                self._visit_node(children[0], stop_before=stop_before)
             else:
                 self._warnings.append(f"Node '{node_id}' has no continuation")
                 self._add_line(f"pass  # Node '{node_id}' has no continuation")
@@ -764,8 +984,14 @@ class PythonCodeGenerator:
         else:
             return repr(str(value))
 
-    def _visit_decision_node(self, node: Dict[str, Any]) -> None:
-        """Generate if/else block for decision node."""
+    def _visit_decision_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
+        """Generate if/else block for decision node.
+
+        DAG-aware: detects whether branches converge (immediate post-dominator).
+        If they do, only the divergent parts are compiled inside if/else, and
+        the convergent code continues linearly after the block. This prevents
+        exponential code duplication for DAGs with shared downstream nodes.
+        """
         condition = node.get('condition')
         children = self._get_children(node)
         node_label = node.get('label', node.get('id', 'decision'))
@@ -781,7 +1007,6 @@ class PythonCodeGenerator:
         try:
             condition_expr = self.condition_compiler.compile(condition, self.resolver)
         except CompilationError as e:
-            # Provide helpful error message with the actual compilation error
             available_vars = list(self.resolver.id_to_python.keys())
             warning_msg = (
                 f"Could not compile condition for decision '{node_label}': {e}. "
@@ -811,26 +1036,41 @@ class PythonCodeGenerator:
         if false_branch is None and len(children) >= 2:
             false_branch = children[1]
 
-        # Generate if block
+        # Detect convergence: find the immediate post-dominator where branches rejoin.
+        # If found, compile only the divergent parts inside if/else, then continue
+        # from the convergence point after the block.
+        convergence_id = self._find_convergence_point(node)
+
+        # Generate if block — stop at convergence point if present.
+        # Track line count to detect empty branches (need `pass` for valid Python).
         self._add_line(f"if {condition_expr}:")
         self._indent_level += 1
+        lines_before = len(self._lines)
         if true_branch:
-            self._visit_node(true_branch)
-        else:
+            self._visit_node(true_branch, stop_before=convergence_id)
+        if len(self._lines) == lines_before:
             self._add_line("pass")
         self._indent_level -= 1
 
-        # Generate else block
+        # Generate else block — stop at convergence point if present
         if false_branch:
             self._add_line("else:")
             self._indent_level += 1
-            self._visit_node(false_branch)
+            lines_before = len(self._lines)
+            self._visit_node(false_branch, stop_before=convergence_id)
+            if len(self._lines) == lines_before:
+                self._add_line("pass")
             self._indent_level -= 1
 
-    def _visit_subprocess_node(self, node: Dict[str, Any]) -> None:
+        # Continue from the convergence point (shared downstream code).
+        # Propagate the outer stop_before so nested convergence works correctly.
+        if convergence_id and convergence_id in self.nodes:
+            self._visit_node(self.nodes[convergence_id], stop_before=stop_before)
+
+    def _visit_subprocess_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
         """Generate subprocess call.
 
-        Requires self.fetch_subworkflow to be provided to recursively find 
+        Requires self.fetch_subworkflow to be provided to recursively find
         and compile subworkflows as helper functions.
         """
         node_label = node.get('label', node.get('id', 'subprocess'))
@@ -874,9 +1114,9 @@ class PythonCodeGenerator:
         children = self._get_children(node)
         if children:
             self._add_line("")
-            self._visit_node(children[0])
+            self._visit_node(children[0], stop_before=stop_before)
 
-    def _visit_calculation_node(self, node: Dict[str, Any]) -> None:
+    def _visit_calculation_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
         """Generate calculation expression and assignment.
         
         Generates Python code like:
@@ -939,8 +1179,8 @@ class PythonCodeGenerator:
         children = self._get_children(node)
         if children:
             self._add_line("")
-            self._visit_node(children[0])
-    
+            self._visit_node(children[0], stop_before=stop_before)
+
     def _compile_operator_expression(
         self,
         operator_name: str,
