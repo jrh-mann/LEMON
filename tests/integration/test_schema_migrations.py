@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.storage.migrations import MIGRATIONS, get_schema_version, run_migrations
+from src.backend.storage.migrations import (
+    MIGRATIONS,
+    get_schema_version,
+    run_migrations,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -36,8 +40,6 @@ CREATE TABLE IF NOT EXISTS workflows (
     outputs TEXT NOT NULL DEFAULT '[]',
     tree TEXT NOT NULL DEFAULT '{}',
     doubts TEXT NOT NULL DEFAULT '[]',
-    validation_score INTEGER NOT NULL DEFAULT 0,
-    validation_count INTEGER NOT NULL DEFAULT 0,
     is_validated BOOLEAN NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -58,8 +60,6 @@ _EXPECTED_COLUMNS = {
     "outputs",
     "tree",
     "doubts",
-    "validation_score",
-    "validation_count",
     "is_validated",
     "output_type",
     "is_draft",
@@ -184,18 +184,12 @@ class TestIncrementalMigration:
         db_conn.executescript(_BASE_SCHEMA)
 
         # Manually apply first 3 migrations' column additions
-        db_conn.execute(
-            "ALTER TABLE workflows ADD COLUMN is_published DEFAULT 0"
-        )
+        db_conn.execute("ALTER TABLE workflows ADD COLUMN is_published DEFAULT 0")
         db_conn.execute(
             "ALTER TABLE workflows ADD COLUMN review_status DEFAULT 'unreviewed'"
         )
-        db_conn.execute(
-            "ALTER TABLE workflows ADD COLUMN net_votes DEFAULT 0"
-        )
-        db_conn.execute(
-            "ALTER TABLE workflows ADD COLUMN published_at DEFAULT NULL"
-        )
+        db_conn.execute("ALTER TABLE workflows ADD COLUMN net_votes DEFAULT 0")
+        db_conn.execute("ALTER TABLE workflows ADD COLUMN published_at DEFAULT NULL")
 
         # Record version as 3 (first 3 migrations already done)
         db_conn.execute(

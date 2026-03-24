@@ -7,6 +7,7 @@ before saving.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import sqlite3
@@ -14,13 +15,20 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, Request
-from starlette.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, FastAPI, File, Request, UploadFile
+from starlette.responses import FileResponse, JSONResponse, Response
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
 from .helpers import _calculate_confidence, _infer_outputs_from_nodes, api_error
 from ...storage.workflows import WorkflowStore
+from ...workflow_transfer import (
+    WorkflowTransferError,
+    build_workflow_bundle_bytes,
+    import_single_workflow_json,
+    import_workflow_bundle_zip,
+    serialize_workflow_record,
+)
 from ...utils.flowchart import tree_from_flowchart
 from ...utils.paths import lemon_data_dir
 from ...validation.workflow_validator import WorkflowValidator
@@ -29,6 +37,44 @@ logger = logging.getLogger("backend.api")
 
 # Workflow validator instance for save/update validation
 _workflow_validator = WorkflowValidator()
+
+
+def _validate_save_request(
+    *,
+    nodes: Any,
+    edges: Any,
+    variables: Any,
+    force_save: bool,
+) -> tuple[bool, bool, Optional[JSONResponse]]:
+    workflow_to_validate = {
+        "nodes": nodes,
+        "edges": edges,
+        "variables": variables,
+    }
+    is_valid, validation_errors = _workflow_validator.validate(
+        workflow_to_validate, strict=True
+    )
+    if is_valid:
+        return True, True, None
+    if force_save:
+        return False, False, None
+
+    error_message = _workflow_validator.format_errors(validation_errors)
+    return (
+        False,
+        False,
+        JSONResponse(
+            {
+                "error": "Workflow validation failed",
+                "message": error_message,
+                "validation_errors": [
+                    {"code": e.code, "message": e.message, "node_id": e.node_id}
+                    for e in validation_errors
+                ],
+            },
+            status_code=400,
+        ),
+    )
 
 
 def _serialize_workflow_summary(wf: Any) -> Dict[str, Any]:
@@ -115,10 +161,7 @@ def register_workflow_routes(
         if not outputs:
             outputs = _infer_outputs_from_nodes(nodes, output_type)
 
-        # Extract validation metadata
-        validation_score = payload.get("validation_score") or 0
-        validation_count = payload.get("validation_count") or 0
-        is_validated = payload.get("is_validated") or False
+        force_save = bool(payload.get("force_save", False))
 
         # Peer review: check if user wants to publish to community
         # Use sentinel to distinguish "not provided" from "explicitly False"
@@ -126,27 +169,14 @@ def register_workflow_routes(
         _is_published_in_payload = "is_published" in payload
 
         # Validate workflow structure before saving
-        workflow_to_validate = {
-            "nodes": nodes,
-            "edges": edges,
-            "variables": variables,
-        }
-        is_valid, validation_errors = _workflow_validator.validate(
-            workflow_to_validate, strict=True
+        _, is_validated, validation_response = _validate_save_request(
+            nodes=nodes,
+            edges=edges,
+            variables=variables,
+            force_save=force_save,
         )
-        if not is_valid:
-            error_message = _workflow_validator.format_errors(validation_errors)
-            return JSONResponse(
-                {
-                    "error": "Workflow validation failed",
-                    "message": error_message,
-                    "validation_errors": [
-                        {"code": e.code, "message": e.message, "node_id": e.node_id}
-                        for e in validation_errors
-                    ],
-                },
-                status_code=400,
-            )
+        if validation_response is not None:
+            return validation_response
 
         try:
             workflow_store.create_workflow(
@@ -162,8 +192,6 @@ def register_workflow_routes(
                 outputs=outputs,
                 tree=tree,
                 doubts=doubts,
-                validation_score=validation_score,
-                validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
                 is_published=is_published,
@@ -185,8 +213,6 @@ def register_workflow_routes(
                 outputs=outputs,
                 tree=tree,
                 doubts=doubts,
-                validation_score=validation_score,
-                validation_count=validation_count,
                 is_validated=is_validated,
                 output_type=output_type,
             )
@@ -194,7 +220,9 @@ def register_workflow_routes(
                 update_kwargs["is_published"] = is_published
             success = workflow_store.update_workflow(**update_kwargs)
             if not success:
-                return JSONResponse({"error": "Failed to save workflow"}, status_code=500)
+                return JSONResponse(
+                    {"error": "Failed to save workflow"}, status_code=500
+                )
 
         response = {
             "workflow_id": workflow_id,
@@ -232,11 +260,7 @@ def register_workflow_routes(
                 "creator_id": workflow.user_id,
                 "created_at": workflow.created_at,
                 "updated_at": workflow.updated_at,
-                "validation_score": workflow.validation_score,
-                "validation_count": workflow.validation_count,
-                "confidence": _calculate_confidence(
-                    workflow.validation_score, workflow.validation_count
-                ),
+                "confidence": "none",
                 "is_validated": workflow.is_validated,
             },
             "nodes": workflow.nodes,
@@ -251,6 +275,65 @@ def register_workflow_routes(
             "uploaded_files": workflow.uploaded_files,
         }
         return JSONResponse(response)
+
+    @router.get("/api/workflows/{workflow_id}/export")
+    async def export_workflow(
+        workflow_id: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        workflow = workflow_store.get_workflow(workflow_id, user.id)
+        if not workflow:
+            return JSONResponse({"error": "Workflow not found"}, status_code=404)
+        return JSONResponse(serialize_workflow_record(workflow))
+
+    @router.get("/api/workflows/{workflow_id}/export-bundle")
+    async def export_workflow_bundle(
+        workflow_id: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> Response:
+        try:
+            bundle_bytes = build_workflow_bundle_bytes(
+                workflow_store, user, workflow_id
+            )
+        except WorkflowTransferError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+        return Response(
+            content=bundle_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{workflow_id}.zip"',
+            },
+        )
+
+    @router.post("/api/workflows/import")
+    async def import_workflow(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        try:
+            payload = await request.json()
+            workflow_id = import_single_workflow_json(workflow_store, user, payload)
+            return JSONResponse({"workflow_id": workflow_id}, status_code=201)
+        except (json.JSONDecodeError, ValueError, WorkflowTransferError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @router.post("/api/workflows/import-bundle")
+    async def import_workflow_bundle(
+        file: UploadFile = File(...),
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        try:
+            bundle_bytes = await file.read()
+            workflow_id, imported_count = import_workflow_bundle_zip(
+                workflow_store, user, bundle_bytes
+            )
+            return JSONResponse(
+                {"workflow_id": workflow_id, "imported_count": imported_count},
+                status_code=201,
+            )
+        except WorkflowTransferError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
     @router.delete("/api/workflows/{workflow_id}")
     async def delete_workflow(
@@ -310,6 +393,8 @@ def register_workflow_routes(
         nodes = update_kwargs.get("nodes") or existing.nodes
         edges = update_kwargs.get("edges") or existing.edges
         update_kwargs["tree"] = tree_from_flowchart(nodes, edges)
+        if any(field in payload for field in ("nodes", "edges", "variables")):
+            update_kwargs["is_validated"] = False
 
         # Attempt the update (preserves is_draft by not passing it)
         try:
@@ -360,9 +445,7 @@ def register_workflow_routes(
         description = payload.get("description") or existing.description
         domain = payload.get("domain") or existing.domain
         tags = payload.get("tags") or existing.tags
-        output_type = (
-            payload.get("output_type") or existing.output_type or "string"
-        )
+        output_type = payload.get("output_type") or existing.output_type or "string"
 
         # Extract workflow structure
         nodes = payload.get("nodes") or existing.nodes
@@ -378,40 +461,20 @@ def register_workflow_routes(
         if not outputs:
             outputs = _infer_outputs_from_nodes(nodes, output_type)
 
-        # Extract validation metadata (preserve existing if not provided)
-        validation_score = payload.get(
-            "validation_score", existing.validation_score
-        )
-        validation_count = payload.get(
-            "validation_count", existing.validation_count
-        )
-        is_validated = payload.get("is_validated", existing.is_validated)
+        force_save = bool(payload.get("force_save", False))
 
         # Peer review: check if user wants to publish to community
         is_published = payload.get("is_published", existing.is_published)
 
         # Validate workflow structure before saving
-        workflow_to_validate = {
-            "nodes": nodes,
-            "edges": edges,
-            "variables": variables,
-        }
-        is_valid, validation_errors = _workflow_validator.validate(
-            workflow_to_validate, strict=True
+        _, is_validated, validation_response = _validate_save_request(
+            nodes=nodes,
+            edges=edges,
+            variables=variables,
+            force_save=force_save,
         )
-        if not is_valid:
-            error_message = _workflow_validator.format_errors(validation_errors)
-            return JSONResponse(
-                {
-                    "error": "Workflow validation failed",
-                    "message": error_message,
-                    "validation_errors": [
-                        {"code": e.code, "message": e.message, "node_id": e.node_id}
-                        for e in validation_errors
-                    ],
-                },
-                status_code=400,
-            )
+        if validation_response is not None:
+            return validation_response
 
         # Update workflow - also marks as non-draft (saved)
         success = workflow_store.update_workflow(
@@ -427,8 +490,6 @@ def register_workflow_routes(
             outputs=outputs,
             tree=tree,
             doubts=doubts,
-            validation_score=validation_score,
-            validation_count=validation_count,
             is_validated=is_validated,
             output_type=output_type,
             is_draft=False,  # Explicitly saving marks it as non-draft
@@ -455,7 +516,7 @@ def register_workflow_routes(
     async def serve_upload(
         file_path: str,
         user: AuthUser = Depends(require_auth),
-    ) -> FileResponse:
+    ) -> Response:
         """Serve an uploaded file from the data directory.
 
         Only serves files under the uploads/ subdirectory to prevent

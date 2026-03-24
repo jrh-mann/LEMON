@@ -83,9 +83,7 @@ def serialize_workflow_summary(wf: WorkflowRecord) -> Dict[str, Any]:
     Returns:
         Dict matching the WorkflowSummary format expected by the frontend.
     """
-    input_names = [
-        inp.get("name", "") for inp in wf.inputs if isinstance(inp, dict)
-    ]
+    input_names = [inp.get("name", "") for inp in wf.inputs if isinstance(inp, dict)]
     output_values = [
         out.get("value", "") or out.get("name", "")
         for out in wf.outputs
@@ -98,11 +96,7 @@ def serialize_workflow_summary(wf: WorkflowRecord) -> Dict[str, Any]:
         "description": wf.description,
         "domain": wf.domain,
         "tags": wf.tags,
-        "validation_score": wf.validation_score,
-        "validation_count": wf.validation_count,
-        "confidence": _calculate_confidence(
-            wf.validation_score, wf.validation_count
-        ),
+        "confidence": "none",
         "is_validated": wf.is_validated,
         "input_names": input_names,
         "output_values": output_values,

@@ -69,21 +69,25 @@ def register_peer_review_routes(
             # Start with the standard summary fields
             summary = serialize_workflow_summary(wf)
             # Append peer-review-specific fields
-            summary.update({
-                "is_published": wf.is_published,
-                "review_status": wf.review_status,
-                "net_votes": wf.net_votes,
-                "published_at": wf.published_at,
-                "publisher_id": wf.user_id,
-                "user_vote": workflow_store.get_user_vote(wf.id, user.id),
-            })
+            summary.update(
+                {
+                    "is_published": wf.is_published,
+                    "review_status": wf.review_status,
+                    "net_votes": wf.net_votes,
+                    "published_at": wf.published_at,
+                    "publisher_id": wf.user_id,
+                    "user_vote": workflow_store.get_user_vote(wf.id, user.id),
+                }
+            )
             summaries.append(summary)
 
-        return JSONResponse({
-            "workflows": summaries,
-            "count": total_count,
-            "publish_threshold": PUBLISH_VOTE_THRESHOLD,
-        })
+        return JSONResponse(
+            {
+                "workflows": summaries,
+                "count": total_count,
+                "publish_threshold": PUBLISH_VOTE_THRESHOLD,
+            }
+        )
 
     @router.get("/api/workflows/public/{workflow_id}")
     async def get_public_workflow(
@@ -116,11 +120,7 @@ def register_peer_review_routes(
                 "publisher_id": workflow.user_id,
                 "created_at": workflow.created_at,
                 "updated_at": workflow.updated_at,
-                "validation_score": workflow.validation_score,
-                "validation_count": workflow.validation_count,
-                "confidence": _calculate_confidence(
-                    workflow.validation_score, workflow.validation_count
-                ),
+                "confidence": "none",
                 "is_validated": workflow.is_validated,
             },
             "nodes": workflow.nodes,
@@ -171,9 +171,7 @@ def register_peer_review_routes(
         elif vote in (-1, 1):
             result = workflow_store.cast_vote(workflow_id, user.id, vote)
         else:
-            return JSONResponse(
-                {"error": "vote must be +1, -1, or 0"}, status_code=400
-            )
+            return JSONResponse({"error": "vote must be +1, -1, or 0"}, status_code=400)
 
         if not result.get("success"):
             return JSONResponse(

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useWorkflowStore } from '../stores/workflowStore'
-import { exportAsJSON, exportAsPNG, exportAsPython } from '../utils/exportUtils'
+import { exportAsJSON, exportAsJSONWithOptions, exportAsPNG, exportAsPython } from '../utils/exportUtils'
 import FlowchartPreview from './FlowchartPreview'
 import '../styles/ExportPage.css'
 
@@ -11,6 +11,7 @@ export default function ExportPage() {
     const { currentWorkflow, flowchart, currentAnalysis } = useWorkflowStore()
     const [exporting, setExporting] = useState<string | null>(null)
     const [lastResult, setLastResult] = useState<Record<string, string | null>>({})
+    const [includeSubflowsInJson, setIncludeSubflowsInJson] = useState(false)
 
     const canExport = currentWorkflow || flowchart.nodes.length > 0
     const resolvedWorkflowId = routeWorkflowId || currentWorkflow?.id || null
@@ -52,6 +53,29 @@ export default function ExportPage() {
             setExporting(null)
         }
     }, [currentAnalysis, currentWorkflow, flowchart])
+
+    const handleJsonExport = useCallback(async () => {
+        const ctx = { currentWorkflow, flowchart, currentAnalysis }
+        const resultKey = 'json'
+        setExporting(resultKey)
+        setLastResult(prev => ({ ...prev, [resultKey]: null }))
+        try {
+            const result = includeSubflowsInJson
+                ? await exportAsJSONWithOptions(ctx, { includeSubflows: true })
+                : await exportAsJSON(ctx)
+            setLastResult(prev => ({
+                ...prev,
+                [resultKey]: result === 'cancelled' ? null : result || '✓ Downloaded successfully'
+            }))
+        } catch (err) {
+            setLastResult(prev => ({
+                ...prev,
+                [resultKey]: err instanceof Error ? err.message : 'Export failed'
+            }))
+        } finally {
+            setExporting(null)
+        }
+    }, [currentAnalysis, currentWorkflow, flowchart, includeSubflowsInJson])
 
     return (
         <div className="export-page">
@@ -109,12 +133,28 @@ export default function ExportPage() {
                                     {lastResult.json}
                                 </div>
                             )}
+                            <label className="export-toggle" htmlFor="bundle-subflows-toggle">
+                                <input
+                                    id="bundle-subflows-toggle"
+                                    type="checkbox"
+                                    checked={includeSubflowsInJson}
+                                    onChange={(e) => setIncludeSubflowsInJson(e.target.checked)}
+                                />
+                                <span>Bundle subflows if encountered</span>
+                            </label>
+                            <p className="export-toggle-hint">
+                                Downloads a `.zip` bundle when enabled; otherwise exports the current workflow as `.json`.
+                            </p>
                             <button
                                 className="primary export-btn"
-                                onClick={() => handleExport('json')}
+                                onClick={handleJsonExport}
                                 disabled={exporting === 'json'}
                             >
-                                {exporting === 'json' ? 'Exporting...' : 'Download JSON'}
+                                {exporting === 'json'
+                                    ? 'Exporting...'
+                                    : includeSubflowsInJson
+                                        ? 'Download ZIP Bundle'
+                                        : 'Download JSON'}
                             </button>
                         </div>
 

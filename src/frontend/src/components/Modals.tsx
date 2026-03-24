@@ -189,9 +189,7 @@ function SaveWorkflowFormContent({
         edges: flowchart.edges,
         variables: currentAnalysis?.variables || [],
         outputs: currentAnalysis?.outputs || [],
-        validation_score: 0,
-        validation_count: 0,
-        is_validated: false,
+        force_save: skipValidation,
         is_published: isPublished,  // Peer review: publish to community library
       }
 

@@ -83,8 +83,6 @@ def main() -> None:
         outputs=[],
         tree={},
         doubts=[],
-        validation_score=0,
-        validation_count=0,
         is_validated=False,
         output_type="string",
         is_draft=False,
@@ -101,13 +99,15 @@ def main() -> None:
     print(f"DB: {db_path}\n")
 
     # Prepare file descriptor — orchestrator reads bytes and base64-encodes internally
-    has_files = [{
-        "id": "img_test_1",
-        "name": image_path.name,
-        "path": str(image_path),
-        "file_type": "image",
-        "purpose": "unclassified",
-    }]
+    has_files = [
+        {
+            "id": "img_test_1",
+            "name": image_path.name,
+            "path": str(image_path),
+            "file_type": "image",
+            "purpose": "unclassified",
+        }
+    ]
 
     # ---------------------------------------------------------------------------
     # Tool call logger — captures every tool invocation in order
@@ -127,7 +127,9 @@ def main() -> None:
         if event == "tool_start":
             # Print a concise live summary of each tool call
             summary = _summarize_args(tool_name, args)
-            print(f"  [{len([e for e in tool_log if e['event'] == 'tool_start']):>2}] {tool_name}({summary})")
+            print(
+                f"  [{len([e for e in tool_log if e['event'] == 'tool_start']):>2}] {tool_name}({summary})"
+            )
         elif event == "tool_complete":
             success = result.get("success", "?") if result else "?"
             print(f"       ↳ success={success}")
@@ -175,7 +177,9 @@ def main() -> None:
     # get_current_workflow/validate_workflow that follows the last initial wiring).
     node_indices = [i for i, t in enumerate(tool_sequence) if t == "add_node"]
     conn_indices = [i for i, t in enumerate(tool_sequence) if t == "add_connection"]
-    batch_indices = [i for i, t in enumerate(tool_sequence) if t == "batch_edit_workflow"]
+    batch_indices = [
+        i for i, t in enumerate(tool_sequence) if t == "batch_edit_workflow"
+    ]
 
     print(f"\nadd_node calls:       {len(node_indices)}")
     print(f"add_connection calls: {len(conn_indices)}")
@@ -210,14 +214,20 @@ def main() -> None:
         nodes_before_edges = last_node < first_conn
         if not nodes_before_edges:
             late_nodes = [i for i in build_nodes if i > first_conn]
-            print(f"\n  FAIL: {len(late_nodes)} add_node call(s) appeared after first add_connection")
-            print(f"        first add_connection at index {first_conn}, late add_node at {late_nodes}")
+            print(
+                f"\n  FAIL: {len(late_nodes)} add_node call(s) appeared after first add_connection"
+            )
+            print(
+                f"        first add_connection at index {first_conn}, late add_node at {late_nodes}"
+            )
 
     if verify_boundary is not None:
         phase3_nodes = [i for i in node_indices if i >= verify_boundary]
         phase3_conns = [i for i in conn_indices if i >= verify_boundary]
         if phase3_nodes or phase3_conns:
-            print(f"\n  Phase 3 corrections: {len(phase3_nodes)} node(s), {len(phase3_conns)} connection(s) added during verification")
+            print(
+                f"\n  Phase 3 corrections: {len(phase3_nodes)} node(s), {len(phase3_conns)} connection(s) added during verification"
+            )
 
     _print_result("Phase 2 — nodes before edges", nodes_before_edges)
 
@@ -247,9 +257,11 @@ def main() -> None:
 
     # Print workflow stats
     wf = orchestrator.workflow
-    print(f"\nWorkflow: {len(wf.get('nodes', []))} nodes, "
-          f"{len(wf.get('edges', []))} edges, "
-          f"{len(wf.get('variables', []))} variables")
+    print(
+        f"\nWorkflow: {len(wf.get('nodes', []))} nodes, "
+        f"{len(wf.get('edges', []))} edges, "
+        f"{len(wf.get('variables', []))} variables"
+    )
 
     # Dump full tool log to JSON for deeper inspection
     out_dir = PROJECT_ROOT / ".lemon"
@@ -257,8 +269,13 @@ def main() -> None:
     log_path = out_dir / "protocol_test_tool_log.json"
     with open(log_path, "w") as f:
         json.dump(
-            [{"event": e["event"], "tool": e["tool"], "args": e["args"]} for e in tool_log],
-            f, indent=2, default=str,
+            [
+                {"event": e["event"], "tool": e["tool"], "args": e["args"]}
+                for e in tool_log
+            ],
+            f,
+            indent=2,
+            default=str,
         )
     print(f"Tool log saved to: {log_path}")
 

@@ -26,8 +26,6 @@ function createImportedMetadata(metadata: Partial<WorkflowMetadata> | undefined)
     creator_id: metadata?.creator_id,
     created_at: metadata?.created_at || now,
     updated_at: metadata?.updated_at || now,
-    validation_score: typeof metadata?.validation_score === 'number' ? metadata.validation_score : 0,
-    validation_count: typeof metadata?.validation_count === 'number' ? metadata.validation_count : 0,
     confidence: metadata?.confidence || 'none',
     is_validated: Boolean(metadata?.is_validated),
   }

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 # Minimum net upvotes required for a workflow to be promoted to "reviewed" status
 # and appear in the Published tab. Can be changed here to adjust threshold.
@@ -19,7 +19,7 @@ PUBLISH_VOTE_THRESHOLD = 1
 _WORKFLOW_COLUMNS = """
     id, user_id, name, description, domain, tags,
     nodes, edges, inputs, outputs, tree, doubts,
-    validation_score, validation_count, is_validated,
+    is_validated,
     output_type, is_draft, is_published, review_status, net_votes, published_at,
     building, build_history, conversation_id, uploaded_files, created_at, updated_at
 """
@@ -27,20 +27,35 @@ _WORKFLOW_COLUMNS = """
 # ── Field lists for table-driven update_workflow ──
 # Scalar fields are stored as-is (no JSON serialization needed)
 _SCALAR_FIELDS = [
-    "name", "description", "domain", "validation_score", "validation_count",
-    "is_validated", "output_type", "is_draft", "review_status", "net_votes",
-    "building", "conversation_id",
+    "name",
+    "description",
+    "domain",
+    "is_validated",
+    "output_type",
+    "is_draft",
+    "review_status",
+    "net_votes",
+    "building",
+    "conversation_id",
 ]
 # JSON fields require json.dumps() before storage
 _JSON_FIELDS = [
-    "tags", "nodes", "edges", "inputs", "outputs", "tree", "doubts",
-    "build_history", "uploaded_files",
+    "tags",
+    "nodes",
+    "edges",
+    "inputs",
+    "outputs",
+    "tree",
+    "doubts",
+    "build_history",
+    "uploaded_files",
 ]
 
 
 @dataclass(frozen=True)
 class WorkflowRecord:
     """Represents a stored workflow with metadata."""
+
     id: str
     user_id: str
     name: str
@@ -53,27 +68,36 @@ class WorkflowRecord:
     outputs: List[Dict[str, Any]]
     tree: Dict[str, Any]
     doubts: List[str]
-    validation_score: int
-    validation_count: int
     is_validated: bool
     created_at: str
     updated_at: str
-    output_type: Optional[str] = None  # Type of value workflow returns: string, int, float, bool, json
+    output_type: Optional[str] = (
+        None  # Type of value workflow returns: string, int, float, bool, json
+    )
     is_draft: bool = True  # True = unsaved draft, False = saved to library
     # Peer review fields
     is_published: bool = False  # True = published to community library
     review_status: str = "unreviewed"  # "unreviewed" or "reviewed"
     net_votes: int = 0  # upvotes - downvotes
     published_at: Optional[str] = None  # When workflow was published
-    building: bool = False  # True while a background orchestrator is building this workflow
-    build_history: List[Dict[str, str]] = field(default_factory=list)  # Conversation history from the background builder
-    conversation_id: Optional[str] = None  # Links to the in-memory ConversationStore for chat history restore
-    uploaded_files: List[Dict[str, str]] = field(default_factory=list)  # [{name, rel_path, file_type, purpose}]
+    building: bool = (
+        False  # True while a background orchestrator is building this workflow
+    )
+    build_history: List[Dict[str, str]] = field(
+        default_factory=list
+    )  # Conversation history from the background builder
+    conversation_id: Optional[str] = (
+        None  # Links to the in-memory ConversationStore for chat history restore
+    )
+    uploaded_files: List[Dict[str, str]] = field(
+        default_factory=list
+    )  # [{name, rel_path, file_type, purpose}]
 
 
 @dataclass(frozen=True)
 class VoteRecord:
     """Represents a user's vote on a workflow."""
+
     id: int
     workflow_id: str
     user_id: str
@@ -89,6 +113,15 @@ class WorkflowStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._logger = logging.getLogger("backend.workflows")
         self._init_schema()
+
+    @staticmethod
+    def _deserialize_rows(rows: List[sqlite3.Row]) -> List[WorkflowRecord]:
+        workflows: List[WorkflowRecord] = []
+        for row in rows:
+            workflow = WorkflowStore._row_to_workflow(row)
+            if workflow is not None:
+                workflows.append(workflow)
+        return workflows
 
     def _init_schema(self) -> None:
         """Initialize database schema and apply pending migrations.
@@ -116,8 +149,6 @@ class WorkflowStore:
                     outputs TEXT NOT NULL DEFAULT '[]',
                     tree TEXT NOT NULL DEFAULT '{}',
                     doubts TEXT NOT NULL DEFAULT '[]',
-                    validation_score INTEGER NOT NULL DEFAULT 0,
-                    validation_count INTEGER NOT NULL DEFAULT 0,
                     is_validated BOOLEAN NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -141,7 +172,7 @@ class WorkflowStore:
                 self._logger.info("Applied %d schema migration(s)", applied)
 
     @contextmanager
-    def _conn(self) -> Iterable[sqlite3.Connection]:
+    def _conn(self) -> Iterator[sqlite3.Connection]:
         """Context manager for database connections."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -167,8 +198,6 @@ class WorkflowStore:
         outputs: Optional[List[Dict[str, Any]]] = None,
         tree: Optional[Dict[str, Any]] = None,
         doubts: Optional[List[str]] = None,
-        validation_score: int = 0,
-        validation_count: int = 0,
         is_validated: bool = False,
         output_type: Optional[str] = None,
         is_draft: bool = True,
@@ -191,8 +220,6 @@ class WorkflowStore:
             outputs: Workflow output definitions
             tree: Workflow tree structure
             doubts: List of validation doubts/concerns
-            validation_score: Number of successful validations
-            validation_count: Total validation attempts
             is_validated: Whether workflow passed validation
             output_type: Type of value workflow returns (string, int, float, bool, json)
             is_draft: True for unsaved drafts, False for saved to library
@@ -219,21 +246,47 @@ class WorkflowStore:
                 INSERT INTO workflows (
                     id, user_id, name, description, domain, tags,
                     nodes, edges, inputs, outputs, tree, doubts,
-                    validation_score, validation_count, is_validated,
+                    is_validated,
                     output_type, is_draft, is_published, review_status, net_votes, published_at,
                     building, build_history, conversation_id, uploaded_files, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    workflow_id, user_id, name, description, domain, tags_json,
-                    nodes_json, edges_json, inputs_json, outputs_json, tree_json, doubts_json,
-                    validation_score, validation_count, is_validated,
-                    output_type or "string", is_draft, is_published, "unreviewed", 0, published_at,
-                    building, build_history_json, None, "[]", now, now
+                    workflow_id,
+                    user_id,
+                    name,
+                    description,
+                    domain,
+                    tags_json,
+                    nodes_json,
+                    edges_json,
+                    inputs_json,
+                    outputs_json,
+                    tree_json,
+                    doubts_json,
+                    is_validated,
+                    output_type or "string",
+                    is_draft,
+                    is_published,
+                    "unreviewed",
+                    0,
+                    published_at,
+                    building,
+                    build_history_json,
+                    None,
+                    "[]",
+                    now,
+                    now,
                 ),
             )
-        self._logger.info("Created workflow id=%s user=%s name=%s is_published=%s", workflow_id, user_id, name, is_published)
+        self._logger.info(
+            "Created workflow id=%s user=%s name=%s is_published=%s",
+            workflow_id,
+            user_id,
+            name,
+            is_published,
+        )
 
     def get_workflow(self, workflow_id: str, user_id: str) -> Optional[WorkflowRecord]:
         """Get a workflow by ID, ensuring it belongs to the user."""
@@ -260,8 +313,6 @@ class WorkflowStore:
         outputs: Optional[List[Dict[str, Any]]] = None,
         tree: Optional[Dict[str, Any]] = None,
         doubts: Optional[List[str]] = None,
-        validation_score: Optional[int] = None,
-        validation_count: Optional[int] = None,
         is_validated: Optional[bool] = None,
         output_type: Optional[str] = None,
         is_draft: Optional[bool] = None,
@@ -276,15 +327,25 @@ class WorkflowStore:
         """Update an existing workflow. Only provided (non-None) fields are written."""
         # Collect all kwargs into a dict so we can iterate the field lists
         kwargs: Dict[str, Any] = {
-            "name": name, "description": description, "domain": domain,
-            "tags": tags, "nodes": nodes, "edges": edges,
-            "inputs": inputs, "outputs": outputs, "tree": tree,
-            "doubts": doubts, "validation_score": validation_score,
-            "validation_count": validation_count, "is_validated": is_validated,
-            "output_type": output_type, "is_draft": is_draft,
-            "is_published": is_published, "review_status": review_status,
-            "net_votes": net_votes, "building": building,
-            "build_history": build_history, "conversation_id": conversation_id,
+            "name": name,
+            "description": description,
+            "domain": domain,
+            "tags": tags,
+            "nodes": nodes,
+            "edges": edges,
+            "inputs": inputs,
+            "outputs": outputs,
+            "tree": tree,
+            "doubts": doubts,
+            "is_validated": is_validated,
+            "output_type": output_type,
+            "is_draft": is_draft,
+            "is_published": is_published,
+            "review_status": review_status,
+            "net_votes": net_votes,
+            "building": building,
+            "build_history": build_history,
+            "conversation_id": conversation_id,
             "uploaded_files": uploaded_files,
         }
 
@@ -322,7 +383,9 @@ class WorkflowStore:
         # WHERE clause params
         params.extend([workflow_id, user_id])
 
-        query = f"UPDATE workflows SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        query = (
+            f"UPDATE workflows SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+        )
 
         with self._conn() as conn:
             result = conn.execute(query, params)
@@ -332,7 +395,11 @@ class WorkflowStore:
             self._logger.info("Updated workflow id=%s user=%s", workflow_id, user_id)
             return True
 
-        self._logger.warning("Failed to update workflow id=%s user=%s (not found or unauthorized)", workflow_id, user_id)
+        self._logger.warning(
+            "Failed to update workflow id=%s user=%s (not found or unauthorized)",
+            workflow_id,
+            user_id,
+        )
         return False
 
     def try_set_building(self, workflow_id: str, user_id: str) -> bool:
@@ -352,9 +419,13 @@ class WorkflowStore:
             )
             won = cursor.rowcount == 1
         if won:
-            self._logger.info("Atomically set building=True for workflow %s", workflow_id)
+            self._logger.info(
+                "Atomically set building=True for workflow %s", workflow_id
+            )
         else:
-            self._logger.info("Workflow %s already building — atomic set failed", workflow_id)
+            self._logger.info(
+                "Workflow %s already building — atomic set failed", workflow_id
+            )
         return won
 
     def clear_stale_building_flags(self) -> int:
@@ -375,7 +446,8 @@ class WorkflowStore:
             count = cursor.rowcount
         if count:
             self._logger.warning(
-                "Cleared stale building flag on %d workflow(s) from previous server run", count,
+                "Cleared stale building flag on %d workflow(s) from previous server run",
+                count,
             )
         return count
 
@@ -392,7 +464,11 @@ class WorkflowStore:
             self._logger.info("Deleted workflow id=%s user=%s", workflow_id, user_id)
             return True
 
-        self._logger.warning("Failed to delete workflow id=%s user=%s (not found or unauthorized)", workflow_id, user_id)
+        self._logger.warning(
+            "Failed to delete workflow id=%s user=%s (not found or unauthorized)",
+            workflow_id,
+            user_id,
+        )
         return False
 
     def list_workflows(
@@ -421,7 +497,7 @@ class WorkflowStore:
                 (user_id, limit, offset),
             ).fetchall()
 
-        workflows = [self._row_to_workflow(row) for row in rows if row]
+        workflows = self._deserialize_rows(rows)
         return workflows, total_count
 
     def search_workflows(
@@ -471,7 +547,7 @@ class WorkflowStore:
                 params + [limit, offset],
             ).fetchall()
 
-        workflows = [self._row_to_workflow(row) for row in rows if row]
+        workflows = self._deserialize_rows(rows)
         return workflows, total_count
 
     def get_domains(self, user_id: str) -> List[str]:
@@ -509,19 +585,27 @@ class WorkflowStore:
                 outputs=json.loads(row["outputs"]),
                 tree=json.loads(row["tree"]),
                 doubts=json.loads(row["doubts"]),
-                validation_score=row["validation_score"],
-                validation_count=row["validation_count"],
                 is_validated=bool(row["is_validated"]),
                 output_type=row["output_type"],
                 is_draft=bool(row["is_draft"]),
-                is_published=bool(row["is_published"]) if row["is_published"] is not None else False,
+                is_published=bool(row["is_published"])
+                if row["is_published"] is not None
+                else False,
                 review_status=row["review_status"] or "unreviewed",
                 net_votes=row["net_votes"] or 0,
                 published_at=row["published_at"],
-                building=bool(row["building"]) if row["building"] is not None else False,
-                build_history=json.loads(row["build_history"]) if row["build_history"] else [],
-                conversation_id=row["conversation_id"] if "conversation_id" in row.keys() else None,
-                uploaded_files=json.loads(row["uploaded_files"]) if "uploaded_files" in row.keys() and row["uploaded_files"] else [],
+                building=bool(row["building"])
+                if row["building"] is not None
+                else False,
+                build_history=json.loads(row["build_history"])
+                if row["build_history"]
+                else [],
+                conversation_id=row["conversation_id"]
+                if "conversation_id" in row.keys()
+                else None,
+                uploaded_files=json.loads(row["uploaded_files"])
+                if "uploaded_files" in row.keys() and row["uploaded_files"]
+                else [],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
@@ -565,7 +649,11 @@ class WorkflowStore:
             total_count = count_row[0] if count_row else 0
 
             # Order by net_votes DESC for reviewed, by published_at DESC for unreviewed
-            order_by = "net_votes DESC, published_at DESC" if review_status == "reviewed" else "published_at DESC"
+            order_by = (
+                "net_votes DESC, published_at DESC"
+                if review_status == "reviewed"
+                else "published_at DESC"
+            )
 
             rows = conn.execute(
                 f"""
@@ -578,7 +666,7 @@ class WorkflowStore:
                 params + [limit, offset],
             ).fetchall()
 
-        workflows = [self._row_to_workflow(row) for row in rows if row]
+        workflows = self._deserialize_rows(rows)
         return workflows, total_count
 
     def get_published_workflow(self, workflow_id: str) -> Optional[WorkflowRecord]:
@@ -677,7 +765,12 @@ class WorkflowStore:
                     (workflow_id,),
                 )
                 new_status = "reviewed"
-                self._logger.info("Workflow %s promoted to reviewed (net_votes=%d, threshold=%d)", workflow_id, new_net_votes, PUBLISH_VOTE_THRESHOLD)
+                self._logger.info(
+                    "Workflow %s promoted to reviewed (net_votes=%d, threshold=%d)",
+                    workflow_id,
+                    new_net_votes,
+                    PUBLISH_VOTE_THRESHOLD,
+                )
 
             # Auto-demote to unreviewed if net_votes falls below threshold
             if new_net_votes < PUBLISH_VOTE_THRESHOLD and new_status == "reviewed":
@@ -686,7 +779,12 @@ class WorkflowStore:
                     (workflow_id,),
                 )
                 new_status = "unreviewed"
-                self._logger.info("Workflow %s demoted to unreviewed (net_votes=%d, threshold=%d)", workflow_id, new_net_votes, PUBLISH_VOTE_THRESHOLD)
+                self._logger.info(
+                    "Workflow %s demoted to unreviewed (net_votes=%d, threshold=%d)",
+                    workflow_id,
+                    new_net_votes,
+                    PUBLISH_VOTE_THRESHOLD,
+                )
 
         return {
             "success": True,
@@ -731,7 +829,9 @@ class WorkflowStore:
                 return {
                     "success": True,
                     "net_votes": updated["net_votes"] if updated else 0,
-                    "review_status": updated["review_status"] if updated else "unreviewed",
+                    "review_status": updated["review_status"]
+                    if updated
+                    else "unreviewed",
                     "user_vote": None,
                 }
 
@@ -765,7 +865,12 @@ class WorkflowStore:
                     (workflow_id,),
                 )
                 new_status = "unreviewed"
-                self._logger.info("Workflow %s demoted to unreviewed after vote removal (net_votes=%d, threshold=%d)", workflow_id, new_net_votes, PUBLISH_VOTE_THRESHOLD)
+                self._logger.info(
+                    "Workflow %s demoted to unreviewed after vote removal (net_votes=%d, threshold=%d)",
+                    workflow_id,
+                    new_net_votes,
+                    PUBLISH_VOTE_THRESHOLD,
+                )
 
         return {
             "success": True,

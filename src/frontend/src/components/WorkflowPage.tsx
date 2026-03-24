@@ -10,7 +10,7 @@ import ToolInspectorModal from './ToolInspectorModal'
 import { ExecutionLogModal } from './ExecutionLogModal'
 import { ApiError, API_BASE, getSessionId } from '../api/client'
 import { getCurrentUser } from '../api/auth'
-import { getWorkflow } from '../api/workflows'
+import { getWorkflow, importWorkflowBundle, importWorkflowJson } from '../api/workflows'
 import { syncConversationMessages } from '../utils/conversationSync'
 import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
@@ -20,7 +20,6 @@ import { hydrateWorkflowDetail } from '../utils/workflowHydration'
 import { sendChatMessage } from '../api/streamActions'
 import { useChatStore, addAssistantMessage } from '../stores/chatStore'
 import { compressDataUrl, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../utils/imageUtils'
-import { parseImportedWorkflowJson } from '../utils/workflowImport'
 
 import '../styles/WorkflowLanding.css'
 
@@ -45,7 +44,7 @@ export default function WorkflowPage() {
     const clearError = useUIStore(s => s.clearError)
 
     // Workflow Store
-    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles, setImportedWorkflow, markSavedSnapshot } = useWorkflowStore()
+    const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles, markSavedSnapshot } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
 
@@ -434,23 +433,10 @@ export default function WorkflowPage() {
         }
     }, [addPendingFile, setError, startWorkflowSession])
 
-    const importIntoNewSession = useCallback(async (jsonString: string) => {
-        const imported = parseImportedWorkflowJson(jsonString)
-        const newId = `wf_${crypto.randomUUID().replace(/-/g, '')}`
-        const importedWorkflow = {
-            ...imported.workflow,
-            id: newId,
-            metadata: {
-                ...imported.workflow.metadata,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            },
-        }
-
+    const completeImportedNavigation = useCallback(async (newId: string) => {
         loadedWorkflowIdRef.current = newId
         useChatStore.getState().setActiveWorkflowId(newId)
         setCurrentWorkflowId(newId)
-        setImportedWorkflow(importedWorkflow, imported.flowchart, imported.analysis)
         setShowImportModal(false)
         setImportJsonText('')
         setImportError(null)
@@ -459,25 +445,40 @@ export default function WorkflowPage() {
         await new Promise(resolve => setTimeout(resolve, 400))
         navigate(`/workflow/${newId}`)
         triggerReveal()
-    }, [navigate, setCurrentWorkflowId, setHomeExited, setImportedWorkflow, triggerReveal])
+    }, [navigate, setCurrentWorkflowId, setHomeExited, triggerReveal])
 
     const handleImportJson = useCallback(async () => {
         try {
-            await importIntoNewSession(importJsonText)
+            const payload = JSON.parse(importJsonText)
+            const result = await importWorkflowJson(payload)
+            await completeImportedNavigation(result.workflow_id)
         } catch (err) {
             setImportError(err instanceof Error ? err.message : 'Invalid JSON')
         }
-    }, [importIntoNewSession, importJsonText])
+    }, [completeImportedNavigation, importJsonText])
 
     const handleImportFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
+        if (file.name.toLowerCase().endsWith('.zip')) {
+            importWorkflowBundle(file)
+                .then(result => completeImportedNavigation(result.workflow_id))
+                .catch(err => setImportError(err instanceof Error ? err.message : 'Invalid workflow bundle'))
+
+            if (homeImportInputRef.current) {
+                homeImportInputRef.current.value = ''
+            }
+            return
+        }
+
         const reader = new FileReader()
         reader.onload = async (event) => {
             try {
                 const content = event.target?.result as string
-                await importIntoNewSession(content)
+                const payload = JSON.parse(content)
+                const result = await importWorkflowJson(payload)
+                await completeImportedNavigation(result.workflow_id)
             } catch (err) {
                 setImportError(err instanceof Error ? err.message : 'Invalid JSON file')
             }
@@ -490,7 +491,7 @@ export default function WorkflowPage() {
         if (homeImportInputRef.current) {
             homeImportInputRef.current.value = ''
         }
-    }, [importIntoNewSession])
+    }, [completeImportedNavigation, setImportError])
 
     const revealedClass = workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
 
@@ -589,7 +590,7 @@ export default function WorkflowPage() {
             <input
                 ref={homeImportInputRef}
                 type="file"
-                accept=".json,application/json"
+                accept=".json,.zip,application/json,application/zip"
                 style={{ display: 'none' }}
                 onChange={handleImportFileUpload}
             />
@@ -597,10 +598,10 @@ export default function WorkflowPage() {
             {showImportModal && (
                 <div className="json-modal-overlay" onClick={() => setShowImportModal(false)}>
                     <div className="json-modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Import Workflow JSON</h3>
-                        <p className="muted small">Start a new session and load a workflow from JSON</p>
+                        <h3>Import Workflow</h3>
+                        <p className="muted small">Start a new session and load a workflow from JSON or a workflow bundle zip</p>
                         <button className="ghost full-width file-upload-btn" onClick={() => homeImportInputRef.current?.click()}>
-                            Choose JSON File
+                            Choose JSON or ZIP File
                         </button>
                         <div className="import-divider">
                             <span>or paste JSON</span>

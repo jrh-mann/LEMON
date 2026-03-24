@@ -81,7 +81,8 @@ class ListWorkflowsInLibrary(Tool):
 
         # Get session state and validate dependencies
         session_state, workflow_store, user_id, err = extract_session_deps(
-            kwargs, action="list workflows",
+            kwargs,
+            action="list workflows",
         )
         if err:
             return err
@@ -91,7 +92,7 @@ class ListWorkflowsInLibrary(Tool):
 
         # Get current workflow info (the active tab)
         current_workflow_id = session_state.get("current_workflow_id")
-        
+
         # Get all open tabs with workflows (for showing drafts from other tabs)
         open_tabs: List[Dict[str, Any]] = session_state.get("open_tabs", [])
 
@@ -114,10 +115,10 @@ class ListWorkflowsInLibrary(Tool):
 
             # Format workflows for output with status indicator
             workflow_summaries = []
-            
+
             # Track which workflow IDs are in the DB (to identify unsaved drafts)
             db_workflow_ids: Set[str] = {wf.id for wf in workflows}
-            
+
             # Add open tabs that are NOT saved in DB (drafts/unsaved workflows)
             # These appear first so the LLM sees them prominently
             draft_count = 0
@@ -125,43 +126,43 @@ class ListWorkflowsInLibrary(Tool):
                 tab_workflow_id = tab.get("workflow_id")
                 if not tab_workflow_id:
                     continue
-                    
+
                 # Skip if this workflow is already saved in DB
                 if tab_workflow_id in db_workflow_ids:
                     continue
-                
+
                 # This is an unsaved draft - add it to the list
                 is_active = tab.get("is_active", False)
                 status = "current (unsaved)" if is_active else "draft"
-                
-                workflow_summaries.append({
-                    "id": tab_workflow_id,
-                    "name": tab.get("title", "(Untitled Draft)"),
-                    "description": "Unsaved workflow in an open tab" if not is_active else "The workflow currently on the canvas (not yet saved)",
-                    "domain": None,
-                    "tags": [],
-                    "input_names": [],
-                    "output_values": [],
-                    "is_validated": False,
-                    "validation_score": 0,
-                    "validation_count": 0,
-                    "status": status,
-                    "is_current": is_active,
-                    "is_draft": True,
-                    "node_count": tab.get("node_count", 0),
-                    "edge_count": tab.get("edge_count", 0),
-                    "created_at": None,
-                    "updated_at": None,
-                })
+
+                workflow_summaries.append(
+                    {
+                        "id": tab_workflow_id,
+                        "name": tab.get("title", "(Untitled Draft)"),
+                        "description": "Unsaved workflow in an open tab"
+                        if not is_active
+                        else "The workflow currently on the canvas (not yet saved)",
+                        "domain": None,
+                        "tags": [],
+                        "input_names": [],
+                        "output_values": [],
+                        "is_validated": False,
+                        "status": status,
+                        "is_current": is_active,
+                        "is_draft": True,
+                        "node_count": tab.get("node_count", 0),
+                        "edge_count": tab.get("edge_count", 0),
+                        "created_at": None,
+                        "updated_at": None,
+                    }
+                )
                 draft_count += 1
 
             # Add DB workflows
             for wf in workflows:
                 # Extract input names
                 input_names = [
-                    inp.get("name", "")
-                    for inp in wf.inputs
-                    if isinstance(inp, dict)
+                    inp.get("name", "") for inp in wf.inputs if isinstance(inp, dict)
                 ]
 
                 # Extract output values/names
@@ -175,28 +176,28 @@ class ListWorkflowsInLibrary(Tool):
                 is_current = current_workflow_id and wf.id == current_workflow_id
                 status = "current" if is_current else "saved"
 
-                workflow_summaries.append({
-                    "id": wf.id,
-                    "name": wf.name,
-                    "description": wf.description,
-                    "domain": wf.domain,
-                    "tags": wf.tags,
-                    "input_names": input_names,
-                    "output_values": output_values,
-                    "is_validated": wf.is_validated,
-                    "validation_score": wf.validation_score,
-                    "validation_count": wf.validation_count,
-                    "status": status,
-                    "is_current": is_current,
-                    "is_draft": False,
-                    "created_at": wf.created_at,
-                    "updated_at": wf.updated_at,
-                })
+                workflow_summaries.append(
+                    {
+                        "id": wf.id,
+                        "name": wf.name,
+                        "description": wf.description,
+                        "domain": wf.domain,
+                        "tags": wf.tags,
+                        "input_names": input_names,
+                        "output_values": output_values,
+                        "is_validated": wf.is_validated,
+                        "status": status,
+                        "is_current": is_current,
+                        "is_draft": False,
+                        "created_at": wf.created_at,
+                        "updated_at": wf.updated_at,
+                    }
+                )
 
             # Build message
             db_count = total_count
             display_count = db_count + draft_count
-            
+
             if display_count == 0:
                 message = "No workflows found in library."
                 if search_query:
@@ -211,7 +212,9 @@ class ListWorkflowsInLibrary(Tool):
             else:
                 parts = []
                 if draft_count > 0:
-                    parts.append(f"{draft_count} unsaved draft{'s' if draft_count > 1 else ''}")
+                    parts.append(
+                        f"{draft_count} unsaved draft{'s' if draft_count > 1 else ''}"
+                    )
                 if db_count > 0:
                     parts.append(f"{db_count} saved")
                 message = f"Found {display_count} workflows ({', '.join(parts)})"

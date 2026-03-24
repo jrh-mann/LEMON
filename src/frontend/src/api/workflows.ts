@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, API_BASE, getSessionId } from './client'
 import type {
   WorkflowDetailResponse,
   WorkflowSummary,
@@ -20,6 +20,44 @@ export async function listWorkflows(): Promise<WorkflowSummary[]> {
 // Get single workflow by ID (returns backend-shaped response, not frontend Workflow)
 export async function getWorkflow(workflowId: string): Promise<WorkflowDetailResponse> {
   return api.get<WorkflowDetailResponse>(`/api/workflows/${workflowId}`)
+}
+
+export async function exportWorkflowJson(workflowId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/export`, {
+    credentials: 'include',
+    headers: { 'X-Session-Id': getSessionId() },
+  })
+  if (!response.ok) throw new Error('Failed to export workflow')
+  return await response.blob()
+}
+
+export async function exportWorkflowBundle(workflowId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/export-bundle`, {
+    credentials: 'include',
+    headers: { 'X-Session-Id': getSessionId() },
+  })
+  if (!response.ok) throw new Error('Failed to export workflow bundle')
+  return await response.blob()
+}
+
+export async function importWorkflowJson(payload: unknown): Promise<{ workflow_id: string }> {
+  return api.post<{ workflow_id: string }>('/api/workflows/import', payload)
+}
+
+export async function importWorkflowBundle(file: File): Promise<{ workflow_id: string; imported_count: number }> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch('/api/workflows/import-bundle', {
+    method: 'POST',
+    body: form,
+    credentials: 'include',
+    headers: { 'X-Session-Id': getSessionId() },
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: 'Failed to import workflow bundle' }))
+    throw new Error(body.error || 'Failed to import workflow bundle')
+  }
+  return await response.json()
 }
 
 // Create new workflow

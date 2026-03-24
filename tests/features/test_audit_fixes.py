@@ -16,11 +16,13 @@ import pytest
 # H-3: ConversationStore thread safety
 # ---------------------------------------------------------------------------
 
+
 class TestConversationStoreThreadSafety:
     """Verify ConversationStore handles concurrent access safely."""
 
     def test_concurrent_get_or_create(self, tmp_path):
         from src.backend.tasks.conversations import ConversationStore
+
         store = ConversationStore(tmp_path)
         results = {}
         errors = []
@@ -51,11 +53,13 @@ class TestConversationStoreThreadSafety:
 # H-6: Stale building flag cleanup
 # ---------------------------------------------------------------------------
 
+
 class TestStaleBuilding:
     """Verify clear_stale_building_flags resets stuck workflows."""
 
     def test_clear_stale_building_flags(self, tmp_path):
         from src.backend.storage.workflows import WorkflowStore
+
         store = WorkflowStore(tmp_path / "test.sqlite")
 
         # Create a workflow and manually set building=True (simulates server crash)
@@ -83,6 +87,7 @@ class TestStaleBuilding:
 
     def test_clear_stale_does_not_affect_non_building(self, tmp_path):
         from src.backend.storage.workflows import WorkflowStore
+
         store = WorkflowStore(tmp_path / "test.sqlite")
 
         store.create_workflow(
@@ -102,6 +107,7 @@ class TestStaleBuilding:
 # ---------------------------------------------------------------------------
 # H-2: Query param crash — safe int parsing
 # ---------------------------------------------------------------------------
+
 
 class TestQueryParamSafety:
     """Verify query param parsing doesn't crash on invalid input."""
@@ -128,11 +134,13 @@ class TestQueryParamSafety:
 # M-4: LoginRateLimiter cleanup
 # ---------------------------------------------------------------------------
 
+
 class TestRateLimiterCleanup:
     """Verify expired entries are cleaned up periodically."""
 
     def test_expired_entries_cleaned_on_100th_call(self):
         from src.backend.api.auth import LoginRateLimiter
+
         limiter = LoginRateLimiter(limit=5, window_seconds=1, block_seconds=1)
 
         # Create expired entries by using a very short window
@@ -156,11 +164,13 @@ class TestRateLimiterCleanup:
 # M-5: Token log rotation
 # ---------------------------------------------------------------------------
 
+
 class TestTokenLogRotation:
     """Verify token usage log is capped."""
 
     def test_log_capped_at_max_entries(self, tmp_path):
         from src.backend.utils.tokens import _MAX_LOG_ENTRIES
+
         # Just verify the constant exists and is reasonable
         assert _MAX_LOG_ENTRIES == 10_000
 
@@ -168,6 +178,7 @@ class TestTokenLogRotation:
 # ---------------------------------------------------------------------------
 # H-1: Retry text no longer injected into stream
 # ---------------------------------------------------------------------------
+
 
 class TestRetryStreamPollution:
     """Verify retry notifications don't pollute the user stream."""
@@ -186,6 +197,7 @@ class TestRetryStreamPollution:
 # L-1: serialize_workflow_summary includes is_draft and output_type
 # ---------------------------------------------------------------------------
 
+
 class TestSerializeWorkflowSummary:
     """Verify workflow summary includes all needed fields."""
 
@@ -203,8 +215,6 @@ class TestSerializeWorkflowSummary:
         mock_wf.edges = []
         mock_wf.inputs = []
         mock_wf.outputs = []
-        mock_wf.validation_score = 0
-        mock_wf.validation_count = 0
         mock_wf.is_validated = False
         mock_wf.created_at = "2024-01-01"
         mock_wf.updated_at = "2024-01-01"
@@ -221,12 +231,14 @@ class TestSerializeWorkflowSummary:
 # C-2: Message trimming in orchestrator tool loop
 # ---------------------------------------------------------------------------
 
+
 class TestOrchestratorMessageTrimming:
     """Verify _MAX_TOOL_MESSAGES constant exists in orchestrator."""
 
     def test_max_tool_messages_constant_in_source(self):
         import inspect
         from src.backend.agents import orchestrator
+
         source = inspect.getsource(orchestrator)
         assert "_MAX_TOOL_MESSAGES = 200" in source
         assert "Tool loop messages trimmed" in source

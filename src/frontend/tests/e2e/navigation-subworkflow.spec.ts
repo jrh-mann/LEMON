@@ -38,14 +38,14 @@ const LIBRARY_WORKFLOWS: WorkflowSummaryPayload[] = [
   {
     id: WF_MAIN, name: 'Patient Triage', description: 'Main triage workflow',
     domain: 'Healthcare', tags: ['triage', 'emergency'], is_validated: true,
-    validation_score: 95, validation_count: 3, confidence: 'high',
+    confidence: 'high',
     input_names: ['patient_age'], output_values: ['triage_result'],
     created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T12:00:00Z',
   },
   {
     id: WF_SUB, name: 'Triage Sub-Protocol', description: 'Sub-workflow for triage logic',
     domain: 'Healthcare', tags: ['triage'], is_validated: false,
-    validation_score: 0, validation_count: 0, confidence: 'low',
+    confidence: 'low',
     input_names: ['age'], output_values: ['priority'],
     created_at: '2024-01-02T00:00:00Z', updated_at: '2024-01-02T06:00:00Z',
     building: true,  // Currently being built by background builder

@@ -202,8 +202,6 @@ export interface WorkflowMetadata {
   creator_id?: string
   created_at: string
   updated_at: string
-  validation_score: number
-  validation_count: number
   confidence: ValidationConfidence
   is_validated: boolean
 }
@@ -235,8 +233,6 @@ export interface WorkflowSummary {
   description: string
   domain?: string
   tags: string[]
-  validation_score: number
-  validation_count: number
   confidence: ValidationConfidence
   is_validated: boolean
   input_names: string[]
@@ -538,9 +534,7 @@ export interface CreateWorkflowRequest {
   edges: FlowEdge[]
   variables: WorkflowVariable[]       // Unified variable list (replaces inputs)
   outputs: WorkflowOutput[]           // Outputs with required type
-  validation_score?: number
-  validation_count?: number
-  is_validated?: boolean
+  force_save?: boolean
   is_published?: boolean  // Publish to community library for peer review
 }
 

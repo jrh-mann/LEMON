@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from backend.storage.workflows import WorkflowStore
 
+
 def test_workflow_persistence():
     """Test basic workflow CRUD operations."""
     print("Testing workflow persistence...")
@@ -38,22 +39,35 @@ def test_workflow_persistence():
             domain="Healthcare",
             tags=["test", "demo"],
             nodes=[
-                {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0, "color": "teal"},
-                {"id": "n2", "type": "end", "label": "End", "x": 200, "y": 0, "color": "rose"}
+                {
+                    "id": "n1",
+                    "type": "start",
+                    "label": "Start",
+                    "x": 0,
+                    "y": 0,
+                    "color": "teal",
+                },
+                {
+                    "id": "n2",
+                    "type": "end",
+                    "label": "End",
+                    "x": 200,
+                    "y": 0,
+                    "color": "rose",
+                },
             ],
-            edges=[
-                {"id": "e1", "from": "n1", "to": "n2", "label": ""}
-            ],
+            edges=[{"id": "e1", "from": "n1", "to": "n2", "label": ""}],
             inputs=[
-                {"id": "inp1", "name": "age", "type": "int", "description": "Patient age"}
+                {
+                    "id": "inp1",
+                    "name": "age",
+                    "type": "int",
+                    "description": "Patient age",
+                }
             ],
-            outputs=[
-                {"name": "result", "description": "Diagnosis result"}
-            ],
+            outputs=[{"name": "result", "description": "Diagnosis result"}],
             tree={"start": {"id": "n1", "type": "start"}},
             doubts=[],
-            validation_score=5,
-            validation_count=10,
             is_validated=False,
         )
         print("   [OK] Workflow created successfully")
@@ -87,16 +101,16 @@ def test_workflow_persistence():
             test_workflow_id,
             test_user_id,
             name="Updated Test Workflow",
-            validation_score=8,
+            is_validated=True,
         )
         assert success, "Update failed"
 
         updated = store.get_workflow(test_workflow_id, test_user_id)
         assert updated.name == "Updated Test Workflow"
-        assert updated.validation_score == 8
+        assert updated.is_validated is True
         print("   [OK] Workflow updated successfully")
         print(f"     - New name: {updated.name}")
-        print(f"     - New validation score: {updated.validation_score}")
+        print(f"     - Validated: {updated.is_validated}")
 
         # Search workflows
         print("\n6. Searching workflows")
@@ -129,6 +143,7 @@ def test_workflow_persistence():
     except Exception as e:
         print(f"\n[FAIL] Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -137,6 +152,7 @@ def test_workflow_persistence():
         if db_path.exists():
             db_path.unlink()
             print(f"\nCleaned up test database: {db_path}")
+
 
 if __name__ == "__main__":
     success = test_workflow_persistence()
@@ -155,7 +171,9 @@ def test_get_workflow_returns_none_for_corrupt_json(tmp_path):
     )
 
     with sqlite3.connect(db_path) as conn:
-        conn.execute("UPDATE workflows SET tags = ? WHERE id = ?", ("not-json", "wf_corrupt"))
+        conn.execute(
+            "UPDATE workflows SET tags = ? WHERE id = ?", ("not-json", "wf_corrupt")
+        )
         conn.commit()
 
     assert store.get_workflow("wf_corrupt", "user_1") is None

@@ -37,12 +37,21 @@ def main() -> None:
     user_id = "test_user"
 
     workflow_store.create_workflow(
-        workflow_id=workflow_id, user_id=user_id,
-        name="Cancel Test", description="",
-        domain=None, tags=[], nodes=[], edges=[],
-        inputs=[], outputs=[], tree={}, doubts=[],
-        validation_score=0, validation_count=0,
-        is_validated=False, output_type="string", is_draft=False,
+        workflow_id=workflow_id,
+        user_id=user_id,
+        name="Cancel Test",
+        description="",
+        domain=None,
+        tags=[],
+        nodes=[],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        is_validated=False,
+        output_type="string",
+        is_draft=False,
     )
 
     orchestrator.workflow_store = workflow_store
@@ -56,7 +65,9 @@ def main() -> None:
     tool_count = 0
     tools_seen: List[str] = []
 
-    def on_tool_event(event: str, tool: str, args: Dict[str, Any], result: Optional[Dict[str, Any]]) -> None:
+    def on_tool_event(
+        event: str, tool: str, args: Dict[str, Any], result: Optional[Dict[str, Any]]
+    ) -> None:
         nonlocal tool_count
         if event == "tool_start":
             tool_count += 1
@@ -95,9 +106,7 @@ def main() -> None:
     print(f"History length after cancel: {len(orchestrator.conversation.history)}")
 
     # Check if history contains tool_calls
-    has_tool_calls = any(
-        m.get("tool_calls") for m in orchestrator.conversation.history
-    )
+    has_tool_calls = any(m.get("tool_calls") for m in orchestrator.conversation.history)
     print(f"History has tool_calls: {has_tool_calls}")
 
     # Print history roles for debugging
@@ -136,10 +145,20 @@ def main() -> None:
     print("=" * 60)
 
     # Check if the response mentions any of the tools we saw
-    mentions_tools = any(tool in response2.lower() for tool in [
-        "add_workflow_variable", "update_plan", "add_node", "batch_edit",
-    ])
-    no_memory_phrase = "don't have memory" in response2.lower() or "no memory" in response2.lower() or "starts fresh" in response2.lower()
+    mentions_tools = any(
+        tool in response2.lower()
+        for tool in [
+            "add_workflow_variable",
+            "update_plan",
+            "add_node",
+            "batch_edit",
+        ]
+    )
+    no_memory_phrase = (
+        "don't have memory" in response2.lower()
+        or "no memory" in response2.lower()
+        or "starts fresh" in response2.lower()
+    )
 
     if mentions_tools and not no_memory_phrase:
         print("PASS — Agent remembers tool calls after cancellation")

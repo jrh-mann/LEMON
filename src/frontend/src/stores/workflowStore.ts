@@ -160,17 +160,15 @@ function createEmptyWorkflow(id = '', name = 'New Workflow'): Workflow {
   const now = new Date().toISOString()
   return {
     id,
-    metadata: {
-      name,
-      description: '',
-      tags: [],
-      created_at: now,
-      updated_at: now,
-      validation_score: 0,
-      validation_count: 0,
-      confidence: 'none',
-      is_validated: false,
-    },
+      metadata: {
+        name,
+        description: '',
+        tags: [],
+        created_at: now,
+        updated_at: now,
+        confidence: 'none',
+        is_validated: false,
+      },
   }
 }
 

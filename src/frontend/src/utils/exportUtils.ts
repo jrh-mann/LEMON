@@ -3,7 +3,7 @@
  * Extracted from Header.tsx for reuse in ExportPage.
  */
 
-import { validateWorkflow, compileToPython } from '../api/workflows'
+import { validateWorkflow, compileToPython, exportWorkflowJson, exportWorkflowBundle } from '../api/workflows'
 import type { Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 interface ExportContext {
@@ -17,6 +17,13 @@ interface ExportContext {
  * Returns null on success, or an error string.
  */
 export async function exportAsJSON(ctx: ExportContext): Promise<string | null> {
+    return exportAsJSONWithOptions(ctx, { includeSubflows: false })
+}
+
+export async function exportAsJSONWithOptions(
+    ctx: ExportContext,
+    options: { includeSubflows: boolean }
+): Promise<string | null> {
     const { currentWorkflow, flowchart, currentAnalysis } = ctx
 
     if (!currentWorkflow && flowchart.nodes.length === 0) {
@@ -41,30 +48,17 @@ export async function exportAsJSON(ctx: ExportContext): Promise<string | null> {
         if (!proceed) return 'cancelled'
     }
 
-    const exportData = {
-        id: currentWorkflow?.id || 'draft',
-        metadata: currentWorkflow?.metadata || {
-            name: 'Draft Workflow',
-            description: '',
-            tags: [],
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            validation_score: 0,
-            validation_count: 0,
-            is_validated: false,
-        },
-        flowchart,
-        variables: currentAnalysis?.variables || [],
-        outputs: currentAnalysis?.outputs || [],
+    if (!currentWorkflow?.id) {
+        return 'Save workflow before exporting'
     }
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-        type: 'application/json',
-    })
+    const blob = options.includeSubflows
+        ? await exportWorkflowBundle(currentWorkflow.id)
+        : await exportWorkflowJson(currentWorkflow.id)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${exportData.metadata?.name || 'workflow'}.json`
+    a.download = `${currentWorkflow.metadata?.name || 'workflow'}.${options.includeSubflows ? 'zip' : 'json'}`
     a.click()
     URL.revokeObjectURL(url)
     return null

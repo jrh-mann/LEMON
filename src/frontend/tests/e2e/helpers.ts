@@ -94,8 +94,6 @@ export interface WorkflowSummaryPayload {
   domain?: string
   tags: string[]
   is_validated: boolean
-  validation_score: number
-  validation_count: number
   confidence: string
   input_names: string[]
   output_values: string[]
