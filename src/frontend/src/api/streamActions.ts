@@ -821,12 +821,10 @@ function _buildExecutionSSEHandlers(executionId: string) {
       console.log('[SSE] execution_step:', data)
       const workflowStore = useWorkflowStore.getState()
       const execution = workflowStore.execution
+      if (!execution.isExecuting) return  // Guard late events after completion
       if (execution.executionId !== data.execution_id) return
 
-      if (execution.executingNodeId) {
-        workflowStore.markNodeExecuted(execution.executingNodeId)
-      }
-      workflowStore.setExecutingNode(data.node_id)
+      workflowStore.advanceExecution(data.node_id)
     },
 
     // Execution paused
@@ -890,6 +888,7 @@ function _buildExecutionSSEHandlers(executionId: string) {
       const data = rawData as ExecutionLogPayload
       console.log('[SSE] execution_log:', data)
       const workflowStore = useWorkflowStore.getState()
+      if (!workflowStore.execution.isExecuting) return  // Guard late events
       if (workflowStore.execution.executionId !== data.execution_id) return
 
       const logEntry = {
@@ -962,15 +961,13 @@ function _buildExecutionSSEHandlers(executionId: string) {
       const data = rawData as SubflowStepPayload
       console.log('[SSE] subflow_step:', data)
       const workflowStore = useWorkflowStore.getState()
+      if (!workflowStore.execution.isExecuting) return  // Guard late events
       const { subflowStack } = workflowStore
       const topSubflow = subflowStack.length > 0 ? subflowStack[subflowStack.length - 1] : null
       if (workflowStore.execution.executionId !== data.execution_id) return
       if (!topSubflow || topSubflow.subworkflowId !== data.subworkflow_id) return
 
-      if (topSubflow.executingNodeId) {
-        workflowStore.markSubflowNodeExecuted(topSubflow.executingNodeId)
-      }
-      workflowStore.setSubflowExecutingNode(data.node_id)
+      workflowStore.advanceSubflowExecution(data.node_id)
     },
 
     // Subflow complete — closes popup modal
@@ -978,6 +975,7 @@ function _buildExecutionSSEHandlers(executionId: string) {
       const data = rawData as ExecutionLifecyclePayload
       console.log('[SSE] subflow_complete:', data)
       const workflowStore = useWorkflowStore.getState()
+      if (!workflowStore.execution.isExecuting) return  // Guard late events
       const { subflowStack } = workflowStore
       const topSubflow = subflowStack.length > 0 ? subflowStack[subflowStack.length - 1] : null
       if (workflowStore.execution.executionId !== data.execution_id || !topSubflow) return
@@ -1001,6 +999,10 @@ function _buildExecutionSSEHandlers(executionId: string) {
       console.error('[SSE] execution stream error:', data)
       const workflowStore = useWorkflowStore.getState()
       if (workflowStore.execution.executionId === executionId) {
+        // Mark the last executing node as executed (matches execution_complete cleanup)
+        if (workflowStore.execution.executingNodeId) {
+          workflowStore.markNodeExecuted(workflowStore.execution.executingNodeId)
+        }
         workflowStore.setExecutionError(data.error || 'Connection lost during execution')
         workflowStore.stopExecution()
         useUIStore.getState().openModal('execute')

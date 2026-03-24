@@ -30,20 +30,32 @@ class EventSink:
     Closing the sink (or client disconnect) signals the end of the stream.
     """
 
+    # Max queued events before dropping. Prevents unbounded memory growth when
+    # the frontend can't keep up (e.g., speed=0 with slow network).
+    _MAX_QUEUE_SIZE = 500
+
     def __init__(self) -> None:
-        self._queue: queue.Queue[Optional[Tuple[str, Dict[str, Any]]]] = queue.Queue()
+        self._queue: queue.Queue[Optional[Tuple[str, Dict[str, Any]]]] = queue.Queue(
+            maxsize=self._MAX_QUEUE_SIZE
+        )
         self._closed = False
 
     def push(self, event: str, data: Dict[str, Any]) -> None:
-        """Push an event to the stream. No-ops silently if sink is closed."""
-        if not self._closed:
-            self._queue.put((event, data))
+        """Push an event to the stream. No-ops if sink is closed. Drops if queue is full."""
+        if self._closed:
+            return
+        try:
+            self._queue.put_nowait((event, data))
+        except queue.Full:
+            logger.warning("EventSink queue full (%d), dropping event: %s", self._MAX_QUEUE_SIZE, event)
 
     def close(self) -> None:
         """Close the stream. Sends a sentinel so the iterator stops yielding."""
         if not self._closed:
             self._closed = True
-            self._queue.put(None)  # sentinel
+            # Use blocking put for sentinel — it must get through even if queue is full.
+            # The iterator will drain the queue, so this won't block indefinitely.
+            self._queue.put(None)
 
     @property
     def is_closed(self) -> bool:
