@@ -28,34 +28,47 @@ class EventSink:
     Background threads push (event_name, data_dict) tuples.
     FastAPI's StreamingResponse iterates over SSE-formatted lines.
     Closing the sink (or client disconnect) signals the end of the stream.
+
+    Queue is unbounded by default (suitable for chat streams which can produce
+    thousands of events). Pass maxsize to the constructor to cap it for
+    bounded-event use cases like stepped execution.
     """
 
-    # Max queued events before dropping. Prevents unbounded memory growth when
-    # the frontend can't keep up (e.g., speed=0 with slow network).
-    _MAX_QUEUE_SIZE = 500
-
-    def __init__(self) -> None:
+    def __init__(self, maxsize: int = 0) -> None:
+        # maxsize=0 means unbounded (Python queue.Queue default)
         self._queue: queue.Queue[Optional[Tuple[str, Dict[str, Any]]]] = queue.Queue(
-            maxsize=self._MAX_QUEUE_SIZE
+            maxsize=maxsize
         )
+        self._maxsize = maxsize
         self._closed = False
 
     def push(self, event: str, data: Dict[str, Any]) -> None:
-        """Push an event to the stream. No-ops if sink is closed. Drops if queue is full."""
+        """Push an event to the stream.
+
+        No-ops if sink is closed. If the queue has a size limit and is full,
+        the event is dropped with a warning log.
+        """
         if self._closed:
             return
         try:
             self._queue.put_nowait((event, data))
         except queue.Full:
-            logger.warning("EventSink queue full (%d), dropping event: %s", self._MAX_QUEUE_SIZE, event)
+            logger.warning("EventSink queue full (%d), dropping event: %s", self._maxsize, event)
 
     def close(self) -> None:
-        """Close the stream. Sends a sentinel so the iterator stops yielding."""
+        """Close the stream. Sends a sentinel so the iterator stops yielding.
+
+        Uses put with a short timeout to avoid deadlocking if the client has
+        disconnected and the iterator is no longer draining the queue.
+        """
         if not self._closed:
             self._closed = True
-            # Use blocking put for sentinel — it must get through even if queue is full.
-            # The iterator will drain the queue, so this won't block indefinitely.
-            self._queue.put(None)
+            try:
+                self._queue.put(None, timeout=5.0)
+            except queue.Full:
+                # Queue is full and iterator is dead — nothing we can do.
+                # The iterator will detect _closed on next wakeup.
+                logger.warning("EventSink.close(): queue full, sentinel not delivered")
 
     @property
     def is_closed(self) -> bool:
@@ -73,6 +86,9 @@ class EventSink:
                 try:
                     item = self._queue.get(timeout=_KEEPALIVE_INTERVAL_SECONDS)
                 except queue.Empty:
+                    # Check if closed while we were waiting
+                    if self._closed:
+                        break
                     # Yield SSE comment as keepalive (keeps proxies happy)
                     yield ": keepalive\n\n"
                     continue
