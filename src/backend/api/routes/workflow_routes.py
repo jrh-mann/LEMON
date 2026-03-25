@@ -292,7 +292,7 @@ def register_workflow_routes(
         user: AuthUser = Depends(require_auth),
     ) -> Response:
         try:
-            bundle_bytes = build_workflow_bundle_bytes(
+            bundle_bytes, warnings = build_workflow_bundle_bytes(
                 workflow_store, user, workflow_id
             )
         except WorkflowTransferError as exc:
@@ -303,6 +303,7 @@ def register_workflow_routes(
             media_type="application/zip",
             headers={
                 "Content-Disposition": f'attachment; filename="{workflow_id}.zip"',
+                "X-LEMON-Export-Warnings": json.dumps(warnings),
             },
         )
 

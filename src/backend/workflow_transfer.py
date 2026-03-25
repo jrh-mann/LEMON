@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .storage.auth import AuthUser
 from .storage.workflows import WorkflowRecord, WorkflowStore
+from .subflow_cycles import detect_subflow_cycles
 from .tools.constants import generate_workflow_id
 from .utils.flowchart import tree_from_flowchart
 from .validation.workflow_validator import WorkflowValidator
@@ -58,8 +59,12 @@ def build_workflow_bundle_bytes(
     workflow_store: WorkflowStore,
     user: AuthUser,
     root_workflow_id: str,
-) -> bytes:
+) -> Tuple[bytes, List[str]]:
     records = _collect_workflow_bundle(workflow_store, user, root_workflow_id)
+    warnings = detect_subflow_cycles(
+        records[0].nodes if records else [],
+        lambda workflow_id: workflow_store.get_workflow(workflow_id, user.id),
+    )
     manifest = {
         "version": BUNDLE_VERSION,
         "format": BUNDLE_FORMAT,
@@ -75,7 +80,7 @@ def build_workflow_bundle_bytes(
                 f"workflows/{record.id}.json",
                 json.dumps(serialize_workflow_record(record), indent=2),
             )
-    return buffer.getvalue()
+    return buffer.getvalue(), warnings
 
 
 def import_single_workflow_json(

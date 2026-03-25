@@ -3,7 +3,7 @@
  * Extracted from Header.tsx for reuse in ExportPage.
  */
 
-import { validateWorkflow, compileToPython, exportWorkflowJson, exportWorkflowBundle } from '../api/workflows'
+import { validateWorkflow, compileToPython, exportWorkflowJson, exportWorkflowBundleWithWarnings } from '../api/workflows'
 import type { Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 interface ExportContext {
@@ -52,9 +52,26 @@ export async function exportAsJSONWithOptions(
         return 'Save workflow before exporting'
     }
 
-    const blob = options.includeSubflows
-        ? await exportWorkflowBundle(currentWorkflow.id)
-        : await exportWorkflowJson(currentWorkflow.id)
+    let blob: Blob
+    let warnings: string[] = []
+    if (options.includeSubflows) {
+        const bundleResult = await exportWorkflowBundleWithWarnings(currentWorkflow.id)
+        blob = bundleResult.blob
+        warnings = bundleResult.warnings
+    } else {
+        blob = await exportWorkflowJson(currentWorkflow.id)
+    }
+
+    if (warnings.length > 0) {
+        const proceed = confirm(
+            `⚠️ Export Warnings\n\n` +
+            `The exported artifact may not execute correctly:\n\n` +
+            warnings.map(w => `• ${w}`).join('\n') +
+            `\n\nDo you want to download anyway?`
+        )
+        if (!proceed) return 'cancelled'
+    }
+
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -208,7 +225,8 @@ export async function exportAsPython(ctx: ExportContext): Promise<string | null>
         w.includes('Could not compile condition') ||
         w.includes('Unknown variable') ||
         w.includes('not defined') ||
-        w.includes('requires manual implementation')
+        w.includes('requires manual implementation') ||
+        w.includes('Recursive subflow cycle detected')
     )
 
     if (criticalWarnings.length > 0) {

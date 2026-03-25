@@ -127,6 +127,7 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
         exported_root = json.loads(zf.read("workflows/wf_root.json"))
         assert "validation_score" not in exported_root["metadata"]
         assert "validation_count" not in exported_root["metadata"]
+    assert export_resp.headers.get("X-LEMON-Export-Warnings") == "[]"
 
     import_resp = client.post(
         "/api/workflows/import-bundle",
@@ -177,3 +178,102 @@ def test_import_single_workflow_persists_immediately(tmp_path: Path):
     stored = workflow_store.get_workflow(workflow_id, user.id)
     assert stored is not None
     assert stored.name == "Imported"
+
+
+def test_bundle_export_reports_recursive_subflow_warning(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+
+    workflow_store.create_workflow(
+        workflow_id="wf_a",
+        user_id=user.id,
+        name="A",
+        description="",
+        domain=None,
+        tags=[],
+        nodes=[
+            {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {
+                "id": "sub",
+                "type": "subprocess",
+                "label": "B",
+                "x": 0,
+                "y": 100,
+                "subworkflow_id": "wf_b",
+                "input_mapping": {},
+                "output_variable": "out",
+            },
+            {
+                "id": "end",
+                "type": "end",
+                "label": "Done",
+                "x": 0,
+                "y": 200,
+                "output_variable": "out",
+                "output_type": "string",
+            },
+        ],
+        edges=[{"from": "start", "to": "sub"}, {"from": "sub", "to": "end"}],
+        inputs=[],
+        outputs=[{"name": "result", "type": "string"}],
+        tree={
+            "start": {
+                "id": "start",
+                "children": [
+                    {"id": "sub", "children": [{"id": "end", "children": []}]}
+                ],
+            }
+        },
+        doubts=[],
+        output_type="string",
+        is_draft=False,
+    )
+    workflow_store.create_workflow(
+        workflow_id="wf_b",
+        user_id=user.id,
+        name="B",
+        description="",
+        domain=None,
+        tags=[],
+        nodes=[
+            {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {
+                "id": "sub",
+                "type": "subprocess",
+                "label": "A",
+                "x": 0,
+                "y": 100,
+                "subworkflow_id": "wf_a",
+                "input_mapping": {},
+                "output_variable": "out",
+            },
+            {
+                "id": "end",
+                "type": "end",
+                "label": "Done",
+                "x": 0,
+                "y": 200,
+                "output_variable": "out",
+                "output_type": "string",
+            },
+        ],
+        edges=[{"from": "start", "to": "sub"}, {"from": "sub", "to": "end"}],
+        inputs=[],
+        outputs=[{"name": "result", "type": "string"}],
+        tree={
+            "start": {
+                "id": "start",
+                "children": [
+                    {"id": "sub", "children": [{"id": "end", "children": []}]}
+                ],
+            }
+        },
+        doubts=[],
+        output_type="string",
+        is_draft=False,
+    )
+
+    export_resp = client.get("/api/workflows/wf_a/export-bundle")
+
+    assert export_resp.status_code == 200
+    warnings = json.loads(export_resp.headers["X-LEMON-Export-Warnings"])
+    assert any("Recursive subflow cycle detected" in warning for warning in warnings)

@@ -40,6 +40,26 @@ export async function exportWorkflowBundle(workflowId: string): Promise<Blob> {
   return await response.blob()
 }
 
+export async function exportWorkflowBundleWithWarnings(
+  workflowId: string
+): Promise<{ blob: Blob; warnings: string[] }> {
+  const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/export-bundle`, {
+    credentials: 'include',
+    headers: { 'X-Session-Id': getSessionId() },
+  })
+  if (!response.ok) throw new Error('Failed to export workflow bundle')
+  const warningsHeader = response.headers.get('X-LEMON-Export-Warnings')
+  let warnings: string[] = []
+  if (warningsHeader) {
+    try {
+      warnings = JSON.parse(warningsHeader)
+    } catch {
+      warnings = []
+    }
+  }
+  return { blob: await response.blob(), warnings }
+}
+
 export async function importWorkflowJson(payload: unknown): Promise<{ workflow_id: string }> {
   return api.post<{ workflow_id: string }>('/api/workflows/import', payload)
 }
