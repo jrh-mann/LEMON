@@ -24,10 +24,13 @@ from collections import deque
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
 
+from ..subflow_cycles import detect_subflow_cycles
+
 
 @dataclass
 class CompilationResult:
     """Result of Python code generation."""
+
     success: bool
     code: Optional[str] = None
     error: Optional[str] = None
@@ -37,6 +40,7 @@ class CompilationResult:
 
 class CompilationError(Exception):
     """Raised when code generation fails."""
+
     pass
 
 
@@ -54,14 +58,14 @@ class VariableNameResolver:
             variables: List of variable definitions with 'id', 'name', 'type' fields.
         """
         self.variables = variables
-        self.id_to_var = {v['id']: v for v in variables}
+        self.id_to_var = {v["id"]: v for v in variables}
         self.id_to_python: Dict[str, str] = {}
         self.used_names: Set[str] = set()
 
         # Build mappings
         for var in variables:
-            var_id = var['id']
-            python_name = self._to_python_name(var['name'])
+            var_id = var["id"]
+            python_name = self._to_python_name(var["name"])
 
             # Handle conflicts
             original_name = python_name
@@ -83,14 +87,32 @@ class VariableNameResolver:
             Python identifier like 'patient_age'
         """
         # Lowercase and replace non-alphanumeric with underscores
-        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+        slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
         # Ensure it doesn't start with a digit
         if slug and slug[0].isdigit():
             slug = f"var_{slug}"
 
         # Handle empty or reserved names
-        if not slug or slug in {'if', 'else', 'for', 'while', 'return', 'def', 'class', 'import', 'from', 'and', 'or', 'not', 'in', 'is', 'True', 'False', 'None'}:
+        if not slug or slug in {
+            "if",
+            "else",
+            "for",
+            "while",
+            "return",
+            "def",
+            "class",
+            "import",
+            "from",
+            "and",
+            "or",
+            "not",
+            "in",
+            "is",
+            "True",
+            "False",
+            "None",
+        }:
             slug = f"var_{slug}" if slug else "var"
 
         return slug
@@ -123,8 +145,8 @@ class VariableNameResolver:
         if var_id not in self.id_to_var:
             return "Any"
 
-        var_type = self.id_to_var[var_id].get('type', 'string')
-        return TYPE_MAP.get(var_type, 'str')
+        var_type = self.id_to_var[var_id].get("type", "string")
+        return TYPE_MAP.get(var_type, "str")
 
     def get_friendly_name(self, var_id: str) -> str:
         """Get original friendly name for a variable.
@@ -137,17 +159,17 @@ class VariableNameResolver:
         """
         if var_id not in self.id_to_var:
             return var_id
-        return self.id_to_var[var_id].get('name', var_id)
+        return self.id_to_var[var_id].get("name", var_id)
 
 
 # Type mapping from workflow types to Python type hints
 TYPE_MAP = {
-    'number': 'float',  # Unified numeric type maps to Python float
-    'bool': 'bool',
-    'string': 'str',
-    'enum': 'str',
-    'date': 'str',  # Dates as ISO strings for simplicity
-    'json': 'dict',
+    "number": "float",  # Unified numeric type maps to Python float
+    "bool": "bool",
+    "string": "str",
+    "enum": "str",
+    "date": "str",  # Dates as ISO strings for simplicity
+    "json": "dict",
 }
 
 
@@ -155,48 +177,48 @@ TYPE_MAP = {
 # {operands} will be replaced with the appropriate operand expression(s)
 OPERATOR_TO_PYTHON = {
     # Unary operators
-    'negate': '-{0}',
-    'abs': 'abs({0})',
-    'sqrt': '({0}) ** 0.5',
-    'square': '({0}) ** 2',
-    'cube': '({0}) ** 3',
-    'reciprocal': '1 / ({0})',
-    'floor': 'int({0})',
-    'ceil': 'int({0}) + (1 if {0} % 1 else 0)',
-    'round': 'round({0})',
-    'sign': '(1 if {0} > 0 else (-1 if {0} < 0 else 0))',
-    'ln': 'math.log({0})',
-    'log10': 'math.log10({0})',
-    'exp': 'math.exp({0})',
-    'sin': 'math.sin({0})',
-    'cos': 'math.cos({0})',
-    'tan': 'math.tan({0})',
-    'asin': 'math.asin({0})',
-    'acos': 'math.acos({0})',
-    'atan': 'math.atan({0})',
-    'degrees': 'math.degrees({0})',
-    'radians': 'math.radians({0})',
+    "negate": "-{0}",
+    "abs": "abs({0})",
+    "sqrt": "({0}) ** 0.5",
+    "square": "({0}) ** 2",
+    "cube": "({0}) ** 3",
+    "reciprocal": "1 / ({0})",
+    "floor": "int({0})",
+    "ceil": "int({0}) + (1 if {0} % 1 else 0)",
+    "round": "round({0})",
+    "sign": "(1 if {0} > 0 else (-1 if {0} < 0 else 0))",
+    "ln": "math.log({0})",
+    "log10": "math.log10({0})",
+    "exp": "math.exp({0})",
+    "sin": "math.sin({0})",
+    "cos": "math.cos({0})",
+    "tan": "math.tan({0})",
+    "asin": "math.asin({0})",
+    "acos": "math.acos({0})",
+    "atan": "math.atan({0})",
+    "degrees": "math.degrees({0})",
+    "radians": "math.radians({0})",
     # Binary operators
-    'subtract': '({0}) - ({1})',
-    'divide': '({0}) / ({1})',
-    'floor_divide': '({0}) // ({1})',
-    'modulo': '({0}) % ({1})',
-    'power': '({0}) ** ({1})',
-    'log': 'math.log({0}, {1})',
-    'atan2': 'math.atan2({0}, {1})',
+    "subtract": "({0}) - ({1})",
+    "divide": "({0}) / ({1})",
+    "floor_divide": "({0}) // ({1})",
+    "modulo": "({0}) % ({1})",
+    "power": "({0}) ** ({1})",
+    "log": "math.log({0}, {1})",
+    "atan2": "math.atan2({0}, {1})",
     # Variadic operators (use special handling)
-    'add': None,  # Special: sum of operands
-    'multiply': None,  # Special: product of operands
-    'min': None,  # Special: min()
-    'max': None,  # Special: max()
-    'sum': None,  # Special: sum()
-    'average': None,  # Special: sum / len
-    'hypot': None,  # Special: math.hypot()
-    'geometric_mean': None,  # Special: statistics.geometric_mean()
-    'harmonic_mean': None,  # Special: statistics.harmonic_mean()
-    'variance': None,  # Special: statistics.variance()
-    'std_dev': None,  # Special: statistics.stdev()
-    'range': None,  # Special: max - min
+    "add": None,  # Special: sum of operands
+    "multiply": None,  # Special: product of operands
+    "min": None,  # Special: min()
+    "max": None,  # Special: max()
+    "sum": None,  # Special: sum()
+    "average": None,  # Special: sum / len
+    "hypot": None,  # Special: math.hypot()
+    "geometric_mean": None,  # Special: statistics.geometric_mean()
+    "harmonic_mean": None,  # Special: statistics.harmonic_mean()
+    "variance": None,  # Special: statistics.variance()
+    "std_dev": None,  # Special: statistics.stdev()
+    "range": None,  # Special: max - min
 }
 
 
@@ -210,37 +232,33 @@ class ConditionCompiler:
     # {var} = variable name, {val} = comparison value, {val2} = second value (for ranges)
     COMPARATOR_TEMPLATES = {
         # Numeric
-        'eq': '{var} == {val}',
-        'neq': '{var} != {val}',
-        'lt': '{var} < {val}',
-        'lte': '{var} <= {val}',
-        'gt': '{var} > {val}',
-        'gte': '{var} >= {val}',
-        'within_range': '{val} <= {var} <= {val2}',
+        "eq": "{var} == {val}",
+        "neq": "{var} != {val}",
+        "lt": "{var} < {val}",
+        "lte": "{var} <= {val}",
+        "gt": "{var} > {val}",
+        "gte": "{var} >= {val}",
+        "within_range": "{val} <= {var} <= {val2}",
         # Boolean
-        'is_true': '{var} is True',
-        'is_false': '{var} is False',
+        "is_true": "{var} is True",
+        "is_false": "{var} is False",
         # String (case-insensitive)
-        'str_eq': '{var}.lower() == {val}.lower()',
-        'str_neq': '{var}.lower() != {val}.lower()',
-        'str_contains': '{val}.lower() in {var}.lower()',
-        'str_starts_with': '{var}.lower().startswith({val}.lower())',
-        'str_ends_with': '{var}.lower().endswith({val}.lower())',
+        "str_eq": "{var}.lower() == {val}.lower()",
+        "str_neq": "{var}.lower() != {val}.lower()",
+        "str_contains": "{val}.lower() in {var}.lower()",
+        "str_starts_with": "{var}.lower().startswith({val}.lower())",
+        "str_ends_with": "{var}.lower().endswith({val}.lower())",
         # Date (assuming ISO format strings)
-        'date_eq': '{var} == {val}',
-        'date_before': '{var} < {val}',
-        'date_after': '{var} > {val}',
-        'date_between': '{val} <= {var} <= {val2}',
+        "date_eq": "{var} == {val}",
+        "date_before": "{var} < {val}",
+        "date_after": "{var} > {val}",
+        "date_between": "{val} <= {var} <= {val2}",
         # Enum (case-insensitive)
-        'enum_eq': '{var}.lower() == {val}.lower()',
-        'enum_neq': '{var}.lower() != {val}.lower()',
+        "enum_eq": "{var}.lower() == {val}.lower()",
+        "enum_neq": "{var}.lower() != {val}.lower()",
     }
 
-    def compile(
-        self,
-        condition: Dict[str, Any],
-        resolver: VariableNameResolver
-    ) -> str:
+    def compile(self, condition: Dict[str, Any], resolver: VariableNameResolver) -> str:
         """Compile a DecisionCondition to a Python expression.
 
         Handles both simple conditions (input_id/comparator/value) and
@@ -258,7 +276,7 @@ class ConditionCompiler:
             CompilationError: If condition is invalid
         """
         # Compound condition: {operator: "and"/"or", conditions: [...]}
-        if 'operator' in condition:
+        if "operator" in condition:
             return self._compile_compound(condition, resolver)
 
         return self._compile_simple(condition, resolver)
@@ -280,13 +298,13 @@ class ConditionCompiler:
         Raises:
             CompilationError: If compound condition is malformed.
         """
-        operator = condition.get('operator', '').lower()
-        if operator not in ('and', 'or'):
+        operator = condition.get("operator", "").lower()
+        if operator not in ("and", "or"):
             raise CompilationError(
                 f"Compound condition operator must be 'and' or 'or', got '{operator}'"
             )
 
-        sub_conditions = condition.get('conditions')
+        sub_conditions = condition.get("conditions")
         if not isinstance(sub_conditions, list) or len(sub_conditions) < 2:
             raise CompilationError(
                 "Compound condition requires a 'conditions' array with at least 2 items"
@@ -299,8 +317,8 @@ class ConditionCompiler:
                 raise CompilationError(f"conditions[{i}] must be a dict")
             parts.append(self._compile_simple(sub, resolver))
 
-        joiner = f' {operator} '
-        return f'({joiner.join(parts)})'
+        joiner = f" {operator} "
+        return f"({joiner.join(parts)})"
 
     def _compile_simple(
         self,
@@ -319,10 +337,10 @@ class ConditionCompiler:
         Raises:
             CompilationError: If condition is invalid.
         """
-        input_id = condition.get('input_id')
-        comparator = condition.get('comparator')
-        value = condition.get('value')
-        value2 = condition.get('value2')
+        input_id = condition.get("input_id")
+        comparator = condition.get("comparator")
+        value = condition.get("value")
+        value2 = condition.get("value2")
 
         if not input_id:
             raise CompilationError("Condition missing 'input_id'")
@@ -354,9 +372,9 @@ class ConditionCompiler:
             Python literal string
         """
         if value is None:
-            return 'None'
+            return "None"
         elif isinstance(value, bool):
-            return 'True' if value else 'False'
+            return "True" if value else "False"
         elif isinstance(value, str):
             # Escape quotes and use repr for safety
             return repr(value)
@@ -399,7 +417,7 @@ class PythonCodeGenerator:
             fetch_subworkflow: Optional callback (workflow_id) -> Workflow for resolving subflows.
             _processed_subflows: Optional set of already processed subflow IDs to prevent infinite cycles.
         """
-        self.nodes = {node.get('id'): node for node in nodes if node.get('id')}
+        self.nodes = {node.get("id"): node for node in nodes if node.get("id")}
         self.edges = edges
         self.variables = variables
         self.outputs = outputs
@@ -415,7 +433,9 @@ class PythonCodeGenerator:
         # Helper function extraction for DAG nodes visited more than once
         self._extracted_helpers: Dict[str, str] = {}  # node_id -> func_name
         self._helper_blocks: List[str] = []  # compiled helper function code
-        self._compiling_helper_for: Optional[str] = None  # node ID currently being compiled as helper
+        self._compiling_helper_for: Optional[str] = (
+            None  # node ID currently being compiled as helper
+        )
 
     def compile(self) -> CompilationResult:
         """Compile the workflow to Python code.
@@ -432,25 +452,34 @@ class PythonCodeGenerator:
 
             # Create resolver
             # Filter to only input-source variables for function parameters
-            input_vars = [v for v in self.variables if v.get('source', 'input') == 'input']
+            input_vars = [
+                v for v in self.variables if v.get("source", "input") == "input"
+            ]
             self.resolver = VariableNameResolver(self.variables)
+
+            cycle_warnings = detect_subflow_cycles(
+                list(self.nodes.values()), self.fetch_subworkflow
+            )
+            if cycle_warnings:
+                self._warnings.extend(cycle_warnings)
+                self._has_partial_failure = True
 
             # First, check and compile any subflows as helper functions
             subflow_code_blocks = []
-            
+
             if self.fetch_subworkflow:
                 for node in self.nodes.values():
                     if node.get("type") == "subprocess":
                         sub_id = node.get("subworkflow_id")
                         if not sub_id or sub_id in self._processed_subflows:
                             continue
-                            
+
                         self._processed_subflows.add(sub_id)
                         subflow_obj = self.fetch_subworkflow(sub_id)
-                        
+
                         if subflow_obj:
                             sub_func_name = f"subflow_{sub_id.replace('-', '_')}"
-                            
+
                             sub_compiler = PythonCodeGenerator(
                                 nodes=subflow_obj.nodes,
                                 edges=subflow_obj.edges,
@@ -463,15 +492,19 @@ class PythonCodeGenerator:
                             # Compile subflow without imports/main block
                             sub_result = sub_compiler.compile()
                             if sub_result.success and sub_result.code:
-                                subflow_code_blocks.append(sub_result.code)
-                            self._warnings.extend(["Subflow: " + w for w in sub_result.warnings])
+                                subflow_code_blocks.append(
+                                    self._strip_helper_imports_and_main(sub_result.code)
+                                )
+                            self._warnings.extend(
+                                ["Subflow: " + w for w in sub_result.warnings]
+                            )
                         else:
                             self._has_partial_failure = True
                             self._warnings.append(
                                 f"Subworkflow '{sub_id}' could not be compiled because it could not be fetched. "
                                 "Generated code contains a placeholder comment instead."
                             )
-            
+
             # --- Pre-pass: identify and extract helper functions for DAG nodes ---
             # Nodes visited more than once during tree-walking compilation would
             # cause code duplication. Extract them as helper functions.
@@ -483,7 +516,7 @@ class PythonCodeGenerator:
                     # Don't extract trivial end/output nodes — they're just a return
                     # statement and are cleaner inlined at each call site.
                     node = self.nodes.get(nid)
-                    if node and node.get('type') in ('end', 'output'):
+                    if node and node.get("type") in ("end", "output"):
                         continue
                     self._compile_helper(nid)
 
@@ -500,7 +533,7 @@ class PythonCodeGenerator:
             self._generate_docstring(self.workflow_name, input_vars, self.outputs)
 
             # Generate body
-            start_nodes = [n for n in self.nodes.values() if n.get('type') == 'start']
+            start_nodes = [n for n in self.nodes.values() if n.get("type") == "start"]
             if not start_nodes:
                 if not self.nodes:
                     raise CompilationError("Workflow has no nodes")
@@ -508,11 +541,11 @@ class PythonCodeGenerator:
                 start_node = next(iter(self.nodes.values()))
             else:
                 start_node = start_nodes[0]
-            
-            # The start node itself might have code, or merely act as a pointer. 
-            # If it's literally a 'start' node, we visit its children. 
+
+            # The start node itself might have code, or merely act as a pointer.
+            # If it's literally a 'start' node, we visit its children.
             # If it's a fallback node of a different type, we should visit IT directly.
-            if start_node.get('type') == 'start':
+            if start_node.get("type") == "start":
                 children = self._get_children(start_node)
                 if not children:
                     self._add_line("pass  # Empty workflow")
@@ -520,14 +553,14 @@ class PythonCodeGenerator:
                     self._visit_node(children[0])
             else:
                 self._visit_node(start_node)
-                
+
             self._indent_level -= 1
-            
+
             # Generate main block
             if self.include_main:
                 self._add_line("")
                 self._generate_main_block(self.workflow_name, input_vars)
-            
+
             # Assemble final code: imports (in _lines) come first, then subflows,
             # then extracted helpers, then the main function definition.
             # Split _lines at the first blank line after imports to insert helpers.
@@ -538,22 +571,23 @@ class PythonCodeGenerator:
                 import_end = main_code.find("\n\n")
                 if import_end != -1:
                     combined_code = (
-                        main_code[:import_end] + "\n\n" +
-                        helper_code + "\n" +
-                        main_code[import_end:]
+                        main_code[:import_end]
+                        + "\n\n"
+                        + helper_code
+                        + "\n"
+                        + main_code[import_end:]
                     )
                 else:
                     combined_code = helper_code + "\n\n" + main_code
             else:
                 combined_code = main_code
-            
+
             return CompilationResult(
                 success=True,
                 code=combined_code,
                 warnings=self._warnings,
                 partial_failure=self._has_partial_failure,
             )
-            
         except CompilationError as e:
             return CompilationResult(
                 success=False,
@@ -569,9 +603,29 @@ class PythonCodeGenerator:
                 partial_failure=self._has_partial_failure,
             )
 
+    def _strip_helper_imports_and_main(self, code: str) -> str:
+        """Remove import lines and main block from compiled helper code."""
+        lines = code.splitlines()
+        stripped: List[str] = []
+        in_main_block = False
+
+        for line in lines:
+            if line.startswith('if __name__ == "__main__":'):
+                in_main_block = True
+                continue
+            if in_main_block:
+                continue
+
+            if line.startswith("import ") or line.startswith("from "):
+                continue
+
+            stripped.append(line)
+
+        return "\n".join(stripped).strip()
+
     def _to_function_name(self, name: str) -> str:
         """Convert workflow name to valid Python function name."""
-        slug = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+        slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
         if slug and slug[0].isdigit():
             slug = f"workflow_{slug}"
         return slug or "workflow"
@@ -582,43 +636,45 @@ class PythonCodeGenerator:
 
         # Check if we need datetime for date types
         for var in variables:
-            if var.get('type') == 'date':
+            if var.get("type") == "date":
                 imports.add("from datetime import date")
 
         # Add typing import for type hints
-        imports.add("from typing import Union, List, Dict, Any, Optional, Set, Callable")
-        
+        imports.add(
+            "from typing import Union, List, Dict, Any, Optional, Set, Callable"
+        )
+
         # Always include math for calculation support
         # (could be optimized to only include if calculations are present)
         imports.add("import math")
         imports.add("import statistics")
-        imports.add("import re") # For _to_function_name and _compile_template
-        imports.add("import json") # For _format_output_value
+        imports.add("import re")  # For _to_function_name and _compile_template
+        imports.add("import json")  # For _format_output_value
 
         for imp in sorted(imports):
             self._add_line(imp)
 
     def _generate_function_signature(
-        self,
-        func_name: str,
-        input_vars: List[Dict[str, Any]]
+        self, func_name: str, input_vars: List[Dict[str, Any]]
     ) -> None:
         """Generate function definition with typed parameters."""
         params = []
         for var in input_vars:
-            var_id = var['id']
+            var_id = var["id"]
             python_name = self.resolver.resolve(var_id)
             python_type = self.resolver.get_type(var_id)
             params.append(f"{python_name}: {python_type}")
 
         params_str = ", ".join(params)
-        self._add_line(f"def {func_name}({params_str}) -> Union[str, int, float, bool]:")
+        self._add_line(
+            f"def {func_name}({params_str}) -> Union[str, int, float, bool]:"
+        )
 
     def _generate_docstring(
         self,
         workflow_name: str,
         input_vars: List[Dict[str, Any]],
-        outputs: Optional[List[Dict[str, Any]]]
+        outputs: Optional[List[Dict[str, Any]]],
     ) -> None:
         """Generate Google-style docstring."""
         self._add_line('"""')
@@ -628,16 +684,16 @@ class PythonCodeGenerator:
         if input_vars:
             self._add_line("Args:")
             for var in input_vars:
-                var_id = var['id']
+                var_id = var["id"]
                 python_name = self.resolver.resolve(var_id)
-                friendly_name = var.get('name', python_name)
-                description = var.get('description', friendly_name)
+                friendly_name = var.get("name", python_name)
+                description = var.get("description", friendly_name)
                 self._add_line(f"    {python_name}: {description}")
             self._add_line("")
 
         self._add_line("Returns:")
         if outputs:
-            output_names = [o.get('name', 'result') for o in outputs]
+            output_names = [o.get("name", "result") for o in outputs]
             self._add_line(f"    Workflow output: {', '.join(output_names)}")
         else:
             self._add_line("    Workflow result")
@@ -645,9 +701,7 @@ class PythonCodeGenerator:
         self._add_line('"""')
 
     def _generate_main_block(
-        self,
-        func_name: str,
-        input_vars: List[Dict[str, Any]]
+        self, func_name: str, input_vars: List[Dict[str, Any]]
     ) -> None:
         """Generate if __name__ == "__main__" block with example usage."""
         self._add_line('if __name__ == "__main__":')
@@ -657,38 +711,38 @@ class PythonCodeGenerator:
         # Generate example call with placeholder values
         example_args = []
         for var in input_vars:
-            var_type = var.get('type', 'string')
-            if var_type == 'number':
+            var_type = var.get("type", "string")
+            if var_type == "number":
                 example_args.append("0.0")
-            elif var_type == 'bool':
+            elif var_type == "bool":
                 example_args.append("False")
             else:
                 example_args.append('""')
 
         args_str = ", ".join(example_args)
         self._add_line(f"result = {func_name}({args_str})")
-        self._add_line("print(f\"Result: {result}\")")
+        self._add_line('print(f"Result: {result}")')
         self._indent_level -= 1
 
     def _get_children(self, node: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get children nodes for a given node."""
-        node_id = node.get('id')
+        node_id = node.get("id")
         if not node_id:
             return []
-        
+
         children = []
         for edge in self.edges:
             # Edges use 'from'/'to' keys (canonical format throughout the codebase)
-            if edge.get('from') == node_id:
-                target_id = edge.get('to')
+            if edge.get("from") == node_id:
+                target_id = edge.get("to")
                 if target_id in self.nodes:
                     child_node = self.nodes[target_id]
-                    child_node['edge_label'] = edge.get('label', '')
+                    child_node["edge_label"] = edge.get("label", "")
                     children.append(child_node)
-        
+
         # Sort children to ensure consistent order (e.g., for decision branches)
         # This might need more sophisticated logic based on actual workflow editor behavior
-        children.sort(key=lambda n: n.get('edge_label', '') + n.get('id', ''))
+        children.sort(key=lambda n: n.get("edge_label", "") + n.get("id", ""))
         return children
 
     def _reachable_from(self, start_id: str) -> Set[str]:
@@ -701,8 +755,8 @@ class PythonCodeGenerator:
                 continue
             visited.add(nid)
             for edge in self.edges:
-                if edge.get('from') == nid:
-                    target = edge.get('to')
+                if edge.get("from") == nid:
+                    target = edge.get("to")
                     if target and target not in visited:
                         queue.append(target)
         return visited
@@ -723,7 +777,7 @@ class PythonCodeGenerator:
         # Collect reachable sets from each branch (excluding the decision node itself)
         branch_reachable = []
         for child in children:
-            child_id = child.get('id')
+            child_id = child.get("id")
             if child_id:
                 branch_reachable.append(self._reachable_from(child_id))
 
@@ -740,8 +794,8 @@ class PythonCodeGenerator:
 
         # Pick the closest convergence point (smallest topological distance).
         # BFS from the decision node, return the first node in the common set.
-        decision_id = node.get('id')
-        queue = deque([decision_id])
+        decision_id = node.get("id")
+        queue = deque([decision_id] if decision_id is not None else [])
         visited: Set[str] = set()
         while queue:
             nid = queue.popleft()
@@ -749,8 +803,8 @@ class PythonCodeGenerator:
                 continue
             visited.add(nid)
             for edge in self.edges:
-                if edge.get('from') == nid:
-                    target = edge.get('to')
+                if edge.get("from") == nid:
+                    target = edge.get("to")
                     if target and target not in visited:
                         if target in common:
                             return target
@@ -775,14 +829,14 @@ class PythonCodeGenerator:
             node = self.nodes.get(node_id)
             if not node:
                 return
-            node_type = node.get('type')
-            if node_type in ('output', 'end'):
+            node_type = node.get("type")
+            if node_type in ("output", "end"):
                 return
-            elif node_type == 'decision':
+            elif node_type == "decision":
                 children = self._get_children(node)
                 convergence_id = self._find_convergence_point(node)
                 for child in children:
-                    cid = child.get('id')
+                    cid = child.get("id")
                     if cid:
                         count(cid, stop_before=convergence_id)
                 if convergence_id:
@@ -790,15 +844,15 @@ class PythonCodeGenerator:
             else:
                 children = self._get_children(node)
                 if children:
-                    cid = children[0].get('id')
+                    cid = children[0].get("id")
                     if cid:
                         count(cid, stop_before=stop_before)
 
-        start_nodes = [n for n in self.nodes.values() if n.get('type') == 'start']
+        start_nodes = [n for n in self.nodes.values() if n.get("type") == "start"]
         if start_nodes:
             children = self._get_children(start_nodes[0])
             if children:
-                cid = children[0].get('id')
+                cid = children[0].get("id")
                 if cid:
                     count(cid)
         return visits
@@ -813,7 +867,7 @@ class PythonCodeGenerator:
         Returns the helper function name.
         """
         node = self.nodes[node_id]
-        label = node.get('label', node_id)
+        label = node.get("label", node_id)
         func_name = f"_{re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')}"
 
         # Ensure unique name
@@ -832,14 +886,16 @@ class PythonCodeGenerator:
         self._indent_level = 0
 
         # Parameter list: all input variables (always correct, slightly verbose)
-        input_vars = [v for v in self.variables if v.get('source', 'input') == 'input']
+        input_vars = [v for v in self.variables if v.get("source", "input") == "input"]
         params = []
         for var in input_vars:
-            python_name = self.resolver.resolve(var['id'])
-            python_type = self.resolver.get_type(var['id'])
+            python_name = self.resolver.resolve(var["id"])
+            python_type = self.resolver.get_type(var["id"])
             params.append(f"{python_name}: {python_type}")
 
-        self._add_line(f"def {func_name}({', '.join(params)}) -> Union[str, int, float, bool]:")
+        self._add_line(
+            f"def {func_name}({', '.join(params)}) -> Union[str, int, float, bool]:"
+        )
         self._indent_level = 1
         # Mark as extracted BEFORE visiting so recursive convergence works.
         # But also set _compiling_helper_for so _visit_node doesn't redirect
@@ -858,7 +914,9 @@ class PythonCodeGenerator:
 
         return func_name
 
-    def _visit_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
+    def _visit_node(
+        self, node: Dict[str, Any], stop_before: Optional[str] = None
+    ) -> None:
         """Visit a node and generate appropriate code.
 
         Args:
@@ -867,8 +925,8 @@ class PythonCodeGenerator:
                 (used for DAG convergence — the convergence point is compiled
                 after the if/else block, not inside each branch).
         """
-        node_type = node.get('type')
-        node_id = node.get('id', 'unknown')
+        node_type = node.get("type")
+        node_id = node.get("id", "unknown")
 
         # DAG convergence: stop before the convergence point
         if stop_before and node_id == stop_before:
@@ -879,27 +937,29 @@ class PythonCodeGenerator:
         # inlining the subtree. Skip if we're currently compiling this node's helper.
         if node_id in self._extracted_helpers and node_id != self._compiling_helper_for:
             func_name = self._extracted_helpers[node_id]
-            input_vars = [v for v in self.variables if v.get('source', 'input') == 'input']
-            args = [self.resolver.resolve(v['id']) for v in input_vars]
+            input_vars = [
+                v for v in self.variables if v.get("source", "input") == "input"
+            ]
+            args = [self.resolver.resolve(v["id"]) for v in input_vars]
             self._add_line(f"return {func_name}({', '.join(args)})")
             return
 
-        if node_type in ('output', 'end'):
+        if node_type in ("output", "end"):
             self._visit_end_node(node)
 
-        elif node_type == 'decision':
+        elif node_type == "decision":
             self._visit_decision_node(node, stop_before=stop_before)
 
-        elif node_type == 'subprocess':
+        elif node_type == "subprocess":
             self._visit_subprocess_node(node, stop_before=stop_before)
 
-        elif node_type == 'calculation':
+        elif node_type == "calculation":
             self._visit_calculation_node(node, stop_before=stop_before)
 
-        elif node_type in ('start', 'action', 'process'):
+        elif node_type in ("start", "action", "process"):
             # Process nodes emit a print statement so they appear in the compiled output
-            if node_type == 'process':
-                label = node.get('label', node_id)
+            if node_type == "process":
+                label = node.get("label", node_id)
                 self._add_line(f"print({repr(label)})")
             children = self._get_children(node)
             if children:
@@ -926,21 +986,39 @@ class PythonCodeGenerator:
         Returns:
             Python expression for the return value
         """
-        # Priority: output_template > output_value > label
+        # Priority: output_variable > output_template > output_value > label
 
-        if node.get('output_template'):
-            template = node['output_template']
+        if node.get("output_variable"):
+            var_ref = str(node["output_variable"])
+
+            if var_ref in self.resolver.id_to_python:
+                return self.resolver.resolve(var_ref)
+
+            for var_id, var in self.resolver.id_to_var.items():
+                if var.get("name") == var_ref:
+                    return self.resolver.resolve(var_id)
+
+            python_var = re.sub(r"[^a-z0-9]+", "_", var_ref.lower()).strip("_")
+            if python_var:
+                return python_var
+
+            self._warnings.append(
+                f"Could not resolve output_variable '{var_ref}' for end node; falling back to label"
+            )
+
+        if node.get("output_template"):
+            template = node["output_template"]
             # Convert {Variable} to {python_name} for f-string
             return self._compile_template(template)
 
-        if 'output_value' in node:
-            value = node['output_value']
-            output_type = node.get('output_type', 'string')
+        if "output_value" in node:
+            value = node["output_value"]
+            output_type = node.get("output_type", "string")
             return self._format_output_value(value, output_type)
 
         # Fallback to label
-        label = node.get('label', '')
-        if '{' in label and '}' in label:
+        label = node.get("label", "")
+        if "{" in label and "}" in label:
             return self._compile_template(label)
         return repr(label)
 
@@ -956,35 +1034,37 @@ class PythonCodeGenerator:
             f-string like 'f"Result: {age}"'
         """
         # Find all {variable} references
-        pattern = r'\{([^}]+)\}'
+        pattern = r"\{([^}]+)\}"
 
         def replace_var(match):
             var_name = match.group(1)
             # Try to find variable by friendly name
             for var_id, var in self.resolver.id_to_var.items():
-                if var.get('name') == var_name:
-                    return '{' + self.resolver.resolve(var_id) + '}'
+                if var.get("name") == var_name:
+                    return "{" + self.resolver.resolve(var_id) + "}"
             # Try by ID
             if var_name in self.resolver.id_to_python:
-                return '{' + self.resolver.resolve(var_name) + '}'
+                return "{" + self.resolver.resolve(var_name) + "}"
             # Keep as-is (will use local variable if exists)
-            return '{' + var_name.lower().replace(' ', '_') + '}'
+            return "{" + var_name.lower().replace(" ", "_") + "}"
 
         converted = re.sub(pattern, replace_var, template)
         return f'f"{converted}"'
 
     def _format_output_value(self, value: Any, output_type: str) -> str:
         """Format static output value as Python literal."""
-        if output_type == 'number':
+        if output_type == "number":
             return str(float(value))
-        elif output_type == 'bool':
-            return 'True' if str(value).lower() in ('true', '1', 'yes') else 'False'
-        elif output_type == 'json':
+        elif output_type == "bool":
+            return "True" if str(value).lower() in ("true", "1", "yes") else "False"
+        elif output_type == "json":
             return repr(json.loads(value) if isinstance(value, str) else value)
         else:
             return repr(str(value))
 
-    def _visit_decision_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
+    def _visit_decision_node(
+        self, node: Dict[str, Any], stop_before: Optional[str] = None
+    ) -> None:
         """Generate if/else block for decision node.
 
         DAG-aware: detects whether branches converge (immediate post-dominator).
@@ -992,9 +1072,9 @@ class PythonCodeGenerator:
         the convergent code continues linearly after the block. This prevents
         exponential code duplication for DAGs with shared downstream nodes.
         """
-        condition = node.get('condition')
+        condition = node.get("condition")
         children = self._get_children(node)
-        node_label = node.get('label', node.get('id', 'decision'))
+        node_label = node.get("label", node.get("id", "decision"))
 
         if not condition:
             self._warnings.append(f"Decision node '{node_label}' has no condition")
@@ -1020,11 +1100,11 @@ class PythonCodeGenerator:
         # Find true and false branches
         true_branch = None
         false_branch = None
-        true_labels = {'yes', 'true', 'y', 't', '1'}
-        false_labels = {'no', 'false', 'n', 'f', '0'}
+        true_labels = {"yes", "true", "y", "t", "1"}
+        false_labels = {"no", "false", "n", "f", "0"}
 
         for child in children:
-            edge_label = child.get('edge_label', '').lower().strip()
+            edge_label = child.get("edge_label", "").lower().strip()
             if edge_label in true_labels:
                 true_branch = child
             elif edge_label in false_labels:
@@ -1067,38 +1147,51 @@ class PythonCodeGenerator:
         if convergence_id and convergence_id in self.nodes:
             self._visit_node(self.nodes[convergence_id], stop_before=stop_before)
 
-    def _visit_subprocess_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
+    def _visit_subprocess_node(
+        self, node: Dict[str, Any], stop_before: Optional[str] = None
+    ) -> None:
         """Generate subprocess call.
 
         Requires self.fetch_subworkflow to be provided to recursively find
         and compile subworkflows as helper functions.
         """
-        node_label = node.get('label', node.get('id', 'subprocess'))
-        subworkflow_id = node.get('subworkflow_id', 'unknown')
-        output_variable = node.get('output_variable', 'result')
-        input_mapping = node.get('input_mapping') or {}
+        node_label = node.get("label", node.get("id", "subprocess"))
+        subworkflow_id = node.get("subworkflow_id", "unknown")
+        output_variable = node.get("output_variable", "result")
+        input_mapping = node.get("input_mapping") or {}
 
         # 1. Output the function call
-        python_var = re.sub(r'[^a-z0-9]+', '_', output_variable.lower()).strip('_')
+        python_var = re.sub(r"[^a-z0-9]+", "_", output_variable.lower()).strip("_")
         self._add_line(f"# Subprocess: {node_label}")
-        
+
         # Determine the function name the subflow will be compiled into
         sub_func_name = f"subflow_{subworkflow_id.replace('-', '_')}"
-        
+
         if self.fetch_subworkflow:
             # Map parent variables to the subflow's arguments
             kwargs = []
-            for sub_in, parent_var_id in input_mapping.items():
-                if parent_var_id in self.resolver.id_to_python:
-                    arg_val = self.resolver.resolve(parent_var_id)
+            for parent_ref, sub_in in input_mapping.items():
+                arg_val = None
+
+                if parent_ref in self.resolver.id_to_python:
+                    arg_val = self.resolver.resolve(parent_ref)
                 else:
-                    # If parent_var_id is not a known variable, assume it's a literal or a direct reference
-                    # This might need more robust handling depending on how input_mapping is structured
-                    arg_val = repr(parent_var_id) # Treat as literal string for now
+                    for var_id, var in self.resolver.id_to_var.items():
+                        if var.get("name") == parent_ref:
+                            arg_val = self.resolver.resolve(var_id)
+                            break
+
+                if arg_val is None:
+                    self._has_partial_failure = True
+                    self._warnings.append(
+                        f"Subprocess '{node_label}' could not resolve parent input '{parent_ref}' for child arg '{sub_in}'. Using None placeholder."
+                    )
+                    arg_val = "None"
+
                 # Clean the sub_in arg name just in case
-                clean_kwarg = re.sub(r'[^a-z0-9]+', '_', sub_in.lower()).strip('_')
+                clean_kwarg = re.sub(r"[^a-z0-9]+", "_", sub_in.lower()).strip("_")
                 kwargs.append(f"{clean_kwarg}={arg_val}")
-                
+
             kwargs_str = ", ".join(kwargs)
             self._add_line(f"{python_var} = {sub_func_name}({kwargs_str})")
         else:
@@ -1116,65 +1209,71 @@ class PythonCodeGenerator:
             self._add_line("")
             self._visit_node(children[0], stop_before=stop_before)
 
-    def _visit_calculation_node(self, node: Dict[str, Any], stop_before: Optional[str] = None) -> None:
+    def _visit_calculation_node(
+        self, node: Dict[str, Any], stop_before: Optional[str] = None
+    ) -> None:
         """Generate calculation expression and assignment.
-        
+
         Generates Python code like:
             bmi = weight / (height ** 2)
         """
-        node_label = node.get('label', node.get('id', 'calculation'))
-        calculation = node.get('calculation', {})
-        
-        output = calculation.get('output', {})
-        operator_name = calculation.get('operator', 'add')
-        operands = calculation.get('operands', [])
-        
-        output_name = output.get('name', 'result') if isinstance(output, dict) else 'result'
-        python_var = re.sub(r'[^a-z0-9]+', '_', output_name.lower()).strip('_')
-        
+        node_label = node.get("label", node.get("id", "calculation"))
+        calculation = node.get("calculation", {})
+
+        output = calculation.get("output", {})
+        operator_name = calculation.get("operator", "add")
+        operands = calculation.get("operands", [])
+
+        output_name = (
+            output.get("name", "result") if isinstance(output, dict) else "result"
+        )
+        python_var = re.sub(r"[^a-z0-9]+", "_", output_name.lower()).strip("_")
+        if not python_var:
+            python_var = "result"
+
         # Resolve operand expressions
         operand_exprs = []
         for operand in operands:
-            kind = operand.get('kind')
-            if kind == 'literal':
-                value = operand.get('value', 0)
+            kind = operand.get("kind")
+            if kind == "literal":
+                value = operand.get("value", 0)
                 operand_exprs.append(str(float(value)))
-            elif kind == 'variable':
-                ref = operand.get('ref', '')
+            elif kind == "variable":
+                ref = operand.get("ref", "")
                 # Try to resolve to Python variable name
                 if ref in self.resolver.id_to_python:
                     operand_exprs.append(self.resolver.resolve(ref))
                 else:
                     # Try by friendly name
                     for var_id, var in self.resolver.id_to_var.items():
-                        if var.get('name') == ref:
+                        if var.get("name") == ref:
                             operand_exprs.append(self.resolver.resolve(var_id))
                             break
                     else:
                         # Fallback to slugified name
-                        slug = re.sub(r'[^a-z0-9]+', '_', ref.lower()).strip('_')
+                        slug = re.sub(r"[^a-z0-9]+", "_", ref.lower()).strip("_")
                         operand_exprs.append(slug)
-        
+
         # Generate the calculation expression
         expr = self._compile_operator_expression(operator_name, operand_exprs)
-        
+
         # Add comment with node label
         self._add_line(f"# Calculation: {node_label}")
         self._add_line(f"{python_var} = {expr}")
-        
+
         # Register the output variable for later use
         # This allows subsequent decision nodes to reference it
         calc_var_id = f"var_calc_{python_var}_number"
         self.resolver.id_to_python[calc_var_id] = python_var
         self.resolver.id_to_var[calc_var_id] = {
-            'id': calc_var_id,
-            'name': output_name,
-            'type': 'number',
-            'source': 'calculated',
+            "id": calc_var_id,
+            "name": output_name,
+            "type": "number",
+            "source": "calculated",
         }
         # Also map by name
         self.resolver.id_to_python[output_name] = python_var
-        
+
         # Continue to children
         children = self._get_children(node)
         if children:
@@ -1182,50 +1281,48 @@ class PythonCodeGenerator:
             self._visit_node(children[0], stop_before=stop_before)
 
     def _compile_operator_expression(
-        self,
-        operator_name: str,
-        operand_exprs: List[str]
+        self, operator_name: str, operand_exprs: List[str]
     ) -> str:
         """Compile operator and operands to Python expression.
-        
+
         Args:
             operator_name: Name of the operator (e.g., 'add', 'divide', 'sqrt')
             operand_exprs: List of Python expressions for operands
-            
+
         Returns:
             Python expression string
         """
         # Check if we have a template for this operator
         template = OPERATOR_TO_PYTHON.get(operator_name)
-        
+
         if template is not None:
             # Use template (for unary/binary operators)
             return template.format(*operand_exprs)
-        
+
         # Handle variadic operators specially
-        operands_str = ', '.join(operand_exprs)
-        
-        if operator_name in ('add', 'sum'):
+        operands_str = ", ".join(operand_exprs)
+
+        if operator_name in ("add", "sum"):
             return f"({' + '.join(operand_exprs)})"
-        elif operator_name == 'multiply':
+        elif operator_name == "multiply":
             return f"({' * '.join(operand_exprs)})"
-        elif operator_name == 'min':
+        elif operator_name == "min":
             return f"min({operands_str})"
-        elif operator_name == 'max':
+        elif operator_name == "max":
             return f"max({operands_str})"
-        elif operator_name == 'average':
+        elif operator_name == "average":
             return f"(({' + '.join(operand_exprs)}) / {len(operand_exprs)})"
-        elif operator_name == 'hypot':
+        elif operator_name == "hypot":
             return f"math.hypot({operands_str})"
-        elif operator_name == 'geometric_mean':
+        elif operator_name == "geometric_mean":
             return f"statistics.geometric_mean([{operands_str}])"
-        elif operator_name == 'harmonic_mean':
+        elif operator_name == "harmonic_mean":
             return f"statistics.harmonic_mean([{operands_str}])"
-        elif operator_name == 'variance':
+        elif operator_name == "variance":
             return f"statistics.variance([{operands_str}])"
-        elif operator_name == 'std_dev':
+        elif operator_name == "std_dev":
             return f"statistics.stdev([{operands_str}])"
-        elif operator_name == 'range':
+        elif operator_name == "range":
             return f"(max({operands_str}) - min({operands_str}))"
         else:
             # Unknown operator - generate error comment
