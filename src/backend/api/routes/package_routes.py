@@ -100,6 +100,21 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
         body["is_publishable"] = not issues
         return JSONResponse(body)
 
+    @router.get("/api/packages/public/{package_id}")
+    async def get_public_package(
+        package_id: str, user: AuthUser = Depends(require_auth)
+    ) -> JSONResponse:
+        try:
+            package, owner_id = service._require_any_package(package_id)
+        except ValueError:
+            return JSONResponse({"error": "Package not found"}, status_code=404)
+        if not package.is_published:
+            return JSONResponse({"error": "Package not published"}, status_code=404)
+        body = _serialize_package(package, workflow_store, owner_id)
+        body["user_vote"] = service.package_store.get_user_vote(package.id, user.id)
+        body["is_publishable"] = False
+        return JSONResponse(body)
+
     @router.patch("/api/packages/{package_id}")
     async def update_package(
         package_id: str, request: Request, user: AuthUser = Depends(require_auth)
@@ -204,6 +219,18 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
                 "content": bundle_bytes.decode("latin1"),
                 "warnings": warnings,
             }
+        )
+
+    @router.post("/api/packages/{package_id}/clone")
+    async def clone_package(
+        package_id: str, user: AuthUser = Depends(require_auth)
+    ) -> JSONResponse:
+        try:
+            cloned = service.clone_package(package_id, user.id)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(
+            _serialize_package(cloned, workflow_store, user.id), status_code=201
         )
 
     app.include_router(router)

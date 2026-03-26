@@ -286,6 +286,7 @@ export interface WorkflowPackage {
   workflows: PackageWorkflowSummary[]
   issues?: Array<{ code: string; message: string; workflow_id?: string }>
   is_publishable?: boolean
+  user_vote?: number | null
 }
 
 // Peer review status type

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from .storage.packages import PackageStore, WorkflowPackageRecord
@@ -174,6 +174,75 @@ class WorkflowPackageService:
         )
         return self._require_package(user_id, package_id)
 
+    def clone_package(
+        self, source_package_id: str, target_user_id: str
+    ) -> WorkflowPackageRecord:
+        source_package, source_owner_id = self._require_any_package(source_package_id)
+        cloned_package = self.package_store.create_package(target_user_id)
+        id_map: Dict[str, str] = {}
+
+        for member in source_package.members:
+            source_workflow = self._require_workflow(
+                source_owner_id, member.workflow_id
+            )
+            cloned_id = f"wf_{uuid4().hex}"
+            id_map[source_workflow.id] = cloned_id
+            self.workflow_store.create_workflow(
+                workflow_id=cloned_id,
+                user_id=target_user_id,
+                name=source_workflow.name,
+                description=source_workflow.description,
+                domain=source_workflow.domain,
+                tags=source_workflow.tags,
+                nodes=source_workflow.nodes,
+                edges=source_workflow.edges,
+                inputs=source_workflow.inputs,
+                outputs=source_workflow.outputs,
+                tree=source_workflow.tree,
+                doubts=source_workflow.doubts,
+                is_validated=source_workflow.is_validated,
+                output_type=source_workflow.output_type,
+                is_draft=source_workflow.is_draft,
+                is_published=False,
+            )
+
+        for member in source_package.members:
+            cloned_id = id_map[member.workflow_id]
+            cloned_workflow = self._require_workflow(target_user_id, cloned_id)
+            rewritten_nodes: List[dict] = []
+            rewritten_inputs: List[dict] = []
+            for node in cloned_workflow.nodes:
+                node_copy = dict(node)
+                sub_id = node_copy.get("subworkflow_id")
+                if isinstance(sub_id, str) and sub_id in id_map:
+                    node_copy["subworkflow_id"] = id_map[sub_id]
+                rewritten_nodes.append(node_copy)
+            for variable in cloned_workflow.inputs:
+                variable_copy = dict(variable)
+                sub_id = variable_copy.get("subworkflow_id")
+                if isinstance(sub_id, str) and sub_id in id_map:
+                    variable_copy["subworkflow_id"] = id_map[sub_id]
+                rewritten_inputs.append(variable_copy)
+            self.workflow_store.update_workflow(
+                workflow_id=cloned_id,
+                user_id=target_user_id,
+                nodes=rewritten_nodes,
+                inputs=rewritten_inputs,
+            )
+            self.package_store.add_workflow_to_package(
+                cloned_package.id,
+                cloned_id,
+                role=member.role,
+            )
+
+        if source_package.head_workflow_id:
+            self.package_store.update_package(
+                cloned_package.id,
+                target_user_id,
+                head_workflow_id=id_map[source_package.head_workflow_id],
+            )
+        return self._require_package(target_user_id, cloned_package.id)
+
     def autofetch_subflows_preview(
         self, user_id: str, package_id: str
     ) -> Dict[str, object]:
@@ -236,13 +305,18 @@ class WorkflowPackageService:
         clone_conflict_workflow_ids: Optional[List[str]] = None,
     ) -> Tuple[WorkflowPackageRecord, Dict[str, object]]:
         preview = self.autofetch_subflows_preview(user_id, package_id)
+        additions: Any = preview.get("additions", [])
+        conflicts: Any = preview.get("conflicts", [])
         clone_ids = set(clone_conflict_workflow_ids or [])
         clone_map: Dict[str, str] = {}
 
-        for addition in preview["additions"]:
+        if not isinstance(additions, list) or not isinstance(conflicts, list):
+            raise ValueError("Invalid autofetch preview")
+
+        for addition in additions:
             self.add_workflow(user_id, package_id, addition["workflow_id"])
 
-        for conflict in preview["conflicts"]:
+        for conflict in conflicts:
             conflict_id = conflict["workflow_id"]
             if conflict_id not in clone_ids:
                 continue
@@ -308,6 +382,22 @@ class WorkflowPackageService:
         if package is None:
             raise ValueError("Package not found")
         return package
+
+    def _require_any_package(
+        self, package_id: str
+    ) -> tuple[WorkflowPackageRecord, str]:
+        with self.package_store._conn() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM workflow_packages WHERE id = ?",
+                (package_id,),
+            ).fetchone()
+        if row is None:
+            raise ValueError("Package not found")
+        user_id = row["user_id"]
+        package = self.package_store.get_package(package_id, user_id)
+        if package is None:
+            raise ValueError("Package not found")
+        return package, user_id
 
     def _require_workflow(self, user_id: str, workflow_id: str) -> WorkflowRecord:
         workflow = self.workflow_store.get_workflow(workflow_id, user_id)

@@ -25,6 +25,10 @@ export async function getPackage(packageId: string): Promise<WorkflowPackage> {
   return api.get<WorkflowPackage>(`/api/packages/${packageId}`)
 }
 
+export async function getPublicPackage(packageId: string): Promise<WorkflowPackage> {
+  return api.get<WorkflowPackage>(`/api/packages/public/${packageId}`)
+}
+
 export async function updatePackage(packageId: string, data: { name?: string; description?: string }): Promise<WorkflowPackage> {
   return api.patch<WorkflowPackage>(`/api/packages/${packageId}`, data)
 }
@@ -47,6 +51,10 @@ export async function setPackageHead(packageId: string, workflowId: string): Pro
 
 export async function publishPackage(packageId: string): Promise<WorkflowPackage> {
   return api.post<WorkflowPackage>(`/api/packages/${packageId}/publish`, {})
+}
+
+export async function clonePackage(packageId: string): Promise<WorkflowPackage> {
+  return api.post<WorkflowPackage>(`/api/packages/${packageId}/clone`, {})
 }
 
 export async function previewPackageAutofetch(packageId: string): Promise<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> }> {

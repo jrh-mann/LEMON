@@ -5,10 +5,12 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import {
   addWorkflowToPackage,
   applyPackageAutofetch,
+  clonePackage,
   createPackage,
   deletePackage,
   deleteWorkflow,
   getPackage,
+  getPublicPackage,
   listPackages,
   listPublicWorkflows,
   previewPackageAutofetch,
@@ -42,6 +44,7 @@ export default function LibraryPage() {
   const [draggedWorkflowId, setDraggedWorkflowId] = useState<string | null>(null)
   const [packageError, setPackageError] = useState<string | null>(null)
   const [autofetchPreview, setAutofetchPreview] = useState<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> } | null>(null)
+  const [selectedPublicPackage, setSelectedPublicPackage] = useState<WorkflowPackage | null>(null)
 
   const fetchMine = useCallback(async () => {
     const [workflows, packages] = await Promise.all([listWorkflows(), listPackages()])
@@ -51,8 +54,6 @@ export default function LibraryPage() {
 
   const fetchTabData = useCallback(async (tab: BrowserTab) => {
     if (tab === 'mine' && myWorkflows !== null && myPackages !== null) return
-    if (tab === 'published' && publicWorkflows !== null) return
-    if (tab === 'peer_review' && peerReviewWorkflows !== null) return
 
     setIsLoading(true)
     try {
@@ -90,14 +91,20 @@ export default function LibraryPage() {
       } else if (activeTab === 'published') {
         const published = await listPublicWorkflows('reviewed')
         setPublicWorkflows(published.workflows)
+        if (selectedPublicPackage?.id) {
+          setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
+        }
       } else {
         const review = await listPublicWorkflows('unreviewed')
         setPeerReviewWorkflows(review.workflows)
+        if (selectedPublicPackage?.id) {
+          setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
+        }
       }
     } finally {
       setIsLoading(false)
     }
-  }, [activeTab, fetchMine, selectedPackage])
+  }, [activeTab, fetchMine, selectedPackage, selectedPublicPackage])
 
   const filterBySearch = useCallback((name: string, description: string, tags: string[]) => {
     if (!searchQuery.trim()) return true
@@ -166,6 +173,9 @@ export default function LibraryPage() {
         <div className="library-search">
           <input type="text" placeholder="Search workflows and packages..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
+        {activeTab !== 'mine' && !isLoading && (
+          <p className="muted">{activeTab === 'published' ? (publicWorkflows?.length || 0) : (peerReviewWorkflows?.length || 0)} packages</p>
+        )}
 
         {packageError && <p className="error-text">{packageError}</p>}
 
@@ -218,19 +228,19 @@ export default function LibraryPage() {
         ) : (
           <div className="library-grid">
             {((activeTab === 'published' ? publicWorkflows : peerReviewWorkflows) || []).map(wf => (
-              <div key={wf.id} className="library-card">
+              <div key={wf.id} className="library-card" onClick={async () => setSelectedPublicPackage(await getPublicPackage(wf.id))}>
                 <div className="library-card-header"><h3 className="library-card-name">{wf.name}</h3></div>
                 {wf.description && <p className="library-card-desc">{wf.description}</p>}
                 <div className="library-card-meta">
                   {(wf.tags || []).slice(0, 3).map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                 </div>
-                {activeTab === 'peer_review' && (
+                {
                   <div className="library-card-votes">
-                    <button className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`} onClick={() => voteOnWorkflow(wf.id, wf.user_vote === 1 ? 0 : 1)}>▲</button>
+                    <button className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`} onClick={async (e) => { e.stopPropagation(); await voteOnWorkflow(wf.id, wf.user_vote === 1 ? 0 : 1); await fetchTabData('published'); await fetchTabData('peer_review') }}>▲</button>
                     <span className="vote-count">{(wf.net_votes || 0) > 0 ? `+${wf.net_votes}` : wf.net_votes || 0}</span>
-                    <button className={`vote-btn down ${wf.user_vote === -1 ? 'voted' : ''}`} onClick={() => voteOnWorkflow(wf.id, wf.user_vote === -1 ? 0 : -1)}>▼</button>
+                    <button className={`vote-btn down ${wf.user_vote === -1 ? 'voted' : ''}`} onClick={async (e) => { e.stopPropagation(); await voteOnWorkflow(wf.id, wf.user_vote === -1 ? 0 : -1); await fetchTabData('published'); await fetchTabData('peer_review') }}>▼</button>
                   </div>
-                )}
+                }
               </div>
             ))}
           </div>
@@ -283,6 +293,56 @@ export default function LibraryPage() {
                   setAutofetchPreview(preview)
                 }}>Automatically fetch all subflows</button>}
                 <button className="primary" onClick={async () => setSelectedPackage(await publishPackage(selectedPackage.id))} disabled={!selectedPackage.is_publishable}>Publish Package</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {selectedPublicPackage && (
+        <div className="modal">
+          <div className="modal-backdrop" onClick={() => setSelectedPublicPackage(null)} />
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>{selectedPublicPackage.name || 'Package'}</h3>
+              <button className="modal-close" onClick={() => setSelectedPublicPackage(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <p className="muted">Head workflow: {selectedPublicPackage.workflows.find(wf => wf.role === 'head')?.name || 'Not set'}</p>
+              <div className="library-card-votes">
+                <button className={`vote-btn ${selectedPublicPackage.user_vote === 1 ? 'voted' : ''}`} onClick={async () => {
+                  await voteOnWorkflow(selectedPublicPackage.id, selectedPublicPackage.user_vote === 1 ? 0 : 1)
+                  await fetchTabData('published')
+                  await fetchTabData('peer_review')
+                  setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
+                }}>▲</button>
+                <span className="vote-count">{(selectedPublicPackage.net_votes || 0) > 0 ? `+${selectedPublicPackage.net_votes}` : selectedPublicPackage.net_votes || 0}</span>
+                <button className={`vote-btn down ${selectedPublicPackage.user_vote === -1 ? 'voted' : ''}`} onClick={async () => {
+                  await voteOnWorkflow(selectedPublicPackage.id, selectedPublicPackage.user_vote === -1 ? 0 : -1)
+                  await fetchTabData('published')
+                  await fetchTabData('peer_review')
+                  setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
+                }}>▼</button>
+              </div>
+              <div className="library-grid">
+                {selectedPublicPackage.workflows.map(workflow => (
+                  <div key={workflow.id} className="library-card">
+                    <div className="library-card-header"><h3 className="library-card-name">{workflow.name}</h3></div>
+                    <p className="library-card-desc">{workflow.description || 'No description'}</p>
+                    <div className="library-card-meta">
+                      {workflow.tags.map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
+                      <span className="library-card-domain">{workflow.role === 'head' ? 'Head workflow' : 'Dependency'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="form-actions">
+                <button className="primary" onClick={async () => {
+                  const cloned = await clonePackage(selectedPublicPackage.id)
+                  setSelectedPublicPackage(null)
+                  setActiveTab('mine')
+                  await fetchMine()
+                  setSelectedPackage(cloned)
+                }}>Clone to My Library</button>
               </div>
             </div>
           </div>

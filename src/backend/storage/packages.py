@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 
+from .workflows import PUBLISH_VOTE_THRESHOLD
+
 
 @dataclass(frozen=True)
 class PackageMemberRecord:
@@ -234,7 +236,9 @@ class PackageStore:
                 "SELECT COALESCE(SUM(vote), 0) AS total FROM workflow_package_votes WHERE package_id = ?",
                 (package_id,),
             ).fetchone()["total"]
-            review_status = "reviewed" if net_votes >= 1 else "unreviewed"
+            review_status = (
+                "reviewed" if net_votes >= PUBLISH_VOTE_THRESHOLD else "unreviewed"
+            )
             conn.execute(
                 "UPDATE workflow_packages SET net_votes = ?, review_status = ?, updated_at = ? WHERE id = ?",
                 (net_votes, review_status, now, package_id),
@@ -258,7 +262,9 @@ class PackageStore:
                 "SELECT COALESCE(SUM(vote), 0) AS total FROM workflow_package_votes WHERE package_id = ?",
                 (package_id,),
             ).fetchone()["total"]
-            review_status = "reviewed" if net_votes >= 1 else "unreviewed"
+            review_status = (
+                "reviewed" if net_votes >= PUBLISH_VOTE_THRESHOLD else "unreviewed"
+            )
             conn.execute(
                 "UPDATE workflow_packages SET net_votes = ?, review_status = ?, updated_at = ? WHERE id = ?",
                 (net_votes, review_status, now, package_id),

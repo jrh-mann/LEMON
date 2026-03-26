@@ -145,3 +145,29 @@ def test_export_package_bundle(tmp_path: Path):
     body = exported.json()
     assert body["warnings"] == []
     assert body["content"]
+
+
+def test_clone_package_creates_independent_copy(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+    workflow_store.create_workflow(
+        "wf_1",
+        user.id,
+        "WF 1",
+        "desc",
+        nodes=[],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        is_draft=False,
+        is_validated=True,
+    )
+    package_id = client.post("/api/packages", json={}).json()["id"]
+    client.post(f"/api/packages/{package_id}/members", json={"workflow_id": "wf_1"})
+    client.post(f"/api/packages/{package_id}/publish")
+
+    cloned = client.post(f"/api/packages/{package_id}/clone")
+    assert cloned.status_code == 201
+    assert cloned.json()["id"] != package_id
+    assert cloned.json()["workflows"][0]["id"] != "wf_1"
