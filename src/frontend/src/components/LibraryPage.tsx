@@ -148,8 +148,7 @@ export default function LibraryPage() {
   }, [navigate, setZoomPhase, setZoomingCard])
 
   const handleCreatePackage = useCallback(async () => {
-    const created = await createPackage({})
-    setSelectedPackage(created)
+    await createPackage({})
     await refreshActiveTab()
   }, [refreshActiveTab])
 
