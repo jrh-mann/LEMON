@@ -18,6 +18,7 @@ import {
   publishPackage,
   removeWorkflowFromPackage,
   setPackageHead,
+  validateStoredWorkflow,
   updatePackage,
   voteOnWorkflow,
 } from '../api/workflows'
@@ -45,6 +46,7 @@ export default function LibraryPage() {
   const [packageError, setPackageError] = useState<string | null>(null)
   const [autofetchPreview, setAutofetchPreview] = useState<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> } | null>(null)
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<WorkflowPackage | null>(null)
+  const [validatingWorkflowIds, setValidatingWorkflowIds] = useState<Set<string>>(new Set())
 
   const refreshPublicTabs = useCallback(async () => {
     const [published, review] = await Promise.all([
@@ -166,6 +168,22 @@ export default function LibraryPage() {
     }
   }, [draggedWorkflowId, refreshActiveTab])
 
+  const handleValidateWorkflow = useCallback(async (workflowId: string) => {
+    setValidatingWorkflowIds(current => new Set(current).add(workflowId))
+    try {
+      await validateStoredWorkflow(workflowId)
+      await refreshActiveTab()
+    } catch (error) {
+      setPackageError(error instanceof Error ? error.message : 'Validation failed')
+    } finally {
+      setValidatingWorkflowIds(current => {
+        const next = new Set(current)
+        next.delete(workflowId)
+        return next
+      })
+    }
+  }, [refreshActiveTab])
+
   const packageCards = activeTab === 'mine' ? visiblePackages : []
   const packageMemberIds = new Set(packageCards.flatMap(pkg => pkg.workflows.map(wf => wf.id)))
   const standaloneWorkflows = visibleWorkflows.filter(wf => !packageMemberIds.has(wf.id))
@@ -240,6 +258,7 @@ export default function LibraryPage() {
                 <div className="library-card-meta">
                   {wf.tags.slice(0, 3).map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                   <span className={`library-card-validated ${wf.is_validated ? 'valid' : 'invalid'}`}>{wf.is_validated ? '✓ Validated' : '✕ Not validated'}</span>
+                  <button className="ghost small" onClick={async (e) => { e.stopPropagation(); await handleValidateWorkflow(wf.id) }} disabled={validatingWorkflowIds.has(wf.id)}>{validatingWorkflowIds.has(wf.id) ? 'Validating...' : wf.is_validated ? 'Revalidate' : 'Validate'}</button>
                 </div>
               </div>
             ))}
@@ -298,6 +317,7 @@ export default function LibraryPage() {
                       {workflow.tags.map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                       <span className="library-card-domain">{workflow.role === 'head' ? 'Head workflow' : 'Dependency'}</span>
                       <span className={`library-card-validated ${workflow.is_validated ? 'valid' : 'invalid'}`}>{workflow.is_validated ? '✓ Validated' : '✕ Not validated'}</span>
+                      <button className="ghost small" onClick={async (e) => { e.stopPropagation(); await handleValidateWorkflow(workflow.id) }} disabled={validatingWorkflowIds.has(workflow.id)}>{validatingWorkflowIds.has(workflow.id) ? 'Validating...' : workflow.is_validated ? 'Revalidate' : 'Validate'}</button>
                     </div>
                     <div className="form-actions">
                       {workflow.role !== 'head' && <button className="ghost" onClick={async (e) => { e.stopPropagation(); const updated = await setPackageHead(selectedPackage.id, workflow.id); setSelectedPackage(updated); await refreshActiveTab() }}>Set as head workflow</button>}

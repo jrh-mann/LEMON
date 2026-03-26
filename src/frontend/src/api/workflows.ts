@@ -82,6 +82,10 @@ export async function getWorkflow(workflowId: string): Promise<WorkflowDetailRes
   return api.get<WorkflowDetailResponse>(`/api/workflows/${workflowId}`)
 }
 
+export async function validateStoredWorkflow(workflowId: string): Promise<{ success: boolean; workflow_id: string; valid: boolean; message: string }> {
+  return api.post(`/api/workflows/${workflowId}/validate`, {})
+}
+
 export async function exportWorkflowJson(workflowId: string): Promise<Blob> {
   const response = await fetch(`${API_BASE}/api/workflows/${workflowId}/export`, {
     credentials: 'include',
