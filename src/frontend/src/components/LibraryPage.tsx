@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ReadOnlyWorkflowCanvas from './ReadOnlyWorkflowCanvas'
 import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import {
@@ -23,6 +24,7 @@ import {
   voteOnWorkflow,
 } from '../api/workflows'
 import type { WorkflowPackage, WorkflowSummary } from '../types'
+import { transformFlowchartFromBackend } from '../utils/canvas'
 import '../styles/LibraryPage.css'
 
 type BrowserTab = 'mine' | 'published' | 'peer_review'
@@ -170,6 +172,12 @@ export default function LibraryPage() {
   const packageCards = activeTab === 'mine' ? visiblePackages : []
   const packageMemberIds = new Set(packageCards.flatMap(pkg => pkg.workflows.map(wf => wf.id)))
   const standaloneWorkflows = visibleWorkflows.filter(wf => !packageMemberIds.has(wf.id))
+  const previewFlowchart = selectedPublicWorkflowPreview
+    ? transformFlowchartFromBackend({
+        nodes: selectedPublicWorkflowPreview.nodes as never[],
+        edges: selectedPublicWorkflowPreview.edges as never[],
+      })
+    : null
 
   return (
     <div className="library-page">
@@ -440,6 +448,7 @@ export default function LibraryPage() {
                   <p className="library-card-desc">{selectedPublicWorkflowPreview.outputs.length ? selectedPublicWorkflowPreview.outputs.map(o => o.name).join(', ') : 'No outputs'}</p>
                 </div>
               </div>
+              {previewFlowchart && <ReadOnlyWorkflowCanvas nodes={previewFlowchart.nodes} edges={previewFlowchart.edges} />}
             </div>
           </div>
         </div>
