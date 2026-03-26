@@ -35,6 +35,7 @@ from .dev_tools_routes import register_dev_tools_routes
 from .validation_routes import register_validation_routes
 from .compilation_routes import register_compilation_routes
 from .stepped_execution_routes import register_stepped_execution_routes
+from .package_routes import register_package_routes
 
 __all__ = ["register_routes", "_infer_outputs_from_nodes"]
 
@@ -82,6 +83,9 @@ def register_routes(
 
     # Workflow CRUD (list, create, get, delete, patch, update)
     register_workflow_routes(app, workflow_store=workflow_store, repo_root=repo_root)
+
+    # Package CRUD and publishing
+    register_package_routes(app, workflow_store=workflow_store)
 
     # Dev tools (list/execute tools)
     register_dev_tools_routes(app, repo_root=repo_root, workflow_store=workflow_store)
