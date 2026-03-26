@@ -102,7 +102,7 @@ export default function LibraryPage() {
   const filterBySearch = useCallback((name: string, description: string, tags: string[]) => {
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase()
-    return name.toLowerCase().includes(q) || description.toLowerCase().includes(q) || tags.some(tag => tag.toLowerCase().includes(q))
+    return (name || '').toLowerCase().includes(q) || (description || '').toLowerCase().includes(q) || (tags || []).some(tag => tag.toLowerCase().includes(q))
   }, [searchQuery])
 
   const visibleWorkflows = useMemo(() => (myWorkflows || []).filter(wf => filterBySearch(wf.name, wf.description, wf.tags)), [filterBySearch, myWorkflows])
@@ -217,10 +217,13 @@ export default function LibraryPage() {
           </div>
         ) : (
           <div className="library-grid">
-            {(activeTab === 'published' ? publicWorkflows : peerReviewWorkflows || []).map(wf => (
+            {((activeTab === 'published' ? publicWorkflows : peerReviewWorkflows) || []).map(wf => (
               <div key={wf.id} className="library-card">
                 <div className="library-card-header"><h3 className="library-card-name">{wf.name}</h3></div>
                 {wf.description && <p className="library-card-desc">{wf.description}</p>}
+                <div className="library-card-meta">
+                  {(wf.tags || []).slice(0, 3).map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
+                </div>
                 {activeTab === 'peer_review' && (
                   <div className="library-card-votes">
                     <button className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`} onClick={() => voteOnWorkflow(wf.id, wf.user_vote === 1 ? 0 : 1)}>▲</button>

@@ -32,12 +32,24 @@ def _serialize_public_package(
         workflows.append(entry)
         if member.role == "head":
             head = entry
+    safe_name = (
+        head["name"]
+        if head and isinstance(head.get("name"), str)
+        else package.name or "Empty package"
+    )
+    safe_description = (
+        head["description"]
+        if head and isinstance(head.get("description"), str)
+        else package.description or ""
+    )
+    safe_tags = head["tags"] if head and isinstance(head.get("tags"), list) else []
+    safe_domain = head["domain"] if head else None
     return {
         "id": package.id,
-        "name": head["name"] if head else package.name,
-        "description": head["description"] if head else package.description,
-        "tags": head["tags"] if head else [],
-        "domain": head["domain"] if head else None,
+        "name": safe_name,
+        "description": safe_description,
+        "tags": safe_tags,
+        "domain": safe_domain,
         "confidence": "none",
         "is_validated": all(w["is_validated"] for w in workflows)
         if workflows
