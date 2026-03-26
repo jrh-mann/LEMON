@@ -46,6 +46,15 @@ export default function LibraryPage() {
   const [autofetchPreview, setAutofetchPreview] = useState<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> } | null>(null)
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<WorkflowPackage | null>(null)
 
+  const refreshPublicTabs = useCallback(async () => {
+    const [published, review] = await Promise.all([
+      listPublicWorkflows('reviewed'),
+      listPublicWorkflows('unreviewed'),
+    ])
+    setPublicWorkflows(published.workflows)
+    setPeerReviewWorkflows(review.workflows)
+  }, [])
+
   const fetchMine = useCallback(async () => {
     const [workflows, packages] = await Promise.all([listWorkflows(), listPackages()])
     setMyWorkflows(workflows)
@@ -59,17 +68,13 @@ export default function LibraryPage() {
     try {
       if (tab === 'mine') {
         await fetchMine()
-      } else if (tab === 'published') {
-        const published = await listPublicWorkflows('reviewed')
-        setPublicWorkflows(published.workflows)
       } else {
-        const review = await listPublicWorkflows('unreviewed')
-        setPeerReviewWorkflows(review.workflows)
+        await refreshPublicTabs()
       }
     } finally {
       setIsLoading(false)
     }
-  }, [fetchMine, myPackages, myWorkflows, peerReviewWorkflows, publicWorkflows])
+  }, [fetchMine, myPackages, myWorkflows, refreshPublicTabs])
 
   useEffect(() => { fetchTabData(activeTab) }, [activeTab, fetchTabData])
   useEffect(() => {
@@ -88,15 +93,8 @@ export default function LibraryPage() {
         if (selectedPackage?.id) {
           setSelectedPackage(await getPackage(selectedPackage.id))
         }
-      } else if (activeTab === 'published') {
-        const published = await listPublicWorkflows('reviewed')
-        setPublicWorkflows(published.workflows)
-        if (selectedPublicPackage?.id) {
-          setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
-        }
       } else {
-        const review = await listPublicWorkflows('unreviewed')
-        setPeerReviewWorkflows(review.workflows)
+        await refreshPublicTabs()
         if (selectedPublicPackage?.id) {
           setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
         }
@@ -104,7 +102,30 @@ export default function LibraryPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [activeTab, fetchMine, selectedPackage, selectedPublicPackage])
+  }, [activeTab, fetchMine, refreshPublicTabs, selectedPackage, selectedPublicPackage])
+
+  const applyVoteToLists = useCallback((packageId: string, vote: { net_votes: number; review_status: 'unreviewed' | 'reviewed'; user_vote: number | null }) => {
+    const updateList = (list: WorkflowSummary[] | null) => (list || []).map(item =>
+      item.id === packageId
+        ? { ...item, net_votes: vote.net_votes, review_status: vote.review_status, user_vote: vote.user_vote }
+        : item
+    )
+    setPublicWorkflows(updateList)
+    setPeerReviewWorkflows(updateList)
+    setSelectedPublicPackage(current => current && current.id === packageId
+      ? { ...current, net_votes: vote.net_votes, review_status: vote.review_status, user_vote: vote.user_vote }
+      : current)
+  }, [])
+
+  const handleVote = useCallback(async (packageId: string, currentVote: number | null | undefined, nextVote: 1 | -1) => {
+    const resolvedVote = currentVote === nextVote ? 0 : nextVote
+    const response = await voteOnWorkflow(packageId, resolvedVote)
+    applyVoteToLists(packageId, response)
+    await refreshPublicTabs()
+    if (selectedPublicPackage?.id === packageId) {
+      setSelectedPublicPackage(await getPublicPackage(packageId))
+    }
+  }, [applyVoteToLists, refreshPublicTabs, selectedPublicPackage])
 
   const filterBySearch = useCallback((name: string, description: string, tags: string[]) => {
     if (!searchQuery.trim()) return true
@@ -232,9 +253,9 @@ export default function LibraryPage() {
                 </div>
                 {
                   <div className="library-card-votes">
-                    <button className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`} onClick={async (e) => { e.stopPropagation(); await voteOnWorkflow(wf.id, wf.user_vote === 1 ? 0 : 1); await fetchTabData('published'); await fetchTabData('peer_review') }}>▲</button>
+                    <button className={`vote-btn ${wf.user_vote === 1 ? 'voted' : ''}`} onClick={async (e) => { e.stopPropagation(); await handleVote(wf.id, wf.user_vote, 1) }}>▲</button>
                     <span className="vote-count">{(wf.net_votes || 0) > 0 ? `+${wf.net_votes}` : wf.net_votes || 0}</span>
-                    <button className={`vote-btn down ${wf.user_vote === -1 ? 'voted' : ''}`} onClick={async (e) => { e.stopPropagation(); await voteOnWorkflow(wf.id, wf.user_vote === -1 ? 0 : -1); await fetchTabData('published'); await fetchTabData('peer_review') }}>▼</button>
+                    <button className={`vote-btn down ${wf.user_vote === -1 ? 'voted' : ''}`} onClick={async (e) => { e.stopPropagation(); await handleVote(wf.id, wf.user_vote, -1) }}>▼</button>
                   </div>
                 }
               </div>
@@ -321,17 +342,11 @@ export default function LibraryPage() {
               <p className="muted">Head workflow: {selectedPublicPackage.workflows.find(wf => wf.role === 'head')?.name || 'Not set'}</p>
               <div className="library-card-votes">
                 <button className={`vote-btn ${selectedPublicPackage.user_vote === 1 ? 'voted' : ''}`} onClick={async () => {
-                  await voteOnWorkflow(selectedPublicPackage.id, selectedPublicPackage.user_vote === 1 ? 0 : 1)
-                  await fetchTabData('published')
-                  await fetchTabData('peer_review')
-                  setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
+                  await handleVote(selectedPublicPackage.id, selectedPublicPackage.user_vote, 1)
                 }}>▲</button>
                 <span className="vote-count">{(selectedPublicPackage.net_votes || 0) > 0 ? `+${selectedPublicPackage.net_votes}` : selectedPublicPackage.net_votes || 0}</span>
                 <button className={`vote-btn down ${selectedPublicPackage.user_vote === -1 ? 'voted' : ''}`} onClick={async () => {
-                  await voteOnWorkflow(selectedPublicPackage.id, selectedPublicPackage.user_vote === -1 ? 0 : -1)
-                  await fetchTabData('published')
-                  await fetchTabData('peer_review')
-                  setSelectedPublicPackage(await getPublicPackage(selectedPublicPackage.id))
+                  await handleVote(selectedPublicPackage.id, selectedPublicPackage.user_vote, -1)
                 }}>▼</button>
               </div>
               <div className="library-grid">
