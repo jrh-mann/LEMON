@@ -1,0 +1,2 @@
+sample,model,run_id,num_nodes,num_edges,num_variables,num_tool_calls,llm_calls,input_tokens,output_tokens,total_tokens,cost_usd,wall_time_s,error
+diabetes_treatment,gpt54,1_93b564,0,0,0,0,0,0,0,0,0.0,2.1,LLM error: Error code: 400 - {'error': {'message': "Invalid schema for function 'modify_node': In context=('properties', 'condition', 'oneOf', '1', 'properties', 'conditions'), array schema missing items.", 'type': 'invalid_request_error', 'param': 'tools[15].function.parameters', 'code': 'invalid_function_parameters'}}

@@ -141,12 +141,57 @@ ANTHROPIC_MODEL=claude-opus-4-6</code></pre>
     <p>LEMON is released under the MIT License. This permits use, modification, and distribution of the source code for any purpose, provided the original copyright notice and license text are included. The full license text is available in the LICENSE file in the repository root.</p>
 
     <h3>GDPR and Data Privacy</h3>
-    <p>LEMON stores workflow definitions, user accounts (email and hashed password), and conversation logs for audit purposes.</p>
-    <p>No patient data or personally identifiable health information is processed or stored by the system. The requirements specification explicitly excludes patient datasets and production data processing from the system scope.</p>
-    <p>Workflow descriptions and chat messages are sent to the Anthropic Claude API for processing. Anthropic's data handling and privacy policies apply to this transmitted data. Users should be informed that their input is processed by a third-party AI service.</p>
-    <p>User authentication uses PBKDF2 password hashing with random salts. Passwords are never stored in plaintext.</p>
-    <p>Users can delete their workflows at any time. Session tokens expire automatically.</p>
-    <p>The system enforces user ownership on all API endpoints, ensuring users can only access their own data.</p>
+
+    <h4>Scope</h4>
+    <p>LEMON is a workflow authoring tool developed as a university research project. It is not a clinical system and does not process, store, or have access to patient health records, NHS systems, or electronic health record databases. All workflows describe clinical decision logic in abstract terms (e.g. "if HbA1c > 48, start metformin") and do not reference individual patients.</p>
+
+    <h4>Personal data collected</h4>
+    <p>The system collects the following personal data from registered users:</p>
+    <ul>
+      <li>Email address and display name, for authentication and identification within the application.</li>
+      <li>Password, stored as a PBKDF2-SHA256 hash with a per-user random salt (390,000 iterations). Plaintext passwords are not stored or logged.</li>
+      <li>Session tokens, stored as SHA-256 hashes in the database. Raw tokens are held only in the user's browser cookie.</li>
+    </ul>
+    <p>No special category data (as defined under Article 9 of the UK GDPR) is collected by the system itself. The system does not request or require any health data, demographic data, or other sensitive personal information from its users.</p>
+
+    <h4>User-generated content</h4>
+    <p>Users create workflows and interact with the system through a chat interface. The content of these interactions, including chat messages, uploaded images, and workflow definitions, is stored in SQLite databases on the server. Conversation logs are retained as an audit trail of LLM interactions.</p>
+    <p>Users are responsible for the content they input. If a user were to enter patient-identifiable information into the chat or upload documents containing personal health data, that content would be stored in the conversation log and transmitted to the Anthropic API (see below). The system does not prompt for, require, or validate whether user input contains personal data. Users must not enter real patient data.</p>
+
+    <h4>Third-party data processing</h4>
+    <p>LEMON uses the Anthropic Claude API to power its conversational workflow builder. When a user sends a message, the system transmits the conversation history and any attached files to Anthropic's servers for processing. This data is sent over HTTPS. No content filtering or redaction is applied prior to transmission. Anthropic's own data use and retention policies govern the handling of this data once received.</p>
+    <p>No other third-party services are used. The system does not include analytics, advertising, tracking, or content delivery network integrations.</p>
+
+    <h4>Data storage and security</h4>
+    <p>All application data is held in SQLite databases and flat files within the server's local filesystem. In the production deployment on Azure, this storage resides within the Azure Web App instance.</p>
+    <p>Security measures in place:</p>
+    <ul>
+      <li>HTTPS for all client-server communication in production.</li>
+      <li>Content-Security-Policy, X-Frame-Options (DENY), X-Content-Type-Options (nosniff), and strict Referrer-Policy headers on all responses.</li>
+      <li>API rate limiting at 60 requests per minute per IP address.</li>
+      <li>Login brute-force protection: 8 failed attempts per IP and email combination triggers a 10-minute lockout.</li>
+      <li>User ownership enforcement on all API endpoints. Users may only access their own workflows and data. Published workflows are visible to other authenticated users on a read-only basis.</li>
+    </ul>
+    <p>Databases and uploaded files are not encrypted at rest. In any deployment handling sensitive data, disk-level encryption or an encrypted database layer such as SQLCipher would be required.</p>
+
+    <h4>Data retention</h4>
+    <p>User sessions expire after 12 hours (or 14 days if "remember me" is selected). Expired sessions are purged automatically. A maximum of 5 concurrent sessions per user is enforced.</p>
+    <p>Workflow data and conversation logs are retained indefinitely unless manually deleted by the user. Users may delete individual workflows through the application interface. There is no automatic retention period or scheduled purge for conversation logs or uploaded files.</p>
+
+    <h4>Rights of data subjects</h4>
+    <p>Under the UK GDPR, data subjects have the right to access, rectify, and erase their personal data, and the right to data portability. The current system supports deletion of individual workflows but does not provide a self-service account deletion facility or a bulk data export function. These would need to be implemented prior to any production deployment to meet the requirements of Articles 15 through 20 of the UK GDPR.</p>
+
+    <h4>Clinical deployment considerations</h4>
+    <p>LEMON in its current form is a research prototype. Before deployment in any clinical or NHS setting, the following would be required:</p>
+    <ul>
+      <li>A Data Protection Impact Assessment (DPIA) under Article 35 of the UK GDPR.</li>
+      <li>A Data Processing Agreement (DPA) with Anthropic covering the processing of any data transmitted to their API.</li>
+      <li>Explicit user consent mechanisms for data collection, storage, and third-party transmission.</li>
+      <li>Implementation of data retention limits and automated purge schedules.</li>
+      <li>Account deletion and data export endpoints to support data subject rights.</li>
+      <li>Encryption of data at rest.</li>
+      <li>Compliance review against the NHS Data Security and Protection Toolkit (DSPT).</li>
+    </ul>
 
     <!-- ================================================================ -->
     <h2>Development Blog</h2>
@@ -158,15 +203,14 @@ ANTHROPIC_MODEL=claude-opus-4-6</code></pre>
     <!-- ================================================================ -->
     <h2>Monthly Videos</h2>
 
-    <div class="placeholder">
-      Monthly video update links will be added here:
-      <ul>
-        <li>November 2025: [OneDrive link]</li>
-        <li>December 2025: [OneDrive link]</li>
-        <li>January 2026: [OneDrive link]</li>
-        <li>February 2026: [OneDrive link]</li>
-        <li>March 2026: [OneDrive link]</li>
-      </ul>
+    <h3>January 2026</h3>
+    <div class="video-container">
+      <iframe width="100%" height="400" src="https://www.youtube.com/embed/REPLACE_JAN_VIDEO_ID" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    </div>
+
+    <h3>February 2026</h3>
+    <div class="video-container">
+      <iframe width="100%" height="400" src="https://www.youtube.com/embed/REPLACE_FEB_VIDEO_ID" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
     </div>
 
   </div>

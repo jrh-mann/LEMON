@@ -252,8 +252,6 @@ def run_sample(
                 "allow_tools": True,
                 "on_tool_event": on_tool_event,
             }
-            if scaffold.thinking_budget is not None:
-                respond_kwargs["thinking_budget"] = scaffold.thinking_budget
 
             # Run the full extraction.
             logger.info(
@@ -275,8 +273,6 @@ def run_sample(
                     "allow_tools": True,
                     "on_tool_event": on_tool_event,
                 }
-                if scaffold.thinking_budget is not None:
-                    refine_kwargs["thinking_budget"] = scaffold.thinking_budget
                 llm_response = orchestrator.respond(**refine_kwargs)
 
             # Detect orchestrator-swallowed errors (returns "LLM error: ..."

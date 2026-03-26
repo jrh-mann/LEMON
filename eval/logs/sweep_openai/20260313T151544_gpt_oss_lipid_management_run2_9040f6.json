@@ -1,0 +1,52 @@
+{
+  "sample_name": "lipid_management",
+  "model": "gpt_oss",
+  "model_id": "gpt-oss-120b",
+  "run_id": "2_9040f6",
+  "error": "LLM error: Error code: 400 - {'error': {'code': 'unsupported_request_argument', 'message': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\", 'details': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\"}}",
+  "wall_time_s": 1.96,
+  "cost_usd": 0.0,
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 0,
+    "llm_calls": 0
+  },
+  "workflow": {
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "outputs": []
+  },
+  "tool_calls": [],
+  "llm_response": "LLM error: Error code: 400 - {'error': {'code': 'unsupported_request_argument', 'message': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\", 'details': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\"}}",
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Extract this workflow image into a structured workflow. Follow the Image-to-Workflow Protocol exactly."
+    },
+    {
+      "role": "assistant",
+      "content": "LLM error: Error code: 400 - {'error': {'code': 'unsupported_request_argument', 'message': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\", 'details': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\"}}"
+    }
+  ],
+  "scores": null,
+  "summary": {
+    "sample": "lipid_management",
+    "model": "gpt_oss",
+    "run_id": "2_9040f6",
+    "num_nodes": 0,
+    "num_edges": 0,
+    "num_variables": 0,
+    "num_tool_calls": 0,
+    "llm_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "wall_time_s": 2.0,
+    "error": "LLM error: Error code: 400 - {'error': {'code': 'unsupported_request_argument', 'message': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\", 'details': \"Model does not support request argument supplied: Unsupported content type 'image_url' detected. Only 'input_text' is allowed.\"}}"
+  }
+}

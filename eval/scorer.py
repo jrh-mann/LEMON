@@ -109,9 +109,11 @@ def _build_node_map(
     golden_nodes: List[Dict[str, Any]],
     extracted_nodes: List[Dict[str, Any]],
 ) -> Dict[str, str]:
-    """Greedy 1:1 mapping from golden node IDs to extracted node IDs.
+    """Many-to-one mapping from golden node IDs to extracted node IDs.
 
-    Matches by label similarity. Prefers same-type matches when scores tie.
+    Matches by label similarity. Allows multiple golden nodes to map to the
+    same extracted node (handles cases where the model collapses shared
+    subtrees). Prefers same-type matches when scores tie.
     """
     # Compute all pairwise (golden_idx, extracted_idx, similarity, same_type).
     candidates: List[Tuple[int, int, float, bool]] = []
@@ -127,19 +129,17 @@ def _build_node_map(
     candidates.sort(key=lambda c: (c[2], c[3]), reverse=True)
 
     used_golden: set[int] = set()
-    used_extracted: set[int] = set()
     node_map: Dict[str, str] = {}
 
     for gi, ei, sim, _same_type in candidates:
         if sim < _FUZZY_THRESHOLD:
             break  # remaining are all below threshold
-        if gi in used_golden or ei in used_extracted:
+        if gi in used_golden:
             continue
         g_id = golden_nodes[gi].get("id", "")
         e_id = extracted_nodes[ei].get("id", extracted_nodes[ei].get("node_id", ""))
         node_map[g_id] = e_id
         used_golden.add(gi)
-        used_extracted.add(ei)
 
     return node_map
 
@@ -253,13 +253,18 @@ def _score_nodes(
                 f"{gn['label'][:50]} -> {en.get('label', '')[:50]}"
             )
 
-    extra = len(extracted.get("nodes", [])) - matched
+    n_extracted = len(extracted.get("nodes", []))
+    extra = n_extracted - matched
     if extra > 0:
         details.append(f"  +  {extra} extra node(s) in extraction")
 
     recall = matched / len(g_nodes)
+    precision = matched / n_extracted if n_extracted > 0 else 0.0
     type_acc = type_correct / len(g_nodes)
-    score = 0.5 * recall + 0.5 * type_acc
+    # F1-style: reward recall and precision, penalise hallucinated nodes.
+    # type_acc remains as a bonus dimension.
+    f1 = (2 * recall * precision / (recall + precision)) if (recall + precision) > 0 else 0.0
+    score = 0.6 * f1 + 0.4 * type_acc
 
     return DimensionScore("nodes", score, matched, len(g_nodes), "\n".join(details))
 
@@ -272,9 +277,9 @@ def _score_nodes(
 def _normalize_edge_label(label: str) -> str:
     """Normalize edge labels for comparison (Yes->true, No->false, etc.)."""
     s = label.strip().lower()
-    if s in ("yes", "y"):
+    if s in ("yes", "y", "positive", "normal", "controlled"):
         return "true"
-    if s in ("no", "n"):
+    if s in ("no", "n", "negative", "abnormal", "uncontrolled", "not controlled"):
         return "false"
     return s
 
@@ -284,7 +289,15 @@ def _score_topology(
     extracted: Dict[str, Any],
     node_map: Dict[str, str],
 ) -> DimensionScore:
-    """Score edge recall and label accuracy via the node mapping."""
+    """Score edge recall and label accuracy via the node mapping.
+
+    Uses two-pass matching:
+    1. Primary: map golden edge endpoints via node_map, check extracted edges.
+    2. Fallback: for edges with unmapped endpoints, search all extracted edges
+       for a label-similar match (source label ~ golden source label AND
+       target label ~ golden target label). This prevents unmapped nodes
+       from cascading to zero topology score.
+    """
     g_edges = golden.get("edges", [])
     e_edges = extracted.get("edges", [])
 
@@ -299,8 +312,23 @@ def _score_topology(
         label = _normalize_edge_label(ee.get("label", ""))
         e_edge_labels.setdefault((fr, to), set()).add(label)
 
+    # Build golden/extracted node label lookups for fallback matching.
+    g_node_labels = {n["id"]: n.get("label", "") for n in golden.get("nodes", [])}
+    e_node_labels = {
+        n.get("id", n.get("node_id", "")): n.get("label", "")
+        for n in extracted.get("nodes", [])
+    }
+
+    # Pre-build extracted edge list with labels for fallback search.
+    e_edge_list = []
+    for ee in e_edges:
+        fr = ee.get("from") or ee.get("source", "")
+        to = ee.get("to") or ee.get("target", "")
+        e_edge_list.append((fr, to, _normalize_edge_label(ee.get("label", ""))))
+
     matched = 0
     label_correct = 0
+    used_fallback_edges: set[int] = set()
     details: List[str] = []
 
     for ge in g_edges:
@@ -311,33 +339,69 @@ def _score_topology(
         e_from = node_map.get(g_from)
         e_to = node_map.get(g_to)
 
-        if not e_from or not e_to:
-            details.append(
-                f"  x  {g_from} -> {g_to} [{g_label}] — unmapped node(s)"
-            )
-            continue
+        # Primary match: both endpoints mapped, check edge exists.
+        if e_from and e_to:
+            labels = e_edge_labels.get((e_from, e_to))
+            if labels is not None:
+                matched += 1
+                if g_label in labels or not g_label:
+                    label_correct += 1
+                    details.append(f"  ok {g_from} -> {g_to} [{g_label}]")
+                else:
+                    details.append(
+                        f"  ~  {g_from} -> {g_to} [{g_label}] — edge OK, label wrong"
+                    )
+                continue
 
-        labels = e_edge_labels.get((e_from, e_to))
-        if labels is not None:
+        # Fallback: search extracted edges by endpoint label similarity.
+        g_from_label = g_node_labels.get(g_from, "")
+        g_to_label = g_node_labels.get(g_to, "")
+
+        best_idx: Optional[int] = None
+        best_score = 0.0
+        best_label_ok = False
+
+        for idx, (efr, eto, elabel) in enumerate(e_edge_list):
+            if idx in used_fallback_edges:
+                continue
+            from_sim = _fuzzy_ratio(g_from_label, e_node_labels.get(efr, ""))
+            to_sim = _fuzzy_ratio(g_to_label, e_node_labels.get(eto, ""))
+            if from_sim >= _FUZZY_THRESHOLD and to_sim >= _FUZZY_THRESHOLD:
+                combined = from_sim * to_sim
+                if combined > best_score:
+                    best_score = combined
+                    best_idx = idx
+                    best_label_ok = (g_label == elabel or not g_label)
+
+        if best_idx is not None:
+            used_fallback_edges.add(best_idx)
             matched += 1
-            if g_label in labels or not g_label:
+            if best_label_ok:
                 label_correct += 1
-                details.append(f"  ok {g_from} -> {g_to} [{g_label}]")
+                details.append(
+                    f"  ok {g_from} -> {g_to} [{g_label}] (fallback)"
+                )
             else:
                 details.append(
-                    f"  ~  {g_from} -> {g_to} [{g_label}] — edge OK, label wrong"
+                    f"  ~  {g_from} -> {g_to} [{g_label}] — fallback, label wrong"
                 )
         else:
-            details.append(f"  x  {g_from} -> {g_to} [{g_label}] — edge MISSING")
+            reason = "unmapped node(s)" if not (e_from and e_to) else "edge MISSING"
+            details.append(
+                f"  x  {g_from} -> {g_to} [{g_label}] — {reason}"
+            )
 
-    extra = len(e_edges) - matched
+    n_extracted_edges = len(e_edges)
+    extra = n_extracted_edges - matched
     if extra > 0:
         details.append(f"  +  {extra} extra edge(s) in extraction")
 
-    # 60% weight on edge recall, 40% on label accuracy.
+    # F1-style edge matching + label accuracy bonus.
     recall = matched / len(g_edges)
+    precision = matched / n_extracted_edges if n_extracted_edges > 0 else 0.0
     label_acc = label_correct / len(g_edges)
-    score = 0.6 * recall + 0.4 * label_acc
+    f1 = (2 * recall * precision / (recall + precision)) if (recall + precision) > 0 else 0.0
+    score = 0.6 * f1 + 0.4 * label_acc
 
     return DimensionScore(
         "topology", score, matched, len(g_edges), "\n".join(details)

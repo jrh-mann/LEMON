@@ -214,7 +214,22 @@ def _image_analysis_protocol() -> str:
         "- At each node during DFS, ASK YOURSELF: \"What are the outgoing edges?\" and build ALL of them.\n"
         "- EVERY end node MUST have an `output` value. NEVER create an end node without setting its output.\n"
         "- NEVER skip Step 9 (self-review). You MUST call `get_current_workflow` + `view_image` and verify your work before responding.\n"
-        "- To re-examine the image at any point: call `view_image`.\n"
+        "- To re-examine the image at any point: call `view_image`.\n\n"
+        "VISUAL PARSING RULES:\n"
+        "- NUMERIC THRESHOLDS: When a decision asks whether something is 'controlled', 'normal', "
+        "'adequate', or 'within range', look for numeric thresholds written nearby — on edges, "
+        "in small text near the node, or in side panels. Extract these as numeric conditions "
+        "(gt, lt, gte, lte) with the actual threshold value, NOT as boolean is_true/is_false. "
+        "For example, 'A1c controlled?' with '≤ 48' nearby → comparator='lte', value=48.\n"
+        "- DECISION vs PROCESS: Not all flowcharts use diamond shapes for decisions. A node is a "
+        "DECISION if it has TWO OR MORE outgoing edges that branch based on a condition (Yes/No, "
+        "True/False, or labelled alternatives). Identify decisions by their BRANCHING EDGES, not "
+        "by their shape. A rectangle with two outgoing arrows is a decision, not a process.\n"
+        "- ANNOTATION vs NODES: Flowcharts often contain annotation panels, legends, definition "
+        "boxes, or instructional text alongside the workflow. These are NOT workflow nodes. "
+        "Only create nodes for boxes that have ARROWS connecting them to other nodes in the flow. "
+        "Annotation text is typically: larger text blocks, positioned at edges/margins, and not "
+        "connected by arrows to the main decision flow.\n"
     )
 
 

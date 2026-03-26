@@ -1,0 +1,262 @@
+{
+  "_comment": "Golden solution for Diabetes Treatment Algorithm. Hand-crafted from image + ground truth function.",
+
+  "variables": [
+    {
+      "id": "var_symptoms_and_new_a1c_gt_58_bool",
+      "name": "Symptoms and New A1c > 58",
+      "type": "bool",
+      "source": "input",
+      "description": "Patient has diabetes symptoms (lethargy, confusion, thirst, polyuria) AND new A1c > 58"
+    },
+    {
+      "id": "var_admission_required_bool",
+      "name": "Admission Required",
+      "type": "bool",
+      "source": "input",
+      "description": "Patient requires hospital admission"
+    },
+    {
+      "id": "var_cvd_known_or_risk_bool",
+      "name": "CVD Known or Risk",
+      "type": "bool",
+      "source": "input",
+      "description": "Heart Failure, CKD, IHD, QRISK >10%, or <40 with HTN/High Lipids/Smoking/BMI>25/FHx CVD"
+    },
+    {
+      "id": "var_metformin_tolerated_bool",
+      "name": "Metformin Tolerated",
+      "type": "bool",
+      "source": "input",
+      "description": "Metformin tolerated after 4 weeks (modified release must be tried first)"
+    },
+    {
+      "id": "var_a1c_after_metformin_number",
+      "name": "A1c After Metformin",
+      "type": "number",
+      "source": "input",
+      "description": "A1c level after 3 months on metformin. Controlled if <= 48 (1 med target)"
+    },
+    {
+      "id": "var_a1c_after_sglt2i_number",
+      "name": "A1c After SGLT2i",
+      "type": "number",
+      "source": "input",
+      "description": "A1c level after adding SGLT2i. Controlled if <= 53 (2 meds target)"
+    },
+    {
+      "id": "var_a1c_after_dual_therapy_number",
+      "name": "A1c After Dual Therapy",
+      "type": "number",
+      "source": "input",
+      "description": "A1c level after dual therapy (non-CVD path). Controlled if <= 53 (2 meds target)"
+    },
+    {
+      "id": "var_a1c_after_triple_therapy_number",
+      "name": "A1c After Triple Therapy",
+      "type": "number",
+      "source": "input",
+      "description": "A1c level after triple therapy. Controlled if <= 58 (3 meds target)"
+    },
+    {
+      "id": "var_a1c_after_glp_number",
+      "name": "A1c After GLP",
+      "type": "number",
+      "source": "input",
+      "description": "A1c level after GLP-1 agonist (Ozempic/Mounjaro). Controlled if <= 58"
+    },
+    {
+      "id": "var_dual_agent_choice_enum",
+      "name": "Dual Agent Choice",
+      "type": "enum",
+      "source": "input",
+      "enum_values": ["Gliptin", "Pioglitazone", "Gliclazide"],
+      "description": "Choice of second agent for dual therapy (non-CVD path)"
+    },
+    {
+      "id": "var_bmi_number",
+      "name": "BMI",
+      "type": "number",
+      "source": "input",
+      "description": "Body Mass Index. Minimum 23 required for GLP-1 initiation"
+    },
+    {
+      "id": "var_high_prognostic_value_bool",
+      "name": "High Prognostic Value",
+      "type": "bool",
+      "source": "input",
+      "description": "High value case: CVD risk factors, established CV disease, or known CKD. Determines Ozempic vs Mounjaro"
+    }
+  ],
+
+  "nodes": [
+    {"id": "start", "type": "start", "label": "Start", "x": 400, "y": 0},
+
+    {"id": "d_symptoms", "type": "decision", "label": "Symptoms & New A1c > 58?", "x": 400, "y": 100,
+     "condition": {"input_id": "var_symptoms_and_new_a1c_gt_58_bool", "comparator": "is_true"}},
+
+    {"id": "d_admission", "type": "decision", "label": "Admission Required?", "x": 100, "y": 200,
+     "condition": {"input_id": "var_admission_required_bool", "comparator": "is_true"}},
+
+    {"id": "end_admit", "type": "end", "label": "Admit via A&E/Medics", "x": 0, "y": 300,
+     "output_value": "Admit via A&E/Medics", "output_type": "string"},
+
+    {"id": "end_gliclazide", "type": "end", "label": "Start Gliclazide or Insulin", "x": 200, "y": 300,
+     "output_value": "Start Gliclazide or Insulin", "output_type": "string"},
+
+    {"id": "d_cvd", "type": "decision", "label": "CVD Known or Risk?", "x": 400, "y": 200,
+     "condition": {"input_id": "var_cvd_known_or_risk_bool", "comparator": "is_true"}},
+
+
+    {"id": "p_metformin_cvd", "type": "process", "label": "Start Metformin (CVD)", "x": 700, "y": 300},
+
+    {"id": "d_a1c_metformin_cvd", "type": "decision", "label": "A1c Controlled on Metformin? (CVD)", "x": 700, "y": 400,
+     "condition": {"input_id": "var_a1c_after_metformin_number", "comparator": "lte", "value": 48}},
+
+    {"id": "end_continue_metformin_cvd", "type": "end", "label": "Continue Metformin (CVD)", "x": 900, "y": 500,
+     "output_value": "Metformin (continue and review in 3 months)", "output_type": "string"},
+
+    {"id": "d_metformin_tolerated", "type": "decision", "label": "Metformin Tolerated After 4 Weeks?", "x": 700, "y": 500,
+     "condition": {"input_id": "var_metformin_tolerated_bool", "comparator": "is_true"}},
+
+    {"id": "p_add_sglt2i", "type": "process", "label": "Add SGLT2i", "x": 800, "y": 600},
+
+    {"id": "p_switch_sglt2i", "type": "process", "label": "Switch to SGLT2i Monotherapy", "x": 600, "y": 600},
+
+    {"id": "d_a1c_sglt2i", "type": "decision", "label": "A1c Controlled on SGLT2i?", "x": 700, "y": 700,
+     "condition": {"input_id": "var_a1c_after_sglt2i_number", "comparator": "lte", "value": 53}},
+
+    {"id": "end_continue_sglt2i", "type": "end", "label": "Continue SGLT2i", "x": 900, "y": 800,
+     "output_value": "SGLT2i (continue and review in 3 months)", "output_type": "string"},
+
+    {"id": "p_ozempic_cvd", "type": "process", "label": "Ozempic Titrate to Full Dose", "x": 700, "y": 800},
+
+    {"id": "d_a1c_glp_cvd", "type": "decision", "label": "A1c Controlled on GLP?", "x": 700, "y": 900,
+     "condition": {"input_id": "var_a1c_after_glp_number", "comparator": "lte", "value": 58}},
+
+    {"id": "end_ozempic_cvd", "type": "end", "label": "Continue Ozempic (CVD)", "x": 900, "y": 1000,
+     "output_value": "Ozempic titrate to full dose with 3 monthly A1c's", "output_type": "string"},
+
+    {"id": "end_refer_insulin_cvd", "type": "end", "label": "Refer to Insulin Initiator (CVD)", "x": 700, "y": 1000,
+     "output_value": "Refer to Insulin Initiator", "output_type": "string"},
+
+
+    {"id": "p_metformin_ncvd", "type": "process", "label": "Start Metformin (Standard)", "x": 200, "y": 300},
+
+    {"id": "d_a1c_metformin_ncvd", "type": "decision", "label": "A1c Controlled on Metformin? (Standard)", "x": 200, "y": 400,
+     "condition": {"input_id": "var_a1c_after_metformin_number", "comparator": "lte", "value": 48}},
+
+    {"id": "end_continue_metformin_ncvd", "type": "end", "label": "Continue Metformin (Standard)", "x": 50, "y": 500,
+     "output_value": "Metformin (continue and review in 3 months)", "output_type": "string"},
+
+    {"id": "p_dual_therapy", "type": "process", "label": "Start Dual Therapy", "x": 200, "y": 500},
+
+    {"id": "d_a1c_dual", "type": "decision", "label": "A1c Controlled on Dual Therapy?", "x": 200, "y": 600,
+     "condition": {"input_id": "var_a1c_after_dual_therapy_number", "comparator": "lte", "value": 53}},
+
+    {"id": "end_continue_dual", "type": "end", "label": "Continue Dual Therapy", "x": 50, "y": 700,
+     "output_template": "Metformin + {Dual Agent Choice}", "output_type": "string"},
+
+    {"id": "p_triple_therapy", "type": "process", "label": "Start Triple Therapy (Metformin + Gliptin/Pioglitazone/Gliclazide, consider SGLT2i)", "x": 200, "y": 700},
+
+    {"id": "d_a1c_triple", "type": "decision", "label": "A1c Controlled on Triple Therapy?", "x": 200, "y": 800,
+     "condition": {"input_id": "var_a1c_after_triple_therapy_number", "comparator": "lte", "value": 58}},
+
+    {"id": "end_continue_triple", "type": "end", "label": "Continue Triple Therapy", "x": 50, "y": 900,
+     "output_value": "Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)", "output_type": "string"},
+
+    {"id": "d_bmi", "type": "decision", "label": "BMI >= 23?", "x": 200, "y": 900,
+     "condition": {"input_id": "var_bmi_number", "comparator": "gte", "value": 23}},
+
+    {"id": "end_stay_triple", "type": "end", "label": "Continue Triple Therapy (BMI too low for GLP)", "x": 50, "y": 1000,
+     "output_value": "Metformin + Gliptin/Pioglitazone/Gliclazide (consider SGLT2i)", "output_type": "string"},
+
+    {"id": "p_add_glp", "type": "process", "label": "Add GLP-1 Agonist", "x": 200, "y": 1000},
+
+    {"id": "d_prognostic", "type": "decision", "label": "High Prognostic Value?", "x": 200, "y": 1100,
+     "condition": {"input_id": "var_high_prognostic_value_bool", "comparator": "is_true"}},
+
+    {"id": "p_ozempic", "type": "process", "label": "Start Ozempic", "x": 100, "y": 1200},
+
+    {"id": "d_a1c_ozempic", "type": "decision", "label": "A1c Controlled on Ozempic?", "x": 100, "y": 1300,
+     "condition": {"input_id": "var_a1c_after_glp_number", "comparator": "lte", "value": 58}},
+
+    {"id": "end_continue_ozempic", "type": "end", "label": "Continue Ozempic (Standard)", "x": 0, "y": 1400,
+     "output_value": "Ozempic", "output_type": "string"},
+
+    {"id": "end_refer_insulin_oz", "type": "end", "label": "Refer to Insulin Initiator (Ozempic)", "x": 200, "y": 1400,
+     "output_value": "Refer to Insulin Initiator", "output_type": "string"},
+
+    {"id": "p_mounjaro", "type": "process", "label": "Start Mounjaro", "x": 300, "y": 1200},
+
+    {"id": "d_a1c_mounjaro", "type": "decision", "label": "A1c Controlled on Mounjaro?", "x": 300, "y": 1300,
+     "condition": {"input_id": "var_a1c_after_glp_number", "comparator": "lte", "value": 58}},
+
+    {"id": "end_continue_mounjaro", "type": "end", "label": "Continue Mounjaro", "x": 200, "y": 1400,
+     "output_value": "Mounjaro", "output_type": "string"},
+
+    {"id": "end_refer_insulin_mj", "type": "end", "label": "Refer to Insulin Initiator (Mounjaro)", "x": 400, "y": 1400,
+     "output_value": "Refer to Insulin Initiator", "output_type": "string"}
+  ],
+
+  "edges": [
+    {"from": "start", "to": "d_symptoms", "label": ""},
+
+    {"from": "d_symptoms", "to": "d_admission", "label": "true"},
+    {"from": "d_symptoms", "to": "d_cvd", "label": "false"},
+
+    {"from": "d_admission", "to": "end_admit", "label": "true"},
+    {"from": "d_admission", "to": "end_gliclazide", "label": "false"},
+
+    {"from": "d_cvd", "to": "p_metformin_cvd", "label": "true"},
+    {"from": "d_cvd", "to": "p_metformin_ncvd", "label": "false"},
+
+    {"from": "p_metformin_cvd", "to": "d_a1c_metformin_cvd", "label": ""},
+    {"from": "d_a1c_metformin_cvd", "to": "end_continue_metformin_cvd", "label": "true"},
+    {"from": "d_a1c_metformin_cvd", "to": "d_metformin_tolerated", "label": "false"},
+
+    {"from": "d_metformin_tolerated", "to": "p_add_sglt2i", "label": "true"},
+    {"from": "d_metformin_tolerated", "to": "p_switch_sglt2i", "label": "false"},
+
+    {"from": "p_add_sglt2i", "to": "d_a1c_sglt2i", "label": ""},
+    {"from": "p_switch_sglt2i", "to": "d_a1c_sglt2i", "label": ""},
+
+    {"from": "d_a1c_sglt2i", "to": "end_continue_sglt2i", "label": "true"},
+    {"from": "d_a1c_sglt2i", "to": "p_ozempic_cvd", "label": "false"},
+
+    {"from": "p_ozempic_cvd", "to": "d_a1c_glp_cvd", "label": ""},
+    {"from": "d_a1c_glp_cvd", "to": "end_ozempic_cvd", "label": "true"},
+    {"from": "d_a1c_glp_cvd", "to": "end_refer_insulin_cvd", "label": "false"},
+
+    {"from": "p_metformin_ncvd", "to": "d_a1c_metformin_ncvd", "label": ""},
+    {"from": "d_a1c_metformin_ncvd", "to": "end_continue_metformin_ncvd", "label": "true"},
+    {"from": "d_a1c_metformin_ncvd", "to": "p_dual_therapy", "label": "false"},
+
+    {"from": "p_dual_therapy", "to": "d_a1c_dual", "label": ""},
+    {"from": "d_a1c_dual", "to": "end_continue_dual", "label": "true"},
+    {"from": "d_a1c_dual", "to": "p_triple_therapy", "label": "false"},
+
+    {"from": "p_triple_therapy", "to": "d_a1c_triple", "label": ""},
+    {"from": "d_a1c_triple", "to": "end_continue_triple", "label": "true"},
+    {"from": "d_a1c_triple", "to": "d_bmi", "label": "false"},
+
+    {"from": "d_bmi", "to": "p_add_glp", "label": "true"},
+    {"from": "d_bmi", "to": "end_stay_triple", "label": "false"},
+
+    {"from": "p_add_glp", "to": "d_prognostic", "label": ""},
+    {"from": "d_prognostic", "to": "p_ozempic", "label": "true"},
+    {"from": "d_prognostic", "to": "p_mounjaro", "label": "false"},
+
+    {"from": "p_ozempic", "to": "d_a1c_ozempic", "label": ""},
+    {"from": "d_a1c_ozempic", "to": "end_continue_ozempic", "label": "true"},
+    {"from": "d_a1c_ozempic", "to": "end_refer_insulin_oz", "label": "false"},
+
+    {"from": "p_mounjaro", "to": "d_a1c_mounjaro", "label": ""},
+    {"from": "d_a1c_mounjaro", "to": "end_continue_mounjaro", "label": "true"},
+    {"from": "d_a1c_mounjaro", "to": "end_refer_insulin_mj", "label": "false"}
+  ],
+
+  "outputs": [
+    {"id": "output_recommendation", "name": "Recommendation", "type": "string"}
+  ]
+}

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import {
@@ -18,6 +18,35 @@ import { beautifyNodes } from '../utils/beautifyNodes'
 import { useCanvasKeyboard } from '../hooks/useCanvasKeyboard'
 import { useWheelZoom } from '../hooks/useWheelZoom'
 import type { FlowNode, FlowNodeType } from '../types'
+
+/** Convert a base64 data URL to a blob URL for reliable iframe rendering. */
+function PdfPreview({ file }: { file: { id: string; name: string; dataUrl: string } }) {
+  const blobUrl = useMemo(() => {
+    try {
+      const [header, base64] = file.dataUrl.split(',')
+      const mime = header.match(/:(.*?);/)?.[1] || 'application/pdf'
+      const bytes = atob(base64)
+      const arr = new Uint8Array(bytes.length)
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+      const blob = new Blob([arr], { type: mime })
+      return URL.createObjectURL(blob)
+    } catch {
+      return file.dataUrl // fallback to data URL
+    }
+  }, [file.dataUrl])
+
+  useEffect(() => {
+    return () => { if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl) }
+  }, [blobUrl])
+
+  return (
+    <iframe
+      className="pdf-preview"
+      src={blobUrl}
+      title={file.name}
+    />
+  )
+}
 
 export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -926,12 +955,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
                 />
               </div>
             ) : (
-              <iframe
-                key={currentFile.id}
-                className="pdf-preview"
-                src={currentFile.dataUrl}
-                title={currentFile.name}
-              />
+              <PdfPreview key={currentFile.id} file={currentFile} />
             )}
           </div>
         )
