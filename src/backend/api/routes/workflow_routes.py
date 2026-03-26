@@ -30,6 +30,11 @@ from ...workflow_transfer import (
     import_workflow_bundle_zip,
     serialize_workflow_record,
 )
+from ...workflow_packages import (
+    apply_package_report,
+    build_package_report,
+    summarize_package_report,
+)
 from ...utils.flowchart import tree_from_flowchart
 from ...utils.paths import lemon_data_dir
 from ...validation.workflow_validator import WorkflowValidator
@@ -236,6 +241,21 @@ def register_workflow_routes(
             "edges": edges,
             "message": "Workflow saved successfully.",
         }
+        if is_published:
+            report = build_package_report(
+                workflow_store,
+                user_id=user.id,
+                head_workflow_id=workflow_id,
+                package_name=name,
+            )
+            apply_package_report(workflow_store, user_id=user.id, report=report)
+            workflow_lookup = {
+                wf.id: wf
+                for wf in workflow_store.list_workflows(user.id, limit=1000, offset=0)[
+                    0
+                ]
+            }
+            response["package"] = summarize_package_report(report, workflow_lookup)
         return JSONResponse(response, status_code=201)
 
     @router.get("/api/workflows/{workflow_id}")
@@ -546,6 +566,21 @@ def register_workflow_routes(
             "edges": edges,
             "message": "Workflow updated successfully.",
         }
+        if is_published:
+            report = build_package_report(
+                workflow_store,
+                user_id=user.id,
+                head_workflow_id=workflow_id,
+                package_name=name,
+            )
+            apply_package_report(workflow_store, user_id=user.id, report=report)
+            workflow_lookup = {
+                wf.id: wf
+                for wf in workflow_store.list_workflows(user.id, limit=1000, offset=0)[
+                    0
+                ]
+            }
+            response["package"] = summarize_package_report(report, workflow_lookup)
         return JSONResponse(response)
 
     @router.get("/api/uploads/{file_path:path}")
