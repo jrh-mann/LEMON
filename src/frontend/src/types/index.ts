@@ -269,6 +269,7 @@ export interface PackageWorkflowSummary {
   tags: string[]
   is_validated: boolean
   is_draft?: boolean
+  building?: boolean
   role: 'head' | 'dependency'
 }
 

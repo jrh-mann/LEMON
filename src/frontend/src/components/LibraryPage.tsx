@@ -192,7 +192,10 @@ export default function LibraryPage() {
             {standaloneWorkflows.map(wf => (
               <div key={wf.id} className="library-card" draggable onDragStart={() => setDraggedWorkflowId(wf.id)} onClick={(e) => handleSelectWorkflow(wf, e)}>
                 <div className="library-card-header">
-                  <h3 className="library-card-name">{wf.name}</h3>
+                  <h3 className="library-card-name">
+                    {wf.name}
+                    {wf.building && <span className="library-card-building">Building...</span>}
+                  </h3>
                   <button className="library-card-delete" onClick={async (e) => {
                     e.stopPropagation()
                     if (deleteConfirm === wf.id) {
@@ -252,7 +255,10 @@ export default function LibraryPage() {
                 {selectedPackage.workflows.map(workflow => (
                   <div key={workflow.id} className="library-card">
                     <div className="library-card-header">
-                      <h3 className="library-card-name">{workflow.name}</h3>
+                      <h3 className="library-card-name">
+                        {workflow.name}
+                        {workflow.building && <span className="library-card-building">Building...</span>}
+                      </h3>
                     </div>
                     <p className="library-card-desc">{workflow.description || 'No description'}</p>
                     <div className="library-card-meta">

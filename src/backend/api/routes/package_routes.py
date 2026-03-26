@@ -30,6 +30,7 @@ def _serialize_package(
                 "tags": workflow.tags,
                 "is_validated": workflow.is_validated,
                 "is_draft": workflow.is_draft,
+                "building": workflow.building,
                 "role": member.role,
             }
         )
