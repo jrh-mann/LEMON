@@ -99,6 +99,38 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
             "CREATE INDEX IF NOT EXISTS idx_workflows_package_id ON workflows(package_id);"
         ),
     ),
+    (
+        10,
+        "Add workflow package tables",
+        (
+            "CREATE TABLE IF NOT EXISTS workflow_packages (\n"
+            "    id TEXT PRIMARY KEY,\n"
+            "    user_id TEXT NOT NULL,\n"
+            "    name TEXT NOT NULL DEFAULT '',\n"
+            "    description TEXT NOT NULL DEFAULT '',\n"
+            "    head_workflow_id TEXT,\n"
+            "    is_published BOOLEAN NOT NULL DEFAULT 0,\n"
+            "    review_status TEXT NOT NULL DEFAULT 'unreviewed',\n"
+            "    net_votes INTEGER NOT NULL DEFAULT 0,\n"
+            "    published_at TEXT,\n"
+            "    created_at TEXT NOT NULL,\n"
+            "    updated_at TEXT NOT NULL\n"
+            ");\n"
+            "CREATE INDEX IF NOT EXISTS idx_packages_user_id ON workflow_packages(user_id);\n"
+            "CREATE INDEX IF NOT EXISTS idx_packages_is_published ON workflow_packages(is_published);\n"
+            "CREATE TABLE IF NOT EXISTS workflow_package_members (\n"
+            "    package_id TEXT NOT NULL,\n"
+            "    workflow_id TEXT NOT NULL UNIQUE,\n"
+            "    role TEXT NOT NULL DEFAULT 'dependency',\n"
+            "    created_at TEXT NOT NULL,\n"
+            "    PRIMARY KEY (package_id, workflow_id),\n"
+            "    FOREIGN KEY (package_id) REFERENCES workflow_packages(id) ON DELETE CASCADE,\n"
+            "    FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE\n"
+            ");\n"
+            "CREATE INDEX IF NOT EXISTS idx_package_members_package_id ON workflow_package_members(package_id);\n"
+            "CREATE INDEX IF NOT EXISTS idx_package_members_workflow_id ON workflow_package_members(workflow_id);"
+        ),
+    ),
 ]
 
 
