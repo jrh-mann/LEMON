@@ -149,20 +149,32 @@ export default function WorkflowPage() {
             return
         }
 
-        const effectiveWorkflowId = publicWorkflowId || workflowId
+        const effectiveWorkflowId = publicWorkflowId ?? workflowId
+        if (!effectiveWorkflowId) return
         if (loadedWorkflowIdRef.current === effectiveWorkflowId) return
 
         let isActive = true
 
         const loadWorkflow = async () => {
+            const editableWorkflowId = workflowId ?? null
+            const readOnlyWorkflowId = publicWorkflowId ?? null
+            const readOnlyPackageId = packageId ?? null
+
             // Eagerly set the workflow ID so SSE event guards reject
             // events from the previous workflow during the async fetch.
-            setCurrentWorkflowId(effectiveWorkflowId || null)
+            setCurrentWorkflowId(effectiveWorkflowId)
 
             try {
+                if (isPublicReadOnly && (!readOnlyPackageId || !readOnlyWorkflowId)) {
+                    return
+                }
+                if (!isPublicReadOnly && !editableWorkflowId) {
+                    return
+                }
+
                 const workflowData = isPublicReadOnly
-                    ? await getPublicPackageWorkflow(packageId!, publicWorkflowId!)
-                    : await getWorkflow(workflowId!)
+                    ? await getPublicPackageWorkflow(readOnlyPackageId as string, readOnlyWorkflowId as string)
+                    : await getWorkflow(editableWorkflowId as string)
                 if (!isActive) return
 
                 const { workflow, flowchart, analysis } = hydrateWorkflowDetail(workflowData)
@@ -170,21 +182,25 @@ export default function WorkflowPage() {
                 setFlowchart(flowchart)
                 setAnalysis(analysis)
                 markSavedSnapshot()
-                loadedWorkflowIdRef.current = effectiveWorkflowId || null
+                loadedWorkflowIdRef.current = effectiveWorkflowId
 
                 if (isPublicReadOnly) {
                     triggerReveal()
                     return
                 }
 
+                if (!editableWorkflowId) {
+                    return
+                }
+
                 // Set active workflow in chatStore so Chat.tsx reads this workflow's conversation.
                 // All events (normal chat and builder) route to conversations[workflowId].
                 const cs = useChatStore.getState()
-                cs.setActiveWorkflowId(workflowId)
+                cs.setActiveWorkflowId(editableWorkflowId)
 
                 // Restore conversation_id so new messages continue the same thread
                 if (workflowData.conversation_id) {
-                    cs.setConversationId(workflowId, workflowData.conversation_id)
+                    cs.setConversationId(editableWorkflowId, workflowData.conversation_id)
                 }
 
                 // If a backend task is still running, set up streaming and polling.
@@ -193,16 +209,16 @@ export default function WorkflowPage() {
                 // streamingContent are set). After refresh, persist middleware
                 // resets them to false/''. Only fire resumeTask on refresh.
                 if (workflowData.building) {
-                    const conv = cs.conversations?.[workflowId]
+                    const conv = cs.conversations?.[editableWorkflowId]
                     const needsResume = !conv?.isStreaming && !conv?.streamingContent
 
                     if (needsResume) {
                         // Page refresh — reconnect to the running task's SSE stream.
                         // resumeTask uses fetch/SSE, so no connection wait needed.
-                        cs.setStreaming(workflowId, true)
-                        cs.setProcessingStatus(workflowId, 'Reconnecting...')
+                        cs.setStreaming(editableWorkflowId, true)
+                        cs.setProcessingStatus(editableWorkflowId, 'Reconnecting...')
                         import('../api/streamActions').then(({ resumeTask }) => {
-                            if (isActive) resumeTask(workflowId)
+                            if (isActive) resumeTask(editableWorkflowId)
                         })
                     }
                     // else: SPA navigation — events are already flowing, no resume needed
@@ -210,14 +226,14 @@ export default function WorkflowPage() {
 
                 // Fetch conversation history (runs in parallel with resume above).
                 // Merges any backend messages that arrived while the page was closed.
-                const localMessages = cs.conversations?.[workflowId]?.messages ?? []
+                const localMessages = cs.conversations?.[editableWorkflowId]?.messages ?? []
                 if (workflowData.conversation_id) {
-                    await syncConversationMessages(workflowId, workflowData.conversation_id)
+                    await syncConversationMessages(editableWorkflowId, workflowData.conversation_id)
                 } else if (!localMessages.length && workflowData.building && workflowData.metadata?.description) {
                     // Building in progress, but the build_user_message stream event was
                     // missed (page refresh / late navigation). Recover the brief from
                     // the workflow description so the chat isn't empty.
-                    cs.addMessage(workflowId, {
+                    cs.addMessage(editableWorkflowId, {
                         id: `brief_${Date.now()}`,
                         role: 'user',
                         content: workflowData.metadata.description,
@@ -273,11 +289,11 @@ export default function WorkflowPage() {
                 if (!isActive) return
 
                 // 404 = new workflow (not in DB yet) — sync URL ID to store
-                if (!isPublicReadOnly && err instanceof ApiError && err.status === 404) {
+                if (!isPublicReadOnly && editableWorkflowId && err instanceof ApiError && err.status === 404) {
                     clearPendingFiles()
-                    setCurrentWorkflowId(workflowId)
-                    useChatStore.getState().setActiveWorkflowId(workflowId)
-                    loadedWorkflowIdRef.current = workflowId
+                    setCurrentWorkflowId(editableWorkflowId)
+                    useChatStore.getState().setActiveWorkflowId(editableWorkflowId)
+                    loadedWorkflowIdRef.current = editableWorkflowId
                     return
                 }
 
@@ -288,10 +304,11 @@ export default function WorkflowPage() {
         // Listen for task-finished from resumeTask — fires when resume discovers
         // the task already completed. Re-fetches final state from DB.
         const handleTaskFinished = async (e: Event) => {
+            const editableWorkflowId = workflowId ?? null
             const detail = (e as CustomEvent).detail
-            if (detail?.workflowId !== workflowId || !isActive || isPublicReadOnly) return
+            if (!editableWorkflowId || detail?.workflowId !== editableWorkflowId || !isActive || isPublicReadOnly) return
             try {
-                const fresh = await getWorkflow(workflowId)
+                const fresh = await getWorkflow(editableWorkflowId)
                 const hydrated = hydrateWorkflowDetail(fresh)
                 setFlowchart(hydrated.flowchart)
                 setAnalysis(hydrated.analysis)
@@ -548,12 +565,12 @@ export default function WorkflowPage() {
         }
     }, [completeImportedNavigation, setImportError])
 
-    const revealedClass = workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
+    const revealedClass = isPublicReadOnly || workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
 
     return (
         <>
             {/* Full workspace layout - always rendered */}
-            <div className={`app-layout ${revealedClass} ${isTransitioning ? 'transitioning' : ''}`} style={{ '--chat-height': `${chatHeight}px` } as React.CSSProperties}>
+            <div className={`app-layout ${revealedClass} ${isTransitioning ? 'transitioning' : ''}`} style={{ '--chat-height': isPublicReadOnly ? '0px' : `${chatHeight}px` } as React.CSSProperties}>
                 <main className="workspace">
                     {!isPublicReadOnly && <Palette />}
                     <Canvas readOnly={isPublicReadOnly} />

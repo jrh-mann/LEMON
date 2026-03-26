@@ -326,6 +326,7 @@ class PackageStore:
     def cast_vote(self, package_id: str, user_id: str, vote: int) -> Dict[str, object]:
         now = datetime.now(timezone.utc).isoformat()
         with self._conn() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "INSERT INTO workflow_package_votes (package_id, user_id, vote, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(package_id, user_id) DO UPDATE SET vote = excluded.vote, created_at = excluded.created_at",
                 (package_id, user_id, vote, now),
@@ -352,6 +353,7 @@ class PackageStore:
     def remove_vote(self, package_id: str, user_id: str) -> Dict[str, object]:
         now = datetime.now(timezone.utc).isoformat()
         with self._conn() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "DELETE FROM workflow_package_votes WHERE package_id = ? AND user_id = ?",
                 (package_id, user_id),

@@ -1,7 +1,6 @@
-﻿import { useRef, useEffect, useCallback, useState } from 'react'
+import { useRef, useEffect, useCallback, useState } from 'react'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
-import ImageAnnotator from './ImageAnnotator'
 import {
   getNodeSize,
   getNodeColor,
@@ -23,6 +22,10 @@ import type { FlowNode, FlowNodeType } from '../types'
 export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const focusCanvasContainer = useCallback(() => {
+    containerRef.current?.focus()
+  }, [])
 
   const {
     flowchart,
@@ -46,8 +49,6 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
     redo,
     pushHistory,
     pendingFiles,
-    pendingAnnotations,
-    setPendingAnnotations,
     clearPendingFiles,
     execution,  // Execution state for visual highlighting
     highlightedNodeId,  // Node pulsing from highlight_node tool
@@ -230,6 +231,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
     (e: React.PointerEvent, node: FlowNode) => {
       e.stopPropagation()
       e.preventDefault()
+      focusCanvasContainer()
 
       if (connectMode) {
         // Complete connection
@@ -278,7 +280,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
       // Capture pointer on SVG for reliable tracking
       svgRef.current?.setPointerCapture(e.pointerId)
     },
-    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes, readOnly]
+    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes, readOnly, focusCanvasContainer]
   )
 
   // Handle pointer move
@@ -488,6 +490,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
 
       if (isBackgroundClick) {
         e.preventDefault()
+        focusCanvasContainer()
 
         if (readOnly) {
           const now = Date.now()
@@ -545,7 +548,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
         svgRef.current?.setPointerCapture(e.pointerId)
       }
     },
-    [panOffset, screenToSVG, clearSelection, canvasMode, readOnly]
+    [panOffset, screenToSVG, clearSelection, canvasMode, readOnly, focusCanvasContainer]
   )
 
   // Handle canvas click (just cancel connect mode, selection handled by pointer events)
@@ -915,12 +918,13 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
               </button>
             </div>
             {currentFile.type === 'image' ? (
-              <ImageAnnotator
-                key={currentFile.id}
-                imageSrc={currentFile.dataUrl}
-                annotations={pendingAnnotations}
-                onChange={setPendingAnnotations}
-              />
+              <div className="image-preview-content">
+                <img
+                  key={currentFile.id}
+                  src={currentFile.dataUrl}
+                  alt={currentFile.name}
+                />
+              </div>
             ) : (
               <iframe
                 key={currentFile.id}
@@ -938,6 +942,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
         className="canvas-container"
         id="canvasContainer"
         ref={containerRef}
+        tabIndex={readOnly ? -1 : 0}
         style={{ display: canvasTab === 'workflow' ? 'block' : 'none' }}
         onDragOver={readOnly ? undefined : handleDragOver}
         onDrop={readOnly ? undefined : handleDrop}

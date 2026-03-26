@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { Workflow, WorkflowSummary, Flowchart, FlowNode, FlowEdge, WorkflowAnalysis, ExecutionLogEntry, PendingFile } from '../types'
-import type { Annotation } from '../components/ImageAnnotator'
 import { patchWorkflow } from '../api/workflows'
 
 // Execution state for visual workflow execution
@@ -62,7 +61,6 @@ interface WorkflowState {
 
   // Pending files for analysis (images and PDFs)
   pendingFiles: PendingFile[]
-  pendingAnnotations: Annotation[]
   filesSent: boolean  // Whether pendingFiles have already been sent to backend
 
   // Extraction plan items (from update_plan tool)
@@ -122,8 +120,6 @@ interface WorkflowState {
   removePendingFile: (fileId: string) => void
   clearPendingFiles: () => void
   markFilesSent: () => void  // Mark that pendingFiles have been sent to backend
-  setPendingAnnotations: (annotations: Annotation[]) => void
-  clearPendingAnnotations: () => void
   setPlan: (items: Array<{ text: string; done: boolean }>) => void
   highlightNode: (nodeId: string) => void  // Pulse a node briefly (auto-clears after 3s)
 
@@ -284,7 +280,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   history: [],
   historyIndex: -1,
   pendingFiles: [],
-  pendingAnnotations: [],
   filesSent: false,
   plan: [],
   libraryRefreshTrigger: 0,
@@ -659,10 +654,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Pending files
   addPendingFile: (file) => set((state) => ({ pendingFiles: [...state.pendingFiles, file], filesSent: false })),
   removePendingFile: (fileId) => set((state) => ({ pendingFiles: state.pendingFiles.filter(f => f.id !== fileId) })),
-  clearPendingFiles: () => set({ pendingFiles: [], pendingAnnotations: [], filesSent: false }),
+  clearPendingFiles: () => set({ pendingFiles: [], filesSent: false }),
   markFilesSent: () => set({ filesSent: true }),
-  setPendingAnnotations: (annotations) => set({ pendingAnnotations: annotations }),
-  clearPendingAnnotations: () => set({ pendingAnnotations: [] }),
   setPlan: (items) => set({ plan: items }),
   highlightNode: (nodeId) => {
     set({ highlightedNodeId: nodeId })
@@ -691,7 +684,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       history: [],
       historyIndex: -1,
       pendingFiles: [],
-      pendingAnnotations: [],
       filesSent: false,
       plan: [],
       execution: { ...initialExecutionState },

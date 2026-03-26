@@ -301,39 +301,6 @@ def register_workflow_routes(
         }
         return JSONResponse(response)
 
-    @router.post("/api/workflows/{workflow_id}/validate")
-    async def validate_stored_workflow(
-        workflow_id: str,
-        user: AuthUser = Depends(require_auth),
-    ) -> JSONResponse:
-        workflow = workflow_store.get_workflow(workflow_id, user.id)
-        if not workflow:
-            return JSONResponse({"error": "Workflow not found"}, status_code=404)
-
-        workflow_to_validate = {
-            "nodes": workflow.nodes,
-            "edges": workflow.edges,
-            "variables": workflow.inputs,
-        }
-        is_valid, validation_errors = _workflow_validator.validate(
-            workflow_to_validate, strict=True
-        )
-        workflow_store.update_workflow(
-            workflow_id=workflow_id,
-            user_id=user.id,
-            is_validated=is_valid,
-        )
-        return JSONResponse(
-            {
-                "success": True,
-                "workflow_id": workflow_id,
-                "valid": is_valid,
-                "message": "Workflow is valid"
-                if is_valid
-                else _workflow_validator.format_errors(validation_errors),
-            }
-        )
-
     @router.get("/api/workflows/{workflow_id}/export")
     async def export_workflow(
         workflow_id: str,

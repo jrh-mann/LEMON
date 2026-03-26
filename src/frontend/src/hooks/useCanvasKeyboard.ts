@@ -41,6 +41,8 @@ export function useCanvasKeyboard(deps: CanvasKeyboardDeps): void {
 
       // Delete selected nodes
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeIds.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
         selectedNodeIds.forEach(nodeId => deleteNode(nodeId))
       }
 
