@@ -393,7 +393,11 @@ def test_bundle_export_allows_missing_subflow_with_warning(tmp_path: Path):
         assert manifest["workflow_ids"] == ["wf_root_missing_child"]
         assert manifest["missing_workflow_ids"] == ["wf_missing"]
         assert "workflows/wf_root_missing_child.json" in zf.namelist()
-        assert "workflows/wf_missing.json" not in zf.namelist()
+        assert "workflows/wf_missing.json" in zf.namelist()
+        placeholder = json.loads(zf.read("workflows/wf_missing.json"))
+        assert placeholder["id"] == "wf_missing"
+        assert placeholder["metadata"]["is_placeholder"] is True
+        assert placeholder["metadata"]["placeholder_reason"] == "missing_subworkflow"
 
 
 def test_invalid_bundle_import_requires_force_import(tmp_path: Path):
@@ -435,3 +439,29 @@ def test_invalid_bundle_import_requires_force_import(tmp_path: Path):
         files={"file": ("bundle.zip", export_resp.content, "application/zip")},
     )
     assert forced_resp.status_code == 201
+
+
+def test_placeholder_workflow_import_is_rejected(tmp_path: Path):
+    client, _, _ = _client(tmp_path)
+    payload = {
+        "id": "wf_missing",
+        "metadata": {
+            "name": "Missing Subworkflow",
+            "description": "Placeholder exported because the referenced subworkflow could not be fetched.",
+            "tags": [],
+            "is_placeholder": True,
+            "placeholder_reason": "missing_subworkflow",
+        },
+        "flowchart": {"nodes": [], "edges": []},
+        "variables": [],
+        "outputs": [],
+        "output_type": "string",
+    }
+
+    response = client.post("/api/workflows/import", json=payload)
+
+    assert response.status_code == 400
+    assert (
+        response.json()["error"]
+        == "Cannot import placeholder workflow for missing subflow"
+    )

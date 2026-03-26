@@ -99,6 +99,13 @@ def build_workflow_bundle_bytes(
                 f"workflows/{record.id}.json",
                 json.dumps(serialize_workflow_record(record), indent=2),
             )
+        for missing_id in missing_workflow_ids:
+            zf.writestr(
+                f"workflows/{missing_id}.json",
+                json.dumps(
+                    _build_missing_subworkflow_placeholder(missing_id), indent=2
+                ),
+            )
     return buffer.getvalue(), warnings
 
 
@@ -235,9 +242,13 @@ def _normalize_imported_workflow(
             "Invalid format: JSON must have a 'flowchart.edges' array"
         )
 
-    metadata = (
-        payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
-    )
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    if metadata.get("is_placeholder") is True:
+        raise WorkflowTransferError(
+            "Cannot import placeholder workflow for missing subflow"
+        )
     variables = payload.get("variables")
     if variables is None:
         variables = flowchart.get("variables", [])
@@ -256,6 +267,26 @@ def _normalize_imported_workflow(
         "output_type": payload.get("output_type")
         if isinstance(payload.get("output_type"), str)
         else "string",
+    }
+
+
+def _build_missing_subworkflow_placeholder(workflow_id: str) -> Dict[str, Any]:
+    return {
+        "id": workflow_id,
+        "metadata": {
+            "name": "Missing Subworkflow",
+            "description": "Placeholder exported because the referenced subworkflow could not be fetched.",
+            "tags": [],
+            "is_placeholder": True,
+            "placeholder_reason": "missing_subworkflow",
+        },
+        "flowchart": {
+            "nodes": [],
+            "edges": [],
+        },
+        "variables": [],
+        "outputs": [],
+        "output_type": "string",
     }
 
 
