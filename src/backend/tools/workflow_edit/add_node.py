@@ -58,8 +58,9 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
     Returns:
         Error message if invalid, None if valid.
     """
-    # Extract condition fields
+    # Extract condition fields — accept either "variable" (name) or "input_id" (ID).
     var_name = condition.get("variable")
+    input_id = condition.get("input_id")
     comparator = condition.get("comparator")
     value = condition.get("value")
 
@@ -79,6 +80,18 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
         # Inject resolved ID so the execution engine can use it
         condition["input_id"] = matched["id"]
         input_id = matched["id"]
+    elif input_id:
+        # Direct ID-based lookup — validate that the ID exists
+        matched = None
+        for var in variables:
+            if var.get("id") == input_id:
+                matched = var
+                break
+        if not matched:
+            available = ", ".join(
+                v.get("name", "?") for v in variables
+            ) or "none"
+            return f"Variable ID '{input_id}' not found. Available: {available}"
     else:
         return "condition.variable is required (name of the workflow variable to check)"
 

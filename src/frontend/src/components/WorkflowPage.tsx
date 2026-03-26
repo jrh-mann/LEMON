@@ -48,9 +48,6 @@ export default function WorkflowPage() {
     const { setCurrentWorkflow, setCurrentWorkflowId, setFlowchart, setAnalysis, addPendingFile, clearPendingFiles, setImportedWorkflow, markSavedSnapshot } = useWorkflowStore()
     const { sendUserMessage } = useChatStore()
     const loadedWorkflowIdRef = useRef<string | null>(null)
-    // Ref for the build-completion poll interval — stored here so the
-    // useEffect cleanup can clear it on unmount (prevents leaked intervals).
-    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     // Trigger reveal with transition tracking
     const triggerReveal = useCallback(() => {
@@ -199,33 +196,6 @@ export default function WorkflowPage() {
                         })
                     }
                     // else: SPA navigation — events are already flowing, no resume needed
-
-                    // Poll until the task completes, then fetch the final response.
-                    // Stored in ref so the useEffect cleanup can clear it on unmount.
-                    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-                    pollIntervalRef.current = setInterval(async () => {
-                        try {
-                            const fresh = await getWorkflow(workflowId)
-                            if (!fresh.building) {
-                                clearInterval(pollIntervalRef.current!)
-                                pollIntervalRef.current = null
-                                const chatStore = useChatStore.getState()
-                                chatStore.setStreaming(workflowId, false)
-                                chatStore.setProcessingStatus(workflowId, null)
-                                chatStore.setCurrentTaskId(workflowId, null)
-                                const convId = fresh.conversation_id || workflowData.conversation_id
-                                if (convId) {
-                                    syncConversationMessages(workflowId, convId)
-                                }
-                                const hydrated = hydrateWorkflowDetail(fresh)
-                                setFlowchart(hydrated.flowchart)
-                                setAnalysis(hydrated.analysis)
-                            }
-                        } catch {
-                            clearInterval(pollIntervalRef.current!)
-                            pollIntervalRef.current = null
-                        }
-                    }, 2000)
                 }
 
                 // Fetch conversation history (runs in parallel with resume above).
@@ -305,13 +275,26 @@ export default function WorkflowPage() {
                 setError(`Failed to load workflow (${workflowId}): ${msg}`)
             }
         }
+        // Listen for task-finished from resumeTask — fires when resume discovers
+        // the task already completed. Re-fetches final state from DB.
+        const handleTaskFinished = async (e: Event) => {
+            const detail = (e as CustomEvent).detail
+            if (detail?.workflowId !== workflowId || !isActive) return
+            try {
+                const fresh = await getWorkflow(workflowId)
+                const hydrated = hydrateWorkflowDetail(fresh)
+                setFlowchart(hydrated.flowchart)
+                setAnalysis(hydrated.analysis)
+            } catch {
+                // Best-effort — next page load will catch up from DB
+            }
+        }
+        window.addEventListener('task-finished', handleTaskFinished)
+
         loadWorkflow()
         return () => {
             isActive = false
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current)
-                pollIntervalRef.current = null
-            }
+            window.removeEventListener('task-finished', handleTaskFinished)
         }
     }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles, markSavedSnapshot])
 

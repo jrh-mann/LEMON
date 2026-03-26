@@ -35,6 +35,7 @@ RESOURCE_GROUP = "UCL_25_26"
 ZIP_INCLUDES = [
     "src/backend",
     "src/frontend/dist",
+    "website",
     "scripts",
     "run_api.py",
     "pyproject.toml",

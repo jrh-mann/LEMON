@@ -25,13 +25,18 @@ start_all() {
     cd "$REPO_ROOT"
     source .venv/bin/activate
 
-    # Backend API
-    python run_api.py > /tmp/lemon-backend.log 2>&1 &
+    # Ensure log directory exists
+    mkdir -p "$REPO_ROOT/.lemon/logs"
+    LOGDIR="$REPO_ROOT/.lemon/logs"
+
+    # Backend API — stdout/stderr go to _stdout.log; structured logs go to
+    # backend.log via the app's own logging module (same directory).
+    python run_api.py > "$LOGDIR/backend_stdout.log" 2>&1 &
     echo $! >> "$PIDFILE"
 
     # Frontend (from src/frontend)
     cd "$REPO_ROOT/src/frontend"
-    npx vite --host > /tmp/lemon-frontend.log 2>&1 &
+    npx vite --host > "$LOGDIR/frontend.log" 2>&1 &
     echo $! >> "$PIDFILE"
 
     sleep 2

@@ -5,7 +5,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { cancelChatTask, sendChatMessage } from '../api/streamActions'
-import { syncConversationMessages, syncWorkflowState } from '../utils/conversationSync'
+import { hasActiveStream } from '../api/streamActions'
 import { useVoiceInput } from '../hooks/useVoiceInput'
 import type { Message } from '../types'
 
@@ -180,31 +180,40 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
     }
   }, [isStreaming, scrollToBottom])
 
-  // Heartbeat watchdog — detect stale tasks when no backend events arrive.
-  // Timeout is 60s to survive API rate-limit retries (429 retry-after can be ~50s).
-  // Clears streaming state so the user isn't stuck on "Thinking..." forever.
+  // Heartbeat watchdog — safety net for truly dead connections where the SSE
+  // reader hangs (no done/error fires). Checks hasActiveStream() before killing
+  // to avoid false positives when keepalives are delayed.
+  // Reconciliation with backend DB now lives in the SSE done handler, not here.
   useEffect(() => {
     if (!isStreaming || !activeWorkflowId) return
+    const wfId = activeWorkflowId
     const HEARTBEAT_TIMEOUT_MS = 60_000
+
     const interval = setInterval(() => {
-      const c = useChatStore.getState().conversations[activeWorkflowId]
-      if (!c?.isStreaming) return  // streaming ended naturally
+      const c = useChatStore.getState().conversations[wfId]
+      if (!c?.isStreaming) {
+        // Stream ended naturally — SSE handlers cleaned up. Stop watching.
+        clearInterval(interval)
+        return
+      }
       const lastBeat = c.lastHeartbeatAt
       if (lastBeat > 0 && Date.now() - lastBeat > HEARTBEAT_TIMEOUT_MS) {
-        console.warn('[Chat] Heartbeat timeout — clearing stale streaming state')
-        const cs = useChatStore.getState()
-        cs.finalizeStream(activeWorkflowId)
-        cs.setCurrentTaskId(activeWorkflowId, null)
-        useUIStore.getState().setError('Connection to backend lost — please try again')
-        // Sync with backend truth — recover messages and workflow state
-        // that may have been committed before the connection dropped.
-        const convId = cs.conversations[activeWorkflowId]?.conversationId
-        if (convId) {
-          syncConversationMessages(activeWorkflowId, convId)
+        // Before killing, check if the SSE stream is still connected.
+        // If so, the timeout may be a false alarm (e.g. slow keepalives).
+        if (hasActiveStream(wfId)) {
+          // Stream is alive in _activeStreams — extend grace period
+          useChatStore.getState().touchHeartbeat(wfId)
+          return
         }
-        syncWorkflowState(activeWorkflowId)
+        // Stream is truly dead — no active SSE connection, no events for 60s
+        clearInterval(interval)
+        const cs = useChatStore.getState()
+        cs.finalizeStream(wfId)
+        cs.setCurrentTaskId(wfId, null)
+        useUIStore.getState().setError('Connection to backend lost — please try again')
       }
     }, 5000)
+
     return () => clearInterval(interval)
   }, [isStreaming, activeWorkflowId])
 

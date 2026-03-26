@@ -16,6 +16,7 @@ import { useWorkflowStore } from '../stores/workflowStore'
 import { useUIStore } from '../stores/uiStore'
 import { transformFlowchartFromBackend, transformNodeFromBackend } from '../utils/canvas'
 import { beautifyNodes } from '../utils/beautifyNodes'
+import { syncConversationMessages, syncWorkflowState } from '../utils/conversationSync'
 import type {
   WorkflowAnalysis,
   FlowNode,
@@ -31,6 +32,26 @@ const _activeStreams = new Map<string, SSEStream>()
 
 // Separate map for execution SSE streams (one execution at a time, keyed by executionId)
 const _activeExecutionStreams = new Map<string, SSEStream>()
+
+/** Check whether an active SSE stream exists for the given workflow. */
+export function hasActiveStream(workflowId: string): boolean {
+  return _activeStreams.has(workflowId)
+}
+
+/**
+ * Reconcile frontend state with backend DB after a stream ends.
+ * Called from the SSE `done` handler — fires for every stream ending
+ * (normal completion, error, abort). Idempotent — safe to call multiple times.
+ */
+async function _reconcileAfterStreamEnd(workflowId: string): Promise<void> {
+  const chatStore = useChatStore.getState()
+  const conv = chatStore.conversations[workflowId]
+  if (!conv) return
+  if (conv.conversationId) {
+    await syncConversationMessages(workflowId, conv.conversationId)
+  }
+  await syncWorkflowState(workflowId)
+}
 
 type StreamEventHandlerMap = Record<string, (data: unknown) => void>
 
@@ -206,6 +227,11 @@ type OpenTabPayload = {
  * now flow through the parent ChatTask's EventSink.
  */
 function _buildChatSSEHandlers(workflowId: string) {
+  const wfShort = workflowId.slice(-8)
+  let handlerEventCount = 0
+  const handlerStart = Date.now()
+  console.log(`[SSE:handlers] Chat handlers created for wf=${wfShort}`)
+
   return {
     // SSE keepalive comment — proves the connection is alive even when
     // no application events are flowing (e.g. during long tool calls).
@@ -217,7 +243,8 @@ function _buildChatSSEHandlers(workflowId: string) {
 
     'chat_progress': (rawData: unknown) => {
       const data = rawData as ChatProgressPayload
-      console.log('[SSE] chat_progress:', data)
+      handlerEventCount++
+      console.log(`[SSE:handlers] chat_progress #${handlerEventCount} wf=${wfShort}:`, data.event, data.status)
       const chatStore = useChatStore.getState()
       useUIStore.getState().clearError()
 
@@ -261,7 +288,9 @@ function _buildChatSSEHandlers(workflowId: string) {
 
     'chat_response': (rawData: unknown) => {
       const data = rawData as ChatResponsePayload
-      console.log('[SSE] chat_response:', data)
+      handlerEventCount++
+      const elapsed = ((Date.now() - handlerStart) / 1000).toFixed(1)
+      console.log(`[SSE:handlers] chat_response #${handlerEventCount} wf=${wfShort} after ${elapsed}s — cancelled=${!!data.cancelled}`)
       const chatStore = useChatStore.getState()
       useUIStore.getState().clearError()
 
@@ -549,7 +578,8 @@ function _buildChatSSEHandlers(workflowId: string) {
 
     'error': (rawData: unknown) => {
       const data = rawData as StreamErrorPayload
-      console.error('[SSE] connection error:', data)
+      const elapsed = ((Date.now() - handlerStart) / 1000).toFixed(1)
+      console.error(`[SSE:handlers] ERROR for wf=${wfShort} after ${elapsed}s, ${handlerEventCount} events:`, data)
       const chatStore = useChatStore.getState()
       chatStore.setStreaming(workflowId, false)
       chatStore.setProcessingStatus(workflowId, null)
@@ -558,8 +588,14 @@ function _buildChatSSEHandlers(workflowId: string) {
     },
 
     'done': () => {
-      // SSE stream ended — clean up the stream reference
+      const elapsed = ((Date.now() - handlerStart) / 1000).toFixed(1)
+      console.log(`[SSE:handlers] DONE for wf=${wfShort} after ${elapsed}s, ${handlerEventCount} events`)
       _activeStreams.delete(workflowId)
+      // Reconcile with backend DB — picks up any messages/state persisted
+      // after the last SSE event we received (e.g., backend finished after disconnect).
+      _reconcileAfterStreamEnd(workflowId).catch((err) => {
+        console.warn(`[SSE:handlers] reconcile failed for wf=${wfShort}:`, err)
+      })
     },
   }
 }
@@ -736,12 +772,12 @@ function _readResumeSSEStream(
   handlers: StreamEventHandlerMap,
   workflowId: string,
 ): SSEStream {
-  const controller = new AbortController()
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
   // Read the stream in the background
   ;(async () => {
     if (!response.body) return
-    const reader = response.body.getReader()
+    reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let currentEvent = ''
@@ -773,6 +809,9 @@ function _readResumeSSEStream(
           } else if (line.startsWith('data:')) {
             const dataLine = line.slice(5).trim()
             currentData = currentData ? `${currentData}\n${dataLine}` : dataLine
+          } else if (line.startsWith(':')) {
+            // SSE comment = keepalive — dispatch so heartbeat watchdog stays alive
+            handlers['keepalive']?.({})
           }
         }
       }
@@ -783,14 +822,16 @@ function _readResumeSSEStream(
         } catch { /* ignore */ }
       }
     } finally {
-      reader.releaseLock()
+      reader?.releaseLock()
       handlers['done']?.({})
     }
   })()
 
   return {
     abort: () => {
-      controller.abort()
+      // Cancel the reader directly — causes reader.read() to reject,
+      // breaking the while loop and triggering the finally block (done handler).
+      reader?.cancel()
       _activeStreams.delete(workflowId)
     },
   }

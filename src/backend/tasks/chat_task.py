@@ -4,7 +4,8 @@ Delegates SSE transport to ChatEventChannel. Events are pushed to a queue
 that FastAPI yields as SSE.
 
 No heartbeat thread needed (HTTP keepalive handles it).
-No dead connection detection needed (sink.is_closed detects client disconnect).
+Client disconnect does NOT cancel the task — it runs to completion and persists
+to DB. The frontend reconnects via resumeTask and loads from DB.
 No conn_id locking needed (channel handles sink swap with a lock).
 """
 
@@ -170,13 +171,14 @@ class ChatTask:
     # --- Helpers ---
 
     def is_cancelled(self) -> bool:
-        """Check cancellation flag (fast path — no lock needed)."""
-        if self._cancelled:
-            return True
-        # Also check if the client disconnected (SSE stream closed)
-        if self.channel.sink.is_closed:
-            return True
-        return False
+        """Check cancellation flag (fast path — no lock needed).
+
+        Only returns True for explicit user cancellation (cancel button / API).
+        Client disconnect (SSE connection closed) does NOT cancel — the task
+        continues to completion and persists results to DB. The frontend can
+        reconnect via resumeTask and load the completed response from DB.
+        """
+        return self._cancelled
 
     def _timeout_watchdog(self) -> None:
         """Kill the task if it exceeds the wall-clock timeout.
@@ -327,6 +329,13 @@ class ChatTask:
         to run_turn(). This method handles bootstrap, SSE emission, and
         cleanup only.
         """
+        import time as _time
+        _run_start = _time.monotonic()
+        logger.info(
+            "ChatTask[%s] run() started — wf=%s sink=%s",
+            self.task_id[:8], (self.current_workflow_id or "?")[-8:],
+            getattr(self.channel._sink, '_id', '?'),
+        )
         self.emit_progress("start", "Thinking...")
         threading.Thread(target=self._timeout_watchdog, daemon=True).start()
 
@@ -362,6 +371,13 @@ class ChatTask:
             self._log_thinking()
             self._sync_convo_from_orchestrator()
 
+            _turn_elapsed = _time.monotonic() - _run_start
+            logger.info(
+                "ChatTask[%s] turn finished: status=%s elapsed=%.1fs sink_closed=%s",
+                self.task_id[:8], result.status.name, _turn_elapsed,
+                self.channel._sink.is_closed,
+            )
+
             if result.status == TurnStatus.COMPLETED:
                 self._emit("context_status", {
                     "usage_pct": result.context_usage_pct,
@@ -373,6 +389,10 @@ class ChatTask:
                 self._emit_response(result.response_text, cancelled=True)
                 self.emit_cancelled()
             elif result.status == TurnStatus.FAILED:
+                logger.warning(
+                    "ChatTask[%s] FAILED: %s: %s",
+                    self.task_id[:8], type(result.error).__name__, result.error,
+                )
                 if isinstance(result.error, anthropic.RateLimitError):
                     self._emit("agent_error", {
                         "task_id": self.task_id,
@@ -390,6 +410,11 @@ class ChatTask:
             self.emit_error(f"Something went wrong: {type(exc).__name__}. Please try again.")
 
         finally:
+            _total_elapsed = _time.monotonic() - _run_start
+            logger.info(
+                "ChatTask[%s] cleanup — total %.1fs, sink_closed=%s",
+                self.task_id[:8], _total_elapsed, self.channel._sink.is_closed,
+            )
             self.done.set()
             task_registry.unregister(self)
             # Close our SSE stream. Builder tasks have their own independent
