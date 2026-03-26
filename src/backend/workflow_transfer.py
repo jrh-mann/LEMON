@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .storage.auth import AuthUser
+from .storage.packages import PackageStore
 from .storage.workflows import WorkflowRecord, WorkflowStore
 from .subflow_cycles import detect_subflow_cycles
 from .tools.constants import generate_workflow_id
@@ -131,6 +132,56 @@ def build_workflow_bundle_bytes(
                 json.dumps(
                     _build_missing_subworkflow_placeholder(missing_id), indent=2
                 ),
+            )
+    return buffer.getvalue(), warnings
+
+
+def build_package_bundle_bytes(
+    workflow_store: WorkflowStore,
+    user: AuthUser,
+    package_id: str,
+) -> Tuple[bytes, List[str]]:
+    package_store = PackageStore(workflow_store.db_path)
+    package = package_store.get_package(package_id, user.id)
+    if package is None:
+        raise WorkflowTransferError("Package not found")
+    if not package.head_workflow_id:
+        raise WorkflowTransferError("Package has no head workflow")
+
+    records = []
+    missing_workflow_ids: List[str] = []
+    for member in package.members:
+        record = workflow_store.get_workflow(member.workflow_id, user.id)
+        if record is None:
+            missing_workflow_ids.append(member.workflow_id)
+            continue
+        records.append(record)
+
+    warnings = []
+    manifest = {
+        "version": BUNDLE_VERSION,
+        "format": BUNDLE_FORMAT,
+        "entry_workflow_id": package.head_workflow_id,
+        "workflow_ids": [record.id for record in records],
+        "missing_workflow_ids": missing_workflow_ids,
+        "package": {
+            "id": package.id,
+            "name": package.name,
+            "head_workflow_id": package.head_workflow_id,
+            "members": [
+                {"workflow_id": member.workflow_id, "role": member.role}
+                for member in package.members
+            ],
+        },
+    }
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        for record in records:
+            zf.writestr(
+                f"workflows/{record.id}.json",
+                json.dumps(serialize_workflow_record(record), indent=2),
             )
     return buffer.getvalue(), warnings
 

@@ -10,6 +10,7 @@ from ..deps import require_auth
 from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
 from ...workflow_package_service import WorkflowPackageService
+from ...workflow_transfer import WorkflowTransferError, build_package_bundle_bytes
 
 
 def _serialize_package(
@@ -186,5 +187,22 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
         body = _serialize_package(package, workflow_store, user.id)
         body["autofetch"] = details
         return JSONResponse(body)
+
+    @router.get("/api/packages/{package_id}/export-bundle")
+    async def export_package_bundle(
+        package_id: str, user: AuthUser = Depends(require_auth)
+    ) -> JSONResponse:
+        try:
+            bundle_bytes, warnings = build_package_bundle_bytes(
+                workflow_store, user, package_id
+            )
+        except WorkflowTransferError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(
+            {
+                "content": bundle_bytes.decode("latin1"),
+                "warnings": warnings,
+            }
+        )
 
     app.include_router(router)

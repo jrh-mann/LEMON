@@ -56,7 +56,10 @@ class PackageStore:
                 (package_id, user_id, name, description, now, now),
             )
             conn.commit()
-        return self.get_package(package_id, user_id)
+        package = self.get_package(package_id, user_id)
+        if package is None:
+            raise RuntimeError("Failed to load newly created package")
+        return package
 
     def get_package(
         self, package_id: str, user_id: str
@@ -190,3 +193,88 @@ class PackageStore:
                 (role, package_id, workflow_id),
             )
             conn.commit()
+
+    def list_published_packages(
+        self,
+        *,
+        review_status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[List[WorkflowPackageRecord], int]:
+        where = ["is_published = 1"]
+        params: List[object] = []
+        if review_status is not None:
+            where.append("review_status = ?")
+            params.append(review_status)
+        where_sql = " AND ".join(where)
+        with self._conn() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) AS count FROM workflow_packages WHERE {where_sql}",
+                params,
+            ).fetchone()["count"]
+            rows = conn.execute(
+                f"SELECT id, user_id FROM workflow_packages WHERE {where_sql} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+        packages = [
+            pkg
+            for row in rows
+            if (pkg := self.get_package(row["id"], row["user_id"])) is not None
+        ]
+        return packages, total
+
+    def cast_vote(self, package_id: str, user_id: str, vote: int) -> Dict[str, object]:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO workflow_package_votes (package_id, user_id, vote, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(package_id, user_id) DO UPDATE SET vote = excluded.vote, created_at = excluded.created_at",
+                (package_id, user_id, vote, now),
+            )
+            net_votes = conn.execute(
+                "SELECT COALESCE(SUM(vote), 0) AS total FROM workflow_package_votes WHERE package_id = ?",
+                (package_id,),
+            ).fetchone()["total"]
+            review_status = "reviewed" if net_votes >= 1 else "unreviewed"
+            conn.execute(
+                "UPDATE workflow_packages SET net_votes = ?, review_status = ?, updated_at = ? WHERE id = ?",
+                (net_votes, review_status, now, package_id),
+            )
+            conn.commit()
+        return {
+            "success": True,
+            "net_votes": net_votes,
+            "review_status": review_status,
+            "user_vote": vote,
+        }
+
+    def remove_vote(self, package_id: str, user_id: str) -> Dict[str, object]:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM workflow_package_votes WHERE package_id = ? AND user_id = ?",
+                (package_id, user_id),
+            )
+            net_votes = conn.execute(
+                "SELECT COALESCE(SUM(vote), 0) AS total FROM workflow_package_votes WHERE package_id = ?",
+                (package_id,),
+            ).fetchone()["total"]
+            review_status = "reviewed" if net_votes >= 1 else "unreviewed"
+            conn.execute(
+                "UPDATE workflow_packages SET net_votes = ?, review_status = ?, updated_at = ? WHERE id = ?",
+                (net_votes, review_status, now, package_id),
+            )
+            conn.commit()
+        return {
+            "success": True,
+            "net_votes": net_votes,
+            "review_status": review_status,
+            "user_vote": None,
+        }
+
+    def get_user_vote(self, package_id: str, user_id: str) -> Optional[int]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT vote FROM workflow_package_votes WHERE package_id = ? AND user_id = ?",
+                (package_id, user_id),
+            ).fetchone()
+        return row["vote"] if row else None

@@ -3,7 +3,7 @@
  * Extracted from Header.tsx for reuse in ExportPage.
  */
 
-import { validateWorkflow, compileToPython, compileStoredWorkflowToPython, exportWorkflowJson, exportWorkflowBundleWithWarnings } from '../api/workflows'
+import { validateWorkflow, compileToPython, compileStoredWorkflowToPython, exportWorkflowJson, exportWorkflowBundleWithWarnings, exportPackageBundleWithWarnings } from '../api/workflows'
 import type { Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 interface ExportContext {
@@ -57,7 +57,9 @@ export async function exportAsJSONWithOptions(
     let blob: Blob
     let warnings: string[] = []
     if (shouldIncludeSubflows) {
-        const bundleResult = await exportWorkflowBundleWithWarnings(currentWorkflow.id)
+        const bundleResult = currentWorkflow.package_id
+            ? await exportPackageBundleWithWarnings(currentWorkflow.package_id)
+            : await exportWorkflowBundleWithWarnings(currentWorkflow.id)
         blob = bundleResult.blob
         warnings = bundleResult.warnings
     } else {

@@ -252,6 +252,14 @@ export interface CompilePythonRequest {
   include_main?: boolean
 }
 
+export async function exportPackageBundleWithWarnings(
+  packageId: string
+): Promise<{ blob: Blob; warnings: string[] }> {
+  const response = await api.get<{ content: string; warnings: string[] }>(`/api/packages/${packageId}/export-bundle`)
+  const bytes = Uint8Array.from(response.content, ch => ch.charCodeAt(0))
+  return { blob: new Blob([bytes], { type: 'application/zip' }), warnings: response.warnings || [] }
+}
+
 export interface CompileStoredWorkflowRequest {
   workflow_id: string
   include_imports?: boolean

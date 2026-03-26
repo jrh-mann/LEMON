@@ -131,6 +131,23 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
             "CREATE INDEX IF NOT EXISTS idx_package_members_workflow_id ON workflow_package_members(workflow_id);"
         ),
     ),
+    (
+        11,
+        "Add package votes table",
+        (
+            "CREATE TABLE IF NOT EXISTS workflow_package_votes (\n"
+            "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+            "    package_id TEXT NOT NULL,\n"
+            "    user_id TEXT NOT NULL,\n"
+            "    vote INTEGER NOT NULL CHECK (vote IN (-1, 1)),\n"
+            "    created_at TEXT NOT NULL,\n"
+            "    UNIQUE(package_id, user_id),\n"
+            "    FOREIGN KEY (package_id) REFERENCES workflow_packages(id) ON DELETE CASCADE\n"
+            ");\n"
+            "CREATE INDEX IF NOT EXISTS idx_package_votes_package ON workflow_package_votes(package_id);\n"
+            "CREATE INDEX IF NOT EXISTS idx_package_votes_user ON workflow_package_votes(user_id);"
+        ),
+    ),
 ]
 
 

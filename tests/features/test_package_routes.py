@@ -118,3 +118,30 @@ def test_package_autofetch_clones_conflicts(tmp_path: Path):
     )
     assert applied.status_code == 200
     assert applied.json()["workflow_count"] == 2
+
+
+def test_export_package_bundle(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+    workflow_store.create_workflow(
+        "wf_1",
+        user.id,
+        "WF 1",
+        "desc",
+        nodes=[],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        is_draft=False,
+        is_validated=True,
+    )
+    created = client.post("/api/packages", json={})
+    package_id = created.json()["id"]
+    client.post(f"/api/packages/{package_id}/members", json={"workflow_id": "wf_1"})
+
+    exported = client.get(f"/api/packages/{package_id}/export-bundle")
+    assert exported.status_code == 200
+    body = exported.json()
+    assert body["warnings"] == []
+    assert body["content"]
