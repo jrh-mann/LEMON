@@ -80,6 +80,15 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt()
         assert "## Image Guidance Notes" not in prompt
 
+    def test_session_id_accepted(self):
+        """last_session_id parameter is accepted without error (kept for compat)."""
+        from src.backend.agents.system_prompt import build_system_prompt
+
+        # Parameter is accepted but no longer injected into prompt text
+        prompt = build_system_prompt(last_session_id="sess_abc")
+        assert isinstance(prompt, str)
+        assert len(prompt) > 100
+
     def test_core_tool_docs_preserved(self):
         """Core tool documentation sections should still be present."""
         from src.backend.agents.system_prompt import build_system_prompt

@@ -137,8 +137,6 @@ interface WorkflowState {
   stopExecution: () => void
   setExecutingNode: (nodeId: string | null) => void
   markNodeExecuted: (nodeId: string) => void
-  advanceExecution: (nextNodeId: string) => void
-  advanceSubflowExecution: (nextNodeId: string) => void
   setExecutionSpeed: (speed: number) => void
   setExecutionError: (error: string | null) => void
   setExecutionOutput: (output: unknown) => void
@@ -762,41 +760,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       executionPath: [...state.execution.executionPath, nodeId],
     },
   })),
-
-  // Atomic: marks previous node as executed AND sets next node as executing in a
-  // single store mutation. Prevents intermediate re-renders between the two steps
-  // which could cause flickering at high execution speeds.
-  advanceExecution: (nextNodeId: string) => set((state) => {
-    const prev = state.execution.executingNodeId
-    const executedNodeIds = prev && !state.execution.executedNodeIds.includes(prev)
-      ? [...state.execution.executedNodeIds, prev]
-      : state.execution.executedNodeIds
-    const executionPath = prev
-      ? [...state.execution.executionPath, prev]
-      : state.execution.executionPath
-    return {
-      execution: {
-        ...state.execution,
-        executedNodeIds,
-        executionPath,
-        executingNodeId: nextNodeId,
-      },
-    }
-  }),
-
-  // Atomic advance for subflow nodes (same rationale as advanceExecution)
-  advanceSubflowExecution: (nextNodeId: string) => set((state) => {
-    const stack = [...state.subflowStack]
-    if (stack.length === 0) return {}
-    const top = { ...stack[stack.length - 1] }
-    const prev = top.executingNodeId
-    if (prev && !top.executedNodeIds.includes(prev)) {
-      top.executedNodeIds = [...top.executedNodeIds, prev]
-    }
-    top.executingNodeId = nextNodeId
-    stack[stack.length - 1] = top
-    return { subflowStack: stack }
-  }),
 
   // Sets the execution speed (delay between steps in ms)
   setExecutionSpeed: (speed: number) => set((state) => ({

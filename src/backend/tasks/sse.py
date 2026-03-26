@@ -28,39 +28,22 @@ class EventSink:
     Background threads push (event_name, data_dict) tuples.
     FastAPI's StreamingResponse iterates over SSE-formatted lines.
     Closing the sink (or client disconnect) signals the end of the stream.
-
-    Queue is unbounded by default (suitable for chat streams which can produce
-    thousands of events). Pass maxsize to the constructor to cap it for
-    bounded-event use cases like stepped execution.
     """
 
-    def __init__(self, maxsize: int = 0) -> None:
-        # maxsize=0 means unbounded (Python queue.Queue default)
-        self._queue: queue.Queue[Optional[Tuple[str, Dict[str, Any]]]] = queue.Queue(
-            maxsize=maxsize
-        )
-        self._maxsize = maxsize
+    def __init__(self) -> None:
+        self._queue: queue.Queue[Optional[Tuple[str, Dict[str, Any]]]] = queue.Queue()
         self._closed = False
 
     def push(self, event: str, data: Dict[str, Any]) -> None:
         """Push an event to the stream. No-ops silently if sink is closed."""
-        if self._closed:
-            return
-        if self._maxsize > 0:
-            # Bounded queue: drop events when full (execution sinks only)
-            try:
-                self._queue.put_nowait((event, data))
-            except queue.Full:
-                logger.warning("EventSink queue full (%d), dropping event: %s", self._maxsize, event)
-        else:
-            # Unbounded queue (chat): blocking put, never fails
+        if not self._closed:
             self._queue.put((event, data))
 
     def close(self) -> None:
         """Close the stream. Sends a sentinel so the iterator stops yielding."""
         if not self._closed:
             self._closed = True
-            self._queue.put(None)  # sentinel — always succeeds for unbounded queues
+            self._queue.put(None)  # sentinel
 
     @property
     def is_closed(self) -> bool:

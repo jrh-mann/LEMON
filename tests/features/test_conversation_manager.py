@@ -41,12 +41,7 @@ class TestToolMessagePersistence:
         assert "tool_calls" in cm.history[1]
         assert cm.history[2]["role"] == "user"
         assert cm.history[2]["content"][0]["type"] == "tool_result"
-        assert cm.history[3]["role"] == "assistant"
-        assert cm.history[3]["content"] == "No workflows found."
-        # tool_calls_meta is attached to the final assistant message for context
-        assert cm.history[3]["tool_calls_meta"] == [
-            {"tool": "list_workflows", "arguments": {}, "success": True}
-        ]
+        assert cm.history[3] == {"role": "assistant", "content": "No workflows found."}
 
     def test_tool_messages_appear_in_build_messages(self):
         """build_messages includes tool messages from previous turns."""

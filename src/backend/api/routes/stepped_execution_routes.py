@@ -109,10 +109,8 @@ def register_stepped_execution_routes(
         # Register for pause/resume/stop tracking (stores user_id for ownership checks)
         register_execution(execution_id, user.id)
 
-        # Create the SSE sink and execution task.
-        # Execution events are bounded by node count — cap queue to prevent
-        # unbounded memory growth at speed=0 with slow network.
-        sink = EventSink(maxsize=500)
+        # Create the SSE sink and execution task
+        sink = EventSink()
         task = SteppedExecutionTask(
             sink=sink,
             workflow_store=workflow_store,
