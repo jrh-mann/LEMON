@@ -116,6 +116,53 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
         body["is_publishable"] = False
         return JSONResponse(body)
 
+    @router.get("/api/packages/public/{package_id}/workflows/{workflow_id}")
+    async def get_public_package_workflow(
+        package_id: str,
+        workflow_id: str,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        try:
+            package, owner_id = service._require_any_package(package_id)
+        except ValueError:
+            return JSONResponse({"error": "Package not found"}, status_code=404)
+        if not package.is_published:
+            return JSONResponse({"error": "Package not published"}, status_code=404)
+        member_ids = {member.workflow_id for member in package.members}
+        if workflow_id not in member_ids:
+            return JSONResponse(
+                {"error": "Workflow is not part of this package"}, status_code=404
+            )
+        workflow = workflow_store.get_workflow(workflow_id, owner_id)
+        if workflow is None:
+            return JSONResponse({"error": "Workflow not found"}, status_code=404)
+        return JSONResponse(
+            {
+                "id": workflow.id,
+                "output_type": workflow.output_type or "string",
+                "metadata": {
+                    "name": workflow.name,
+                    "description": workflow.description,
+                    "domain": workflow.domain,
+                    "tags": workflow.tags,
+                    "created_at": workflow.created_at,
+                    "updated_at": workflow.updated_at,
+                    "confidence": "none",
+                    "is_validated": workflow.is_validated,
+                },
+                "nodes": workflow.nodes,
+                "edges": workflow.edges,
+                "variables": workflow.inputs,
+                "outputs": workflow.outputs,
+                "tree": workflow.tree,
+                "review_status": package.review_status,
+                "net_votes": package.net_votes,
+                "published_at": package.published_at,
+                "package_id": package.id,
+                "read_only": True,
+            }
+        )
+
     @router.patch("/api/packages/{package_id}")
     async def update_package(
         package_id: str, request: Request, user: AuthUser = Depends(require_auth)

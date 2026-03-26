@@ -29,6 +29,10 @@ export async function getPublicPackage(packageId: string): Promise<WorkflowPacka
   return api.get<WorkflowPackage>(`/api/packages/public/${packageId}`)
 }
 
+export async function getPublicPackageWorkflow(packageId: string, workflowId: string): Promise<WorkflowDetailResponse & { read_only?: boolean }> {
+  return api.get<WorkflowDetailResponse & { read_only?: boolean }>(`/api/packages/public/${packageId}/workflows/${workflowId}`)
+}
+
 export async function updatePackage(packageId: string, data: { name?: string; description?: string }): Promise<WorkflowPackage> {
   return api.patch<WorkflowPackage>(`/api/packages/${packageId}`, data)
 }
