@@ -90,41 +90,41 @@ export default function Header() {
           </button>
 
           {!isPublicReadOnly && (
-            <>
-              <button
-                className="primary"
-                disabled={!canExport}
-                onClick={() => openModal('save')}
-                title={canExport ? 'Save workflow to library' : 'No workflow to save'}
-              >
-                Save
-              </button>
+            <button
+              className="primary"
+              disabled={!canExport}
+              onClick={() => openModal('save')}
+              title={canExport ? 'Save workflow to library' : 'No workflow to save'}
+            >
+              Save
+            </button>
+          )}
 
-              <button
-                className="ghost"
-                onClick={handleNewSession}
-                title="Start a new session"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                New Session
-              </button>
+          <button
+            className="ghost"
+            onClick={handleNewSession}
+            title="Start a new session"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Session
+          </button>
 
-              <button
-                className="ghost"
-                disabled={!canExport}
-                onClick={() => navigate(currentWorkflow?.id ? `/export/${currentWorkflow.id}` : '/export')}
-                title={canExport ? 'Export workflow' : 'No workflow to export'}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Export
-              </button>
-            </>
+          {!isPublicReadOnly && (
+            <button
+              className="ghost"
+              disabled={!canExport}
+              onClick={() => navigate(currentWorkflow?.id ? `/export/${currentWorkflow.id}` : '/export')}
+              title={canExport ? 'Export workflow' : 'No workflow to export'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export
+            </button>
           )}
 
           <button className="ghost" onClick={handleLogout}>
