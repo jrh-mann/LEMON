@@ -88,6 +88,17 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
             "CREATE INDEX IF NOT EXISTS idx_votes_user ON workflow_votes(user_id);"
         ),
     ),
+    (
+        9,
+        "Add workflow package metadata columns",
+        (
+            "ALTER TABLE workflows ADD COLUMN package_id TEXT;\n"
+            "ALTER TABLE workflows ADD COLUMN package_name TEXT;\n"
+            "ALTER TABLE workflows ADD COLUMN package_role TEXT;\n"
+            "ALTER TABLE workflows ADD COLUMN package_head_workflow_id TEXT;\n"
+            "CREATE INDEX IF NOT EXISTS idx_workflows_package_id ON workflows(package_id);"
+        ),
+    ),
 ]
 
 
@@ -95,11 +106,10 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
 # Public helpers
 # ---------------------------------------------------------------------------
 
+
 def get_schema_version(conn: sqlite3.Connection) -> int:
     """Return the current schema version, creating the tracking table if needed."""
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"
-    )
+    conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (0)")
@@ -125,7 +135,9 @@ def run_migrations(conn: sqlite3.Connection) -> int:
             # where columns were added manually before the migration system.
             if "duplicate column name" in str(exc):
                 logger.warning(
-                    "Migration %d skipped (column already exists): %s", version, exc,
+                    "Migration %d skipped (column already exists): %s",
+                    version,
+                    exc,
                 )
             else:
                 raise

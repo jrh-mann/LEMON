@@ -201,7 +201,7 @@ class TestRetryStreamPollution:
 class TestSerializeWorkflowSummary:
     """Verify workflow summary includes all needed fields."""
 
-    def test_summary_includes_is_draft_and_output_type(self):
+    def test_summary_includes_is_draft_output_type_and_package_fields(self):
         from src.backend.api.routes.helpers import serialize_workflow_summary
 
         # Create a mock WorkflowRecord-like object
@@ -221,10 +221,18 @@ class TestSerializeWorkflowSummary:
         mock_wf.building = False
         mock_wf.is_draft = True
         mock_wf.output_type = "json"
+        mock_wf.package_id = "pkg_1"
+        mock_wf.package_name = "Package One"
+        mock_wf.package_role = "head"
+        mock_wf.package_head_workflow_id = "wf-1"
 
         result = serialize_workflow_summary(mock_wf)
         assert result["is_draft"] is True
         assert result["output_type"] == "json"
+        assert result["package_id"] == "pkg_1"
+        assert result["package_name"] == "Package One"
+        assert result["package_role"] == "head"
+        assert result["package_head_workflow_id"] == "wf-1"
 
 
 # ---------------------------------------------------------------------------

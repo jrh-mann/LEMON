@@ -21,7 +21,9 @@ _WORKFLOW_COLUMNS = """
     nodes, edges, inputs, outputs, tree, doubts,
     is_validated,
     output_type, is_draft, is_published, review_status, net_votes, published_at,
-    building, build_history, conversation_id, uploaded_files, created_at, updated_at
+    building, build_history, conversation_id, uploaded_files,
+    package_id, package_name, package_role, package_head_workflow_id,
+    created_at, updated_at
 """
 
 # ── Field lists for table-driven update_workflow ──
@@ -37,6 +39,10 @@ _SCALAR_FIELDS = [
     "net_votes",
     "building",
     "conversation_id",
+    "package_id",
+    "package_name",
+    "package_role",
+    "package_head_workflow_id",
 ]
 # JSON fields require json.dumps() before storage
 _JSON_FIELDS = [
@@ -92,6 +98,10 @@ class WorkflowRecord:
     uploaded_files: List[Dict[str, str]] = field(
         default_factory=list
     )  # [{name, rel_path, file_type, purpose}]
+    package_id: Optional[str] = None
+    package_name: Optional[str] = None
+    package_role: Optional[str] = None
+    package_head_workflow_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -204,6 +214,10 @@ class WorkflowStore:
         is_published: bool = False,
         building: bool = False,
         build_history: Optional[List[Dict[str, str]]] = None,
+        package_id: Optional[str] = None,
+        package_name: Optional[str] = None,
+        package_role: Optional[str] = None,
+        package_head_workflow_id: Optional[str] = None,
     ) -> None:
         """Create a new workflow in the database.
 
@@ -248,9 +262,11 @@ class WorkflowStore:
                     nodes, edges, inputs, outputs, tree, doubts,
                     is_validated,
                     output_type, is_draft, is_published, review_status, net_votes, published_at,
-                    building, build_history, conversation_id, uploaded_files, created_at, updated_at
+                    building, build_history, conversation_id, uploaded_files,
+                    package_id, package_name, package_role, package_head_workflow_id,
+                    created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id,
@@ -276,6 +292,10 @@ class WorkflowStore:
                     build_history_json,
                     None,
                     "[]",
+                    package_id,
+                    package_name,
+                    package_role,
+                    package_head_workflow_id,
                     now,
                     now,
                 ),
@@ -323,6 +343,10 @@ class WorkflowStore:
         build_history: Optional[List[Dict[str, str]]] = None,
         conversation_id: Optional[str] = None,
         uploaded_files: Optional[List[Dict[str, str]]] = None,
+        package_id: Optional[str] = None,
+        package_name: Optional[str] = None,
+        package_role: Optional[str] = None,
+        package_head_workflow_id: Optional[str] = None,
     ) -> bool:
         """Update an existing workflow. Only provided (non-None) fields are written."""
         # Collect all kwargs into a dict so we can iterate the field lists
@@ -347,6 +371,10 @@ class WorkflowStore:
             "build_history": build_history,
             "conversation_id": conversation_id,
             "uploaded_files": uploaded_files,
+            "package_id": package_id,
+            "package_name": package_name,
+            "package_role": package_role,
+            "package_head_workflow_id": package_head_workflow_id,
         }
 
         updates: List[str] = []
@@ -606,6 +634,16 @@ class WorkflowStore:
                 uploaded_files=json.loads(row["uploaded_files"])
                 if "uploaded_files" in row.keys() and row["uploaded_files"]
                 else [],
+                package_id=row["package_id"] if "package_id" in row.keys() else None,
+                package_name=row["package_name"]
+                if "package_name" in row.keys()
+                else None,
+                package_role=row["package_role"]
+                if "package_role" in row.keys()
+                else None,
+                package_head_workflow_id=row["package_head_workflow_id"]
+                if "package_head_workflow_id" in row.keys()
+                else None,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )

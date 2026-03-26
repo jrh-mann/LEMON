@@ -247,6 +247,10 @@ export interface WorkflowSummary {
   publisher_id?: string
   user_vote?: number | null  // Current user's vote: +1, -1, or null
   building?: boolean  // True while a background orchestrator is building this workflow
+  package_id?: string | null
+  package_name?: string | null
+  package_role?: 'head' | 'dependency' | null
+  package_head_workflow_id?: string | null
 }
 
 // Peer review status type

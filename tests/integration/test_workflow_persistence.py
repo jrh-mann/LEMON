@@ -69,6 +69,10 @@ def test_workflow_persistence():
             tree={"start": {"id": "n1", "type": "start"}},
             doubts=[],
             is_validated=False,
+            package_id="pkg_demo",
+            package_name="Demo Package",
+            package_role="head",
+            package_head_workflow_id=test_workflow_id,
         )
         print("   [OK] Workflow created successfully")
 
@@ -82,6 +86,10 @@ def test_workflow_persistence():
         assert len(workflow.nodes) == 2
         assert len(workflow.edges) == 1
         assert len(workflow.inputs) == 1
+        assert workflow.package_id == "pkg_demo"
+        assert workflow.package_name == "Demo Package"
+        assert workflow.package_role == "head"
+        assert workflow.package_head_workflow_id == test_workflow_id
         print(f"   [OK] Retrieved workflow: {workflow.name}")
         print(f"     - Domain: {workflow.domain}")
         print(f"     - Tags: {workflow.tags}")

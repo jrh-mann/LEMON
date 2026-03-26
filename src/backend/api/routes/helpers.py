@@ -105,4 +105,8 @@ def serialize_workflow_summary(wf: WorkflowRecord) -> Dict[str, Any]:
         "building": getattr(wf, "building", False),
         "is_draft": getattr(wf, "is_draft", False),
         "output_type": getattr(wf, "output_type", "string"),
+        "package_id": getattr(wf, "package_id", None),
+        "package_name": getattr(wf, "package_name", None),
+        "package_role": getattr(wf, "package_role", None),
+        "package_head_workflow_id": getattr(wf, "package_head_workflow_id", None),
     }

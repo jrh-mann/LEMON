@@ -274,6 +274,10 @@ def register_workflow_routes(
             "building": workflow.building,
             "conversation_id": workflow.conversation_id,
             "uploaded_files": workflow.uploaded_files,
+            "package_id": workflow.package_id,
+            "package_name": workflow.package_name,
+            "package_role": workflow.package_role,
+            "package_head_workflow_id": workflow.package_head_workflow_id,
         }
         return JSONResponse(response)
 

@@ -61,6 +61,12 @@ def serialize_workflow_record(record: WorkflowRecord) -> Dict[str, Any]:
         "variables": record.inputs,
         "outputs": record.outputs,
         "output_type": record.output_type or "string",
+        "package": {
+            "id": record.package_id,
+            "name": record.package_name,
+            "role": record.package_role,
+            "head_workflow_id": record.package_head_workflow_id,
+        },
     }
 
 
@@ -267,6 +273,9 @@ def _normalize_imported_workflow(
         "output_type": payload.get("output_type")
         if isinstance(payload.get("output_type"), str)
         else "string",
+        "package": payload.get("package")
+        if isinstance(payload.get("package"), dict)
+        else {},
     }
 
 
@@ -357,4 +366,8 @@ def _persist_imported_workflow(
         is_validated=is_validated,
         output_type=payload["output_type"],
         is_draft=False,
+        package_id=payload["package"].get("id"),
+        package_name=payload["package"].get("name"),
+        package_role=payload["package"].get("role"),
+        package_head_workflow_id=payload["package"].get("head_workflow_id"),
     )
