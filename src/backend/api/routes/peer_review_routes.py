@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 
 from ..deps import require_auth
 from ...storage.auth import AuthUser
-from ...storage.packages import PackageStore
+from ...storage.packages import PackageStore, PublicPackageSummary
 from ...storage.workflows import PUBLISH_VOTE_THRESHOLD, WorkflowStore
 
 
@@ -69,6 +69,30 @@ def _serialize_public_package(
     }
 
 
+def _serialize_public_package_summary(summary: PublicPackageSummary):
+    return {
+        "id": summary.id,
+        "name": summary.name,
+        "description": summary.description,
+        "tags": summary.tags,
+        "domain": summary.domain,
+        "confidence": "none",
+        "is_validated": summary.is_validated,
+        "input_names": [],
+        "output_values": [],
+        "created_at": summary.created_at,
+        "updated_at": summary.updated_at,
+        "is_published": summary.is_published,
+        "review_status": summary.review_status,
+        "net_votes": summary.net_votes,
+        "published_at": summary.published_at,
+        "publisher_id": summary.user_id,
+        "user_vote": summary.user_vote,
+        "workflow_count": summary.workflow_count,
+        "head_workflow_id": summary.head_workflow_id,
+    }
+
+
 def register_peer_review_routes(
     app: FastAPI,
     *,
@@ -97,7 +121,8 @@ def register_peer_review_routes(
                 status_code=400,
             )
 
-        packages, total_count = package_store.list_published_packages(
+        packages, total_count = package_store.list_public_package_summaries(
+            viewer_user_id=user.id,
             review_status=review_status,
             limit=limit,
             offset=offset,
@@ -105,10 +130,7 @@ def register_peer_review_routes(
         return JSONResponse(
             {
                 "workflows": [
-                    _serialize_public_package(
-                        pkg, workflow_store, package_store, user.id
-                    )
-                    for pkg in packages
+                    _serialize_public_package_summary(pkg) for pkg in packages
                 ],
                 "count": total_count,
                 "publish_threshold": PUBLISH_VOTE_THRESHOLD,

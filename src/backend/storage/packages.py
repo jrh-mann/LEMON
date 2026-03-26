@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -30,6 +31,26 @@ class WorkflowPackageRecord:
     created_at: str
     updated_at: str
     members: List[PackageMemberRecord] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PublicPackageSummary:
+    id: str
+    user_id: str
+    name: str
+    description: str
+    domain: Optional[str]
+    tags: List[str]
+    is_validated: bool
+    created_at: str
+    updated_at: str
+    is_published: bool
+    review_status: str
+    net_votes: int
+    published_at: Optional[str]
+    user_vote: Optional[int]
+    workflow_count: int
+    head_workflow_id: Optional[str]
 
 
 class PackageStore:
@@ -224,6 +245,83 @@ class PackageStore:
             if (pkg := self.get_package(row["id"], row["user_id"])) is not None
         ]
         return packages, total
+
+    def list_public_package_summaries(
+        self,
+        *,
+        viewer_user_id: str,
+        review_status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[List[PublicPackageSummary], int]:
+        where = ["p.is_published = 1"]
+        params: List[object] = []
+        if review_status is not None:
+            where.append("p.review_status = ?")
+            params.append(review_status)
+        where_sql = " AND ".join(where)
+        with self._conn() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) AS count FROM workflow_packages p WHERE {where_sql}",
+                params,
+            ).fetchone()["count"]
+            rows = conn.execute(
+                f"""
+                SELECT
+                    p.id,
+                    p.user_id,
+                    p.name AS package_name,
+                    p.description AS package_description,
+                    p.head_workflow_id,
+                    p.is_published,
+                    p.review_status,
+                    p.net_votes,
+                    p.published_at,
+                    p.created_at,
+                    p.updated_at,
+                    w.name AS head_name,
+                    w.description AS head_description,
+                    w.domain AS head_domain,
+                    w.tags AS head_tags,
+                    w.is_validated AS head_validated,
+                    uv.vote AS user_vote,
+                    COUNT(m.workflow_id) AS workflow_count
+                FROM workflow_packages p
+                LEFT JOIN workflows w ON w.id = p.head_workflow_id AND w.user_id = p.user_id
+                LEFT JOIN workflow_package_members m ON m.package_id = p.id
+                LEFT JOIN workflow_package_votes uv ON uv.package_id = p.id AND uv.user_id = ?
+                WHERE {where_sql}
+                GROUP BY p.id, p.user_id, p.name, p.description, p.head_workflow_id,
+                         p.is_published, p.review_status, p.net_votes, p.published_at,
+                         p.created_at, p.updated_at, w.name, w.description, w.domain,
+                         w.tags, w.is_validated, uv.vote
+                ORDER BY p.updated_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                [viewer_user_id, *params, limit, offset],
+            ).fetchall()
+        summaries = [
+            PublicPackageSummary(
+                id=row["id"],
+                user_id=row["user_id"],
+                name=row["head_name"] or row["package_name"] or "Empty package",
+                description=row["head_description"] or row["package_description"] or "",
+                domain=row["head_domain"],
+                tags=json.loads(row["head_tags"]) if row["head_tags"] else [],
+                is_validated=bool(row["head_validated"]),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                is_published=bool(row["is_published"]),
+                review_status=row["review_status"],
+                net_votes=row["net_votes"],
+                published_at=row["published_at"],
+                user_vote=row["user_vote"],
+                workflow_count=row["workflow_count"],
+                head_workflow_id=row["head_workflow_id"],
+            )
+            for row in rows
+        ]
+        return summaries, total
 
     def cast_vote(self, package_id: str, user_id: str, vote: int) -> Dict[str, object]:
         now = datetime.now(timezone.utc).isoformat()
