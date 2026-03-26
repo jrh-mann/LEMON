@@ -171,3 +171,27 @@ def test_clone_package_creates_independent_copy(tmp_path: Path):
     assert cloned.status_code == 201
     assert cloned.json()["id"] != package_id
     assert cloned.json()["workflows"][0]["id"] != "wf_1"
+
+
+def test_delete_package_keeps_workflows(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+    workflow_store.create_workflow(
+        "wf_1",
+        user.id,
+        "WF 1",
+        "desc",
+        nodes=[],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        is_draft=False,
+        is_validated=True,
+    )
+    package_id = client.post("/api/packages", json={}).json()["id"]
+    client.post(f"/api/packages/{package_id}/members", json={"workflow_id": "wf_1"})
+
+    deleted = client.delete(f"/api/packages/{package_id}")
+    assert deleted.status_code == 200
+    assert workflow_store.get_workflow("wf_1", user.id) is not None

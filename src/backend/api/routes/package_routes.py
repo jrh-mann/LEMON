@@ -31,6 +31,7 @@ def _serialize_package(
                 "is_validated": workflow.is_validated,
                 "is_draft": workflow.is_draft,
                 "building": workflow.building,
+                "invalid_public": not workflow.is_validated,
                 "role": member.role,
             }
         )
@@ -135,7 +136,7 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
     async def delete_package(
         package_id: str, user: AuthUser = Depends(require_auth)
     ) -> JSONResponse:
-        success = service.package_store.delete_package(package_id, user.id)
+        success = service.delete_package(user.id, package_id)
         if not success:
             return JSONResponse({"error": "Package not found"}, status_code=404)
         return JSONResponse({"success": True})
@@ -168,10 +169,18 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
 
     @router.post("/api/packages/{package_id}/publish")
     async def publish_package(
-        package_id: str, user: AuthUser = Depends(require_auth)
+        package_id: str, request: Request, user: AuthUser = Depends(require_auth)
     ) -> JSONResponse:
         try:
-            package = service.publish_package(user.id, package_id)
+            payload = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            payload = {}
+        try:
+            package = service.publish_package(
+                user.id,
+                package_id,
+                force_publish=bool(payload.get("force_publish", False)),
+            )
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse(_serialize_package(package, workflow_store, user.id))

@@ -270,6 +270,7 @@ export interface PackageWorkflowSummary {
   is_validated: boolean
   is_draft?: boolean
   building?: boolean
+  invalid_public?: boolean
   role: 'head' | 'dependency'
 }
 

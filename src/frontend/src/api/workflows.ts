@@ -49,8 +49,8 @@ export async function setPackageHead(packageId: string, workflowId: string): Pro
   return api.post<WorkflowPackage>(`/api/packages/${packageId}/head`, { workflow_id: workflowId })
 }
 
-export async function publishPackage(packageId: string): Promise<WorkflowPackage> {
-  return api.post<WorkflowPackage>(`/api/packages/${packageId}/publish`, {})
+export async function publishPackage(packageId: string, forcePublish = false): Promise<WorkflowPackage> {
+  return api.post<WorkflowPackage>(`/api/packages/${packageId}/publish`, { force_publish: forcePublish })
 }
 
 export async function clonePackage(packageId: string): Promise<WorkflowPackage> {

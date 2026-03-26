@@ -162,9 +162,14 @@ class WorkflowPackageService:
                 )
         return issues
 
-    def publish_package(self, user_id: str, package_id: str) -> WorkflowPackageRecord:
+    def publish_package(
+        self, user_id: str, package_id: str, *, force_publish: bool = False
+    ) -> WorkflowPackageRecord:
         issues = self.validate_package(user_id, package_id)
-        if issues:
+        blocking_codes = {"empty_package", "missing_head"}
+        if issues and (
+            not force_publish or any(issue.code in blocking_codes for issue in issues)
+        ):
             raise ValueError(issues[0].message)
         self.package_store.update_package(
             package_id,
@@ -173,6 +178,14 @@ class WorkflowPackageService:
             published_at=datetime.now(timezone.utc).isoformat(),
         )
         return self._require_package(user_id, package_id)
+
+    def delete_package(self, user_id: str, package_id: str) -> bool:
+        package = self._require_package(user_id, package_id)
+        for member in package.members:
+            self.package_store.remove_workflow_from_package(
+                package_id, member.workflow_id
+            )
+        return self.package_store.delete_package(package_id, user_id)
 
     def clone_package(
         self, source_package_id: str, target_user_id: str

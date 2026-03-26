@@ -173,10 +173,6 @@ export default function LibraryPage() {
         <div className="library-search">
           <input type="text" placeholder="Search workflows and packages..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
-        {activeTab !== 'mine' && !isLoading && (
-          <p className="muted">{activeTab === 'published' ? (publicWorkflows?.length || 0) : (peerReviewWorkflows?.length || 0)} packages</p>
-        )}
-
         {packageError && <p className="error-text">{packageError}</p>}
 
         {activeTab === 'mine' ? (
@@ -266,7 +262,7 @@ export default function LibraryPage() {
               {selectedPackage.issues?.length ? <div className="validation-warning"><ul>{selectedPackage.issues.map(issue => <li key={`${issue.code}-${issue.workflow_id || issue.message}`}>{issue.message}</li>)}</ul></div> : null}
               <div className="library-grid">
                 {selectedPackage.workflows.map(workflow => (
-                  <div key={workflow.id} className="library-card">
+                  <div key={workflow.id} className="library-card" onClick={(e) => handleSelectWorkflow(workflow, e as unknown as React.MouseEvent)}>
                     <div className="library-card-header">
                       <h3 className="library-card-name">
                         {workflow.name}
@@ -277,9 +273,9 @@ export default function LibraryPage() {
                     <div className="library-card-meta">
                       {workflow.tags.map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                       <span className="library-card-domain">{workflow.role === 'head' ? 'Head workflow' : 'Dependency'}</span>
+                      {workflow.invalid_public && <span className="library-card-tag">Not validated</span>}
                     </div>
                     <div className="form-actions">
-                      <button className="ghost" onClick={(e) => handleSelectWorkflow(workflow, e as unknown as React.MouseEvent)}>Open</button>
                       {workflow.role !== 'head' && <button className="ghost" onClick={async () => setSelectedPackage(await setPackageHead(selectedPackage.id, workflow.id))}>Set as head workflow</button>}
                       <button className="ghost" onClick={async () => setSelectedPackage(await removeWorkflowFromPackage(selectedPackage.id, workflow.id))}>Remove</button>
                     </div>
@@ -292,7 +288,22 @@ export default function LibraryPage() {
                   const preview = await previewPackageAutofetch(selectedPackage.id)
                   setAutofetchPreview(preview)
                 }}>Automatically fetch all subflows</button>}
-                <button className="primary" onClick={async () => setSelectedPackage(await publishPackage(selectedPackage.id))} disabled={!selectedPackage.is_publishable}>Publish Package</button>
+                <button className="primary" onClick={async () => {
+                  if (selectedPackage.is_published) return
+                  try {
+                    setSelectedPackage(await publishPackage(selectedPackage.id))
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Publish failed'
+                    if (message.toLowerCase().includes('not validated') || message.toLowerCase().includes('draft')) {
+                      const proceed = confirm(`${message}\n\nPublish anyway?`)
+                      if (proceed) {
+                        setSelectedPackage(await publishPackage(selectedPackage.id, true))
+                      }
+                    } else {
+                      setPackageError(message)
+                    }
+                  }
+                }}>{selectedPackage.is_published ? 'Already published!' : 'Publish Package'}</button>
               </div>
             </div>
           </div>
@@ -331,6 +342,7 @@ export default function LibraryPage() {
                     <div className="library-card-meta">
                       {workflow.tags.map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                       <span className="library-card-domain">{workflow.role === 'head' ? 'Head workflow' : 'Dependency'}</span>
+                      {workflow.invalid_public && <span className="library-card-tag">Not validated</span>}
                     </div>
                   </div>
                 ))}
