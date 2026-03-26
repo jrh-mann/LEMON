@@ -62,6 +62,10 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
         doubts=[],
         output_type="string",
         is_draft=False,
+        package_id="pkg_root",
+        package_name="Root Package",
+        package_role="dependency",
+        package_head_workflow_id="wf_root",
     )
     workflow_store.create_workflow(
         workflow_id="wf_root",
@@ -115,6 +119,10 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
         doubts=[],
         output_type="string",
         is_draft=False,
+        package_id="pkg_root",
+        package_name="Root Package",
+        package_role="head",
+        package_head_workflow_id="wf_root",
     )
 
     export_resp = client.get("/api/workflows/wf_root/export-bundle")
@@ -124,9 +132,12 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
         manifest = json.loads(zf.read("manifest.json"))
         assert manifest["entry_workflow_id"] == "wf_root"
         assert set(manifest["workflow_ids"]) == {"wf_root", "wf_child"}
+        assert manifest["package"]["name"] == "Root Package"
+        assert manifest["package"]["head_workflow_id"] == "wf_root"
         exported_root = json.loads(zf.read("workflows/wf_root.json"))
         assert "validation_score" not in exported_root["metadata"]
         assert "validation_count" not in exported_root["metadata"]
+        assert exported_root["package"]["role"] == "head"
     assert export_resp.headers.get("X-LEMON-Export-Warnings") == "[]"
 
     import_resp = client.post(
@@ -139,12 +150,17 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
 
     imported_root = workflow_store.get_workflow(body["workflow_id"], user.id)
     assert imported_root is not None
+    assert imported_root.package_name == "Root Package"
+    assert imported_root.package_role == "head"
     subprocess_node = next(
         node for node in imported_root.nodes if node["type"] == "subprocess"
     )
     imported_child_id = subprocess_node["subworkflow_id"]
     assert imported_child_id != "wf_child"
-    assert workflow_store.get_workflow(imported_child_id, user.id) is not None
+    imported_child = workflow_store.get_workflow(imported_child_id, user.id)
+    assert imported_child is not None
+    assert imported_child.package_name == "Root Package"
+    assert imported_child.package_head_workflow_id == imported_root.id
 
 
 def test_import_single_workflow_persists_immediately(tmp_path: Path):

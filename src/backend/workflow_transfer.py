@@ -17,7 +17,7 @@ from .validation.workflow_validator import WorkflowValidator
 
 
 BUNDLE_FORMAT = "lemon-workflow-bundle"
-BUNDLE_VERSION = 1
+BUNDLE_VERSION = 2
 
 
 class WorkflowTransferError(ValueError):
@@ -96,6 +96,26 @@ def build_workflow_bundle_bytes(
         "workflow_ids": [record.id for record in records],
         "missing_workflow_ids": missing_workflow_ids,
     }
+    root_record = records[0] if records else None
+    if root_record and root_record.package_id:
+        manifest["package"] = {
+            "id": root_record.package_id,
+            "name": root_record.package_name,
+            "head_workflow_id": root_record.package_head_workflow_id or root_record.id,
+            "members": [
+                {
+                    "workflow_id": record.id,
+                    "role": record.package_role
+                    or (
+                        "head"
+                        if record.id == root_record.package_head_workflow_id
+                        else "dependency"
+                    ),
+                }
+                for record in records
+                if record.package_id == root_record.package_id
+            ],
+        }
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -140,7 +160,8 @@ def import_workflow_bundle_zip(
             raw_manifest = _read_zip_json(zf, "manifest.json")
             if raw_manifest.get("format") != BUNDLE_FORMAT:
                 raise WorkflowTransferError("Invalid bundle format")
-            if raw_manifest.get("version") != BUNDLE_VERSION:
+            manifest_version = raw_manifest.get("version")
+            if manifest_version not in (1, BUNDLE_VERSION):
                 raise WorkflowTransferError("Unsupported bundle version")
 
             workflow_ids = raw_manifest.get("workflow_ids")
@@ -165,6 +186,7 @@ def import_workflow_bundle_zip(
                 normalized_payloads.append(normalized)
 
             _rewrite_bundle_references(normalized_payloads, id_map)
+            _rewrite_bundle_package_metadata(normalized_payloads, raw_manifest, id_map)
 
             validated_payloads: List[Tuple[Dict[str, Any], bool]] = []
             for payload in normalized_payloads:
@@ -316,6 +338,41 @@ def _rewrite_bundle_references(
             sub_id = variable.get("subworkflow_id")
             if sub_id in id_map:
                 variable["subworkflow_id"] = id_map[sub_id]
+
+
+def _rewrite_bundle_package_metadata(
+    payloads: List[Dict[str, Any]],
+    raw_manifest: Dict[str, Any],
+    id_map: Dict[str, str],
+) -> None:
+    package = raw_manifest.get("package")
+    if not isinstance(package, dict):
+        return
+
+    members = package.get("members")
+    if not isinstance(members, list):
+        return
+
+    member_roles = {
+        entry.get("workflow_id"): entry.get("role")
+        for entry in members
+        if isinstance(entry, dict) and isinstance(entry.get("workflow_id"), str)
+    }
+    package_id = package.get("id")
+    package_name = package.get("name")
+    old_head_id = package.get("head_workflow_id")
+    new_head_id = id_map.get(old_head_id) if isinstance(old_head_id, str) else None
+
+    for payload in payloads:
+        old_id = payload.get("old_id")
+        if old_id not in member_roles:
+            continue
+        payload["package"] = {
+            "id": package_id,
+            "name": package_name,
+            "role": member_roles[old_id],
+            "head_workflow_id": new_head_id,
+        }
 
 
 def _validate_import_payload(payload: Dict[str, Any], *, force_import: bool) -> bool:
