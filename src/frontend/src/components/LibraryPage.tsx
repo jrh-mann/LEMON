@@ -11,6 +11,7 @@ import {
   deleteWorkflow,
   getPackage,
   getPublicPackage,
+  getPublicPackageWorkflow,
   listPackages,
   listPublicWorkflows,
   previewPackageAutofetch,
@@ -45,6 +46,7 @@ export default function LibraryPage() {
   const [packageError, setPackageError] = useState<string | null>(null)
   const [autofetchPreview, setAutofetchPreview] = useState<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> } | null>(null)
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<WorkflowPackage | null>(null)
+  const [selectedPublicWorkflowPreview, setSelectedPublicWorkflowPreview] = useState<{ id: string; metadata: { name: string; description: string; domain?: string; tags: string[]; is_validated: boolean }; output_type: string; variables: Array<{ name: string; type?: string }>; outputs: Array<{ name: string; type?: string }>; nodes: Array<unknown>; edges: Array<unknown> } | null>(null)
 
   const refreshPublicTabs = useCallback(async () => {
     const [published, review] = await Promise.all([
@@ -351,7 +353,7 @@ export default function LibraryPage() {
               </div>
               <div className="library-grid">
                 {selectedPublicPackage.workflows.map(workflow => (
-                  <div key={workflow.id} className="library-card">
+                  <div key={workflow.id} className="library-card" onClick={async () => setSelectedPublicWorkflowPreview(await getPublicPackageWorkflow(selectedPublicPackage.id, workflow.id))}>
                     <div className="library-card-header"><h3 className="library-card-name">{workflow.name}</h3></div>
                     <p className="library-card-desc">{workflow.description || 'No description'}</p>
                     <div className="library-card-meta">
@@ -403,6 +405,40 @@ export default function LibraryPage() {
                   setAutofetchPreview(null)
                   await refreshActiveTab()
                 }}>Apply</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {selectedPublicWorkflowPreview && (
+        <div className="modal">
+          <div className="modal-backdrop" onClick={() => setSelectedPublicWorkflowPreview(null)} />
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>{selectedPublicWorkflowPreview.metadata.name}</h3>
+              <button className="modal-close" onClick={() => setSelectedPublicWorkflowPreview(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <p className="muted">Read-only workflow preview</p>
+              <p>{selectedPublicWorkflowPreview.metadata.description || 'No description'}</p>
+              <div className="library-card-meta">
+                {(selectedPublicWorkflowPreview.metadata.tags || []).map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
+                {selectedPublicWorkflowPreview.metadata.domain && <span className="library-card-domain">{selectedPublicWorkflowPreview.metadata.domain}</span>}
+                {!selectedPublicWorkflowPreview.metadata.is_validated && <span className="library-card-tag">Not validated</span>}
+              </div>
+              <div className="library-grid">
+                <div className="library-card">
+                  <div className="library-card-header"><h3 className="library-card-name">Structure</h3></div>
+                  <p className="library-card-desc">{selectedPublicWorkflowPreview.nodes.length} nodes, {selectedPublicWorkflowPreview.edges.length} edges</p>
+                </div>
+                <div className="library-card">
+                  <div className="library-card-header"><h3 className="library-card-name">Inputs</h3></div>
+                  <p className="library-card-desc">{selectedPublicWorkflowPreview.variables.length ? selectedPublicWorkflowPreview.variables.map(v => v.name).join(', ') : 'No inputs'}</p>
+                </div>
+                <div className="library-card">
+                  <div className="library-card-header"><h3 className="library-card-name">Outputs</h3></div>
+                  <p className="library-card-desc">{selectedPublicWorkflowPreview.outputs.length ? selectedPublicWorkflowPreview.outputs.map(o => o.name).join(', ') : 'No outputs'}</p>
+                </div>
               </div>
             </div>
           </div>
