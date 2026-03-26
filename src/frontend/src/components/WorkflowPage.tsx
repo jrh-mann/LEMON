@@ -10,7 +10,7 @@ import ToolInspectorModal from './ToolInspectorModal'
 import { ExecutionLogModal } from './ExecutionLogModal'
 import { ApiError, API_BASE, getSessionId } from '../api/client'
 import { getCurrentUser } from '../api/auth'
-import { getWorkflow, importWorkflowBundle, importWorkflowJson } from '../api/workflows'
+import { getWorkflow, importWorkflowBundle, importWorkflowJson, type ValidationError, type WorkflowImportError } from '../api/workflows'
 import { syncConversationMessages } from '../utils/conversationSync'
 import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
@@ -106,6 +106,8 @@ export default function WorkflowPage() {
     const [showImportModal, setShowImportModal] = useState(false)
     const [importJsonText, setImportJsonText] = useState('')
     const [importError, setImportError] = useState<string | null>(null)
+    const [importValidationErrors, setImportValidationErrors] = useState<ValidationError[] | null>(null)
+    const pendingImportActionRef = useRef<(() => Promise<void>) | null>(null)
 
     // Initialize session and streaming session state
     useSession(authReady)
@@ -434,12 +436,14 @@ export default function WorkflowPage() {
     }, [addPendingFile, setError, startWorkflowSession])
 
     const completeImportedNavigation = useCallback(async (newId: string) => {
-        loadedWorkflowIdRef.current = newId
+        loadedWorkflowIdRef.current = null
         useChatStore.getState().setActiveWorkflowId(newId)
         setCurrentWorkflowId(newId)
         setShowImportModal(false)
         setImportJsonText('')
         setImportError(null)
+        setImportValidationErrors(null)
+        pendingImportActionRef.current = null
 
         setHomeExited(true)
         await new Promise(resolve => setTimeout(resolve, 400))
@@ -447,15 +451,33 @@ export default function WorkflowPage() {
         triggerReveal()
     }, [navigate, setCurrentWorkflowId, setHomeExited, triggerReveal])
 
+    const handleImportFailure = useCallback((err: unknown, fallbackMessage: string) => {
+        const importError = err as WorkflowImportError
+        const validationErrors = Array.isArray(importError.validation_errors)
+            ? importError.validation_errors
+            : null
+        setImportValidationErrors(validationErrors)
+        setImportError(importError.message || fallbackMessage)
+    }, [])
+
     const handleImportJson = useCallback(async () => {
         try {
             const payload = JSON.parse(importJsonText)
             const result = await importWorkflowJson(payload)
             await completeImportedNavigation(result.workflow_id)
         } catch (err) {
-            setImportError(err instanceof Error ? err.message : 'Invalid JSON')
+            handleImportFailure(err, 'Invalid JSON')
         }
-    }, [completeImportedNavigation, importJsonText])
+    }, [completeImportedNavigation, handleImportFailure, importJsonText])
+
+    const handleImportAnyway = useCallback(async () => {
+        if (!pendingImportActionRef.current) return
+        try {
+            await pendingImportActionRef.current()
+        } catch (err) {
+            handleImportFailure(err, 'Import failed')
+        }
+    }, [handleImportFailure])
 
     const handleImportFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -464,7 +486,13 @@ export default function WorkflowPage() {
         if (file.name.toLowerCase().endsWith('.zip')) {
             importWorkflowBundle(file)
                 .then(result => completeImportedNavigation(result.workflow_id))
-                .catch(err => setImportError(err instanceof Error ? err.message : 'Invalid workflow bundle'))
+                .catch(err => {
+                    pendingImportActionRef.current = async () => {
+                        const result = await importWorkflowBundle(file, true)
+                        await completeImportedNavigation(result.workflow_id)
+                    }
+                    handleImportFailure(err, 'Invalid workflow bundle')
+                })
 
             if (homeImportInputRef.current) {
                 homeImportInputRef.current.value = ''
@@ -480,7 +508,16 @@ export default function WorkflowPage() {
                 const result = await importWorkflowJson(payload)
                 await completeImportedNavigation(result.workflow_id)
             } catch (err) {
-                setImportError(err instanceof Error ? err.message : 'Invalid JSON file')
+                try {
+                    const payload = JSON.parse(event.target?.result as string)
+                    pendingImportActionRef.current = async () => {
+                        const result = await importWorkflowJson(payload, true)
+                        await completeImportedNavigation(result.workflow_id)
+                    }
+                } catch {
+                    pendingImportActionRef.current = null
+                }
+                handleImportFailure(err, 'Invalid JSON file')
             }
         }
         reader.onerror = () => {
@@ -611,13 +648,30 @@ export default function WorkflowPage() {
                             onChange={(e) => {
                                 setImportJsonText(e.target.value)
                                 setImportError(null)
+                                setImportValidationErrors(null)
+                                pendingImportActionRef.current = null
                             }}
                             rows={10}
                         />
                         {importError && <p className="error-text">{importError}</p>}
+                        {importValidationErrors && importValidationErrors.length > 0 && (
+                            <div className="validation-warning">
+                                <p className="muted small">The import is valid JSON, but the workflow failed strict validation:</p>
+                                <ul>
+                                    {importValidationErrors.map((error, index) => (
+                                        <li key={`${error.code}-${index}`}>{error.code}: {error.message}</li>
+                                    ))}
+                                </ul>
+                                <p className="muted small">You can still import this workflow, but it will be marked unvalidated.</p>
+                            </div>
+                        )}
                         <div className="json-modal-actions">
                             <button className="ghost" onClick={() => setShowImportModal(false)}>Cancel</button>
-                            <button className="primary" onClick={handleImportJson} disabled={!importJsonText.trim()}>Import</button>
+                            {importValidationErrors && importValidationErrors.length > 0 ? (
+                                <button className="primary warning" onClick={handleImportAnyway}>Import Anyway</button>
+                            ) : (
+                                <button className="primary" onClick={handleImportJson} disabled={!importJsonText.trim()}>Import</button>
+                            )}
                         </div>
                     </div>
                 </div>

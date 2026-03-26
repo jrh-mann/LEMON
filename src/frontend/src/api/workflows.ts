@@ -1,4 +1,4 @@
-import { api, API_BASE, getSessionId } from './client'
+import { api, API_BASE, ApiError, getSessionId } from './client'
 import type {
   WorkflowDetailResponse,
   WorkflowSummary,
@@ -60,14 +60,35 @@ export async function exportWorkflowBundleWithWarnings(
   return { blob: await response.blob(), warnings }
 }
 
-export async function importWorkflowJson(payload: unknown): Promise<{ workflow_id: string }> {
-  return api.post<{ workflow_id: string }>('/api/workflows/import', payload)
+export interface WorkflowImportError extends Error {
+  validation_errors?: ValidationError[]
 }
 
-export async function importWorkflowBundle(file: File): Promise<{ workflow_id: string; imported_count: number }> {
+export async function importWorkflowJson(
+  payload: unknown,
+  forceImport = false
+): Promise<{ workflow_id: string }> {
+  try {
+    return await api.post<{ workflow_id: string }>(`/api/workflows/import?force_import=${forceImport}`, payload)
+  } catch (error) {
+    const importError = error as WorkflowImportError
+    if (error instanceof ApiError && error.data && typeof error.data === 'object') {
+      importError.validation_errors = (error.data as { validation_errors?: ValidationError[] }).validation_errors
+      if ((error.data as { message?: string }).message) {
+        importError.message = (error.data as { message: string }).message
+      }
+    }
+    throw importError
+  }
+}
+
+export async function importWorkflowBundle(
+  file: File,
+  forceImport = false
+): Promise<{ workflow_id: string; imported_count: number }> {
   const form = new FormData()
   form.append('file', file)
-  const response = await fetch('/api/workflows/import-bundle', {
+  const response = await fetch(`/api/workflows/import-bundle?force_import=${forceImport}`, {
     method: 'POST',
     body: form,
     credentials: 'include',
@@ -75,7 +96,9 @@ export async function importWorkflowBundle(file: File): Promise<{ workflow_id: s
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: 'Failed to import workflow bundle' }))
-    throw new Error(body.error || 'Failed to import workflow bundle')
+    const error = new Error(body.message || body.error || 'Failed to import workflow bundle') as WorkflowImportError
+    error.validation_errors = body.validation_errors
+    throw error
   }
   return await response.json()
 }
