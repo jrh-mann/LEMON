@@ -135,6 +135,8 @@ export default function LibraryPage() {
 
   const visibleWorkflows = useMemo(() => (myWorkflows || []).filter(wf => filterBySearch(wf.name, wf.description, wf.tags)), [filterBySearch, myWorkflows])
   const visiblePackages = useMemo(() => (myPackages || []).filter(pkg => filterBySearch(pkg.name || 'Empty package', pkg.description, pkg.workflows.flatMap(wf => wf.tags))), [filterBySearch, myPackages])
+  const visiblePublicWorkflows = useMemo(() => (publicWorkflows || []).filter(wf => filterBySearch(wf.name, wf.description, wf.tags || [])), [filterBySearch, publicWorkflows])
+  const visiblePeerReviewWorkflows = useMemo(() => (peerReviewWorkflows || []).filter(wf => filterBySearch(wf.name, wf.description, wf.tags || [])), [filterBySearch, peerReviewWorkflows])
 
   const workflowReturnPath = currentWorkflowId ? `/workflow/${currentWorkflowId}` : '/workflow'
 
@@ -244,7 +246,7 @@ export default function LibraryPage() {
           </div>
         ) : (
           <div className="library-grid">
-            {((activeTab === 'published' ? publicWorkflows : peerReviewWorkflows) || []).map(wf => (
+            {(activeTab === 'published' ? visiblePublicWorkflows : visiblePeerReviewWorkflows).map(wf => (
               <div key={wf.id} className="library-card" onClick={async () => setSelectedPublicPackage(await getPublicPackage(wf.id))}>
                 <div className="library-card-header"><h3 className="library-card-name">{wf.name}</h3></div>
                 {wf.description && <p className="library-card-desc">{wf.description}</p>}
