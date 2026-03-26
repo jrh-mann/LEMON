@@ -1146,6 +1146,49 @@ class TestCompileWorkflowToPython:
             for warning in compiled.warnings
         )
 
+    def test_missing_subflow_generates_runtime_error_stub(self):
+        nodes = [
+            {"id": "start", "type": "start", "label": "Start"},
+            {
+                "id": "sub",
+                "type": "subprocess",
+                "label": "Missing Child",
+                "subworkflow_id": "wf_missing",
+                "input_mapping": {},
+                "output_variable": "Child Result",
+            },
+            {
+                "id": "end",
+                "type": "end",
+                "label": "Done",
+                "output_variable": "Child Result",
+                "output_type": "string",
+            },
+        ]
+        edges = [
+            {"from": "start", "to": "sub"},
+            {"from": "sub", "to": "end"},
+        ]
+
+        compiled = compile_workflow_to_python(
+            nodes=nodes,
+            edges=edges,
+            variables=[],
+            fetch_subworkflow=lambda workflow_id: None,
+            workflow_name="Missing Subflow Workflow",
+        )
+
+        assert compiled.success
+        assert compiled.partial_failure is True
+        assert compiled.code is not None
+        assert "def subflow_wf_missing(*args, **kwargs)" in compiled.code
+        assert "raise RuntimeError('Missing subflow: wf_missing')" in compiled.code
+        ast.parse(compiled.code)
+        namespace = {}
+        exec(compiled.code, namespace)
+        with pytest.raises(RuntimeError, match="Missing subflow: wf_missing"):
+            namespace["missing_subflow_workflow"]()
+
 
 # --- DAG Compilation Tests ---
 

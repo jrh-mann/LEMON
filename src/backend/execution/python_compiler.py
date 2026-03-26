@@ -425,6 +425,7 @@ class PythonCodeGenerator:
         self.include_main = include_main
         self.fetch_subworkflow = fetch_subworkflow
         self._processed_subflows = _processed_subflows or set()
+        self._missing_subflow_ids: Set[str] = set()
 
         self.condition_compiler = ConditionCompiler()
         self._indent_level = 0
@@ -449,6 +450,7 @@ class PythonCodeGenerator:
             self._lines = []
             self._warnings = []
             self._has_partial_failure = False  # True only when parts of compilation are broken (e.g. missing subworkflows)
+            self._missing_subflow_ids = set()
 
             # Create resolver
             # Filter to only input-source variables for function parameters
@@ -499,10 +501,11 @@ class PythonCodeGenerator:
                                 ["Subflow: " + w for w in sub_result.warnings]
                             )
                         else:
+                            self._missing_subflow_ids.add(sub_id)
                             self._has_partial_failure = True
                             self._warnings.append(
                                 f"Subworkflow '{sub_id}' could not be compiled because it could not be fetched. "
-                                "Generated code contains a placeholder comment instead."
+                                "Generated code contains a runtime error stub instead."
                             )
 
             # --- Pre-pass: identify and extract helper functions for DAG nodes ---
@@ -565,7 +568,13 @@ class PythonCodeGenerator:
             # then extracted helpers, then the main function definition.
             # Split _lines at the first blank line after imports to insert helpers.
             main_code = "\n".join(self._lines)
-            helper_code = "\n\n".join(subflow_code_blocks + self._helper_blocks)
+            missing_stub_blocks = [
+                self._generate_missing_subflow_stub(sub_id)
+                for sub_id in sorted(self._missing_subflow_ids)
+            ]
+            helper_code = "\n\n".join(
+                missing_stub_blocks + subflow_code_blocks + self._helper_blocks
+            )
             if helper_code:
                 # Insert helpers after the import block (first blank line)
                 import_end = main_code.find("\n\n")
@@ -622,6 +631,13 @@ class PythonCodeGenerator:
             stripped.append(line)
 
         return "\n".join(stripped).strip()
+
+    def _generate_missing_subflow_stub(self, subworkflow_id: str) -> str:
+        func_name = f"subflow_{subworkflow_id.replace('-', '_')}"
+        return (
+            f"def {func_name}(*args, **kwargs) -> Union[str, int, float, bool]:\n"
+            f"    raise RuntimeError({repr(f'Missing subflow: {subworkflow_id}')})"
+        )
 
     def _to_function_name(self, name: str) -> str:
         """Convert workflow name to valid Python function name."""
