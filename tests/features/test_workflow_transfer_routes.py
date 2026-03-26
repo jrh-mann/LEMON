@@ -178,6 +178,58 @@ def test_import_single_workflow_persists_immediately(tmp_path: Path):
     stored = workflow_store.get_workflow(workflow_id, user.id)
     assert stored is not None
     assert stored.name == "Imported"
+    assert stored.is_validated is True
+
+
+def test_invalid_import_returns_validation_errors_without_force_import(tmp_path: Path):
+    client, _, _ = _client(tmp_path)
+    payload = {
+        "id": "wf_invalid",
+        "metadata": {"name": "Invalid"},
+        "flowchart": {
+            "nodes": [
+                {"id": "start1", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "start2", "type": "start", "label": "Input", "x": 10, "y": 0},
+            ],
+            "edges": [],
+        },
+        "variables": [],
+        "outputs": [],
+        "output_type": "string",
+    }
+
+    response = client.post("/api/workflows/import", json=payload)
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == "Workflow validation failed"
+    assert body["validation_errors"]
+
+
+def test_invalid_import_anyway_persists_unvalidated(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+    payload = {
+        "id": "wf_invalid",
+        "metadata": {"name": "Invalid"},
+        "flowchart": {
+            "nodes": [
+                {"id": "start1", "type": "start", "label": "Start", "x": 0, "y": 0},
+                {"id": "start2", "type": "start", "label": "Input", "x": 10, "y": 0},
+            ],
+            "edges": [],
+        },
+        "variables": [],
+        "outputs": [],
+        "output_type": "string",
+    }
+
+    response = client.post("/api/workflows/import?force_import=true", json=payload)
+
+    assert response.status_code == 201
+    workflow_id = response.json()["workflow_id"]
+    stored = workflow_store.get_workflow(workflow_id, user.id)
+    assert stored is not None
+    assert stored.is_validated is False
 
 
 def test_bundle_export_reports_recursive_subflow_warning(tmp_path: Path):
@@ -277,3 +329,109 @@ def test_bundle_export_reports_recursive_subflow_warning(tmp_path: Path):
     assert export_resp.status_code == 200
     warnings = json.loads(export_resp.headers["X-LEMON-Export-Warnings"])
     assert any("Recursive subflow cycle detected" in warning for warning in warnings)
+
+
+def test_bundle_export_allows_missing_subflow_with_warning(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+
+    workflow_store.create_workflow(
+        workflow_id="wf_root_missing_child",
+        user_id=user.id,
+        name="Root Missing Child",
+        description="",
+        domain=None,
+        tags=[],
+        nodes=[
+            {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {
+                "id": "sub",
+                "type": "subprocess",
+                "label": "Missing",
+                "x": 0,
+                "y": 100,
+                "subworkflow_id": "wf_missing",
+                "input_mapping": {},
+                "output_variable": "out",
+            },
+            {
+                "id": "end",
+                "type": "end",
+                "label": "Done",
+                "x": 0,
+                "y": 200,
+                "output_variable": "out",
+                "output_type": "string",
+            },
+        ],
+        edges=[{"from": "start", "to": "sub"}, {"from": "sub", "to": "end"}],
+        inputs=[],
+        outputs=[{"name": "result", "type": "string"}],
+        tree={
+            "start": {
+                "id": "start",
+                "children": [
+                    {"id": "sub", "children": [{"id": "end", "children": []}]}
+                ],
+            }
+        },
+        doubts=[],
+        output_type="string",
+        is_draft=False,
+    )
+
+    export_resp = client.get("/api/workflows/wf_root_missing_child/export-bundle")
+
+    assert export_resp.status_code == 200
+    warnings = json.loads(export_resp.headers["X-LEMON-Export-Warnings"])
+    assert any(
+        "could not be fetched and was omitted from the bundle" in warning
+        for warning in warnings
+    )
+
+    with zipfile.ZipFile(io.BytesIO(export_resp.content), "r") as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        assert manifest["workflow_ids"] == ["wf_root_missing_child"]
+        assert manifest["missing_workflow_ids"] == ["wf_missing"]
+        assert "workflows/wf_root_missing_child.json" in zf.namelist()
+        assert "workflows/wf_missing.json" not in zf.namelist()
+
+
+def test_invalid_bundle_import_requires_force_import(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+
+    workflow_store.create_workflow(
+        workflow_id="wf_invalid_bundle_source",
+        user_id=user.id,
+        name="Invalid Bundle Source",
+        description="",
+        domain=None,
+        tags=[],
+        nodes=[
+            {"id": "start1", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {"id": "start2", "type": "start", "label": "Input", "x": 10, "y": 0},
+        ],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={"start": {"id": "start1", "children": []}},
+        doubts=[],
+        output_type="string",
+        is_draft=False,
+        is_validated=False,
+    )
+
+    export_resp = client.get("/api/workflows/wf_invalid_bundle_source/export-bundle")
+    assert export_resp.status_code == 200
+
+    import_resp = client.post(
+        "/api/workflows/import-bundle",
+        files={"file": ("bundle.zip", export_resp.content, "application/zip")},
+    )
+    assert import_resp.status_code == 400
+    assert import_resp.json()["error"] == "Workflow validation failed"
+
+    forced_resp = client.post(
+        "/api/workflows/import-bundle?force_import=true",
+        files={"file": ("bundle.zip", export_resp.content, "application/zip")},
+    )
+    assert forced_resp.status_code == 201

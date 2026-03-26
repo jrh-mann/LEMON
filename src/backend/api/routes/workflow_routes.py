@@ -23,6 +23,7 @@ from ...storage.auth import AuthUser
 from .helpers import _calculate_confidence, _infer_outputs_from_nodes, api_error
 from ...storage.workflows import WorkflowStore
 from ...workflow_transfer import (
+    WorkflowImportValidationError,
     WorkflowTransferError,
     build_workflow_bundle_bytes,
     import_single_workflow_json,
@@ -314,24 +315,54 @@ def register_workflow_routes(
     ) -> JSONResponse:
         try:
             payload = await request.json()
-            workflow_id = import_single_workflow_json(workflow_store, user, payload)
+            force_import = (
+                request.query_params.get("force_import", "false").lower() == "true"
+            )
+            workflow_id = import_single_workflow_json(
+                workflow_store,
+                user,
+                payload,
+                force_import=force_import,
+            )
             return JSONResponse({"workflow_id": workflow_id}, status_code=201)
+        except WorkflowImportValidationError as exc:
+            return JSONResponse(
+                {
+                    "error": "Workflow validation failed",
+                    "message": exc.message,
+                    "validation_errors": exc.errors,
+                },
+                status_code=400,
+            )
         except (json.JSONDecodeError, ValueError, WorkflowTransferError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
     @router.post("/api/workflows/import-bundle")
     async def import_workflow_bundle(
         file: UploadFile = File(...),
+        force_import: bool = False,
         user: AuthUser = Depends(require_auth),
     ) -> JSONResponse:
         try:
             bundle_bytes = await file.read()
             workflow_id, imported_count = import_workflow_bundle_zip(
-                workflow_store, user, bundle_bytes
+                workflow_store,
+                user,
+                bundle_bytes,
+                force_import=force_import,
             )
             return JSONResponse(
                 {"workflow_id": workflow_id, "imported_count": imported_count},
                 status_code=201,
+            )
+        except WorkflowImportValidationError as exc:
+            return JSONResponse(
+                {
+                    "error": "Workflow validation failed",
+                    "message": exc.message,
+                    "validation_errors": exc.errors,
+                },
+                status_code=400,
             )
         except WorkflowTransferError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)

@@ -24,6 +24,15 @@ class WorkflowTransferError(ValueError):
     """Raised when import/export payloads are invalid."""
 
 
+class WorkflowImportValidationError(WorkflowTransferError):
+    """Raised when import payload is well-formed but fails workflow validation."""
+
+    def __init__(self, errors: List[Dict[str, Any]], message: str):
+        super().__init__(message)
+        self.errors = errors
+        self.message = message
+
+
 @dataclass
 class ImportedWorkflow:
     old_id: str
@@ -60,16 +69,26 @@ def build_workflow_bundle_bytes(
     user: AuthUser,
     root_workflow_id: str,
 ) -> Tuple[bytes, List[str]]:
-    records = _collect_workflow_bundle(workflow_store, user, root_workflow_id)
+    records, missing_workflow_ids = _collect_workflow_bundle(
+        workflow_store, user, root_workflow_id
+    )
     warnings = detect_subflow_cycles(
         records[0].nodes if records else [],
         lambda workflow_id: workflow_store.get_workflow(workflow_id, user.id),
+    )
+    warnings.extend(
+        [
+            f"Subworkflow '{workflow_id}' could not be fetched and was omitted from the bundle. "
+            "Import or execution may fail unless the missing workflow is restored."
+            for workflow_id in missing_workflow_ids
+        ]
     )
     manifest = {
         "version": BUNDLE_VERSION,
         "format": BUNDLE_FORMAT,
         "entry_workflow_id": root_workflow_id,
         "workflow_ids": [record.id for record in records],
+        "missing_workflow_ids": missing_workflow_ids,
     }
 
     buffer = io.BytesIO()
@@ -87,10 +106,13 @@ def import_single_workflow_json(
     workflow_store: WorkflowStore,
     user: AuthUser,
     payload: Dict[str, Any],
+    force_import: bool = False,
 ) -> str:
     imported = _normalize_imported_workflow(payload, generate_workflow_id())
-    _validate_import_payload(imported)
-    _persist_imported_workflow(workflow_store, user, imported)
+    is_validated = _validate_import_payload(imported, force_import=force_import)
+    _persist_imported_workflow(
+        workflow_store, user, imported, is_validated=is_validated
+    )
     return imported["id"]
 
 
@@ -98,6 +120,7 @@ def import_workflow_bundle_zip(
     workflow_store: WorkflowStore,
     user: AuthUser,
     zip_bytes: bytes,
+    force_import: bool = False,
 ) -> Tuple[str, int]:
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
@@ -130,10 +153,19 @@ def import_workflow_bundle_zip(
 
             _rewrite_bundle_references(normalized_payloads, id_map)
 
+            validated_payloads: List[Tuple[Dict[str, Any], bool]] = []
             for payload in normalized_payloads:
-                _validate_import_payload(payload)
-            for payload in normalized_payloads:
-                _persist_imported_workflow(workflow_store, user, payload)
+                is_validated = _validate_import_payload(
+                    payload, force_import=force_import
+                )
+                validated_payloads.append((payload, is_validated))
+            for payload, is_validated in validated_payloads:
+                _persist_imported_workflow(
+                    workflow_store,
+                    user,
+                    payload,
+                    is_validated=is_validated,
+                )
 
             return id_map[entry_workflow_id], len(normalized_payloads)
     except zipfile.BadZipFile as exc:
@@ -144,9 +176,10 @@ def _collect_workflow_bundle(
     workflow_store: WorkflowStore,
     user: AuthUser,
     root_workflow_id: str,
-) -> List[WorkflowRecord]:
+) -> Tuple[List[WorkflowRecord], List[str]]:
     visited: Set[str] = set()
     ordered: List[WorkflowRecord] = []
+    missing: List[str] = []
     stack = [root_workflow_id]
 
     while stack:
@@ -155,7 +188,9 @@ def _collect_workflow_bundle(
             continue
         record = workflow_store.get_workflow(workflow_id, user.id)
         if record is None:
-            raise WorkflowTransferError(f"Subworkflow '{workflow_id}' not found")
+            if workflow_id not in missing:
+                missing.append(workflow_id)
+            continue
         visited.add(workflow_id)
         ordered.append(record)
 
@@ -163,7 +198,10 @@ def _collect_workflow_bundle(
             if node.get("type") == "subprocess" and node.get("subworkflow_id"):
                 stack.append(node["subworkflow_id"])
 
-    return ordered
+    if not ordered:
+        raise WorkflowTransferError(f"Subworkflow '{root_workflow_id}' not found")
+
+    return ordered, missing
 
 
 def _read_zip_json(zf: zipfile.ZipFile, filename: str) -> Dict[str, Any]:
@@ -240,7 +278,7 @@ def _rewrite_bundle_references(
                 variable["subworkflow_id"] = id_map[sub_id]
 
 
-def _validate_import_payload(payload: Dict[str, Any]) -> None:
+def _validate_import_payload(payload: Dict[str, Any], *, force_import: bool) -> bool:
     validator = WorkflowValidator()
     workflow = {
         "nodes": payload["nodes"],
@@ -248,15 +286,28 @@ def _validate_import_payload(payload: Dict[str, Any]) -> None:
         "variables": payload["variables"],
     }
     valid, errors = validator.validate(workflow, strict=True)
-    if not valid:
-        first = errors[0]
-        raise WorkflowTransferError(first.message)
+    if valid:
+        return True
+
+    error_payload = [
+        {"code": error.code, "message": error.message, "node_id": error.node_id}
+        for error in errors
+    ]
+    if force_import:
+        return False
+
+    raise WorkflowImportValidationError(
+        error_payload,
+        validator.format_errors(errors),
+    )
 
 
 def _persist_imported_workflow(
     workflow_store: WorkflowStore,
     user: AuthUser,
     payload: Dict[str, Any],
+    *,
+    is_validated: bool,
 ) -> None:
     metadata = payload["metadata"]
     workflow_store.create_workflow(
@@ -272,7 +323,7 @@ def _persist_imported_workflow(
         outputs=payload["outputs"],
         tree=tree_from_flowchart(payload["nodes"], payload["edges"]),
         doubts=[],
-        is_validated=False,
+        is_validated=is_validated,
         output_type=payload["output_type"],
         is_draft=False,
     )
