@@ -237,7 +237,7 @@ export default function LibraryPage() {
                 {wf.description && <p className="library-card-desc">{wf.description}</p>}
                 <div className="library-card-meta">
                   {wf.tags.slice(0, 3).map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
-                  <span className="library-card-tag">{wf.is_validated ? 'Validated' : 'Not validated'}</span>
+                  <span className={`library-card-validated ${wf.is_validated ? 'valid' : 'invalid'}`}>{wf.is_validated ? '✓ Validated' : '✕ Not validated'}</span>
                 </div>
               </div>
             ))}
@@ -250,7 +250,7 @@ export default function LibraryPage() {
                 {wf.description && <p className="library-card-desc">{wf.description}</p>}
                 <div className="library-card-meta">
                   {(wf.tags || []).slice(0, 3).map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
-                  <span className="library-card-tag">{wf.is_validated ? 'Validated' : 'Not validated'}</span>
+                  <span className={`library-card-validated ${wf.is_validated ? 'valid' : 'invalid'}`}>{wf.is_validated ? '✓ Validated' : '✕ Not validated'}</span>
                 </div>
                 {
                   <div className="library-card-votes">
@@ -295,7 +295,7 @@ export default function LibraryPage() {
                     <div className="library-card-meta">
                       {workflow.tags.map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                       <span className="library-card-domain">{workflow.role === 'head' ? 'Head workflow' : 'Dependency'}</span>
-                      <span className="library-card-tag">{workflow.is_validated ? 'Validated' : 'Not validated'}</span>
+                      <span className={`library-card-validated ${workflow.is_validated ? 'valid' : 'invalid'}`}>{workflow.is_validated ? '✓ Validated' : '✕ Not validated'}</span>
                     </div>
                     <div className="form-actions">
                       {workflow.role !== 'head' && <button className="ghost" onClick={async (e) => { e.stopPropagation(); const updated = await setPackageHead(selectedPackage.id, workflow.id); setSelectedPackage(updated); await refreshActiveTab() }}>Set as head workflow</button>}
@@ -363,7 +363,7 @@ export default function LibraryPage() {
                     <div className="library-card-meta">
                       {workflow.tags.map(tag => <span key={tag} className="library-card-tag">{tag}</span>)}
                       <span className="library-card-domain">{workflow.role === 'head' ? 'Head workflow' : 'Dependency'}</span>
-                      <span className="library-card-tag">{workflow.is_validated ? 'Validated' : 'Not validated'}</span>
+                      <span className={`library-card-validated ${workflow.is_validated ? 'valid' : 'invalid'}`}>{workflow.is_validated ? '✓ Validated' : '✕ Not validated'}</span>
                     </div>
                   </div>
                 ))}
