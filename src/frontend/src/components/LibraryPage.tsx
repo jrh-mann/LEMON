@@ -11,7 +11,6 @@ type BrowserTab = 'mine' | 'published' | 'peer_review'
 export default function LibraryPage() {
     const navigate = useNavigate()
     const { setZoomingCard, setZoomPhase } = useUIStore()
-    const currentWorkflowId = useWorkflowStore(s => s.currentWorkflow?.id)
     // When streaming handlers signal library changes (subworkflow created/finished),
     // this counter increments and triggers a re-fetch of all cached tabs
     const libraryRefreshTrigger = useWorkflowStore(s => s.libraryRefreshTrigger)

@@ -1,0 +1,2 @@
+sample,model,run_id,num_nodes,num_edges,num_variables,num_tool_calls,llm_calls,input_tokens,output_tokens,total_tokens,cost_usd,wall_time_s,error
+diabetes_treatment,sonnet,1_051fd2,29,29,11,30,23,755390,10747,766137,2.4274,546.3,None

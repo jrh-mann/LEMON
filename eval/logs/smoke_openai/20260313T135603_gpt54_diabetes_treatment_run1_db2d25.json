@@ -1,0 +1,200 @@
+{
+  "sample_name": "diabetes_treatment",
+  "model": "gpt54",
+  "model_id": "gpt-54",
+  "run_id": "1_db2d25",
+  "error": "RateLimitError: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to gpt-54 for gpt-5.4 in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. Please retry after 60 seconds. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}",
+  "wall_time_s": 663.42,
+  "cost_usd": 0.0898,
+  "tokens": {
+    "input_tokens": 8962,
+    "output_tokens": 3000,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 11962,
+    "llm_calls": 2
+  },
+  "workflow": {
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "outputs": []
+  },
+  "tool_calls": [
+    {
+      "tool_name": "extract_guidance",
+      "args": {
+        "filename": "Diabetes Treatment .png"
+      },
+      "result": {
+        "success": true,
+        "guidance": [
+          {
+            "text": "Metformin AccuRx:\n\u2022 Part 1 - Dosing Instructions\n\u2022 Part 2 - Side Effect Expectation",
+            "location": "blue box, top right",
+            "category": "treatment_detail",
+            "linked_to": "Metformin",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Symptoms of Diabetes:\n\u2022 Lethargy\n\u2022 Confusion\n\u2022 Increased Thirst\n\u2022 Increased Urinary Frequency\n\u2022 Increased Urinary Volume",
+            "location": "purple box, left side",
+            "category": "criteria",
+            "linked_to": null,
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "A1c Control\nControl is judged via 3 monthly A1c checks.\n\nTargets are below:\n1 med: A1c 48 or below\n2 meds: A1c 53 or below\n3 meds: A1c 58 or below",
+            "location": "purple box, left side, below Symptoms of Diabetes",
+            "category": "criteria",
+            "linked_to": null,
+            "link_type": "proximity",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would assess glycaemic control status based on current treatment intensity and latest 3\u2011monthly HbA1c/A1c result. Inputs: number of diabetes medications currently used (1, 2, or 3) and most recent A1c value from the scheduled 3\u2011monthly check. Logic: determine the applicable threshold by medication count; if on 1 medication, target is A1c 48 or below; if on 2 medications, target is A1c 53 or below; if on 3 medications, target is A1c 58 or below. Compare the measured A1c to the threshold. Output: controlled vs not controlled, plus the threshold used. This output can feed treatment escalation steps such as whether to continue current therapy or move to dual/triple therapy or insulin referral."
+          },
+          {
+            "text": "Practical Advice\nMost patients with T2DM will have a BMI \u2265 25. As such Gliclazide and Pioglitazone should be lower priority than Gliptin.\n\nMost patients will be at \"high risk\" for CVD using below \"CVD Known or Risk\" criteria, and would qualify for Metformin ->SGLT2i in succession.",
+            "location": "purple box, left lower side",
+            "category": "note",
+            "linked_to": "Treatment Algorithm",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Metformin Tolerability**\nMetformin can only be deemed intolerable if modified release has been tried. Helps weight loss. Should be up titrated to 2g daily in 500mg increments.\n\nBeing on some metformin, is better than NO metformin.",
+            "location": "green box, bottom left",
+            "category": "treatment_detail",
+            "linked_to": "Metformin",
+            "link_type": "asterisk",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would determine whether metformin is tolerated and how to titrate it. Inputs: current metformin formulation, prior exposure to standard vs modified release metformin, current dose, adverse effects, and whether patient is taking any metformin at all. Logic: first verify whether intolerance has been adequately assessed; metformin should only be classified as intolerable if modified release has been tried. If tolerated, up\u2011titrate metformin in 500 mg increments until reaching 2 g daily as tolerated. Consider beneficial effects such as weight loss. If full target dose is not achievable but some metformin is tolerated, retain partial metformin rather than stopping completely. Output: one of tolerated and continue titration; partially tolerated and continue partial dose; or truly intolerable after modified release trial, which would support switching away from metformin."
+          },
+          {
+            "text": "SGLT2i (for diabetes)\nRisk of DKA - counsel on normoglycaemic ketosi\n\u2022 Helps weight loss\n\u2022 Increases UTI/thrush risk\nNo A1c reduction if eGFR <45\nAvoid if A1c >85 or Age >85\n\nSGLT2i (for CVD/CKD)\nDiabetic kidney disease:\nBest choice empagliflozin 10mg OD, used until eGFR 20.\n\nHeart Failure without Diabetes:\nDapagliflozin 10mg OD can be used until eGFR 15.",
+            "location": "green box, bottom left-center",
+            "category": "treatment_detail",
+            "linked_to": "SGLT2i",
+            "link_type": "color_group",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would support SGLT2 inhibitor selection and appropriateness checking across diabetes, cardiovascular disease, chronic kidney disease, and heart failure contexts. Inputs: indication (diabetes vs CVD/CKD vs heart failure without diabetes), eGFR, A1c, age, DKA risk/counselling status, and comorbidity profile. Logic: if using for diabetes, counsel about normoglycaemic ketosis/DKA risk, note weight-loss benefit and UTI/thrush risk, and recognize reduced A1c effect if eGFR <45; avoid for glycaemic indication if A1c >85 or age >85. If diabetic kidney disease is present, prefer empagliflozin 10 mg once daily and continue until eGFR 20. If heart failure without diabetes, dapagliflozin 10 mg once daily can be used until eGFR 15. Output: recommended SGLT2i agent, dose, eligibility/avoidance status, and key counselling/safety messages."
+          },
+          {
+            "text": "Gliclazide\n\u2022 Main benefit, fast A1c reduction\n\u2022 Risk of Hypos - need testing kit\n\u2022 Causes Weight Gain",
+            "location": "green box, bottom far left lower section",
+            "category": "treatment_detail",
+            "linked_to": "Gliclazide",
+            "link_type": "color_group",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Gliptins\nNot to be used with GLP-1, pancreatitis risk.\n\u2022 Weight neutral\n\u2022 \"Linagliptin\" usable at low eGFR",
+            "location": "green box, bottom far left lower section",
+            "category": "constraint",
+            "linked_to": "Gliptin",
+            "link_type": "color_group",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Pioglitazone\n\u2022 Causes Weight Gain\n\u2022 Only real use is for delaying Insulin - Taxi/HGV Drivers\nContraindicated in:\n\u2022 HF\n\u2022 Osteopenia/porosis in women\n\u2022 bladder cancer\n\u2022 Patients taking Insulin",
+            "location": "green box, bottom left-center lower section",
+            "category": "constraint",
+            "linked_to": "Pioglitazone",
+            "link_type": "color_group",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would determine whether pioglitazone is an appropriate option. Inputs: patient occupation/clinical reason for delaying insulin, heart failure status, bone health history especially osteopenia/osteoporosis in women, bladder cancer history, current insulin use, and concern about weight gain. Logic: consider pioglitazone mainly when there is a need to delay insulin, especially in Taxi/HGV drivers. Before use, screen contraindications: heart failure, osteopenia/osteoporosis in women, bladder cancer, and concomitant insulin use. Also factor in expected weight gain. Output: suitable vs contraindicated vs low-priority option, with documented reason."
+          },
+          {
+            "text": "Minimum BMI for GLP Initiation is 23",
+            "location": "purple box, right side above center",
+            "category": "criteria",
+            "linked_to": "Add GLP",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Scheduling Follow-up\nAfter a review and dose change, patient should have A1c requested on T-Quest and sent scheduled self-booking link for:\n\u2022 Bloods in 12 weeks\n\u2022 Follow up review in 14 weeks.",
+            "location": "blue box, bottom center",
+            "category": "note",
+            "linked_to": null,
+            "link_type": "proximity",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would generate post\u2011treatment-change follow-up actions. Inputs: confirmation that a review and dose change occurred, patient identity/contact method, and ordering/scheduling systems availability. Logic: after any review with dose change, request A1c through T\u2011Quest, then send the patient a scheduled self\u2011booking link. The protocol schedules blood tests at 12 weeks and follow-up review at 14 weeks. Output: ordered A1c, patient notification/self-booking instructions sent, and dated follow-up milestones for bloods and review."
+          },
+          {
+            "text": "CVD Known or Risk*\nHeart Failure\nCKD\nIHD\nQRISK >10%\n\n<40 years with any of:\n\u2022 HTN\n\u2022 High Lipids\n\u2022 Smoking\n\u2022 BMI >25\n\u2022 FHx CVD",
+            "location": "pink box, bottom center-left",
+            "category": "criteria",
+            "linked_to": "Treatment Algorithm",
+            "link_type": "asterisk",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would classify whether a patient meets the chart's \"CVD Known or Risk\" definition. Inputs: history of heart failure, CKD, IHD, QRISK score, age, hypertension status, lipid status, smoking status, BMI, and family history of cardiovascular disease. Logic: mark positive if any of the following are present: heart failure, CKD, IHD, or QRISK >10%. Also mark positive if the patient is under 40 years old and has any one of the listed factors: hypertension, high lipids, smoking, BMI >25, or family history of CVD. Output: binary classification of \"CVD Known or Risk\" yes/no, with the triggering criterion documented. This output routes the patient toward the CVD-risk treatment branch."
+          },
+          {
+            "text": "Sick Day Rules:\nStop following meds when sick:\n\u2022 S: SGLT2i\n\u2022 A: ACEI\n\u2022 D: Diuretics\n\u2022 M: Metformin\n\u2022 A: ARB\n\u2022 N: NSAIDs\n\nPatient info:\nhttps://www.diabetes.co.uk/sick-day-rules.html",
+            "location": "pink box, bottom center-right",
+            "category": "note",
+            "linked_to": null,
+            "link_type": "proximity",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would provide acute-illness medication holding guidance. Inputs: current medication list and whether the patient is currently unwell/sick. Logic: if sick, identify medications matching the SADMAN mnemonic and advise temporary stopping of SGLT2 inhibitors, ACE inhibitors, diuretics, metformin, ARBs, and NSAIDs. Provide the patient information resource link. Output: a personalized list of medications to hold during illness and patient education guidance."
+          },
+          {
+            "text": "Driving:\nGo through driving education with patient, regarding DVLA rules.\n\nInformation to share with patients:\nhttps://www.gov.uk/government/publications/information-for-drivers-with-diabetes",
+            "location": "pink box, bottom far right",
+            "category": "note",
+            "linked_to": null,
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Prognostic Value\nHigh Value Cases:\n\u2022 Any CVD Risk Factors in the Red Box\n\u2022 Established CVD Disease\n\u2022 Known CKD",
+            "location": "green box, bottom right-center",
+            "category": "criteria",
+            "linked_to": "High prognostic value",
+            "link_type": "color_group",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This subworkflow would stratify patients into high prognostic value cases for GLP-1 pathway selection. Inputs: presence of any CVD risk factors listed in the red \"CVD Known or Risk\" box, established cardiovascular disease, and known CKD. Logic: classify as high value if any red-box CVD risk factor is present, or if established CVD disease is present, or if known CKD is present. If none apply, classify as low prognostic value. Output: prognostic value category (high vs low), which can then direct the choice between agents such as Ozempic vs Mounjaro."
+          }
+        ],
+        "root_node": {
+          "label": "Treatment Algorithm",
+          "type": "process",
+          "outgoing_edges": [
+            "Downward arrow labeled \"Not at risk of CVD\" leads to \"Metformin\"",
+            "Rightward arrow labeled \"*CVD Known or Risk\" leads to \"Metformin\""
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 118.49
+    }
+  ],
+  "llm_response": "",
+  "transcript": [],
+  "scores": null,
+  "summary": {
+    "sample": "diabetes_treatment",
+    "model": "gpt54",
+    "run_id": "1_db2d25",
+    "num_nodes": 0,
+    "num_edges": 0,
+    "num_variables": 0,
+    "num_tool_calls": 1,
+    "llm_calls": 2,
+    "input_tokens": 8962,
+    "output_tokens": 3000,
+    "total_tokens": 11962,
+    "cost_usd": 0.0898,
+    "wall_time_s": 663.4,
+    "error": "RateLimitError: Error code: 429 - {'error': {'code': 'RateLimitReached', 'message': 'Your requests to gpt-54 for gpt-5.4 in Sweden Central have exceeded the token rate limit for your current AIServices S0 pricing tier. This request was for ChatCompletions_Create under Azure OpenAI API version 2025-03-01-preview. Please retry after 60 seconds. To increase your default rate limit, visit: https://aka.ms/oai/quotaincrease.'}}"
+  }
+}

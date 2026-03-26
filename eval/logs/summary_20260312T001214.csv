@@ -1,0 +1,4 @@
+sample,model,run_id,num_nodes,num_edges,num_variables,num_tool_calls,llm_calls,input_tokens,output_tokens,total_tokens,cost_usd,wall_time_s,error
+diabetes_treatment,sonnet,1_0d37d2,0,0,0,0,0,0,0,0,0.0,0.0,LLM error: stream() got an unexpected keyword argument 'thinking'
+lipid_management,sonnet,1_d47a8d,0,0,0,0,0,0,0,0,0.0,0.0,LLM error: stream() got an unexpected keyword argument 'thinking'
+liver_pathology,sonnet,1_498a56,0,0,0,0,0,0,0,0,0.0,0.0,LLM error: stream() got an unexpected keyword argument 'thinking'

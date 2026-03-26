@@ -1,0 +1,2167 @@
+{
+  "sample_name": "lipid_management",
+  "model": "gpt54",
+  "model_id": "gpt-54",
+  "run_id": "1_d58648",
+  "error": null,
+  "wall_time_s": 82.27,
+  "cost_usd": 0.8492,
+  "tokens": {
+    "input_tokens": 158779,
+    "output_tokens": 3689,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 162468,
+    "llm_calls": 12
+  },
+  "workflow": {
+    "nodes": [
+      {
+        "id": "node_6fa1f4ed",
+        "type": "start",
+        "label": "Start",
+        "x": 0,
+        "y": 0,
+        "color": "teal"
+      },
+      {
+        "id": "node_91e99186",
+        "type": "process",
+        "label": "Assess Total Cholesterol Result",
+        "x": 0,
+        "y": 0,
+        "color": "slate"
+      },
+      {
+        "id": "node_b99a7071",
+        "type": "decision",
+        "label": "Under Specialist Clinic?",
+        "x": 0,
+        "y": 0,
+        "color": "amber",
+        "condition": {
+          "variable": "Under Specialist Clinic",
+          "comparator": "is_true",
+          "input_id": "var_under_specialist_clinic_bool"
+        }
+      },
+      {
+        "id": "node_294ff299",
+        "type": "end",
+        "label": "No Further Action",
+        "x": 0,
+        "y": 0,
+        "color": "green",
+        "output_type": "string",
+        "output_value": "No Further Action"
+      },
+      {
+        "id": "node_9b1845f4",
+        "type": "decision",
+        "label": "Are They Optimised on treatment?",
+        "x": 0,
+        "y": 0,
+        "color": "amber",
+        "condition": {
+          "variable": "Optimised on Treatment",
+          "comparator": "is_true",
+          "input_id": "var_optimised_on_treatment_bool"
+        }
+      },
+      {
+        "id": "node_8cfb5d98",
+        "type": "process",
+        "label": "Consider Lipid Clinic Referral",
+        "x": 0,
+        "y": 0,
+        "color": "slate"
+      },
+      {
+        "id": "node_6fa45c1d",
+        "type": "end",
+        "label": "Refer to specialist",
+        "x": 0,
+        "y": 0,
+        "color": "green",
+        "output_type": "string",
+        "output_value": "Refer to specialist"
+      },
+      {
+        "id": "node_cf4629b9",
+        "type": "process",
+        "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+        "x": 0,
+        "y": 0,
+        "color": "slate"
+      },
+      {
+        "id": "node_f05d7f59",
+        "type": "end",
+        "label": "Consultation",
+        "x": 0,
+        "y": 0,
+        "color": "green",
+        "output_type": "string",
+        "output_value": "Consultation"
+      },
+      {
+        "id": "node_98fbf9eb",
+        "type": "decision",
+        "label": "Normal or Raised?",
+        "x": 0,
+        "y": 0,
+        "color": "amber",
+        "condition": {
+          "variable": "Total Cholesterol",
+          "comparator": "lte",
+          "value": 5,
+          "input_id": "var_total_cholesterol_number"
+        }
+      },
+      {
+        "id": "node_153cbf5d",
+        "type": "end",
+        "label": "Mark as Satisfactory",
+        "x": 0,
+        "y": 0,
+        "color": "green",
+        "output_type": "string",
+        "output_value": "Mark as Satisfactory"
+      },
+      {
+        "id": "node_da75c108",
+        "type": "decision",
+        "label": "Taking Lipid Lowering Therapy?",
+        "x": 0,
+        "y": 0,
+        "color": "amber",
+        "condition": {
+          "variable": "Taking Lipid Lowering Therapy",
+          "comparator": "is_true",
+          "input_id": "var_taking_lipid_lowering_therapy_bool"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "node_6fa1f4ed->node_91e99186",
+        "from": "node_6fa1f4ed",
+        "to": "node_91e99186",
+        "label": ""
+      },
+      {
+        "id": "node_91e99186->node_b99a7071",
+        "from": "node_91e99186",
+        "to": "node_b99a7071",
+        "label": ""
+      },
+      {
+        "id": "node_b99a7071->node_294ff299",
+        "from": "node_b99a7071",
+        "to": "node_294ff299",
+        "label": "true"
+      },
+      {
+        "id": "node_b99a7071->node_9b1845f4",
+        "from": "node_b99a7071",
+        "to": "node_9b1845f4",
+        "label": "false"
+      },
+      {
+        "id": "node_9b1845f4->node_8cfb5d98",
+        "from": "node_9b1845f4",
+        "to": "node_8cfb5d98",
+        "label": "true"
+      },
+      {
+        "id": "node_8cfb5d98->node_6fa45c1d",
+        "from": "node_8cfb5d98",
+        "to": "node_6fa45c1d",
+        "label": ""
+      },
+      {
+        "id": "node_9b1845f4->node_cf4629b9",
+        "from": "node_9b1845f4",
+        "to": "node_cf4629b9",
+        "label": "false"
+      },
+      {
+        "id": "node_cf4629b9->node_f05d7f59",
+        "from": "node_cf4629b9",
+        "to": "node_f05d7f59",
+        "label": ""
+      },
+      {
+        "id": "node_91e99186->node_98fbf9eb",
+        "from": "node_91e99186",
+        "to": "node_98fbf9eb",
+        "label": ""
+      },
+      {
+        "id": "node_98fbf9eb->node_153cbf5d",
+        "from": "node_98fbf9eb",
+        "to": "node_153cbf5d",
+        "label": "true"
+      },
+      {
+        "id": "node_98fbf9eb->node_da75c108",
+        "from": "node_98fbf9eb",
+        "to": "node_da75c108",
+        "label": "false"
+      }
+    ],
+    "variables": [
+      {
+        "id": "var_total_cholesterol_number",
+        "name": "Total Cholesterol",
+        "type": "number",
+        "source": "input",
+        "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+      },
+      {
+        "id": "var_under_specialist_clinic_bool",
+        "name": "Under Specialist Clinic",
+        "type": "bool",
+        "source": "input",
+        "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+      },
+      {
+        "id": "var_optimised_on_treatment_bool",
+        "name": "Optimised on Treatment",
+        "type": "bool",
+        "source": "input",
+        "description": "Whether patient's lipid treatment is optimised against stated targets"
+      },
+      {
+        "id": "var_taking_lipid_lowering_therapy_bool",
+        "name": "Taking Lipid Lowering Therapy",
+        "type": "bool",
+        "source": "input",
+        "description": "Whether patient is currently taking lipid lowering therapy"
+      },
+      {
+        "id": "var_prevention_category_enum",
+        "name": "Prevention Category",
+        "type": "enum",
+        "source": "input",
+        "description": "Primary or secondary prevention classification",
+        "enum_values": [
+          "Primary",
+          "Secondary"
+        ]
+      },
+      {
+        "id": "var_qrisk_percent_number",
+        "name": "QRISK Percent",
+        "type": "number",
+        "source": "input",
+        "description": "Calculated QRISK2/3 percentage"
+      },
+      {
+        "id": "var_taking_maximally_tolerated_statin_bool",
+        "name": "Taking Maximally Tolerated Statin",
+        "type": "bool",
+        "source": "input",
+        "description": "Whether patient is taking maximally tolerated statin"
+      },
+      {
+        "id": "var_ldl_number",
+        "name": "LDL",
+        "type": "number",
+        "source": "input",
+        "description": "LDL cholesterol result"
+      },
+      {
+        "id": "var_has_had_6_months_of_inclisiran_bool",
+        "name": "Has Had 6 Months of Inclisiran",
+        "type": "bool",
+        "source": "input",
+        "description": "Whether the patient has had 6 months of inclisiran"
+      }
+    ],
+    "outputs": []
+  },
+  "tool_calls": [
+    {
+      "tool_name": "extract_guidance",
+      "args": {
+        "filename": "workflow_test.jpeg"
+      },
+      "result": {
+        "success": true,
+        "guidance": [
+          {
+            "text": "Primary - means no heart problem has yet occurred, such as an MI or Stroke.\n\nSecondary - means the patient is known to have had CHD, PAD, Ischaemic Stroke, CAD or an MI in the past.",
+            "location": "green box, top left",
+            "category": "definition",
+            "linked_to": "Primary or Secondary Prevention?",
+            "link_type": "color_group",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "not coded,\nassume\nno",
+            "location": "yellow sticky note, upper left near \"Under Specialist Clinic?\"",
+            "category": "note",
+            "linked_to": "Under Specialist Clinic?",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Primary/S\nsecondary\nTreatment",
+            "location": "yellow sticky note, upper middle left near specialist referral branch",
+            "category": "note",
+            "linked_to": "Consider Lipid Clinic Referral",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Refer to specialist",
+            "location": "yellow note, upper middle right beside \"Consider Lipid Clinic Referral\"",
+            "category": "note",
+            "linked_to": "Consider Lipid Clinic Referral",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "We assume 'Normal' to be 5 or below\n(can vary from clinic to clinic)",
+            "location": "yellow sticky note, center left near \"Normal or Raised?\"",
+            "category": "clarification",
+            "linked_to": "Normal or Raised?",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Consultation",
+            "location": "yellow note, upper middle right beside top \"Send \"Lipid Lowering Therapy\" AccuRx with self booking link\" box",
+            "category": "note",
+            "linked_to": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Primary/S\nsecondary\nTreatment",
+            "location": "yellow sticky note, lower left near \"Mark as \"No Further Action\"\"",
+            "category": "note",
+            "linked_to": "Mark as \"No Further Action\"",
+            "link_type": "proximity",
+            "subworkflow_candidate": false,
+            "subworkflow_brief": null
+          },
+          {
+            "text": "Maximally Tolerated Treatment - Treatment Order\n\nPrimary Prevention:\n\u2022 Statin low dose e.g. Atorvastatin 20mg (if intolerant, should have tried 2 statins)\n\u2022 Ezetimibe should be added on to statin/replace if intolerant to statin\n\u2022 Ezetimibe/Bempedoic Acid should be escalated to from Ezetimibe if needed\n\nSecondary Prevention:\n\u2022 Statin high dose e.g. Atorvastatin 80mg (if intolerant, should have tried 2 statins)\n\u2022 2nd line if LDL \u22652.6 is Inclisiran\n  - If this has happened and LDL >2 - Ezetimibe as Third Line.\n\u2022 2nd line if LDL 2-2.5, is Ezetimibe",
+            "location": "large green box, top right",
+            "category": "treatment_detail",
+            "linked_to": "Taking Maximally Tolerated Statin?",
+            "link_type": "color_group",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This panel defines a medication escalation subworkflow for lipid-lowering treatment. Inputs would include prevention category (primary vs secondary), current/statin tolerance status, LDL result, and current therapy stage. Logic: first classify the patient as primary or secondary prevention. For primary prevention, start with low-dose statin such as atorvastatin 20 mg; if statin intolerant, confirm that 2 statins have been tried, then use ezetimibe instead of or in addition to statin; if further lowering is needed, escalate from ezetimibe to ezetimibe/bempedoic acid. For secondary prevention, start with high-dose statin such as atorvastatin 80 mg; if intolerant, confirm 2 statins have been tried. Then use LDL thresholds to determine next steps: if LDL is 2\u20132.5, use ezetimibe as second line; if LDL is \u22652.6, use inclisiran as second line; if inclisiran has already been used and LDL remains >2, add ezetimibe as third line. Output would be the recommended next treatment step and whether the patient is already on maximally tolerated therapy."
+          },
+          {
+            "text": "Inclisiran before Ezetimibe in Secondary Prevention?\n\nEzetimibe can be used as long as the LDL >2.0.\n\nInclisiran can only be used for secondary prevention and only if the LDL \u2265 2.6.\n\nUsing Ezetimibe first can bring the LDL to lower than 2.6, making Inclisiran unusable, however in this scenario while the LDL be remaining at >2, the patient would not be adequately treated to QOF target.",
+            "location": "green box, right middle",
+            "category": "clarification",
+            "linked_to": "Add in Ezetimibe",
+            "link_type": "proximity",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This panel describes a treatment-order decision subworkflow specifically for secondary prevention patients choosing between inclisiran and ezetimibe. Inputs would include prevention category, current LDL value, and whether the objective is to preserve eligibility for inclisiran while still reaching target. Logic: confirm the patient is in secondary prevention; check whether LDL is \u22652.6, which is the threshold for inclisiran eligibility; note that ezetimibe is allowable whenever LDL is >2.0, but if used first it may lower LDL below 2.6 and thereby remove eligibility for inclisiran; if LDL remains >2 after that, the patient could still be above QOF target despite no longer qualifying for inclisiran. Output would be a sequencing recommendation: prefer inclisiran before ezetimibe when LDL is \u22652.6 in secondary prevention if preserving access to inclisiran is clinically important."
+          },
+          {
+            "text": "Is the patient's treatment optimised?\nSuccessful treatment is achieving the below:\n\u2022 Reduction of >40% in the Non-HDL Cholesterol (Primary Prevention Target)\n\u2022 Ideally Total Cholesterol <4.0 (Primary and Secondary Prevention Target)\n\u2022 LDL \u22642 (Secondary Prevention Target)\n\u2022 Non-HDL Cholesterol of <2.6 (Secondary Prevention Target)",
+            "location": "large green box, bottom right",
+            "category": "criteria",
+            "linked_to": "Are They Optimised on treatment?",
+            "link_type": "color_group",
+            "subworkflow_candidate": true,
+            "subworkflow_brief": "This panel defines an assessment subworkflow for determining whether lipid treatment is optimised. Inputs would include prevention category, baseline and current non-HDL cholesterol, current total cholesterol, current LDL, and current non-HDL cholesterol. Logic: compute the percentage reduction in non-HDL cholesterol from baseline; for primary prevention, check whether reduction is greater than 40%, while also considering ideal total cholesterol <4.0; for secondary prevention, evaluate total cholesterol <4.0, LDL \u22642, and non-HDL cholesterol <2.6. The workflow would likely classify optimisation status based on whether the relevant targets for that prevention group are met. Output would be a boolean or status label such as optimised/not optimised, plus possibly a list of unmet targets driving treatment escalation."
+          }
+        ],
+        "root_node": {
+          "label": "Assess Total Cholesterol Result",
+          "type": "process",
+          "outgoing_edges": [
+            "If >7.5, leads to \"Under Specialist Clinic?\"",
+            "If \u22647.5, leads to \"Normal or Raised?\""
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 29.73
+    },
+    {
+      "tool_name": "update_plan",
+      "args": {
+        "items": [
+          {
+            "text": "DFS plan: Root process 'Assess Total Cholesterol Result' with edges >7.5 -> decision 'Under Specialist Clinic?' (Yes -> end 'No Further Action'; No -> decision 'Are They Optimised on treatment?' [specialist path]), and <=7.5 -> decision 'Normal or Raised?' (Normal -> end 'Mark as Satisfactory'; Raised -> decision 'Taking Lipid Lowering Therapy?').",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Specialist path decision 'Are They Optimised on treatment?' has Yes -> process 'Consider Lipid Clinic Referral' -> end 'Refer to specialist'; No -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' -> end 'Consultation'.",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Raised path decision 'Taking Lipid Lowering Therapy?' has No -> decision 'Primary or Secondary Prevention?' with Primary -> calculation/process 'Calculate QRISK2/3' -> decision '>=10%' (true -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' -> merge to process 'Add in Ezetimibe'; false -> process 'Send High Cholesterol - Low QRISK AccuRx with self booking link' end), and Secondary -> decision 'Taking Maximally Tolerated Statin?'",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Raised path decision 'Taking Lipid Lowering Therapy?' has Yes -> decision 'Are They Optimised on treatment?' [therapy path] with Yes -> end 'Mark as No Further Action'; No -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' end.",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Secondary prevention branch decision 'Taking Maximally Tolerated Statin?' has No -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' end; Yes -> process 'Assess LDL' with LDL <=2 -> end 'No Further Action', LDL 2-2.5 -> process 'Add in Ezetimibe', LDL >=2.6 -> process 'Initiate Inclisiran' -> decision 'LDL >2.0' after repeat lipids at 3 months (false/No -> stop unresolved in image, true/Yes -> decision 'Has had 6 months of Inclisiran' leading to process 'Add in Ezetimibe').",
+            "done": false
+          },
+          {
+            "text": "Register variables from image before building: Total Cholesterol, Under Specialist Clinic, Optimised on treatment, Taking Lipid Lowering Therapy, Prevention Category, QRISK percent, Taking Maximally Tolerated Statin, LDL, Has had 6 months of Inclisiran.",
+            "done": false
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "action": "plan_updated",
+        "items": [
+          {
+            "text": "DFS plan: Root process 'Assess Total Cholesterol Result' with edges >7.5 -> decision 'Under Specialist Clinic?' (Yes -> end 'No Further Action'; No -> decision 'Are They Optimised on treatment?' [specialist path]), and <=7.5 -> decision 'Normal or Raised?' (Normal -> end 'Mark as Satisfactory'; Raised -> decision 'Taking Lipid Lowering Therapy?').",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Specialist path decision 'Are They Optimised on treatment?' has Yes -> process 'Consider Lipid Clinic Referral' -> end 'Refer to specialist'; No -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' -> end 'Consultation'.",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Raised path decision 'Taking Lipid Lowering Therapy?' has No -> decision 'Primary or Secondary Prevention?' with Primary -> calculation/process 'Calculate QRISK2/3' -> decision '>=10%' (true -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' -> merge to process 'Add in Ezetimibe'; false -> process 'Send High Cholesterol - Low QRISK AccuRx with self booking link' end), and Secondary -> decision 'Taking Maximally Tolerated Statin?'",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Raised path decision 'Taking Lipid Lowering Therapy?' has Yes -> decision 'Are They Optimised on treatment?' [therapy path] with Yes -> end 'Mark as No Further Action'; No -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' end.",
+            "done": false
+          },
+          {
+            "text": "DFS plan: Secondary prevention branch decision 'Taking Maximally Tolerated Statin?' has No -> process 'Send Lipid Lowering Therapy AccuRx with self booking link' end; Yes -> process 'Assess LDL' with LDL <=2 -> end 'No Further Action', LDL 2-2.5 -> process 'Add in Ezetimibe', LDL >=2.6 -> process 'Initiate Inclisiran' -> decision 'LDL >2.0' after repeat lipids at 3 months (false/No -> stop unresolved in image, true/Yes -> decision 'Has had 6 months of Inclisiran' leading to process 'Add in Ezetimibe').",
+            "done": false
+          },
+          {
+            "text": "Register variables from image before building: Total Cholesterol, Under Specialist Clinic, Optimised on treatment, Taking Lipid Lowering Therapy, Prevention Category, QRISK percent, Taking Maximally Tolerated Statin, LDL, Has had 6 months of Inclisiran.",
+            "done": false
+          }
+        ]
+      },
+      "success": true,
+      "timestamp": 39.23
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Total Cholesterol",
+        "type": "number",
+        "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Total Cholesterol' (number) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_total_cholesterol_number",
+          "name": "Total Cholesterol",
+          "type": "number",
+          "source": "input",
+          "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Under Specialist Clinic",
+        "type": "boolean",
+        "description": "Whether patient is under specialist clinic; note says if not coded, assume no",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Under Specialist Clinic' (boolean) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_under_specialist_clinic_bool",
+          "name": "Under Specialist Clinic",
+          "type": "bool",
+          "source": "input",
+          "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Optimised on Treatment",
+        "type": "boolean",
+        "description": "Whether patient's lipid treatment is optimised against stated targets",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Optimised on Treatment' (boolean) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_optimised_on_treatment_bool",
+          "name": "Optimised on Treatment",
+          "type": "bool",
+          "source": "input",
+          "description": "Whether patient's lipid treatment is optimised against stated targets"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Taking Lipid Lowering Therapy",
+        "type": "boolean",
+        "description": "Whether patient is currently taking lipid lowering therapy",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Taking Lipid Lowering Therapy' (boolean) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_taking_lipid_lowering_therapy_bool",
+          "name": "Taking Lipid Lowering Therapy",
+          "type": "bool",
+          "source": "input",
+          "description": "Whether patient is currently taking lipid lowering therapy"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            },
+            {
+              "id": "var_taking_lipid_lowering_therapy_bool",
+              "name": "Taking Lipid Lowering Therapy",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is currently taking lipid lowering therapy"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Prevention Category",
+        "type": "enum",
+        "description": "Primary or secondary prevention classification",
+        "enum_values": [
+          "Primary",
+          "Secondary"
+        ],
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Prevention Category' (enum) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_prevention_category_enum",
+          "name": "Prevention Category",
+          "type": "enum",
+          "source": "input",
+          "description": "Primary or secondary prevention classification",
+          "enum_values": [
+            "Primary",
+            "Secondary"
+          ]
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            },
+            {
+              "id": "var_taking_lipid_lowering_therapy_bool",
+              "name": "Taking Lipid Lowering Therapy",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is currently taking lipid lowering therapy"
+            },
+            {
+              "id": "var_prevention_category_enum",
+              "name": "Prevention Category",
+              "type": "enum",
+              "source": "input",
+              "description": "Primary or secondary prevention classification",
+              "enum_values": [
+                "Primary",
+                "Secondary"
+              ]
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "QRISK Percent",
+        "type": "number",
+        "description": "Calculated QRISK2/3 percentage",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'QRISK Percent' (number) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_qrisk_percent_number",
+          "name": "QRISK Percent",
+          "type": "number",
+          "source": "input",
+          "description": "Calculated QRISK2/3 percentage"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            },
+            {
+              "id": "var_taking_lipid_lowering_therapy_bool",
+              "name": "Taking Lipid Lowering Therapy",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is currently taking lipid lowering therapy"
+            },
+            {
+              "id": "var_prevention_category_enum",
+              "name": "Prevention Category",
+              "type": "enum",
+              "source": "input",
+              "description": "Primary or secondary prevention classification",
+              "enum_values": [
+                "Primary",
+                "Secondary"
+              ]
+            },
+            {
+              "id": "var_qrisk_percent_number",
+              "name": "QRISK Percent",
+              "type": "number",
+              "source": "input",
+              "description": "Calculated QRISK2/3 percentage"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Taking Maximally Tolerated Statin",
+        "type": "boolean",
+        "description": "Whether patient is taking maximally tolerated statin",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Taking Maximally Tolerated Statin' (boolean) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_taking_maximally_tolerated_statin_bool",
+          "name": "Taking Maximally Tolerated Statin",
+          "type": "bool",
+          "source": "input",
+          "description": "Whether patient is taking maximally tolerated statin"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            },
+            {
+              "id": "var_taking_lipid_lowering_therapy_bool",
+              "name": "Taking Lipid Lowering Therapy",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is currently taking lipid lowering therapy"
+            },
+            {
+              "id": "var_prevention_category_enum",
+              "name": "Prevention Category",
+              "type": "enum",
+              "source": "input",
+              "description": "Primary or secondary prevention classification",
+              "enum_values": [
+                "Primary",
+                "Secondary"
+              ]
+            },
+            {
+              "id": "var_qrisk_percent_number",
+              "name": "QRISK Percent",
+              "type": "number",
+              "source": "input",
+              "description": "Calculated QRISK2/3 percentage"
+            },
+            {
+              "id": "var_taking_maximally_tolerated_statin_bool",
+              "name": "Taking Maximally Tolerated Statin",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is taking maximally tolerated statin"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "LDL",
+        "type": "number",
+        "description": "LDL cholesterol result",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'LDL' (number) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_ldl_number",
+          "name": "LDL",
+          "type": "number",
+          "source": "input",
+          "description": "LDL cholesterol result"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            },
+            {
+              "id": "var_taking_lipid_lowering_therapy_bool",
+              "name": "Taking Lipid Lowering Therapy",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is currently taking lipid lowering therapy"
+            },
+            {
+              "id": "var_prevention_category_enum",
+              "name": "Prevention Category",
+              "type": "enum",
+              "source": "input",
+              "description": "Primary or secondary prevention classification",
+              "enum_values": [
+                "Primary",
+                "Secondary"
+              ]
+            },
+            {
+              "id": "var_qrisk_percent_number",
+              "name": "QRISK Percent",
+              "type": "number",
+              "source": "input",
+              "description": "Calculated QRISK2/3 percentage"
+            },
+            {
+              "id": "var_taking_maximally_tolerated_statin_bool",
+              "name": "Taking Maximally Tolerated Statin",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is taking maximally tolerated statin"
+            },
+            {
+              "id": "var_ldl_number",
+              "name": "LDL",
+              "type": "number",
+              "source": "input",
+              "description": "LDL cholesterol result"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.45
+    },
+    {
+      "tool_name": "add_workflow_variable",
+      "args": {
+        "name": "Has Had 6 Months of Inclisiran",
+        "type": "boolean",
+        "description": "Whether the patient has had 6 months of inclisiran",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "message": "Added input variable 'Has Had 6 Months of Inclisiran' (boolean) to workflow eval_1_d58648",
+        "variable": {
+          "id": "var_has_had_6_months_of_inclisiran_bool",
+          "name": "Has Had 6 Months of Inclisiran",
+          "type": "bool",
+          "source": "input",
+          "description": "Whether the patient has had 6 months of inclisiran"
+        },
+        "workflow_analysis": {
+          "variables": [
+            {
+              "id": "var_total_cholesterol_number",
+              "name": "Total Cholesterol",
+              "type": "number",
+              "source": "input",
+              "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+            },
+            {
+              "id": "var_under_specialist_clinic_bool",
+              "name": "Under Specialist Clinic",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+            },
+            {
+              "id": "var_optimised_on_treatment_bool",
+              "name": "Optimised on Treatment",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient's lipid treatment is optimised against stated targets"
+            },
+            {
+              "id": "var_taking_lipid_lowering_therapy_bool",
+              "name": "Taking Lipid Lowering Therapy",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is currently taking lipid lowering therapy"
+            },
+            {
+              "id": "var_prevention_category_enum",
+              "name": "Prevention Category",
+              "type": "enum",
+              "source": "input",
+              "description": "Primary or secondary prevention classification",
+              "enum_values": [
+                "Primary",
+                "Secondary"
+              ]
+            },
+            {
+              "id": "var_qrisk_percent_number",
+              "name": "QRISK Percent",
+              "type": "number",
+              "source": "input",
+              "description": "Calculated QRISK2/3 percentage"
+            },
+            {
+              "id": "var_taking_maximally_tolerated_statin_bool",
+              "name": "Taking Maximally Tolerated Statin",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether patient is taking maximally tolerated statin"
+            },
+            {
+              "id": "var_ldl_number",
+              "name": "LDL",
+              "type": "number",
+              "source": "input",
+              "description": "LDL cholesterol result"
+            },
+            {
+              "id": "var_has_had_6_months_of_inclisiran_bool",
+              "name": "Has Had 6 Months of Inclisiran",
+              "type": "bool",
+              "source": "input",
+              "description": "Whether the patient has had 6 months of inclisiran"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 46.46
+    },
+    {
+      "tool_name": "add_node",
+      "args": {
+        "type": "start",
+        "label": "Start",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "action": "add_node",
+        "node": {
+          "id": "node_6fa1f4ed",
+          "type": "start",
+          "label": "Start",
+          "x": 0,
+          "y": 0,
+          "color": "teal"
+        },
+        "new_variables": [],
+        "message": "Added start node 'Start' to workflow eval_1_d58648"
+      },
+      "success": true,
+      "timestamp": 49.58
+    },
+    {
+      "tool_name": "add_node",
+      "args": {
+        "type": "process",
+        "label": "Assess Total Cholesterol Result",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "action": "add_node",
+        "node": {
+          "id": "node_91e99186",
+          "type": "process",
+          "label": "Assess Total Cholesterol Result",
+          "x": 0,
+          "y": 0,
+          "color": "slate"
+        },
+        "new_variables": [],
+        "message": "Added process node 'Assess Total Cholesterol Result' to workflow eval_1_d58648"
+      },
+      "success": true,
+      "timestamp": 52.95
+    },
+    {
+      "tool_name": "add_connection",
+      "args": {
+        "from_node_id": "node_6fa1f4ed",
+        "to_node_id": "node_91e99186",
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "action": "add_connection",
+        "edge": {
+          "id": "node_6fa1f4ed->node_91e99186",
+          "from": "node_6fa1f4ed",
+          "to": "node_91e99186",
+          "label": ""
+        },
+        "message": "Connected node_6fa1f4ed to node_91e99186 in workflow eval_1_d58648"
+      },
+      "success": true,
+      "timestamp": 58.87
+    },
+    {
+      "tool_name": "batch_edit_workflow",
+      "args": {
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "d1",
+            "type": "decision",
+            "label": "Under Specialist Clinic?",
+            "condition": {
+              "variable": "var_under_specialist_clinic_bool",
+              "comparator": "is_true"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "e1",
+            "type": "end",
+            "label": "No Further Action",
+            "output": "No Further Action",
+            "output_type": "string"
+          },
+          {
+            "op": "add_node",
+            "id": "d2",
+            "type": "decision",
+            "label": "Are They Optimised on treatment?",
+            "condition": {
+              "variable": "var_optimised_on_treatment_bool",
+              "comparator": "is_true"
+            }
+          },
+          {
+            "op": "add_connection",
+            "from": "d1",
+            "to": "e1",
+            "label": "true"
+          },
+          {
+            "op": "add_connection",
+            "from": "d1",
+            "to": "d2",
+            "label": "false"
+          }
+        ],
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": false,
+        "error": "Failed to apply operations: Invalid condition for decision node 'Under Specialist Clinic?': Variable 'var_under_specialist_clinic_bool' not found. Available: Total Cholesterol, Under Specialist Clinic, Optimised on Treatment, Taking Lipid Lowering Therapy, Prevention Category, QRISK Percent, Taking Maximally Tolerated Statin, LDL, Has Had 6 Months of Inclisiran"
+      },
+      "success": false,
+      "timestamp": 58.87
+    },
+    {
+      "tool_name": "list_workflow_variables",
+      "args": {
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "variables": [
+          {
+            "id": "var_total_cholesterol_number",
+            "name": "Total Cholesterol",
+            "type": "number",
+            "source": "input",
+            "description": "Assessed total cholesterol result; note says normal assumed to be 5 or below and specialist threshold shown at 7.5"
+          },
+          {
+            "id": "var_under_specialist_clinic_bool",
+            "name": "Under Specialist Clinic",
+            "type": "bool",
+            "source": "input",
+            "description": "Whether patient is under specialist clinic; note says if not coded, assume no"
+          },
+          {
+            "id": "var_optimised_on_treatment_bool",
+            "name": "Optimised on Treatment",
+            "type": "bool",
+            "source": "input",
+            "description": "Whether patient's lipid treatment is optimised against stated targets"
+          },
+          {
+            "id": "var_taking_lipid_lowering_therapy_bool",
+            "name": "Taking Lipid Lowering Therapy",
+            "type": "bool",
+            "source": "input",
+            "description": "Whether patient is currently taking lipid lowering therapy"
+          },
+          {
+            "id": "var_prevention_category_enum",
+            "name": "Prevention Category",
+            "type": "enum",
+            "source": "input",
+            "description": "Primary or secondary prevention classification",
+            "enum_values": [
+              "Primary",
+              "Secondary"
+            ]
+          },
+          {
+            "id": "var_qrisk_percent_number",
+            "name": "QRISK Percent",
+            "type": "number",
+            "source": "input",
+            "description": "Calculated QRISK2/3 percentage"
+          },
+          {
+            "id": "var_taking_maximally_tolerated_statin_bool",
+            "name": "Taking Maximally Tolerated Statin",
+            "type": "bool",
+            "source": "input",
+            "description": "Whether patient is taking maximally tolerated statin"
+          },
+          {
+            "id": "var_ldl_number",
+            "name": "LDL",
+            "type": "number",
+            "source": "input",
+            "description": "LDL cholesterol result"
+          },
+          {
+            "id": "var_has_had_6_months_of_inclisiran_bool",
+            "name": "Has Had 6 Months of Inclisiran",
+            "type": "bool",
+            "source": "input",
+            "description": "Whether the patient has had 6 months of inclisiran"
+          }
+        ],
+        "count": 9,
+        "input_count": 9,
+        "derived_count": 0
+      },
+      "success": true,
+      "timestamp": 63.49
+    },
+    {
+      "tool_name": "batch_edit_workflow",
+      "args": {
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "d1",
+            "type": "decision",
+            "label": "Under Specialist Clinic?",
+            "condition": {
+              "variable": "Under Specialist Clinic",
+              "comparator": "is_true",
+              "input_id": "var_under_specialist_clinic_bool"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "e1",
+            "type": "end",
+            "label": "No Further Action",
+            "output": "No Further Action",
+            "output_type": "string",
+            "output_value": "No Further Action"
+          },
+          {
+            "op": "add_node",
+            "id": "d2",
+            "type": "decision",
+            "label": "Are They Optimised on treatment?",
+            "condition": {
+              "variable": "Optimised on Treatment",
+              "comparator": "is_true",
+              "input_id": "var_optimised_on_treatment_bool"
+            }
+          },
+          {
+            "op": "add_connection",
+            "from": "node_91e99186",
+            "to": "d1"
+          },
+          {
+            "op": "add_connection",
+            "from": "d1",
+            "to": "e1",
+            "label": "true"
+          },
+          {
+            "op": "add_connection",
+            "from": "d1",
+            "to": "d2",
+            "label": "false"
+          }
+        ],
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "action": "batch_edit",
+        "operations": [
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_b99a7071",
+              "type": "decision",
+              "label": "Under Specialist Clinic?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Under Specialist Clinic",
+                "comparator": "is_true",
+                "input_id": "var_under_specialist_clinic_bool"
+              }
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_294ff299",
+              "type": "end",
+              "label": "No Further Action",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "No Further Action"
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_9b1845f4",
+              "type": "decision",
+              "label": "Are They Optimised on treatment?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Optimised on Treatment",
+                "comparator": "is_true",
+                "input_id": "var_optimised_on_treatment_bool"
+              }
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_91e99186->node_b99a7071",
+              "from": "node_91e99186",
+              "to": "node_b99a7071",
+              "label": ""
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_b99a7071->node_294ff299",
+              "from": "node_b99a7071",
+              "to": "node_294ff299",
+              "label": "true"
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_b99a7071->node_9b1845f4",
+              "from": "node_b99a7071",
+              "to": "node_9b1845f4",
+              "label": "false"
+            }
+          }
+        ],
+        "operation_count": 6,
+        "message": "Applied 6 operations to workflow eval_1_d58648",
+        "workflow": {
+          "nodes": [
+            {
+              "id": "node_6fa1f4ed",
+              "type": "start",
+              "label": "Start",
+              "x": 0,
+              "y": 0,
+              "color": "teal"
+            },
+            {
+              "id": "node_91e99186",
+              "type": "process",
+              "label": "Assess Total Cholesterol Result",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_b99a7071",
+              "type": "decision",
+              "label": "Under Specialist Clinic?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Under Specialist Clinic",
+                "comparator": "is_true",
+                "input_id": "var_under_specialist_clinic_bool"
+              }
+            },
+            {
+              "id": "node_294ff299",
+              "type": "end",
+              "label": "No Further Action",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "No Further Action"
+            },
+            {
+              "id": "node_9b1845f4",
+              "type": "decision",
+              "label": "Are They Optimised on treatment?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Optimised on Treatment",
+                "comparator": "is_true",
+                "input_id": "var_optimised_on_treatment_bool"
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "node_6fa1f4ed->node_91e99186",
+              "from": "node_6fa1f4ed",
+              "to": "node_91e99186",
+              "label": ""
+            },
+            {
+              "id": "node_91e99186->node_b99a7071",
+              "from": "node_91e99186",
+              "to": "node_b99a7071",
+              "label": ""
+            },
+            {
+              "id": "node_b99a7071->node_294ff299",
+              "from": "node_b99a7071",
+              "to": "node_294ff299",
+              "label": "true"
+            },
+            {
+              "id": "node_b99a7071->node_9b1845f4",
+              "from": "node_b99a7071",
+              "to": "node_9b1845f4",
+              "label": "false"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 68.18
+    },
+    {
+      "tool_name": "batch_edit_workflow",
+      "args": {
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "p1",
+            "type": "process",
+            "label": "Consider Lipid Clinic Referral"
+          },
+          {
+            "op": "add_node",
+            "id": "e2",
+            "type": "end",
+            "label": "Refer to specialist",
+            "output": "Refer to specialist",
+            "output_type": "string",
+            "output_value": "Refer to specialist"
+          },
+          {
+            "op": "add_node",
+            "id": "p2",
+            "type": "process",
+            "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link"
+          },
+          {
+            "op": "add_node",
+            "id": "e3",
+            "type": "end",
+            "label": "Consultation",
+            "output": "Consultation",
+            "output_type": "string",
+            "output_value": "Consultation"
+          },
+          {
+            "op": "add_connection",
+            "from": "node_9b1845f4",
+            "to": "p1",
+            "label": "true"
+          },
+          {
+            "op": "add_connection",
+            "from": "p1",
+            "to": "e2"
+          },
+          {
+            "op": "add_connection",
+            "from": "node_9b1845f4",
+            "to": "p2",
+            "label": "false"
+          },
+          {
+            "op": "add_connection",
+            "from": "p2",
+            "to": "e3"
+          }
+        ],
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "action": "batch_edit",
+        "operations": [
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_8cfb5d98",
+              "type": "process",
+              "label": "Consider Lipid Clinic Referral",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_6fa45c1d",
+              "type": "end",
+              "label": "Refer to specialist",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Refer to specialist"
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_cf4629b9",
+              "type": "process",
+              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_f05d7f59",
+              "type": "end",
+              "label": "Consultation",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Consultation"
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_9b1845f4->node_8cfb5d98",
+              "from": "node_9b1845f4",
+              "to": "node_8cfb5d98",
+              "label": "true"
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_8cfb5d98->node_6fa45c1d",
+              "from": "node_8cfb5d98",
+              "to": "node_6fa45c1d",
+              "label": ""
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_9b1845f4->node_cf4629b9",
+              "from": "node_9b1845f4",
+              "to": "node_cf4629b9",
+              "label": "false"
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_cf4629b9->node_f05d7f59",
+              "from": "node_cf4629b9",
+              "to": "node_f05d7f59",
+              "label": ""
+            }
+          }
+        ],
+        "operation_count": 8,
+        "message": "Applied 8 operations to workflow eval_1_d58648",
+        "workflow": {
+          "nodes": [
+            {
+              "id": "node_6fa1f4ed",
+              "type": "start",
+              "label": "Start",
+              "x": 0,
+              "y": 0,
+              "color": "teal"
+            },
+            {
+              "id": "node_91e99186",
+              "type": "process",
+              "label": "Assess Total Cholesterol Result",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_b99a7071",
+              "type": "decision",
+              "label": "Under Specialist Clinic?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Under Specialist Clinic",
+                "comparator": "is_true",
+                "input_id": "var_under_specialist_clinic_bool"
+              }
+            },
+            {
+              "id": "node_294ff299",
+              "type": "end",
+              "label": "No Further Action",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "No Further Action"
+            },
+            {
+              "id": "node_9b1845f4",
+              "type": "decision",
+              "label": "Are They Optimised on treatment?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Optimised on Treatment",
+                "comparator": "is_true",
+                "input_id": "var_optimised_on_treatment_bool"
+              }
+            },
+            {
+              "id": "node_8cfb5d98",
+              "type": "process",
+              "label": "Consider Lipid Clinic Referral",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_6fa45c1d",
+              "type": "end",
+              "label": "Refer to specialist",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Refer to specialist"
+            },
+            {
+              "id": "node_cf4629b9",
+              "type": "process",
+              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_f05d7f59",
+              "type": "end",
+              "label": "Consultation",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Consultation"
+            }
+          ],
+          "edges": [
+            {
+              "id": "node_6fa1f4ed->node_91e99186",
+              "from": "node_6fa1f4ed",
+              "to": "node_91e99186",
+              "label": ""
+            },
+            {
+              "id": "node_91e99186->node_b99a7071",
+              "from": "node_91e99186",
+              "to": "node_b99a7071",
+              "label": ""
+            },
+            {
+              "id": "node_b99a7071->node_294ff299",
+              "from": "node_b99a7071",
+              "to": "node_294ff299",
+              "label": "true"
+            },
+            {
+              "id": "node_b99a7071->node_9b1845f4",
+              "from": "node_b99a7071",
+              "to": "node_9b1845f4",
+              "label": "false"
+            },
+            {
+              "id": "node_9b1845f4->node_8cfb5d98",
+              "from": "node_9b1845f4",
+              "to": "node_8cfb5d98",
+              "label": "true"
+            },
+            {
+              "id": "node_8cfb5d98->node_6fa45c1d",
+              "from": "node_8cfb5d98",
+              "to": "node_6fa45c1d",
+              "label": ""
+            },
+            {
+              "id": "node_9b1845f4->node_cf4629b9",
+              "from": "node_9b1845f4",
+              "to": "node_cf4629b9",
+              "label": "false"
+            },
+            {
+              "id": "node_cf4629b9->node_f05d7f59",
+              "from": "node_cf4629b9",
+              "to": "node_f05d7f59",
+              "label": ""
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 73.23
+    },
+    {
+      "tool_name": "batch_edit_workflow",
+      "args": {
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "d3",
+            "type": "decision",
+            "label": "Normal or Raised?",
+            "condition": {
+              "variable": "Total Cholesterol",
+              "comparator": "lte",
+              "value": 5,
+              "input_id": "var_total_cholesterol_number"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "e4",
+            "type": "end",
+            "label": "Mark as Satisfactory",
+            "output": "Mark as Satisfactory",
+            "output_type": "string",
+            "output_value": "Mark as Satisfactory"
+          },
+          {
+            "op": "add_node",
+            "id": "d4",
+            "type": "decision",
+            "label": "Taking Lipid Lowering Therapy?",
+            "condition": {
+              "variable": "Taking Lipid Lowering Therapy",
+              "comparator": "is_true",
+              "input_id": "var_taking_lipid_lowering_therapy_bool"
+            }
+          },
+          {
+            "op": "add_connection",
+            "from": "node_91e99186",
+            "to": "d3"
+          },
+          {
+            "op": "add_connection",
+            "from": "d3",
+            "to": "e4",
+            "label": "true"
+          },
+          {
+            "op": "add_connection",
+            "from": "d3",
+            "to": "d4",
+            "label": "false"
+          }
+        ],
+        "workflow_id": "eval_1_d58648"
+      },
+      "result": {
+        "success": true,
+        "workflow_id": "eval_1_d58648",
+        "action": "batch_edit",
+        "operations": [
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_98fbf9eb",
+              "type": "decision",
+              "label": "Normal or Raised?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Total Cholesterol",
+                "comparator": "lte",
+                "value": 5,
+                "input_id": "var_total_cholesterol_number"
+              }
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_153cbf5d",
+              "type": "end",
+              "label": "Mark as Satisfactory",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Mark as Satisfactory"
+            }
+          },
+          {
+            "op": "add_node",
+            "node": {
+              "id": "node_da75c108",
+              "type": "decision",
+              "label": "Taking Lipid Lowering Therapy?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Taking Lipid Lowering Therapy",
+                "comparator": "is_true",
+                "input_id": "var_taking_lipid_lowering_therapy_bool"
+              }
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_91e99186->node_98fbf9eb",
+              "from": "node_91e99186",
+              "to": "node_98fbf9eb",
+              "label": ""
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_98fbf9eb->node_153cbf5d",
+              "from": "node_98fbf9eb",
+              "to": "node_153cbf5d",
+              "label": "true"
+            }
+          },
+          {
+            "op": "add_connection",
+            "edge": {
+              "id": "node_98fbf9eb->node_da75c108",
+              "from": "node_98fbf9eb",
+              "to": "node_da75c108",
+              "label": "false"
+            }
+          }
+        ],
+        "operation_count": 6,
+        "message": "Applied 6 operations to workflow eval_1_d58648",
+        "workflow": {
+          "nodes": [
+            {
+              "id": "node_6fa1f4ed",
+              "type": "start",
+              "label": "Start",
+              "x": 0,
+              "y": 0,
+              "color": "teal"
+            },
+            {
+              "id": "node_91e99186",
+              "type": "process",
+              "label": "Assess Total Cholesterol Result",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_b99a7071",
+              "type": "decision",
+              "label": "Under Specialist Clinic?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Under Specialist Clinic",
+                "comparator": "is_true",
+                "input_id": "var_under_specialist_clinic_bool"
+              }
+            },
+            {
+              "id": "node_294ff299",
+              "type": "end",
+              "label": "No Further Action",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "No Further Action"
+            },
+            {
+              "id": "node_9b1845f4",
+              "type": "decision",
+              "label": "Are They Optimised on treatment?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Optimised on Treatment",
+                "comparator": "is_true",
+                "input_id": "var_optimised_on_treatment_bool"
+              }
+            },
+            {
+              "id": "node_8cfb5d98",
+              "type": "process",
+              "label": "Consider Lipid Clinic Referral",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_6fa45c1d",
+              "type": "end",
+              "label": "Refer to specialist",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Refer to specialist"
+            },
+            {
+              "id": "node_cf4629b9",
+              "type": "process",
+              "label": "Send \"Lipid Lowering Therapy\" AccuRx with self booking link",
+              "x": 0,
+              "y": 0,
+              "color": "slate"
+            },
+            {
+              "id": "node_f05d7f59",
+              "type": "end",
+              "label": "Consultation",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Consultation"
+            },
+            {
+              "id": "node_98fbf9eb",
+              "type": "decision",
+              "label": "Normal or Raised?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Total Cholesterol",
+                "comparator": "lte",
+                "value": 5,
+                "input_id": "var_total_cholesterol_number"
+              }
+            },
+            {
+              "id": "node_153cbf5d",
+              "type": "end",
+              "label": "Mark as Satisfactory",
+              "x": 0,
+              "y": 0,
+              "color": "green",
+              "output_type": "string",
+              "output_value": "Mark as Satisfactory"
+            },
+            {
+              "id": "node_da75c108",
+              "type": "decision",
+              "label": "Taking Lipid Lowering Therapy?",
+              "x": 0,
+              "y": 0,
+              "color": "amber",
+              "condition": {
+                "variable": "Taking Lipid Lowering Therapy",
+                "comparator": "is_true",
+                "input_id": "var_taking_lipid_lowering_therapy_bool"
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "node_6fa1f4ed->node_91e99186",
+              "from": "node_6fa1f4ed",
+              "to": "node_91e99186",
+              "label": ""
+            },
+            {
+              "id": "node_91e99186->node_b99a7071",
+              "from": "node_91e99186",
+              "to": "node_b99a7071",
+              "label": ""
+            },
+            {
+              "id": "node_b99a7071->node_294ff299",
+              "from": "node_b99a7071",
+              "to": "node_294ff299",
+              "label": "true"
+            },
+            {
+              "id": "node_b99a7071->node_9b1845f4",
+              "from": "node_b99a7071",
+              "to": "node_9b1845f4",
+              "label": "false"
+            },
+            {
+              "id": "node_9b1845f4->node_8cfb5d98",
+              "from": "node_9b1845f4",
+              "to": "node_8cfb5d98",
+              "label": "true"
+            },
+            {
+              "id": "node_8cfb5d98->node_6fa45c1d",
+              "from": "node_8cfb5d98",
+              "to": "node_6fa45c1d",
+              "label": ""
+            },
+            {
+              "id": "node_9b1845f4->node_cf4629b9",
+              "from": "node_9b1845f4",
+              "to": "node_cf4629b9",
+              "label": "false"
+            },
+            {
+              "id": "node_cf4629b9->node_f05d7f59",
+              "from": "node_cf4629b9",
+              "to": "node_f05d7f59",
+              "label": ""
+            },
+            {
+              "id": "node_91e99186->node_98fbf9eb",
+              "from": "node_91e99186",
+              "to": "node_98fbf9eb",
+              "label": ""
+            },
+            {
+              "id": "node_98fbf9eb->node_153cbf5d",
+              "from": "node_98fbf9eb",
+              "to": "node_153cbf5d",
+              "label": "true"
+            },
+            {
+              "id": "node_98fbf9eb->node_da75c108",
+              "from": "node_98fbf9eb",
+              "to": "node_da75c108",
+              "label": "false"
+            }
+          ]
+        }
+      },
+      "success": true,
+      "timestamp": 78.0
+    },
+    {
+      "tool_name": "ask_question",
+      "args": {},
+      "result": {
+        "success": true,
+        "action": "question_auto_answered",
+        "message": "No user is available for clarification (evaluation mode). Use your best judgment based on what you can see in the image. If a value is ambiguous, pick the most reasonable interpretation.",
+        "questions_received": 0
+      },
+      "success": true,
+      "timestamp": 82.27
+    }
+  ],
+  "llm_response": "",
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Extract this workflow image into a structured workflow. Follow the Image-to-Workflow Protocol exactly."
+    },
+    {
+      "role": "assistant",
+      "content": ""
+    }
+  ],
+  "scores": {
+    "score_overall": 0.378,
+    "score_variables": 0.875,
+    "score_nodes": 0.278,
+    "score_topology": 0.038,
+    "score_conditions": 0.273,
+    "score_outputs": 0.292,
+    "score_functional": 0.51
+  },
+  "summary": {
+    "sample": "lipid_management",
+    "model": "gpt54",
+    "run_id": "1_d58648",
+    "num_nodes": 12,
+    "num_edges": 11,
+    "num_variables": 9,
+    "num_tool_calls": 20,
+    "llm_calls": 12,
+    "input_tokens": 158779,
+    "output_tokens": 3689,
+    "total_tokens": 162468,
+    "cost_usd": 0.8492,
+    "wall_time_s": 82.3,
+    "error": null,
+    "score_overall": 0.378,
+    "score_variables": 0.875,
+    "score_nodes": 0.278,
+    "score_topology": 0.038,
+    "score_conditions": 0.273,
+    "score_outputs": 0.292,
+    "score_functional": 0.51
+  }
+}

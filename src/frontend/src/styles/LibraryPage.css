@@ -9,38 +9,7 @@
 }
 
 .library-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 24px;
-    background: var(--paper);
-    border-bottom: 1px solid var(--edge);
-    flex-shrink: 0;
-}
-
-.library-header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.library-back-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.85rem;
-}
-
-.library-title {
-    font-family: "Fraunces", "Space Grotesk", serif;
-    font-size: 1.4rem;
-    font-weight: 500;
-    color: var(--ink);
-}
-
-.library-header-right {
-    width: 100px;
-    /* Balance the header */
+    display: none;
 }
 
 .library-body {

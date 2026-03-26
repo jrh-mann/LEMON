@@ -1,0 +1,52 @@
+{
+  "sample_name": "liver_pathology",
+  "model": "deepseek",
+  "model_id": "deepseek-v32",
+  "run_id": "3_39e802",
+  "error": null,
+  "wall_time_s": 14.9,
+  "cost_usd": 0.0,
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_tokens": 0,
+    "llm_calls": 1
+  },
+  "workflow": {
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "outputs": []
+  },
+  "tool_calls": [],
+  "llm_response": "I wasn't able to generate a response. Could you rephrase or provide more details?",
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Extract this workflow image into a structured workflow. Follow the Image-to-Workflow Protocol exactly."
+    },
+    {
+      "role": "assistant",
+      "content": "I wasn't able to generate a response. Could you rephrase or provide more details?"
+    }
+  ],
+  "scores": null,
+  "summary": {
+    "sample": "liver_pathology",
+    "model": "deepseek",
+    "run_id": "3_39e802",
+    "num_nodes": 0,
+    "num_edges": 0,
+    "num_variables": 0,
+    "num_tool_calls": 0,
+    "llm_calls": 1,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "wall_time_s": 14.9,
+    "error": null
+  }
+}
