@@ -3,7 +3,7 @@
  * Extracted from Header.tsx for reuse in ExportPage.
  */
 
-import { validateWorkflow, compileToPython, exportWorkflowJson, exportWorkflowBundleWithWarnings } from '../api/workflows'
+import { validateWorkflow, compileToPython, compileStoredWorkflowToPython, exportWorkflowJson, exportWorkflowBundleWithWarnings } from '../api/workflows'
 import type { Flowchart, WorkflowAnalysis, Workflow } from '../types'
 
 interface ExportContext {
@@ -52,9 +52,11 @@ export async function exportAsJSONWithOptions(
         return 'Save workflow before exporting'
     }
 
+    const shouldIncludeSubflows = options.includeSubflows || Boolean(currentWorkflow.package_id)
+
     let blob: Blob
     let warnings: string[] = []
-    if (options.includeSubflows) {
+    if (shouldIncludeSubflows) {
         const bundleResult = await exportWorkflowBundleWithWarnings(currentWorkflow.id)
         blob = bundleResult.blob
         warnings = bundleResult.warnings
@@ -75,7 +77,7 @@ export async function exportAsJSONWithOptions(
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${currentWorkflow.metadata?.name || 'workflow'}.${options.includeSubflows ? 'zip' : 'json'}`
+    a.download = `${currentWorkflow.package_name || currentWorkflow.metadata?.name || 'workflow'}.${shouldIncludeSubflows ? 'zip' : 'json'}`
     a.click()
     URL.revokeObjectURL(url)
     return null
@@ -205,6 +207,52 @@ export async function exportAsPNG(ctx: ExportContext): Promise<string | null> {
  */
 export async function exportAsPython(ctx: ExportContext): Promise<string | null> {
     const { currentWorkflow, flowchart, currentAnalysis } = ctx
+
+    const packageHeadWorkflowId = currentWorkflow?.package_head_workflow_id || currentWorkflow?.id
+
+    if (currentWorkflow?.package_id && packageHeadWorkflowId) {
+        const storedResult = await compileStoredWorkflowToPython({
+            workflow_id: packageHeadWorkflowId,
+            include_imports: true,
+            include_docstring: true,
+            include_main: true,
+        })
+
+        if (!storedResult.success || !storedResult.code) {
+            return storedResult.error || 'Failed to generate package Python code'
+        }
+
+        const warnings = storedResult.warnings || []
+        const criticalWarnings = warnings.filter(w =>
+            w.includes('Could not compile condition') ||
+            w.includes('Unknown variable') ||
+            w.includes('not defined') ||
+            w.includes('requires manual implementation') ||
+            w.includes('Recursive subflow cycle detected') ||
+            w.includes('could not be compiled')
+        )
+
+        if (criticalWarnings.length > 0) {
+            const proceed = confirm(
+                `⚠️ Python Export Warnings\n\n` +
+                `The generated code may not work correctly:\n\n` +
+                criticalWarnings.map(w => `• ${w}`).join('\n') +
+                `\n\nDo you want to download anyway?`
+            )
+            if (!proceed) return 'cancelled'
+        }
+
+        const blob = new Blob([storedResult.code], { type: 'text/x-python' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        const workflowName = currentWorkflow.package_name || currentWorkflow.metadata?.name || 'workflow_package'
+        const filename = workflowName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '')
+        a.download = `${filename || 'workflow_package'}.py`
+        a.click()
+        URL.revokeObjectURL(url)
+        return null
+    }
 
     const result = await compileToPython({
         nodes: flowchart.nodes,

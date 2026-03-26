@@ -327,8 +327,8 @@ function SaveWorkflowFormContent({
           <span className="checkbox-label">Publish to Community Library</span>
         </label>
         <small className="muted">
-          Published workflows appear in the peer review section.
-          They will be reviewed by other users before becoming publicly available.
+          Published workflows with subflows are published as packages.
+          The current workflow becomes the main workflow and reachable subflows are included where possible.
         </small>
       </div>
 

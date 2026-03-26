@@ -105,12 +105,14 @@ def register_compilation_routes(
         )
 
         if result.success:
-            return JSONResponse({
-                "success": True,
-                "code": result.code,
-                "warnings": result.warnings,
-                "partial_failure": result.partial_failure,
-            })
+            return JSONResponse(
+                {
+                    "success": True,
+                    "code": result.code,
+                    "warnings": result.warnings,
+                    "partial_failure": result.partial_failure,
+                }
+            )
         else:
             return JSONResponse(
                 {
@@ -122,5 +124,80 @@ def register_compilation_routes(
                 },
                 status_code=400,
             )
+
+    @router.post("/api/workflows/compile-stored")
+    async def compile_stored_workflow_to_python_endpoint(
+        request: Request,
+        user: AuthUser = Depends(require_auth),
+    ) -> JSONResponse:
+        from ...execution.python_compiler import compile_workflow_to_python
+
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            return api_error("Invalid JSON in request body")
+
+        workflow_id = payload.get("workflow_id")
+        if not isinstance(workflow_id, str) or not workflow_id:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "workflow_id is required",
+                    "code": None,
+                    "warnings": [],
+                },
+                status_code=400,
+            )
+
+        workflow = workflow_store.get_workflow(workflow_id, user.id)
+        if workflow is None:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "Workflow not found",
+                    "code": None,
+                    "warnings": [],
+                },
+                status_code=404,
+            )
+
+        include_imports = payload.get("include_imports", True)
+        include_docstring = payload.get("include_docstring", True)
+        include_main = payload.get("include_main", True)
+
+        def _fetch_subworkflow(sub_id: str):
+            return workflow_store.get_workflow(sub_id, user.id)
+
+        result = compile_workflow_to_python(
+            nodes=workflow.nodes,
+            edges=workflow.edges,
+            variables=workflow.inputs,
+            outputs=workflow.outputs,
+            workflow_name=workflow.name,
+            include_imports=include_imports,
+            include_docstring=include_docstring,
+            include_main=include_main,
+            fetch_subworkflow=_fetch_subworkflow,
+        )
+
+        if result.success:
+            return JSONResponse(
+                {
+                    "success": True,
+                    "code": result.code,
+                    "warnings": result.warnings,
+                    "partial_failure": result.partial_failure,
+                }
+            )
+        return JSONResponse(
+            {
+                "success": False,
+                "error": result.error,
+                "code": None,
+                "warnings": result.warnings,
+                "partial_failure": result.partial_failure,
+            },
+            status_code=400,
+        )
 
     app.include_router(router)

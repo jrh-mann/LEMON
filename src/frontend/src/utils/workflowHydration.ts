@@ -24,6 +24,10 @@ export function hydrateWorkflowDetail(workflowData: WorkflowDetailResponse): {
     id: workflowData.id,
     output_type: workflowData.output_type,
     metadata: workflowData.metadata,
+    package_id: workflowData.package_id,
+    package_name: workflowData.package_name,
+    package_role: workflowData.package_role,
+    package_head_workflow_id: workflowData.package_head_workflow_id,
   }
 
   const analysis: WorkflowAnalysis = {

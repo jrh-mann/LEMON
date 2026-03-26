@@ -210,6 +210,10 @@ export interface Workflow {
   id: string
   output_type?: string  // Workflow-level output type: 'string' | 'number' | 'bool' | 'json'
   metadata: WorkflowMetadata
+  package_id?: string | null
+  package_name?: string | null
+  package_role?: 'head' | 'dependency' | null
+  package_head_workflow_id?: string | null
 }
 
 /** Shape returned by GET /api/workflows/:id — backend-oriented before frontend transform */
@@ -225,6 +229,10 @@ export interface WorkflowDetailResponse {
   building?: boolean  // True while a background orchestrator is building this workflow
   conversation_id?: string  // Links to backend ConversationStore for chat history restore
   uploaded_files?: Array<{ name: string; rel_path: string; file_type: string; purpose: string }>
+  package_id?: string | null
+  package_name?: string | null
+  package_role?: 'head' | 'dependency' | null
+  package_head_workflow_id?: string | null
 }
 
 export interface WorkflowSummary {

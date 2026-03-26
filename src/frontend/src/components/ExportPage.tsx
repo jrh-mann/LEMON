@@ -16,6 +16,7 @@ export default function ExportPage() {
     const canExport = currentWorkflow || flowchart.nodes.length > 0
     const resolvedWorkflowId = routeWorkflowId || currentWorkflow?.id || null
     const workflowRoute = resolvedWorkflowId ? `/workflow/${resolvedWorkflowId}` : '/workflow'
+    const isPackageContext = Boolean(currentWorkflow?.package_id)
 
     useEffect(() => {
         if (!routeWorkflowId && currentWorkflow?.id) {
@@ -120,8 +121,9 @@ export default function ExportPage() {
                             </div>
                             <h3>JSON</h3>
                             <p className="export-card-desc">
-                                Export as a structured JSON file. Includes the full workflow definition,
-                                variables, and all node configurations. Can be re-imported later.
+                                {isPackageContext
+                                    ? 'Export the full workflow package as a ZIP bundle, including the head workflow and package members.'
+                                    : 'Export as a structured JSON file. Includes the full workflow definition, variables, and all node configurations. Can be re-imported later.'}
                             </p>
                             <div className="export-card-info">
                                 <span>{flowchart.nodes.length} nodes</span>
@@ -137,13 +139,16 @@ export default function ExportPage() {
                                 <input
                                     id="bundle-subflows-toggle"
                                     type="checkbox"
-                                    checked={includeSubflowsInJson}
+                                    checked={isPackageContext || includeSubflowsInJson}
                                     onChange={(e) => setIncludeSubflowsInJson(e.target.checked)}
+                                    disabled={isPackageContext}
                                 />
-                                <span>Bundle subflows if encountered</span>
+                                <span>{isPackageContext ? 'Export this package' : 'Bundle subflows if encountered'}</span>
                             </label>
                             <p className="export-toggle-hint">
-                                Downloads a `.zip` bundle when enabled; otherwise exports the current workflow as `.json`.
+                                {isPackageContext
+                                    ? 'Package workflows download as a `.zip` bundle.'
+                                    : 'Downloads a `.zip` bundle when enabled; otherwise exports the current workflow as `.json`.'}
                             </p>
                             <button
                                 className="primary export-btn"
@@ -152,8 +157,8 @@ export default function ExportPage() {
                             >
                                 {exporting === 'json'
                                     ? 'Exporting...'
-                                    : includeSubflowsInJson
-                                        ? 'Download ZIP Bundle'
+                                    : (isPackageContext || includeSubflowsInJson)
+                                        ? 'Download Package ZIP'
                                         : 'Download JSON'}
                             </button>
                         </div>
@@ -200,8 +205,9 @@ export default function ExportPage() {
                             </div>
                             <h3>Python</h3>
                             <p className="export-card-desc">
-                                Generate executable Python code from the workflow.
-                                Includes imports, docstrings, and a main entry point.
+                                {isPackageContext
+                                    ? 'Generate one Python file for the full package using the main workflow as the entry point.'
+                                    : 'Generate executable Python code from the workflow. Includes imports, docstrings, and a main entry point.'}
                             </p>
                             <div className="export-card-info">
                                 <span>Includes imports</span>

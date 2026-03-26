@@ -8,6 +8,14 @@ import '../styles/LibraryPage.css'
 
 type BrowserTab = 'mine' | 'published' | 'peer_review'
 
+type PackageGroup = {
+    packageId: string
+    packageName: string
+    head: WorkflowSummary
+    members: WorkflowSummary[]
+    externalCount: number
+}
+
 export default function LibraryPage() {
     const navigate = useNavigate()
     const { setZoomingCard, setZoomPhase } = useUIStore()
@@ -23,6 +31,7 @@ export default function LibraryPage() {
     const [isLoading, setIsLoading] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+    const [selectedPackage, setSelectedPackage] = useState<PackageGroup | null>(null)
 
     // Fetch workflows for a specific tab if not already loaded
     const fetchTabData = useCallback(async (tab: BrowserTab) => {
@@ -172,6 +181,28 @@ export default function LibraryPage() {
                        (activeTab === 'peer_review' && peerReviewWorkflows !== null)
     const workflowReturnPath = currentWorkflowId ? `/workflow/${currentWorkflowId}` : '/workflow'
 
+    const packageGroups: PackageGroup[] = activeTab !== 'mine' ? [] : (() => {
+        const grouped = new Map<string, WorkflowSummary[]>()
+        for (const wf of workflows) {
+            if (!wf.package_id) continue
+            const list = grouped.get(wf.package_id) || []
+            list.push(wf)
+            grouped.set(wf.package_id, list)
+        }
+        return Array.from(grouped.entries()).map(([packageId, members]) => {
+            const head = members.find(wf => wf.package_role === 'head') || members[0]
+            return {
+                packageId,
+                packageName: head.package_name || head.name,
+                head,
+                members,
+                externalCount: 0,
+            }
+        })
+    })()
+    const packagedIds = new Set(packageGroups.flatMap(group => group.members.map(member => member.id)))
+    const standaloneWorkflows = workflows.filter(wf => !packagedIds.has(wf.id))
+
     return (
         <div className="library-page">
             <header className="library-header">
@@ -241,7 +272,19 @@ export default function LibraryPage() {
                     </div>
                 ) : (
                     <div className="library-grid">
-                        {workflows.map(wf => (
+                        {packageGroups.map(pkg => (
+                            <div key={pkg.packageId} className="library-card" onClick={() => setSelectedPackage(pkg)}>
+                                <div className="library-card-header">
+                                    <h3 className="library-card-name">{pkg.packageName}</h3>
+                                </div>
+                                <p className="library-card-desc">Head workflow: {pkg.head.name}</p>
+                                <div className="library-card-meta">
+                                    <span className="library-card-domain">Package</span>
+                                    <span className="library-card-tag">{pkg.members.length} workflows</span>
+                                </div>
+                            </div>
+                        ))}
+                        {standaloneWorkflows.map(wf => (
                             <div key={wf.id} className="library-card" onClick={(e) => handleSelect(wf, e)}>
                                 <div className="library-card-header">
                                     <h3 className="library-card-name">
@@ -306,6 +349,30 @@ export default function LibraryPage() {
                     </div>
                 )}
             </div>
+            {selectedPackage && (
+                <div className="modal">
+                    <div className="modal-backdrop" onClick={() => setSelectedPackage(null)}></div>
+                    <div className="modal-content">
+                        <div className="modal-header">
+                            <h3>{selectedPackage.packageName}</h3>
+                            <button className="modal-close" onClick={() => setSelectedPackage(null)}>x</button>
+                        </div>
+                        <div className="modal-body">
+                            <p className="muted">Main workflow: {selectedPackage.head.name}</p>
+                            <div className="library-grid">
+                                {selectedPackage.members.map(member => (
+                                    <div key={member.id} className="library-card" onClick={(e) => handleSelect(member, e)}>
+                                        <div className="library-card-header">
+                                            <h3 className="library-card-name">{member.name}</h3>
+                                        </div>
+                                        <p className="library-card-desc">{member.package_role === 'head' ? 'Head workflow' : 'Dependency workflow'}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

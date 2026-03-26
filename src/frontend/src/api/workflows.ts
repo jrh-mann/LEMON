@@ -204,10 +204,23 @@ export interface CompilePythonRequest {
   include_main?: boolean
 }
 
+export interface CompileStoredWorkflowRequest {
+  workflow_id: string
+  include_imports?: boolean
+  include_docstring?: boolean
+  include_main?: boolean
+}
+
 export async function compileToPython(
   payload: CompilePythonRequest
 ): Promise<CompilePythonResponse> {
   return api.post<CompilePythonResponse>('/api/workflows/compile', payload)
+}
+
+export async function compileStoredWorkflowToPython(
+  payload: CompileStoredWorkflowRequest
+): Promise<CompilePythonResponse> {
+  return api.post<CompilePythonResponse>('/api/workflows/compile-stored', payload)
 }
 
 // ============ Peer Review / Public Workflows ============
