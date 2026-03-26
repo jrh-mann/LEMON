@@ -9,7 +9,45 @@ import type {
   WorkflowVariable,
   WorkflowOutput,
   ToolCall,
+  WorkflowPackage,
 } from '../types'
+
+export async function listPackages(): Promise<WorkflowPackage[]> {
+  const response = await api.get<{ packages: WorkflowPackage[] }>('/api/packages')
+  return response.packages
+}
+
+export async function createPackage(data: { name?: string; description?: string }): Promise<WorkflowPackage> {
+  return api.post<WorkflowPackage>('/api/packages', data)
+}
+
+export async function getPackage(packageId: string): Promise<WorkflowPackage> {
+  return api.get<WorkflowPackage>(`/api/packages/${packageId}`)
+}
+
+export async function updatePackage(packageId: string, data: { name?: string; description?: string }): Promise<WorkflowPackage> {
+  return api.patch<WorkflowPackage>(`/api/packages/${packageId}`, data)
+}
+
+export async function deletePackage(packageId: string): Promise<void> {
+  await api.delete(`/api/packages/${packageId}`)
+}
+
+export async function addWorkflowToPackage(packageId: string, workflowId: string): Promise<WorkflowPackage> {
+  return api.post<WorkflowPackage>(`/api/packages/${packageId}/members`, { workflow_id: workflowId })
+}
+
+export async function removeWorkflowFromPackage(packageId: string, workflowId: string): Promise<WorkflowPackage> {
+  return api.delete<WorkflowPackage>(`/api/packages/${packageId}/members/${workflowId}`)
+}
+
+export async function setPackageHead(packageId: string, workflowId: string): Promise<WorkflowPackage> {
+  return api.post<WorkflowPackage>(`/api/packages/${packageId}/head`, { workflow_id: workflowId })
+}
+
+export async function publishPackage(packageId: string): Promise<WorkflowPackage> {
+  return api.post<WorkflowPackage>(`/api/packages/${packageId}/publish`, {})
+}
 
 // List all workflows (returns summaries, not full workflows)
 export async function listWorkflows(): Promise<WorkflowSummary[]> {

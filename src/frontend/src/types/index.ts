@@ -261,6 +261,32 @@ export interface WorkflowSummary {
   package_head_workflow_id?: string | null
 }
 
+export interface PackageWorkflowSummary {
+  id: string
+  name: string
+  description: string
+  domain?: string
+  tags: string[]
+  is_validated: boolean
+  is_draft?: boolean
+  role: 'head' | 'dependency'
+}
+
+export interface WorkflowPackage {
+  id: string
+  name: string
+  description: string
+  head_workflow_id?: string | null
+  is_published: boolean
+  review_status?: 'unreviewed' | 'reviewed'
+  net_votes?: number
+  published_at?: string | null
+  workflow_count: number
+  workflows: PackageWorkflowSummary[]
+  issues?: Array<{ code: string; message: string; workflow_id?: string }>
+  is_publishable?: boolean
+}
+
 // Peer review status type
 export type ReviewStatus = 'unreviewed' | 'reviewed'
 
