@@ -49,6 +49,16 @@ export async function publishPackage(packageId: string): Promise<WorkflowPackage
   return api.post<WorkflowPackage>(`/api/packages/${packageId}/publish`, {})
 }
 
+export async function previewPackageAutofetch(packageId: string): Promise<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> }> {
+  return api.post(`/api/packages/${packageId}/autofetch-subflows/preview`, {})
+}
+
+export async function applyPackageAutofetch(packageId: string, cloneConflictWorkflowIds: string[]): Promise<WorkflowPackage & { autofetch: unknown }> {
+  return api.post(`/api/packages/${packageId}/autofetch-subflows/apply`, {
+    clone_conflict_workflow_ids: cloneConflictWorkflowIds,
+  })
+}
+
 // List all workflows (returns summaries, not full workflows)
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
   const response = await api.get<{ workflows: WorkflowSummary[]; count: number }>('/api/workflows')

@@ -59,3 +59,62 @@ def test_create_add_head_and_publish_package(tmp_path: Path):
     published = client.post(f"/api/packages/{package_id}/publish")
     assert published.status_code == 200
     assert published.json()["is_published"] is True
+
+
+def test_package_autofetch_clones_conflicts(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+    workflow_store.create_workflow(
+        "wf_shared",
+        user.id,
+        "Shared",
+        "desc",
+        nodes=[],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        is_draft=False,
+        is_validated=True,
+    )
+    workflow_store.create_workflow(
+        "wf_root",
+        user.id,
+        "Root",
+        "desc",
+        nodes=[
+            {
+                "id": "sub",
+                "type": "subprocess",
+                "label": "Shared",
+                "x": 0,
+                "y": 0,
+                "subworkflow_id": "wf_shared",
+                "input_mapping": {},
+                "output_variable": "out",
+            }
+        ],
+        edges=[],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        is_draft=False,
+        is_validated=True,
+    )
+
+    pkg_a = client.post("/api/packages", json={}).json()["id"]
+    client.post(f"/api/packages/{pkg_a}/members", json={"workflow_id": "wf_shared"})
+    pkg_b = client.post("/api/packages", json={}).json()["id"]
+    client.post(f"/api/packages/{pkg_b}/members", json={"workflow_id": "wf_root"})
+
+    preview = client.post(f"/api/packages/{pkg_b}/autofetch-subflows/preview")
+    assert preview.status_code == 200
+    assert len(preview.json()["conflicts"]) == 1
+
+    applied = client.post(
+        f"/api/packages/{pkg_b}/autofetch-subflows/apply",
+        json={"clone_conflict_workflow_ids": ["wf_shared"]},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["workflow_count"] == 2

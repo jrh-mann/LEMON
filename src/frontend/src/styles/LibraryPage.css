@@ -56,6 +56,15 @@
     margin-bottom: 20px;
     border-bottom: 1px solid var(--edge);
     padding-bottom: 0;
+    align-items: center;
+}
+
+.library-tabs-spacer {
+    flex: 1;
+}
+
+.library-new-package-btn {
+    margin-left: auto;
 }
 
 .library-tab {
@@ -168,6 +177,10 @@
     padding: 20px;
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+.library-package-create {
+    display: none;
 }
 
 .library-card:hover {

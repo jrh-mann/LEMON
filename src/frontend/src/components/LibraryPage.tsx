@@ -4,12 +4,14 @@ import { useUIStore } from '../stores/uiStore'
 import { useWorkflowStore } from '../stores/workflowStore'
 import {
   addWorkflowToPackage,
+  applyPackageAutofetch,
   createPackage,
   deletePackage,
   deleteWorkflow,
   getPackage,
   listPackages,
   listPublicWorkflows,
+  previewPackageAutofetch,
   listWorkflows,
   publishPackage,
   removeWorkflowFromPackage,
@@ -38,8 +40,8 @@ export default function LibraryPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [selectedPackage, setSelectedPackage] = useState<WorkflowPackage | null>(null)
   const [draggedWorkflowId, setDraggedWorkflowId] = useState<string | null>(null)
-  const [newPackageName, setNewPackageName] = useState('')
   const [packageError, setPackageError] = useState<string | null>(null)
+  const [autofetchPreview, setAutofetchPreview] = useState<{ additions: Array<Record<string, string>>; conflicts: Array<Record<string, string>> } | null>(null)
 
   const fetchMine = useCallback(async () => {
     const [workflows, packages] = await Promise.all([listWorkflows(), listPackages()])
@@ -118,11 +120,10 @@ export default function LibraryPage() {
   }, [navigate, setZoomPhase, setZoomingCard])
 
   const handleCreatePackage = useCallback(async () => {
-    const created = await createPackage({ name: newPackageName.trim() })
-    setNewPackageName('')
+    const created = await createPackage({})
     setSelectedPackage(created)
     await refreshActiveTab()
-  }, [newPackageName, refreshActiveTab])
+  }, [refreshActiveTab])
 
   const handleDropWorkflow = useCallback(async (packageId: string) => {
     if (!draggedWorkflowId) return
@@ -158,18 +159,13 @@ export default function LibraryPage() {
               {tab === 'mine' ? 'My Library' : tab === 'published' ? 'Published' : 'Peer Review'}
             </button>
           ))}
+          {activeTab === 'mine' && <div className="library-tabs-spacer" />}
+          {activeTab === 'mine' && <button className="primary library-new-package-btn" onClick={handleCreatePackage}>New Package</button>}
         </div>
 
         <div className="library-search">
           <input type="text" placeholder="Search workflows and packages..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
-
-        {activeTab === 'mine' && (
-          <div className="library-package-create">
-            <input value={newPackageName} onChange={(e) => setNewPackageName(e.target.value)} placeholder="New package name (optional)" />
-            <button className="primary" onClick={handleCreatePackage}>New Package</button>
-          </div>
-        )}
 
         {packageError && <p className="error-text">{packageError}</p>}
 
@@ -244,9 +240,13 @@ export default function LibraryPage() {
               <button className="modal-close" onClick={() => setSelectedPackage(null)}>x</button>
             </div>
             <div className="modal-body">
-              <input value={selectedPackage.name} placeholder="Package name" onChange={async (e) => setSelectedPackage(await updatePackage(selectedPackage.id, { name: e.target.value, description: selectedPackage.description }))} />
-              <textarea value={selectedPackage.description} placeholder="Package description" onChange={async (e) => setSelectedPackage(await updatePackage(selectedPackage.id, { name: selectedPackage.name, description: e.target.value }))} />
               <p className="muted">{selectedPackage.workflow_count === 0 ? 'Empty package' : `Head workflow: ${selectedPackage.workflows.find(wf => wf.role === 'head')?.name || 'Not set'}`}</p>
+              {selectedPackage.workflow_count > 0 && (
+                <>
+                  <h4>{selectedPackage.workflows.find(wf => wf.role === 'head')?.name || 'Head workflow'}</h4>
+                  <p className="muted">{selectedPackage.workflows.find(wf => wf.role === 'head')?.description || 'No description'}</p>
+                </>
+              )}
               {selectedPackage.issues?.length ? <div className="validation-warning"><ul>{selectedPackage.issues.map(issue => <li key={`${issue.code}-${issue.workflow_id || issue.message}`}>{issue.message}</li>)}</ul></div> : null}
               <div className="library-grid">
                 {selectedPackage.workflows.map(workflow => (
@@ -269,7 +269,44 @@ export default function LibraryPage() {
               </div>
               <div className="form-actions">
                 <button className="ghost" onClick={async () => { await deletePackage(selectedPackage.id); setSelectedPackage(null); await refreshActiveTab() }}>Delete Package</button>
+                {selectedPackage.head_workflow_id && <button className="ghost" onClick={async () => {
+                  const preview = await previewPackageAutofetch(selectedPackage.id)
+                  setAutofetchPreview(preview)
+                }}>Automatically fetch all subflows</button>}
                 <button className="primary" onClick={async () => setSelectedPackage(await publishPackage(selectedPackage.id))} disabled={!selectedPackage.is_publishable}>Publish Package</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {selectedPackage && autofetchPreview && (
+        <div className="modal">
+          <div className="modal-backdrop" onClick={() => setAutofetchPreview(null)} />
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Auto-fetch subflows</h3>
+              <button className="modal-close" onClick={() => setAutofetchPreview(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <p>{autofetchPreview.additions.length} workflows will be added.</p>
+              {autofetchPreview.conflicts.length > 0 && (
+                <div className="validation-warning">
+                  <p>These workflows are already in another package and will be cloned:</p>
+                  <ul>
+                    {autofetchPreview.conflicts.map(conflict => (
+                      <li key={conflict.workflow_id}>{conflict.workflow_name} ({conflict.workflow_id})</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="form-actions">
+                <button className="ghost" onClick={() => setAutofetchPreview(null)}>Cancel</button>
+                <button className="primary" onClick={async () => {
+                  const result = await applyPackageAutofetch(selectedPackage.id, autofetchPreview.conflicts.map(conflict => conflict.workflow_id))
+                  setSelectedPackage(result)
+                  setAutofetchPreview(null)
+                  await refreshActiveTab()
+                }}>Apply</button>
               </div>
             </div>
           </div>

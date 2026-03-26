@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from .storage.packages import PackageStore, WorkflowPackageRecord
@@ -173,6 +173,135 @@ class WorkflowPackageService:
             published_at=datetime.now(timezone.utc).isoformat(),
         )
         return self._require_package(user_id, package_id)
+
+    def autofetch_subflows_preview(
+        self, user_id: str, package_id: str
+    ) -> Dict[str, object]:
+        package = self._require_package(user_id, package_id)
+        if not package.head_workflow_id:
+            raise ValueError("Package has no head workflow")
+
+        additions: List[Dict[str, str]] = []
+        conflicts: List[Dict[str, str]] = []
+        visited: set[str] = set()
+        member_ids = {member.workflow_id for member in package.members}
+        stack = [package.head_workflow_id]
+
+        while stack:
+            workflow_id = stack.pop()
+            if workflow_id in visited:
+                continue
+            visited.add(workflow_id)
+            workflow = self._require_workflow(user_id, workflow_id)
+            for node in workflow.nodes:
+                if node.get("type") != "subprocess":
+                    continue
+                sub_id = node.get("subworkflow_id")
+                if not isinstance(sub_id, str) or not sub_id:
+                    continue
+                if sub_id in member_ids:
+                    stack.append(sub_id)
+                    continue
+                existing_package_id = self.package_store.get_workflow_package_id(sub_id)
+                subflow = self.workflow_store.get_workflow(sub_id, user_id)
+                if subflow is None:
+                    continue
+                if existing_package_id and existing_package_id != package_id:
+                    conflicts.append(
+                        {
+                            "workflow_id": subflow.id,
+                            "workflow_name": subflow.name,
+                            "from_workflow_id": workflow.id,
+                            "from_workflow_name": workflow.name,
+                            "existing_package_id": existing_package_id,
+                        }
+                    )
+                else:
+                    additions.append(
+                        {
+                            "workflow_id": subflow.id,
+                            "workflow_name": subflow.name,
+                            "from_workflow_id": workflow.id,
+                            "from_workflow_name": workflow.name,
+                        }
+                    )
+                    stack.append(sub_id)
+        return {"additions": additions, "conflicts": conflicts}
+
+    def autofetch_subflows_apply(
+        self,
+        user_id: str,
+        package_id: str,
+        *,
+        clone_conflict_workflow_ids: Optional[List[str]] = None,
+    ) -> Tuple[WorkflowPackageRecord, Dict[str, object]]:
+        preview = self.autofetch_subflows_preview(user_id, package_id)
+        clone_ids = set(clone_conflict_workflow_ids or [])
+        clone_map: Dict[str, str] = {}
+
+        for addition in preview["additions"]:
+            self.add_workflow(user_id, package_id, addition["workflow_id"])
+
+        for conflict in preview["conflicts"]:
+            conflict_id = conflict["workflow_id"]
+            if conflict_id not in clone_ids:
+                continue
+            original = self._require_workflow(user_id, conflict_id)
+            cloned_id = f"wf_{uuid4().hex}"
+            self.workflow_store.create_workflow(
+                workflow_id=cloned_id,
+                user_id=user_id,
+                name=original.name,
+                description=original.description,
+                domain=original.domain,
+                tags=original.tags,
+                nodes=original.nodes,
+                edges=original.edges,
+                inputs=original.inputs,
+                outputs=original.outputs,
+                tree=original.tree,
+                doubts=original.doubts,
+                is_validated=original.is_validated,
+                output_type=original.output_type,
+                is_draft=original.is_draft,
+                is_published=False,
+            )
+            clone_map[conflict_id] = cloned_id
+            self.add_workflow(user_id, package_id, cloned_id)
+
+        if clone_map:
+            package = self._require_package(user_id, package_id)
+            for member in package.members:
+                workflow = self._require_workflow(user_id, member.workflow_id)
+                updated = False
+                nodes = []
+                variables = []
+                for node in workflow.nodes:
+                    node_copy = dict(node)
+                    sub_id = node_copy.get("subworkflow_id")
+                    if isinstance(sub_id, str) and sub_id in clone_map:
+                        node_copy["subworkflow_id"] = clone_map[sub_id]
+                        updated = True
+                    nodes.append(node_copy)
+                for variable in workflow.inputs:
+                    variable_copy = dict(variable)
+                    sub_id = variable_copy.get("subworkflow_id")
+                    if isinstance(sub_id, str) and sub_id in clone_map:
+                        variable_copy["subworkflow_id"] = clone_map[sub_id]
+                        updated = True
+                    variables.append(variable_copy)
+                if updated:
+                    self.workflow_store.update_workflow(
+                        workflow_id=workflow.id,
+                        user_id=user_id,
+                        nodes=nodes,
+                        inputs=variables,
+                    )
+
+        return self._require_package(user_id, package_id), {
+            "preview": preview,
+            "clone_map": clone_map,
+        }
 
     def _require_package(self, user_id: str, package_id: str) -> WorkflowPackageRecord:
         package = self.package_store.get_package(package_id, user_id)

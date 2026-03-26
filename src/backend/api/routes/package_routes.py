@@ -32,10 +32,15 @@ def _serialize_package(
                 "role": member.role,
             }
         )
+    head_workflow = next(
+        (workflow for workflow in workflows if workflow["role"] == "head"), None
+    )
     return {
         "id": package.id,
-        "name": package.name,
-        "description": package.description,
+        "name": head_workflow["name"] if head_workflow else package.name,
+        "description": head_workflow["description"]
+        if head_workflow
+        else package.description,
         "head_workflow_id": package.head_workflow_id,
         "is_published": package.is_published,
         "review_status": package.review_status,
@@ -153,5 +158,33 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse(_serialize_package(package, workflow_store, user.id))
+
+    @router.post("/api/packages/{package_id}/autofetch-subflows/preview")
+    async def preview_autofetch_subflows(
+        package_id: str, user: AuthUser = Depends(require_auth)
+    ) -> JSONResponse:
+        try:
+            preview = service.autofetch_subflows_preview(user.id, package_id)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(preview)
+
+    @router.post("/api/packages/{package_id}/autofetch-subflows/apply")
+    async def apply_autofetch_subflows(
+        package_id: str, request: Request, user: AuthUser = Depends(require_auth)
+    ) -> JSONResponse:
+        payload = await request.json()
+        clone_ids = payload.get("clone_conflict_workflow_ids") or []
+        try:
+            package, details = service.autofetch_subflows_apply(
+                user.id,
+                package_id,
+                clone_conflict_workflow_ids=clone_ids,
+            )
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        body = _serialize_package(package, workflow_store, user.id)
+        body["autofetch"] = details
+        return JSONResponse(body)
 
     app.include_router(router)
