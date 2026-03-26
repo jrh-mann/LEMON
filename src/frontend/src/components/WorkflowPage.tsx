@@ -466,6 +466,15 @@ export default function WorkflowPage() {
             const result = await importWorkflowJson(payload)
             await completeImportedNavigation(result.workflow_id)
         } catch (err) {
+            try {
+                const payload = JSON.parse(importJsonText)
+                pendingImportActionRef.current = async () => {
+                    const result = await importWorkflowJson(payload, true)
+                    await completeImportedNavigation(result.workflow_id)
+                }
+            } catch {
+                pendingImportActionRef.current = null
+            }
             handleImportFailure(err, 'Invalid JSON')
         }
     }, [completeImportedNavigation, handleImportFailure, importJsonText])
