@@ -297,8 +297,8 @@ export default function LibraryPage() {
                       {workflow.invalid_public && <span className="library-card-tag">Not validated</span>}
                     </div>
                     <div className="form-actions">
-                      {workflow.role !== 'head' && <button className="ghost" onClick={async () => setSelectedPackage(await setPackageHead(selectedPackage.id, workflow.id))}>Set as head workflow</button>}
-                      <button className="ghost" onClick={async () => setSelectedPackage(await removeWorkflowFromPackage(selectedPackage.id, workflow.id))}>Remove</button>
+                      {workflow.role !== 'head' && <button className="ghost" onClick={async (e) => { e.stopPropagation(); setSelectedPackage(await setPackageHead(selectedPackage.id, workflow.id)) }}>Set as head workflow</button>}
+                      <button className="ghost" onClick={async (e) => { e.stopPropagation(); setSelectedPackage(await removeWorkflowFromPackage(selectedPackage.id, workflow.id)) }}>Remove</button>
                     </div>
                   </div>
                 ))}
