@@ -20,7 +20,7 @@ import { useCanvasKeyboard } from '../hooks/useCanvasKeyboard'
 import { useWheelZoom } from '../hooks/useWheelZoom'
 import type { FlowNode, FlowNodeType } from '../types'
 
-export default function Canvas() {
+export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -203,6 +203,8 @@ export default function Canvas() {
       e.stopPropagation()
       e.preventDefault()
 
+      if (readOnly) return
+
       const svgCoords = screenToSVG(e.clientX, e.clientY)
       const size = getNodeSize(node.type)
       const portPos = getPortPosition(dir, size)
@@ -276,7 +278,7 @@ export default function Canvas() {
       // Capture pointer on SVG for reliable tracking
       svgRef.current?.setPointerCapture(e.pointerId)
     },
-    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes]
+    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes, readOnly]
   )
 
   // Handle pointer move
@@ -421,8 +423,7 @@ export default function Canvas() {
           )
         })
 
-        if (targetNode) {
-          // Create edge
+        if (targetNode && !readOnly) {
           addEdge({ from: dragConnection.fromNodeId, to: targetNode.id, label: '' })
           pushHistory()
         }
@@ -433,7 +434,7 @@ export default function Canvas() {
       }
 
       // Handle node drag end
-      if (isDragging && dragNodeId) {
+      if (isDragging && dragNodeId && !readOnly) {
         pushHistory()
       }
       setIsDragging(false)
@@ -443,7 +444,7 @@ export default function Canvas() {
       // Release pointer capture from SVG
       svgRef.current?.releasePointerCapture(e.pointerId)
     },
-    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge, isPanning, selectionBox, selectedNodeIds, selectNodes, clearSelection]
+    [isDragging, dragNodeId, pushHistory, dragConnection, flowchart.nodes, screenToSVG, addEdge, isPanning, selectionBox, selectedNodeIds, selectNodes, clearSelection, readOnly]
   )
 
   // Handle drag over (allow drop)
@@ -456,6 +457,7 @@ export default function Canvas() {
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
+      if (readOnly) return
       const nodeType = e.dataTransfer.getData('text/plain') as FlowNodeType
       if (!nodeType) return
 
@@ -471,7 +473,7 @@ export default function Canvas() {
         color: 'teal',
       })
     },
-    [screenToSVG, addNode]
+    [screenToSVG, addNode, readOnly]
   )
 
   // Handle canvas pointer down (start box selection or panning based on mode)
@@ -486,6 +488,22 @@ export default function Canvas() {
 
       if (isBackgroundClick) {
         e.preventDefault()
+
+        if (readOnly) {
+          const now = Date.now()
+          const lastClick = lastCanvasClickRef.current
+          const isDoubleClick = lastClick &&
+            (now - lastClick.time < 400) &&
+            Math.abs(e.clientX - lastClick.x) < 20 &&
+            Math.abs(e.clientY - lastClick.y) < 20
+          lastCanvasClickRef.current = { time: now, x: e.clientX, y: e.clientY }
+          if (canvasMode === 'pan' || isDoubleClick || e.button === 1) {
+            setIsPanning(true)
+            setPanStart({ x: e.clientX, y: e.clientY, panX: panOffset.x, panY: panOffset.y })
+            svgRef.current?.setPointerCapture(e.pointerId)
+          }
+          return
+        }
 
         const now = Date.now()
         const lastClick = lastCanvasClickRef.current
@@ -527,34 +545,42 @@ export default function Canvas() {
         svgRef.current?.setPointerCapture(e.pointerId)
       }
     },
-    [panOffset, screenToSVG, clearSelection, canvasMode]
+    [panOffset, screenToSVG, clearSelection, canvasMode, readOnly]
   )
 
   // Handle canvas click (just cancel connect mode, selection handled by pointer events)
   const handleCanvasClick = useCallback(
     () => {
       if (connectMode) {
+        if (readOnly) return
         cancelConnect()
       }
     },
-    [connectMode, cancelConnect]
+    [connectMode, cancelConnect, readOnly]
   )
 
   // Handle double-click to start connection
   const handleNodeDoubleClick = useCallback(
     (e: React.MouseEvent, node: FlowNode) => {
       e.stopPropagation()
+      if (readOnly) return
       startConnect(node.id)
     },
-    [startConnect]
+    [startConnect, readOnly]
   )
 
 
 
   // Keyboard shortcuts (delete, undo/redo, escape, mode switch)
   useCanvasKeyboard({
-    selectedNodeIds, deleteNode, undo, redo,
-    connectMode, cancelConnect, clearSelection, setCanvasMode,
+    selectedNodeIds: readOnly ? [] : selectedNodeIds,
+    deleteNode: readOnly ? (() => {}) : deleteNode,
+    undo: readOnly ? (() => {}) : undo,
+    redo: readOnly ? (() => {}) : redo,
+    connectMode: readOnly ? false : connectMode,
+    cancelConnect: readOnly ? (() => {}) : cancelConnect,
+    clearSelection: readOnly ? (() => {}) : clearSelection,
+    setCanvasMode,
   })
 
   // Mouse wheel zoom (centred on cursor, non-passive listener)
@@ -811,7 +837,7 @@ export default function Canvas() {
   // Uses the shared beautifyNodes utility which supports DAGs (nodes with
   // multiple parents). No _dup nodes, no new edges — only x,y updates.
   const beautifyFlowchart = useCallback(() => {
-    if (flowchart.nodes.length === 0) return
+    if (flowchart.nodes.length === 0 || readOnly) return
 
     const result = beautifyNodes(flowchart.nodes, flowchart.edges)
     setFlowchart(result)
@@ -822,12 +848,12 @@ export default function Canvas() {
     if (workflowId) {
       patchWorkflow(workflowId, { nodes: result.nodes, edges: result.edges }).catch(() => {})
     }
-  }, [flowchart, setFlowchart, pushHistory])
+  }, [flowchart, setFlowchart, pushHistory, readOnly])
 
   return (
     <div className="canvas-area">
       {/* Toolbar / Tabs area - Only show Source Files tab if there are files uploaded */}
-      {workspaceRevealed && pendingFiles.length > 0 && (
+      {!readOnly && workspaceRevealed && pendingFiles.length > 0 && (
         <div className="workspace-tabs">
           <button
             className={`workspace-tab ${canvasTab === 'image' ? 'active' : ''}`}
@@ -845,7 +871,7 @@ export default function Canvas() {
       )}
 
       {/* File preview tab — shows selected file with prev/next navigation */}
-      {canvasTab === 'image' && pendingFiles.length > 0 && (() => {
+      {!readOnly && canvasTab === 'image' && pendingFiles.length > 0 && (() => {
         const idx = Math.min(selectedFileIndex, pendingFiles.length - 1)
         const currentFile = pendingFiles[idx]
         const showNav = pendingFiles.length > 1
@@ -913,8 +939,8 @@ export default function Canvas() {
         id="canvasContainer"
         ref={containerRef}
         style={{ display: canvasTab === 'workflow' ? 'block' : 'none' }}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+        onDragOver={readOnly ? undefined : handleDragOver}
+        onDrop={readOnly ? undefined : handleDrop}
       >
         <svg
           ref={svgRef}
@@ -994,14 +1020,14 @@ export default function Canvas() {
         </svg>
 
         {/* Connect mode indicator */}
-        {workspaceRevealed && connectMode && (
+        {!readOnly && workspaceRevealed && connectMode && (
           <div className="connect-mode-indicator">
             Click another node to connect, or press Escape to cancel
           </div>
         )}
 
         {/* Top Controls */}
-        {workspaceRevealed && execution.isExecuting && (
+        {!readOnly && workspaceRevealed && execution.isExecuting && (
           <div className="canvas-top-controls">
             <label className="track-toggle main-track-toggle" title="Track executing node">
               <input

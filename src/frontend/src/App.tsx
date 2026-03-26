@@ -33,6 +33,7 @@ function App() {
               <Routes>
                 <Route path="/library" element={<LibraryPage />} />
                 <Route path="/export/:id?" element={<ExportPage />} />
+                <Route path="/workflow/public/:packageId/:workflowId" element={<WorkflowPage />} />
                 <Route path="/workflow/:id?" element={<WorkflowPage />} />
                 <Route path="/" element={<Navigate to="/workflow" replace />} />
                 <Route path="*" element={<Navigate to="/workflow" replace />} />

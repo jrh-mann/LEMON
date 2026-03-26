@@ -10,7 +10,7 @@ import ToolInspectorModal from './ToolInspectorModal'
 import { ExecutionLogModal } from './ExecutionLogModal'
 import { ApiError, API_BASE, getSessionId } from '../api/client'
 import { getCurrentUser } from '../api/auth'
-import { getWorkflow, importWorkflowBundle, importWorkflowJson, type ValidationError, type WorkflowImportError } from '../api/workflows'
+import { getPublicPackageWorkflow, getWorkflow, importWorkflowBundle, importWorkflowJson, type ValidationError, type WorkflowImportError } from '../api/workflows'
 import { syncConversationMessages } from '../utils/conversationSync'
 import { useSession } from '../hooks/useSession'
 import { useUIStore } from '../stores/uiStore'
@@ -25,9 +25,10 @@ import '../styles/WorkflowLanding.css'
 
 
 export default function WorkflowPage() {
-    const { id: workflowId } = useParams<{ id: string }>()
+    const { id: workflowId, packageId, workflowId: publicWorkflowId } = useParams<{ id: string; packageId: string; workflowId: string }>()
     const navigate = useNavigate()
     const [authReady, setAuthReady] = useState(false)
+    const isPublicReadOnly = Boolean(packageId && publicWorkflowId)
 
     // UI Store state
     const workspaceRevealed = useUIStore(s => s.workspaceRevealed)
@@ -138,7 +139,7 @@ export default function WorkflowPage() {
             return
         }
 
-        if (!workflowId) {
+        if (!workflowId && !publicWorkflowId) {
             loadedWorkflowIdRef.current = null
             useChatStore.getState().setActiveWorkflowId(null)
             clearPendingFiles()
@@ -148,17 +149,20 @@ export default function WorkflowPage() {
             return
         }
 
-        if (loadedWorkflowIdRef.current === workflowId) return
+        const effectiveWorkflowId = publicWorkflowId || workflowId
+        if (loadedWorkflowIdRef.current === effectiveWorkflowId) return
 
         let isActive = true
 
         const loadWorkflow = async () => {
             // Eagerly set the workflow ID so SSE event guards reject
             // events from the previous workflow during the async fetch.
-            setCurrentWorkflowId(workflowId)
+            setCurrentWorkflowId(effectiveWorkflowId || null)
 
             try {
-                const workflowData = await getWorkflow(workflowId)
+                const workflowData = isPublicReadOnly
+                    ? await getPublicPackageWorkflow(packageId!, publicWorkflowId!)
+                    : await getWorkflow(workflowId!)
                 if (!isActive) return
 
                 const { workflow, flowchart, analysis } = hydrateWorkflowDetail(workflowData)
@@ -166,7 +170,12 @@ export default function WorkflowPage() {
                 setFlowchart(flowchart)
                 setAnalysis(analysis)
                 markSavedSnapshot()
-                loadedWorkflowIdRef.current = workflowId
+                loadedWorkflowIdRef.current = effectiveWorkflowId || null
+
+                if (isPublicReadOnly) {
+                    triggerReveal()
+                    return
+                }
 
                 // Set active workflow in chatStore so Chat.tsx reads this workflow's conversation.
                 // All events (normal chat and builder) route to conversations[workflowId].
@@ -264,7 +273,7 @@ export default function WorkflowPage() {
                 if (!isActive) return
 
                 // 404 = new workflow (not in DB yet) — sync URL ID to store
-                if (err instanceof ApiError && err.status === 404) {
+                if (!isPublicReadOnly && err instanceof ApiError && err.status === 404) {
                     clearPendingFiles()
                     setCurrentWorkflowId(workflowId)
                     useChatStore.getState().setActiveWorkflowId(workflowId)
@@ -273,14 +282,14 @@ export default function WorkflowPage() {
                 }
 
                 const msg = err instanceof Error ? err.message : 'Unknown error'
-                setError(`Failed to load workflow (${workflowId}): ${msg}`)
+                setError(`Failed to load workflow (${effectiveWorkflowId}): ${msg}`)
             }
         }
         // Listen for task-finished from resumeTask — fires when resume discovers
         // the task already completed. Re-fetches final state from DB.
         const handleTaskFinished = async (e: Event) => {
             const detail = (e as CustomEvent).detail
-            if (detail?.workflowId !== workflowId || !isActive) return
+            if (detail?.workflowId !== workflowId || !isActive || isPublicReadOnly) return
             try {
                 const fresh = await getWorkflow(workflowId)
                 const hydrated = hydrateWorkflowDetail(fresh)
@@ -297,12 +306,12 @@ export default function WorkflowPage() {
             isActive = false
             window.removeEventListener('task-finished', handleTaskFinished)
         }
-    }, [authReady, workflowId, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles, markSavedSnapshot])
+    }, [authReady, workflowId, publicWorkflowId, packageId, isPublicReadOnly, setAnalysis, setCurrentWorkflow, setCurrentWorkflowId, setError, setFlowchart, triggerReveal, setHomeExited, addPendingFile, clearPendingFiles, markSavedSnapshot])
 
     // Re-fetch workflow when a background subworkflow build completes.
     // Loads final nodes/edges and merges conversation history (with tool calls).
     useEffect(() => {
-        if (!workflowId) return
+        if (!workflowId || isPublicReadOnly) return
 
         const handleBuildComplete = async (e: Event) => {
             const detail = (e as CustomEvent).detail
@@ -329,7 +338,7 @@ export default function WorkflowPage() {
 
         window.addEventListener('subworkflow-build-complete', handleBuildComplete)
         return () => window.removeEventListener('subworkflow-build-complete', handleBuildComplete)
-    }, [workflowId, setFlowchart])
+    }, [workflowId, setFlowchart, isPublicReadOnly])
 
     // No cleanup needed on unmount — conversation state persists in chatStore
     // across navigations. In-flight streaming tasks continue emitting events.
@@ -546,14 +555,14 @@ export default function WorkflowPage() {
             {/* Full workspace layout - always rendered */}
             <div className={`app-layout ${revealedClass} ${isTransitioning ? 'transitioning' : ''}`} style={{ '--chat-height': `${chatHeight}px` } as React.CSSProperties}>
                 <main className="workspace">
-                    <Palette />
-                    <Canvas />
-                    <RightSidebar />
+                    {!isPublicReadOnly && <Palette />}
+                    <Canvas readOnly={isPublicReadOnly} />
+                    {!isPublicReadOnly && <RightSidebar />}
                 </main>
             </div>
 
             {/* Home content - floating on top of canvas when not revealed */}
-            <div className={`home-floating ${homeExited ? 'home-floating-exit' : ''}`}>
+            {!isPublicReadOnly && <div className={`home-floating ${homeExited ? 'home-floating-exit' : ''}`}>
                 <div className="home-content">
                     <div className="home-greeting animate-slide-down-2">
                         <span className="greeting-sparkle">✦</span>
@@ -631,17 +640,17 @@ export default function WorkflowPage() {
                         </button>
                     </div>
                 </div>
-            </div>
+            </div>}
 
-            <input
+            {!isPublicReadOnly && <input
                 ref={homeImportInputRef}
                 type="file"
                 accept=".json,.zip,application/json,application/zip"
                 style={{ display: 'none' }}
                 onChange={handleImportFileUpload}
-            />
+            />}
 
-            {showImportModal && (
+            {!isPublicReadOnly && showImportModal && (
                 <div className="json-modal-overlay" onClick={() => setShowImportModal(false)}>
                     <div className="json-modal" onClick={(e) => e.stopPropagation()}>
                         <h3>Import Workflow</h3>
@@ -686,11 +695,11 @@ export default function WorkflowPage() {
                 </div>
             )}
 
-            <Chat revealedClass={revealedClass} />
-            <Modals />
-            <SubflowExecutionModal />
-            <ToolInspectorModal />
-            <ExecutionLogModal />
+            {!isPublicReadOnly && <Chat revealedClass={revealedClass} />}
+            {!isPublicReadOnly && <Modals />}
+            {!isPublicReadOnly && <SubflowExecutionModal />}
+            {!isPublicReadOnly && <ToolInspectorModal />}
+            {!isPublicReadOnly && <ExecutionLogModal />}
 
             {/* Error toast */}
             {error && (
