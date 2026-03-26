@@ -164,11 +164,10 @@ class ChatEventChannel:
                     **self._last_workflow_state,
                     "workflow_id": wf_id,
                 })
-            # Swap sink reference under lock, close old one outside
+            # Swap: close old sink, install new one
             old_sink = self._sink
             self._sink = new_sink
-        # Close old sink outside the lock — avoids holding lock during I/O
-        old_sink.close()
+            old_sink.close()
 
     def close(self) -> None:
         """Close the underlying sink. Called in ChatTask.run() finally block."""

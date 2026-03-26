@@ -43,32 +43,24 @@ class EventSink:
         self._closed = False
 
     def push(self, event: str, data: Dict[str, Any]) -> None:
-        """Push an event to the stream.
-
-        No-ops if sink is closed. If the queue has a size limit and is full,
-        the event is dropped with a warning log.
-        """
+        """Push an event to the stream. No-ops silently if sink is closed."""
         if self._closed:
             return
-        try:
-            self._queue.put_nowait((event, data))
-        except queue.Full:
-            logger.warning("EventSink queue full (%d), dropping event: %s", self._maxsize, event)
+        if self._maxsize > 0:
+            # Bounded queue: drop events when full (execution sinks only)
+            try:
+                self._queue.put_nowait((event, data))
+            except queue.Full:
+                logger.warning("EventSink queue full (%d), dropping event: %s", self._maxsize, event)
+        else:
+            # Unbounded queue (chat): blocking put, never fails
+            self._queue.put((event, data))
 
     def close(self) -> None:
-        """Close the stream. Sends a sentinel so the iterator stops yielding.
-
-        Uses put with a short timeout to avoid deadlocking if the client has
-        disconnected and the iterator is no longer draining the queue.
-        """
+        """Close the stream. Sends a sentinel so the iterator stops yielding."""
         if not self._closed:
             self._closed = True
-            try:
-                self._queue.put(None, timeout=5.0)
-            except queue.Full:
-                # Queue is full and iterator is dead — nothing we can do.
-                # The iterator will detect _closed on next wakeup.
-                logger.warning("EventSink.close(): queue full, sentinel not delivered")
+            self._queue.put(None)  # sentinel — always succeeds for unbounded queues
 
     @property
     def is_closed(self) -> bool:
@@ -86,9 +78,6 @@ class EventSink:
                 try:
                     item = self._queue.get(timeout=_KEEPALIVE_INTERVAL_SECONDS)
                 except queue.Empty:
-                    # Check if closed while we were waiting
-                    if self._closed:
-                        break
                     # Yield SSE comment as keepalive (keeps proxies happy)
                     yield ": keepalive\n\n"
                     continue
