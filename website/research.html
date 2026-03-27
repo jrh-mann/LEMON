@@ -90,7 +90,7 @@
         </tr>
       </tbody>
     </table>
-    <p>We started with Flask [5] for the initial prototype because of its simplicity, but migrated to FastAPI [12] in March 2026. As the project grew, we needed native async support and SSE streaming, which Flask could not provide without heavy extensions. FastAPI's routing model, middleware support, and auto-generated OpenAPI docs were all useful once the API surface became larger.</p>
+    <p>We started with Flask [5] for the initial prototype because of its simplicity, but migrated to FastAPI [12] in March 2026. As the project grew, we needed native async support and SSE streaming, which Flask could not provide without heavy extensions. FastAPI's Pydantic integration also saved us a lot of manual request validation, and the auto-generated OpenAPI docs were useful during development.</p>
 
     <h3>Frontend Framework</h3>
     <table class="comparison-table">
@@ -311,7 +311,7 @@
         <tr>
           <td>Testing (Backend)</td>
           <td>pytest</td>
-          <td>Standard Python testing across unit, integration, and feature suites</td>
+          <td>Standard Python testing across unit, integration, and feature suites, 1300+ tests</td>
         </tr>
         <tr>
           <td>Testing (Frontend)</td>

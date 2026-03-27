@@ -11,7 +11,7 @@
 
     <h1>Implementation</h1>
 
-    <p>This section walks through how we built LEMON's main features, what libraries we used, and how newer additions such as workflow packages fit into the same overall architecture.</p>
+    <p>This section walks through how we built LEMON's main features, what libraries we used, and how the pieces fit together.</p>
 
     <!-- LLM Orchestrator and Tool Use -->
     <h2>LLM Orchestrator and Tool Use</h2>
@@ -103,6 +103,7 @@ class TokenType(Enum):
 
     <p>Subprocess nodes let you call one workflow from inside another, passing in variables and getting a result back. This is how we handle complex clinical logic: break it into smaller, reusable pieces. When the TreeInterpreter hits a subprocess node, it loads the child workflow from the database, maps the parent's variables to the child's inputs, and runs it recursively. A depth limit stops circular references from causing infinite recursion.</p>
     <p>During authoring, long-running parent and child builds are handled by dedicated daemon threads (ChatTask and BuilderTask) rather than request-scoped FastAPI background tasks, so the HTTP layer can return a streaming response immediately while the build continues in the background.</p>
+    <p>Subworkflow execution follows a recursive pattern: the interpreter calls itself with the child workflow and mapped inputs, then injects the result back into the parent context. Depth limiting prevents infinite recursion from circular references.</p>
     <p>Runtime support: Python threading [12], SQLite [11] for workflow storage.</p>
 
     <!-- Image-to-Workflow -->
@@ -120,7 +121,7 @@ class TokenType(Enum):
     <!-- Library, Peer Review, and Workflow Packages -->
     <h2>Library, Peer Review, and Workflow Packages</h2>
 
-    <p>The library now manages both standalone workflows and multi-workflow packages. A package has one head workflow and zero or more dependency workflows, which keeps reusable subworkflows together for review, export, and cloning. Package membership and head/dependency roles are stored explicitly in the database and exposed through dedicated <code>/api/packages/*</code> routes.</p>
+    <p>The library manages both standalone workflows and multi-workflow packages. A package has one head workflow and zero or more dependency workflows, which keeps reusable subworkflows together for review, export, and cloning. Package membership and head/dependency roles are stored explicitly in the database and exposed through dedicated <code>/api/packages/*</code> routes.</p>
     <p>The community review flow is package-oriented rather than just workflow-oriented. Published packages appear in the peer review views, users can upvote or downvote them, and the head workflow acts as the package's public entry point. Voting still uses a simple net-vote threshold (currently 1) to promote a package from <code>unreviewed</code> to <code>reviewed</code>.</p>
     <p>Packages also have operations beyond simple library CRUD: users can clone a package, preview missing external subflows, autofetch those subflows into the package, export a package bundle, and compile the package head workflow to Python with dependent subflows included.</p>
     <p>Libraries: FastAPI [3] for package and peer review API routes, SQLite [11] for package membership, publishing metadata, and vote storage.</p>
@@ -144,7 +145,7 @@ class WorkflowRecord:
     inputs: List[Dict]     # JSON: typed variables
     outputs: List[Dict]    # JSON: output definitions
     tree: Dict             # JSON: tree representation
-    output_type: str       # string, number, boolean, json
+    output_type: str       # string, number, boolean
     building: bool         # True during orchestrator build
     conversation_id: str   # Links to chat history
     package_id: Optional[str]
@@ -166,6 +167,7 @@ class WorkflowRecord:
     <p>[10] L. Montague, "slowapi: A rate limiting library for FastAPI." [Online]. Available: https://github.com/laurentS/slowapi. [Accessed: Mar. 2026].</p>
     <p>[11] Python Software Foundation, "sqlite3: DB-API 2.0 interface for SQLite databases." [Online]. Available: https://docs.python.org/3/library/sqlite3.html. [Accessed: Mar. 2026].</p>
     <p>[12] Python Software Foundation, "threading - Thread-based parallelism." [Online]. Available: https://docs.python.org/3/library/threading.html. [Accessed: Mar. 2026].</p>
+    <p>[13] S. Colvin, "Pydantic: Data validation using Python type annotations." [Online]. Available: https://docs.pydantic.dev/. [Accessed: Mar. 2026].</p>
 
   </div>
   <script src="nav.js"></script>

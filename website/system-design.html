@@ -129,7 +129,7 @@
       </svg>
     </div>
 
-    <p>LEMON follows a layered architecture. The React [1] frontend, with Zustand [5] for state management and a library view that handles both workflows and packages, communicates with the FastAPI [2] backend via REST API calls and receives real-time updates through Server-Sent Events [3]. On the client, those SSE responses are consumed with <code>fetch()</code> and stream parsing so chat and execution runs can stay POST-based and abortable. The backend orchestrates Claude API [6] interactions through a tool-use loop, while the same storage layer supports workflow CRUD, package management, peer review, and execution.</p>
+    <p>LEMON follows a layered architecture. The React [1] frontend, with Zustand [5] for state management and a library view that handles both workflows and packages, communicates with the FastAPI [2] backend via REST API calls and receives real-time updates through Server-Sent Events [3]. On the client, those SSE responses are consumed with <code>fetch()</code> and stream parsing so chat and execution runs can stay POST-based and abortable. The backend orchestrates Claude API [6] interactions through a tool-use loop, while the same storage layer supports workflow CRUD, package management, peer review, and execution.  Workflow execution is handled by a dedicated interpreter that evaluates conditions using a custom expression parser.</p>
 
     <!-- =========================================================
          Site Map
@@ -550,7 +550,7 @@
       </svg>
     </div>
 
-    <p>LEMON uses three separate SQLite [4] databases to isolate concerns. Workflow data is kept in <code>workflows.sqlite</code>, authentication data in <code>auth.sqlite</code>, and conversation history in <code>conversation_log.sqlite</code>. The workflow database now stores both individual workflows and reusable workflow packages, and its migration system currently runs up to version 11. For readability, the diagram above focuses on the core tables and the package-specific tables are summarised separately below.</p>
+    <p>LEMON uses three separate SQLite [4] databases to isolate concerns. Workflow data is kept in <code>workflows.sqlite</code>, authentication data in <code>auth.sqlite</code>, and conversation history in <code>conversation_log.sqlite</code>. The workflow database stores both individual workflows and reusable workflow packages, and its migration system currently runs up to version 11. For readability, the diagram above focuses on the core tables and the package-specific tables are summarised separately below.</p>
 
     <h3>Package Tables</h3>
     <table>
