@@ -40,7 +40,7 @@ export default function ToolInspectorModal() {
         <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="tool-inspector-modal">
                 <div className="tool-inspector-header">
-                    <h3>🔧 Tool Inspector</h3>
+                    <h3>Tool Inspector</h3>
                     <button className="modal-close" onClick={handleClose}>×</button>
                 </div>
 
@@ -65,7 +65,7 @@ export default function ToolInspectorModal() {
                                 )}
                                 title="Copy arguments"
                             >
-                                📋 Copy
+                                Copy
                             </button>
                         </div>
                         <pre className="inspector-code">
@@ -87,7 +87,7 @@ export default function ToolInspectorModal() {
                                 )}
                                 title="Copy result"
                             >
-                                📋 Copy
+                                Copy
                             </button>
                         </div>
                         <pre className="inspector-code result">

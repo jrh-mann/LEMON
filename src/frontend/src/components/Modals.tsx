@@ -316,7 +316,7 @@ function SaveWorkflowFormContent({
 
       {showValidationWarning && validationErrors && (
         <div className="validation-warning">
-          <h4>⚠️ Workflow Validation Failed</h4>
+          <h4>Workflow Validation Failed</h4>
           <p>The workflow has the following issues:</p>
           <ul className="validation-errors">
             {validationErrors.map((error, idx) => (
@@ -397,9 +397,6 @@ function ExecuteWorkflowForm() {
             initial[input.id] = enumVals[0] ?? ''
             break
           }
-          case 'date':
-            initial[input.id] = new Date().toISOString().split('T')[0]
-            break
           case 'string':
           default:
             initial[input.id] = ''
@@ -507,23 +504,6 @@ function ExecuteWorkflowForm() {
           </div>
         )
       }
-
-      case 'date':
-        return (
-          <div className="form-group">
-            <label htmlFor={inputId}>{input.name}</label>
-            {input.description && (
-              <small className="muted">{input.description}</small>
-            )}
-            <input
-              id={inputId}
-              type="date"
-              value={String(value)}
-              onChange={(e) => handleInputChange(input.id, e.target.value)}
-              disabled={execution.isExecuting}
-            />
-          </div>
-        )
 
       case 'string':
       default:

@@ -124,6 +124,13 @@ export interface WorkflowImportError extends Error {
   validation_errors?: ValidationError[]
 }
 
+export interface ImportWorkflowBundleResponse {
+  workflow_id: string
+  imported_count: number
+  imported_kind: 'workflow_bundle' | 'package_bundle'
+  package_id?: string | null
+}
+
 export async function importWorkflowJson(
   payload: unknown,
   forceImport = false
@@ -145,7 +152,7 @@ export async function importWorkflowJson(
 export async function importWorkflowBundle(
   file: File,
   forceImport = false
-): Promise<{ workflow_id: string; imported_count: number }> {
+): Promise<ImportWorkflowBundleResponse> {
   const form = new FormData()
   form.append('file', file)
   const response = await fetch(`/api/workflows/import-bundle?force_import=${forceImport}`, {
@@ -160,7 +167,7 @@ export async function importWorkflowBundle(
     error.validation_errors = body.validation_errors
     throw error
   }
-  return await response.json()
+  return await response.json() as ImportWorkflowBundleResponse
 }
 
 // Create new workflow
@@ -251,6 +258,8 @@ export interface CompilePythonResponse {
   error?: string
   warnings: string[]
   partial_failure?: boolean
+  requires_confirmation?: boolean
+  external_subflow_ids?: string[]
 }
 
 export interface CompilePythonRequest {
@@ -279,6 +288,13 @@ export interface CompileStoredWorkflowRequest {
   include_main?: boolean
 }
 
+export interface CompilePackagePythonRequest {
+  include_imports?: boolean
+  include_docstring?: boolean
+  include_main?: boolean
+  include_external_subflows?: boolean
+}
+
 export async function compileToPython(
   payload: CompilePythonRequest
 ): Promise<CompilePythonResponse> {
@@ -289,6 +305,13 @@ export async function compileStoredWorkflowToPython(
   payload: CompileStoredWorkflowRequest
 ): Promise<CompilePythonResponse> {
   return api.post<CompilePythonResponse>('/api/workflows/compile-stored', payload)
+}
+
+export async function compilePackageToPython(
+  packageId: string,
+  payload: CompilePackagePythonRequest
+): Promise<CompilePythonResponse> {
+  return api.post<CompilePythonResponse>(`/api/packages/${packageId}/compile-python`, payload)
 }
 
 // ============ Peer Review / Public Workflows ============

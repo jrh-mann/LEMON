@@ -7,8 +7,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.backend.api.routes import workflow_routes
+from src.backend.api.routes.package_routes import register_package_routes
 from src.backend.api.routes.workflow_routes import register_workflow_routes
 from src.backend.storage.auth import AuthUser
+from src.backend.storage.packages import PackageStore
 from src.backend.storage.workflows import WorkflowStore
 
 
@@ -27,6 +29,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowStore, AuthUser]:
     app = FastAPI()
     workflow_store = WorkflowStore(tmp_path / "workflows.sqlite")
     register_workflow_routes(app, repo_root=Path.cwd(), workflow_store=workflow_store)
+    register_package_routes(app, workflow_store=workflow_store)
     user = _user()
     app.dependency_overrides[workflow_routes.require_auth] = lambda: user
     return TestClient(app), workflow_store, user
@@ -147,11 +150,14 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
     assert import_resp.status_code == 201
     body = import_resp.json()
     assert body["imported_count"] == 2
+    assert body["imported_kind"] == "package_bundle"
+    assert body["package_id"].startswith("pkg_")
 
     imported_root = workflow_store.get_workflow(body["workflow_id"], user.id)
     assert imported_root is not None
     assert imported_root.package_name == "Root Package"
     assert imported_root.package_role == "head"
+    assert imported_root.package_id == body["package_id"]
     subprocess_node = next(
         node for node in imported_root.nodes if node["type"] == "subprocess"
     )
@@ -161,6 +167,15 @@ def test_export_bundle_and_import_bundle(tmp_path: Path):
     assert imported_child is not None
     assert imported_child.package_name == "Root Package"
     assert imported_child.package_head_workflow_id == imported_root.id
+
+    package_store = PackageStore(workflow_store.db_path)
+    imported_package = package_store.get_package(body["package_id"], user.id)
+    assert imported_package is not None
+    assert imported_package.head_workflow_id == imported_root.id
+    assert {member.workflow_id for member in imported_package.members} == {
+        imported_root.id,
+        imported_child_id,
+    }
 
 
 def test_import_single_workflow_persists_immediately(tmp_path: Path):
@@ -195,6 +210,86 @@ def test_import_single_workflow_persists_immediately(tmp_path: Path):
     assert stored is not None
     assert stored.name == "Imported"
     assert stored.is_validated is True
+
+
+def test_import_package_bundle_creates_real_package(tmp_path: Path):
+    client, workflow_store, user = _client(tmp_path)
+
+    workflow_store.create_workflow(
+        workflow_id="wf_head",
+        user_id=user.id,
+        name="Head",
+        description="head desc",
+        domain=None,
+        tags=[],
+        nodes=[
+            {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {"id": "end", "type": "end", "label": "Done", "x": 100, "y": 0},
+        ],
+        edges=[{"from": "start", "to": "end"}],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        output_type="string",
+        is_draft=False,
+        is_validated=True,
+    )
+    workflow_store.create_workflow(
+        workflow_id="wf_dependency",
+        user_id=user.id,
+        name="Dependency",
+        description="dep desc",
+        domain=None,
+        tags=[],
+        nodes=[
+            {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {"id": "end", "type": "end", "label": "Done", "x": 100, "y": 0},
+        ],
+        edges=[{"from": "start", "to": "end"}],
+        inputs=[],
+        outputs=[],
+        tree={},
+        doubts=[],
+        output_type="string",
+        is_draft=False,
+        is_validated=True,
+    )
+
+    package_id = client.post(
+        "/api/packages",
+        json={"name": "Pack", "description": "desc"},
+    ).json()["id"]
+    client.post(f"/api/packages/{package_id}/members", json={"workflow_id": "wf_head"})
+    client.post(
+        f"/api/packages/{package_id}/members",
+        json={"workflow_id": "wf_dependency"},
+    )
+
+    export_resp = client.get(f"/api/packages/{package_id}/export-bundle")
+    assert export_resp.status_code == 200
+
+    import_resp = client.post(
+        "/api/workflows/import-bundle",
+        files={
+            "file": (
+                "package.zip",
+                export_resp.json()["content"].encode("latin1"),
+                "application/zip",
+            )
+        },
+    )
+    assert import_resp.status_code == 201
+    body = import_resp.json()
+    assert body["imported_kind"] == "package_bundle"
+
+    package_store = PackageStore(workflow_store.db_path)
+    imported_package = package_store.get_package(body["package_id"], user.id)
+    assert imported_package is not None
+    assert imported_package.name == "Pack"
+    assert imported_package.description == "desc"
+    assert len(imported_package.members) == 2
+    assert imported_package.head_workflow_id == body["workflow_id"]
 
 
 def test_invalid_import_returns_validation_errors_without_force_import(tmp_path: Path):

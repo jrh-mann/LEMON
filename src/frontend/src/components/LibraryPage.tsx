@@ -276,6 +276,11 @@ export default function LibraryPage() {
               <button className="modal-close" onClick={() => setSelectedPackage(null)}>x</button>
             </div>
             <div className="modal-body">
+              {selectedPackage.head_workflow_id && (
+                <div className="form-actions">
+                  <button className="ghost" onClick={() => navigate(`/export/${selectedPackage.id}`)}>Export Package</button>
+                </div>
+              )}
               <p className="muted">{selectedPackage.workflow_count === 0 ? 'Empty package' : `Head workflow: ${selectedPackage.workflows.find(wf => wf.role === 'head')?.name || 'Not set'}`}</p>
               {selectedPackage.workflow_count > 0 && (
                 <>

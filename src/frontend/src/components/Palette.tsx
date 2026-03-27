@@ -24,6 +24,16 @@ const BLOCKS: BlockConfig[] = [
     )
   },
   {
+    type: 'process',
+    label: 'Process',
+    defaultLabel: 'Step',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <rect x="5" y="7" width="14" height="10" rx="2" />
+      </svg>
+    )
+  },
+  {
     type: 'decision',
     label: 'Decision',
     defaultLabel: 'Condition?',

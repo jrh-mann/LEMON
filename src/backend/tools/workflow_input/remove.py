@@ -18,10 +18,10 @@ from .reference_updates import find_variable_references
 
 class RemoveWorkflowVariableTool(WorkflowTool):
     """Remove a registered workflow input variable.
-    
+
     Only removes variables with source='input'. Subprocess/calculated variables
     should be removed by modifying or deleting the nodes that create them.
-    
+
     Uses the current workflow from session state.
     """
 
@@ -58,7 +58,7 @@ class RemoveWorkflowVariableTool(WorkflowTool):
         # Extract data from loaded workflow
         nodes = list(workflow_data["nodes"])
         variables = list(workflow_data["variables"])
-        
+
         # Filter for input variables only
         input_variables = [v for v in variables if v.get("source") == "input"]
 
@@ -82,22 +82,16 @@ class RemoveWorkflowVariableTool(WorkflowTool):
             if normalize_variable_name(var.get("name", "")) == normalized_name:
                 found_var = var
                 break
-        
+
         if not found_var:
-            return {
-                "success": False,
-                "error": f"Input variable '{name}' not found"
-            }
+            return {"success": False, "error": f"Input variable '{name}' not found"}
 
         var_id = found_var.get("id")
         referencing_nodes = find_variable_references(nodes, str(var_id))
 
         # If references exist and force is not enabled, reject deletion
         if referencing_nodes and not force:
-            node_labels = [
-                ref["node_label"]
-                for ref in referencing_nodes[:3]
-            ]
+            node_labels = [ref["node_label"] for ref in referencing_nodes[:3]]
             more_count = len(referencing_nodes) - 3
 
             error_msg = (
@@ -114,8 +108,8 @@ class RemoveWorkflowVariableTool(WorkflowTool):
                 "referencing_nodes": [ref["node_id"] for ref in referencing_nodes],
             }
 
-        # If force=true, clear all references (condition, calculation, output_variable)
-        # from nodes that use this variable.
+        # If force=true, clear references (condition/calculation, plus any literal
+        # output_variable match) from nodes that use this variable.
         # For compound conditions referencing the variable in any sub-condition,
         # we clear the entire condition (partial removal would break the compound).
         nodes_modified = False
@@ -144,8 +138,13 @@ class RemoveWorkflowVariableTool(WorkflowTool):
                 if isinstance(calculation, dict):
                     operands = calculation.get("operands", [])
                     new_operands = [
-                        op for op in operands
-                        if not (isinstance(op, dict) and op.get("kind") == "variable" and op.get("ref") == var_id)
+                        op
+                        for op in operands
+                        if not (
+                            isinstance(op, dict)
+                            and op.get("kind") == "variable"
+                            and op.get("ref") == var_id
+                        )
                     ]
                     if len(new_operands) != len(operands):
                         calculation["operands"] = new_operands
@@ -157,20 +156,19 @@ class RemoveWorkflowVariableTool(WorkflowTool):
                     node_touched = True
 
                 if node_touched:
-                    affected_node_labels.append(node.get("label", node.get("id", "unknown")))
+                    affected_node_labels.append(
+                        node.get("label", node.get("id", "unknown"))
+                    )
                     nodes_modified = True
 
         # Remove the variable from the variables list (match by ID for precision)
-        variables = [
-            var for var in variables
-            if var.get("id") != found_var.get("id")
-        ]
+        variables = [var for var in variables if var.get("id") != found_var.get("id")]
 
         # Auto-save changes to database
         save_kwargs: Dict[str, Any] = {"variables": variables}
         if nodes_modified:
             save_kwargs["nodes"] = nodes
-        
+
         save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:
             return save_error
@@ -190,9 +188,9 @@ class RemoveWorkflowVariableTool(WorkflowTool):
             # Return workflow_analysis for orchestrator to sync local state
             "workflow_analysis": {"variables": variables},
         }
-        
+
         # If nodes were modified (force delete), also return current_workflow
         if nodes_modified:
             result["current_workflow"] = {"nodes": nodes}
-        
+
         return result

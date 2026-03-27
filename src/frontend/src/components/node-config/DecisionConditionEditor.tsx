@@ -47,7 +47,7 @@ function SimpleConditionRow({
     onChange({ input_id: inputId, comparator: newComp, value: '', value2: undefined })
   }
 
-  const needsSecondValue = condition.comparator === 'within_range' || condition.comparator === 'date_between'
+  const needsSecondValue = condition.comparator === 'within_range'
   const noValueNeeded = condition.comparator === 'is_true' || condition.comparator === 'is_false'
 
   // Render a value input appropriate for the variable type
@@ -70,12 +70,6 @@ function SimpleConditionRow({
       )
     }
     if (noValueNeeded) return null
-    if (inputType === 'date') {
-      return (
-        <input type="date" value={String(currentValue ?? '')}
-          onChange={(e) => onChange({ ...condition, [valueKey]: e.target.value })} />
-      )
-    }
     if (inputType === 'number') {
       return (
         <input type="number" value={currentValue !== undefined && currentValue !== '' ? String(currentValue) : ''}
@@ -110,7 +104,7 @@ function SimpleConditionRow({
             onChange={(e) => onChange({
               ...condition,
               comparator: e.target.value as Comparator,
-              value2: (e.target.value === 'within_range' || e.target.value === 'date_between') ? condition.value2 : undefined
+              value2: e.target.value === 'within_range' ? condition.value2 : undefined
             })}>
             {availableComparators.map(comp => (
               <option key={comp} value={comp}>{COMPARATOR_LABELS[comp]}</option>

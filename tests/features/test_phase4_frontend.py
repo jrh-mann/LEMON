@@ -1,4 +1,4 @@
-"""Phase 4 tests: verify frontend type cleanup and socket event wiring.
+"""Phase 4 tests: verify frontend type cleanup and chat event wiring.
 
 Since these are TypeScript files, we test at the boundary:
 - Backend emits plan_updated event correctly
@@ -47,7 +47,7 @@ class TestConversationWorkflowClean:
 class TestPlanUpdatedSocketEvent:
     """Verify the update_plan tool result triggers plan_updated emission."""
 
-    def test_socket_chat_emits_plan_updated(self):
+    def test_chat_task_emits_plan_updated(self):
         """Verify on_tool_event recognizes update_plan and would emit plan_updated."""
         # We can't test full socket emission without socketio,
         # but verify the tool returns the right structure for the handler

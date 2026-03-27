@@ -17,7 +17,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from ...execution.operators import get_operator, get_operator_names, validate_operator_arity
+from ...execution.operators import (
+    get_operator,
+    get_operator_names,
+    validate_operator_arity,
+)
 from ..core import WorkflowTool, ToolParameter
 from .helpers import (
     build_new_node,
@@ -31,20 +35,32 @@ COMPARATORS_BY_TYPE = {
     "number": ["eq", "neq", "lt", "lte", "gt", "gte", "within_range"],
     "bool": ["is_true", "is_false"],
     "string": ["str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"],
-    "date": ["date_eq", "date_before", "date_after", "date_between"],
     "enum": ["enum_eq", "enum_neq"],
 }
 
 ALL_COMPARATORS = [
-    "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
-    "is_true", "is_false",
-    "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
-    "date_eq", "date_before", "date_after", "date_between",
-    "enum_eq", "enum_neq",
+    "eq",
+    "neq",
+    "lt",
+    "lte",
+    "gt",
+    "gte",
+    "within_range",
+    "is_true",
+    "is_false",
+    "str_eq",
+    "str_neq",
+    "str_contains",
+    "str_starts_with",
+    "str_ends_with",
+    "enum_eq",
+    "enum_neq",
 ]
 
 
-def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> str | None:
+def _validate_simple_condition(
+    condition: Dict[str, Any], variables: list
+) -> str | None:
     """Validate a single simple condition and resolve variable references.
 
     Accepts ``variable`` (name-based) and resolves it to an ``input_id`` via
@@ -73,9 +89,7 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
                 matched = var
                 break
         if not matched:
-            available = ", ".join(
-                v.get("name", "?") for v in variables
-            ) or "none"
+            available = ", ".join(v.get("name", "?") for v in variables) or "none"
             return f"Variable '{var_name}' not found. Available: {available}"
         # Inject resolved ID so the execution engine can use it
         condition["input_id"] = matched["id"]
@@ -88,9 +102,7 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
                 matched = var
                 break
         if not matched:
-            available = ", ".join(
-                v.get("name", "?") for v in variables
-            ) or "none"
+            available = ", ".join(v.get("name", "?") for v in variables) or "none"
             return f"Variable ID '{input_id}' not found. Available: {available}"
     else:
         return "condition.variable is required (name of the workflow variable to check)"
@@ -115,9 +127,10 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
             break
 
     if not var_def:
-        available = ", ".join(
-            f"{v.get('name', '?')} ({v.get('id')})" for v in variables
-        ) or "none"
+        available = (
+            ", ".join(f"{v.get('name', '?')} ({v.get('id')})" for v in variables)
+            or "none"
+        )
         return f"Variable '{input_id}' not found. Available: {available}"
 
     # Check comparator is valid for this variable type
@@ -130,14 +143,16 @@ def _validate_simple_condition(condition: Dict[str, Any], variables: list) -> st
         )
 
     # Check value2 is provided for range comparators
-    if comparator in ("within_range", "date_between"):
+    if comparator == "within_range":
         if condition.get("value2") is None:
             return f"condition.value2 is required for comparator '{comparator}'"
 
     return None
 
 
-def validate_decision_condition(condition: Dict[str, Any], variables: list) -> str | None:
+def validate_decision_condition(
+    condition: Dict[str, Any], variables: list
+) -> str | None:
     """Validate a decision condition — simple or compound (AND/OR).
 
     Simple conditions have variable/comparator/value.
@@ -171,7 +186,9 @@ def validate_decision_condition(condition: Dict[str, Any], variables: list) -> s
             if not isinstance(sub, dict):
                 return f"condition.conditions[{i}] must be a dict"
             if "operator" in sub:
-                return f"condition.conditions[{i}] cannot be compound (no nesting allowed)"
+                return (
+                    f"condition.conditions[{i}] cannot be compound (no nesting allowed)"
+                )
             error = _validate_simple_condition(sub, variables)
             if error:
                 return f"condition.conditions[{i}]: {error}"
@@ -187,7 +204,7 @@ def validate_calculation(
     variables: List[Dict[str, Any]],
 ) -> Optional[str]:
     """Validate a calculation object for a calculation node.
-    
+
     Calculation schema:
     {
         "output": {"name": str, "description": str (optional)},
@@ -197,17 +214,17 @@ def validate_calculation(
             {"kind": "literal", "value": number}
         ]
     }
-    
+
     Args:
         calculation: The calculation dict to validate
         variables: List of workflow variable definitions
-        
+
     Returns:
         Error message if invalid, None if valid.
     """
     if not isinstance(calculation, dict):
         return "calculation must be an object with output, operator, and operands"
-    
+
     # Validate output
     output = calculation.get("output")
     if not output:
@@ -222,18 +239,18 @@ def validate_calculation(
     # Validate output name is a valid identifier
     if not output_name.replace("_", "").isalnum():
         return f"calculation.output.name must be alphanumeric with underscores, got '{output_name}'"
-    
+
     # Validate operator
     operator = calculation.get("operator")
     if not operator:
         return "calculation.operator is required"
     if not isinstance(operator, str):
         return "calculation.operator must be a string"
-    
+
     op = get_operator(operator)
     if op is None:
         return f"Unknown operator '{operator}'. Valid operators: {', '.join(get_operator_names())}"
-    
+
     # Validate operands
     operands = calculation.get("operands")
     if not operands:
@@ -242,29 +259,31 @@ def validate_calculation(
         return "calculation.operands must be an array"
     if len(operands) == 0:
         return "calculation.operands must not be empty"
-    
+
     # Validate arity
     arity_error = validate_operator_arity(operator, len(operands))
     if arity_error:
         return arity_error
-    
+
     # Build map of variable IDs for reference validation
     var_ids = {v.get("id") for v in variables if v.get("id")}
     var_names = {v.get("name") for v in variables if v.get("name")}
-    
+
     # Validate each operand
     for i, operand in enumerate(operands):
         if not isinstance(operand, dict):
             return f"calculation.operands[{i}] must be an object with 'kind'"
-        
+
         kind = operand.get("kind")
         if kind not in ("variable", "literal"):
             return f"calculation.operands[{i}].kind must be 'variable' or 'literal', got '{kind}'"
-        
+
         if kind == "variable":
             ref = operand.get("ref")
             if not ref:
-                return f"calculation.operands[{i}].ref is required for variable operands"
+                return (
+                    f"calculation.operands[{i}].ref is required for variable operands"
+                )
             # Allow referencing by ID or name
             if ref not in var_ids and ref not in var_names:
                 return (
@@ -274,10 +293,12 @@ def validate_calculation(
         elif kind == "literal":
             value = operand.get("value")
             if value is None:
-                return f"calculation.operands[{i}].value is required for literal operands"
+                return (
+                    f"calculation.operands[{i}].value is required for literal operands"
+                )
             if not isinstance(value, (int, float)):
                 return f"calculation.operands[{i}].value must be a number, got {type(value).__name__}"
-    
+
     return None
 
 
@@ -316,23 +337,63 @@ class AddNodeTool(WorkflowTool):
     # Parameters list is kept for reference by other code but the schema is
     # generated from _schema_override due to deeply nested condition/calculation objects.
     parameters = [
-        ToolParameter("type", "string", "Node type", required=True,
-                      enum=["start", "process", "decision", "subprocess", "calculation", "end"]),
+        ToolParameter(
+            "type",
+            "string",
+            "Node type",
+            required=True,
+            enum=["start", "process", "decision", "subprocess", "calculation", "end"],
+        ),
         ToolParameter("label", "string", "Display text for the node", required=True),
-        ToolParameter("x", "number", "X coordinate (optional, auto-positions if omitted)", required=False),
-        ToolParameter("y", "number", "Y coordinate (optional, auto-positions if omitted)", required=False),
-        ToolParameter("output_type", "string", "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
-                      required=False, enum=["string", "number", "bool", "json"]),
-        ToolParameter("output", "any",
-                      "For 'end' nodes: what to return. variable name, template with {vars}, or literal value.",
-                      required=False),
-        ToolParameter("output_variable", "string",
-                      "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
-                      required=False),
-        ToolParameter("condition", "object", "REQUIRED for 'decision' nodes.", required=False),
-        ToolParameter("calculation", "object", "REQUIRED for 'calculation' nodes.", required=False),
-        ToolParameter("subworkflow_id", "string", "For 'subprocess' nodes: ID of the workflow to call.", required=False),
-        ToolParameter("input_mapping", "object", "For 'subprocess' nodes: parent->subworkflow input mapping.", required=False),
+        ToolParameter(
+            "x",
+            "number",
+            "X coordinate (optional, auto-positions if omitted)",
+            required=False,
+        ),
+        ToolParameter(
+            "y",
+            "number",
+            "Y coordinate (optional, auto-positions if omitted)",
+            required=False,
+        ),
+        ToolParameter(
+            "output_type",
+            "string",
+            "For 'end' nodes: data type of the output. Use 'number' for all numeric values.",
+            required=False,
+            enum=["string", "number", "bool", "json"],
+        ),
+        ToolParameter(
+            "output",
+            "any",
+            "For 'end' nodes: what to return. variable name, template with {vars}, or literal value.",
+            required=False,
+        ),
+        ToolParameter(
+            "output_variable",
+            "string",
+            "For 'subprocess' nodes only: Name for the variable that stores the subworkflow's output.",
+            required=False,
+        ),
+        ToolParameter(
+            "condition", "object", "REQUIRED for 'decision' nodes.", required=False
+        ),
+        ToolParameter(
+            "calculation", "object", "REQUIRED for 'calculation' nodes.", required=False
+        ),
+        ToolParameter(
+            "subworkflow_id",
+            "string",
+            "For 'subprocess' nodes: ID of the workflow to call.",
+            required=False,
+        ),
+        ToolParameter(
+            "input_mapping",
+            "object",
+            "For 'subprocess' nodes: parent->subworkflow input mapping.",
+            required=False,
+        ),
     ]
 
     # Full JSON Schema override — needed because condition and calculation have
@@ -342,7 +403,14 @@ class AddNodeTool(WorkflowTool):
         "properties": {
             "type": {
                 "type": "string",
-                "enum": ["start", "process", "decision", "subprocess", "calculation", "end"],
+                "enum": [
+                    "start",
+                    "process",
+                    "decision",
+                    "subprocess",
+                    "calculation",
+                    "end",
+                ],
                 "description": "Node type",
             },
             "label": {
@@ -387,20 +455,36 @@ class AddNodeTool(WorkflowTool):
                         "type": "object",
                         "description": "Simple condition",
                         "properties": {
-                            "variable": {"type": "string", "description": "Name of the workflow variable to check (e.g., 'Age', 'Patient Name')"},
+                            "variable": {
+                                "type": "string",
+                                "description": "Name of the workflow variable to check (e.g., 'Age', 'Patient Name')",
+                            },
                             "comparator": {
                                 "type": "string",
                                 "enum": [
-                                    "eq", "neq", "lt", "lte", "gt", "gte", "within_range",
-                                    "is_true", "is_false",
-                                    "str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with",
-                                    "date_eq", "date_before", "date_after", "date_between",
-                                    "enum_eq", "enum_neq",
+                                    "eq",
+                                    "neq",
+                                    "lt",
+                                    "lte",
+                                    "gt",
+                                    "gte",
+                                    "within_range",
+                                    "is_true",
+                                    "is_false",
+                                    "str_eq",
+                                    "str_neq",
+                                    "str_contains",
+                                    "str_starts_with",
+                                    "str_ends_with",
+                                    "enum_eq",
+                                    "enum_neq",
                                 ],
                                 "description": "Comparison operator",
                             },
                             "value": {"description": "Value to compare against"},
-                            "value2": {"description": "Second value for range comparators (within_range, date_between)"},
+                            "value2": {
+                                "description": "Second value for range comparators (within_range)"
+                            },
                         },
                         "required": ["variable", "comparator"],
                     },
@@ -416,8 +500,22 @@ class AddNodeTool(WorkflowTool):
                                     "properties": {
                                         "variable": {"type": "string"},
                                         "comparator": {"type": "string"},
-                                        "value": {"description": "Comparison value", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
-                                        "value2": {"description": "Second value (for 'between' comparator)", "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+                                        "value": {
+                                            "description": "Comparison value",
+                                            "anyOf": [
+                                                {"type": "string"},
+                                                {"type": "number"},
+                                                {"type": "boolean"},
+                                            ],
+                                        },
+                                        "value2": {
+                                            "description": "Second value (for 'between' comparator)",
+                                            "anyOf": [
+                                                {"type": "string"},
+                                                {"type": "number"},
+                                                {"type": "boolean"},
+                                            ],
+                                        },
                                     },
                                     "required": ["variable", "comparator"],
                                 },
@@ -434,7 +532,7 @@ class AddNodeTool(WorkflowTool):
             },
             "input_mapping": {
                 "type": "object",
-                "description": "For 'subprocess' nodes: Maps parent input names to subworkflow input names. Example: {\"ParentAge\": \"SubAge\", \"ParentIncome\": \"SubIncome\"}",
+                "description": 'For \'subprocess\' nodes: Maps parent input names to subworkflow input names. Example: {"ParentAge": "SubAge", "ParentIncome": "SubIncome"}',
                 "additionalProperties": {"type": "string"},
             },
             "calculation": {
@@ -448,8 +546,14 @@ class AddNodeTool(WorkflowTool):
                         "type": "object",
                         "description": "Output variable definition",
                         "properties": {
-                            "name": {"type": "string", "description": "Name for the calculated result. Must be alphanumeric with underscores only, no spaces (e.g., 'BMI', 'Total_Score', 'DTI_Ratio')"},
-                            "description": {"type": "string", "description": "Description of what this value represents"},
+                            "name": {
+                                "type": "string",
+                                "description": "Name for the calculated result. Must be alphanumeric with underscores only, no spaces (e.g., 'BMI', 'Total_Score', 'DTI_Ratio')",
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Description of what this value represents",
+                            },
                         },
                         "required": ["name"],
                     },
@@ -457,14 +561,46 @@ class AddNodeTool(WorkflowTool):
                         "type": "string",
                         "description": "Mathematical operator to apply. See system prompt for full list.",
                         "enum": [
-                            "add", "subtract", "multiply", "divide", "floor_divide", "modulo", "power",
-                            "negate", "abs", "sqrt", "square", "cube", "reciprocal",
-                            "floor", "ceil", "round", "sign",
-                            "ln", "log10", "log", "exp",
-                            "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
-                            "degrees", "radians",
-                            "min", "max", "sum", "average", "hypot",
-                            "geometric_mean", "harmonic_mean", "variance", "std_dev", "range",
+                            "add",
+                            "subtract",
+                            "multiply",
+                            "divide",
+                            "floor_divide",
+                            "modulo",
+                            "power",
+                            "negate",
+                            "abs",
+                            "sqrt",
+                            "square",
+                            "cube",
+                            "reciprocal",
+                            "floor",
+                            "ceil",
+                            "round",
+                            "sign",
+                            "ln",
+                            "log10",
+                            "log",
+                            "exp",
+                            "sin",
+                            "cos",
+                            "tan",
+                            "asin",
+                            "acos",
+                            "atan",
+                            "atan2",
+                            "degrees",
+                            "radians",
+                            "min",
+                            "max",
+                            "sum",
+                            "average",
+                            "hypot",
+                            "geometric_mean",
+                            "harmonic_mean",
+                            "variance",
+                            "std_dev",
+                            "range",
                         ],
                     },
                     "operands": {
@@ -503,7 +639,7 @@ class AddNodeTool(WorkflowTool):
             return error
         workflow_id = workflow_data["workflow_id"]
         session_state = kwargs.get("session_state", {})
-        
+
         # Extract workflow components
         nodes = workflow_data["nodes"]
         edges = workflow_data["edges"]
@@ -549,7 +685,7 @@ class AddNodeTool(WorkflowTool):
         save_kwargs = {"nodes": nodes}
         if variables_modified:
             save_kwargs["variables"] = variables
-        
+
         save_error = save_workflow_changes(workflow_id, session_state, **save_kwargs)
         if save_error:
             return save_error

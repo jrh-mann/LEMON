@@ -41,6 +41,22 @@ class ImportedWorkflow:
     payload: Dict[str, Any]
 
 
+@dataclass(frozen=True)
+class PackageImportPlan:
+    name: str
+    description: str
+    old_head_workflow_id: str
+    member_roles: Dict[str, str]
+
+
+@dataclass(frozen=True)
+class BundleImportResult:
+    workflow_id: str
+    imported_count: int
+    imported_kind: str
+    package_id: Optional[str] = None
+
+
 def serialize_workflow_record(record: WorkflowRecord) -> Dict[str, Any]:
     return {
         "id": record.id,
@@ -99,9 +115,16 @@ def build_workflow_bundle_bytes(
     }
     root_record = records[0] if records else None
     if root_record and root_record.package_id:
+        package_description = ""
+        package = PackageStore(workflow_store.db_path).get_package(
+            root_record.package_id, user.id
+        )
+        if package is not None:
+            package_description = package.description
         manifest["package"] = {
             "id": root_record.package_id,
             "name": root_record.package_name,
+            "description": package_description,
             "head_workflow_id": root_record.package_head_workflow_id or root_record.id,
             "members": [
                 {
@@ -167,6 +190,7 @@ def build_package_bundle_bytes(
         "package": {
             "id": package.id,
             "name": package.name,
+            "description": package.description,
             "head_workflow_id": package.head_workflow_id,
             "members": [
                 {"workflow_id": member.workflow_id, "role": member.role}
@@ -205,7 +229,7 @@ def import_workflow_bundle_zip(
     user: AuthUser,
     zip_bytes: bytes,
     force_import: bool = False,
-) -> Tuple[str, int]:
+) -> BundleImportResult:
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
             raw_manifest = _read_zip_json(zf, "manifest.json")
@@ -237,7 +261,7 @@ def import_workflow_bundle_zip(
                 normalized_payloads.append(normalized)
 
             _rewrite_bundle_references(normalized_payloads, id_map)
-            _rewrite_bundle_package_metadata(normalized_payloads, raw_manifest, id_map)
+            package_plan = _build_package_import_plan(raw_manifest)
 
             validated_payloads: List[Tuple[Dict[str, Any], bool]] = []
             for payload in normalized_payloads:
@@ -245,15 +269,67 @@ def import_workflow_bundle_zip(
                     payload, force_import=force_import
                 )
                 validated_payloads.append((payload, is_validated))
-            for payload, is_validated in validated_payloads:
-                _persist_imported_workflow(
-                    workflow_store,
-                    user,
-                    payload,
-                    is_validated=is_validated,
-                )
 
-            return id_map[entry_workflow_id], len(normalized_payloads)
+            package_store = PackageStore(workflow_store.db_path)
+            created_package_id: Optional[str] = None
+            created_workflow_ids: List[str] = []
+            try:
+                if package_plan is not None:
+                    created_package = package_store.create_package(
+                        user.id,
+                        name=package_plan.name,
+                        description=package_plan.description,
+                    )
+                    created_package_id = created_package.id
+                    _rewrite_bundle_package_metadata(
+                        normalized_payloads,
+                        package_id=created_package_id,
+                        package_name=package_plan.name,
+                        new_head_id=id_map[package_plan.old_head_workflow_id],
+                        member_roles=package_plan.member_roles,
+                    )
+
+                for payload, is_validated in validated_payloads:
+                    _persist_imported_workflow(
+                        workflow_store,
+                        user,
+                        payload,
+                        is_validated=is_validated,
+                    )
+                    created_workflow_ids.append(payload["id"])
+
+                if package_plan is not None and created_package_id is not None:
+                    for old_workflow_id, role in package_plan.member_roles.items():
+                        new_workflow_id = id_map.get(old_workflow_id)
+                        if new_workflow_id is None:
+                            continue
+                        package_store.add_workflow_to_package(
+                            created_package_id,
+                            new_workflow_id,
+                            role=role,
+                        )
+                    package_store.update_package(
+                        created_package_id,
+                        user.id,
+                        head_workflow_id=id_map[package_plan.old_head_workflow_id],
+                    )
+
+                return BundleImportResult(
+                    workflow_id=id_map[entry_workflow_id],
+                    imported_count=len(normalized_payloads),
+                    imported_kind=(
+                        "package_bundle"
+                        if created_package_id is not None
+                        else "workflow_bundle"
+                    ),
+                    package_id=created_package_id,
+                )
+            except Exception:
+                for created_workflow_id in reversed(created_workflow_ids):
+                    workflow_store.delete_workflow(created_workflow_id, user.id)
+                if created_package_id is not None:
+                    package_store.delete_package(created_package_id, user.id)
+                raise
     except zipfile.BadZipFile as exc:
         raise WorkflowTransferError("Invalid zip file") from exc
 
@@ -391,28 +467,58 @@ def _rewrite_bundle_references(
                 variable["subworkflow_id"] = id_map[sub_id]
 
 
-def _rewrite_bundle_package_metadata(
-    payloads: List[Dict[str, Any]],
+def _build_package_import_plan(
     raw_manifest: Dict[str, Any],
-    id_map: Dict[str, str],
-) -> None:
+) -> Optional[PackageImportPlan]:
     package = raw_manifest.get("package")
     if not isinstance(package, dict):
-        return
+        return None
 
     members = package.get("members")
     if not isinstance(members, list):
-        return
+        return None
 
-    member_roles = {
-        entry.get("workflow_id"): entry.get("role")
-        for entry in members
-        if isinstance(entry, dict) and isinstance(entry.get("workflow_id"), str)
-    }
-    package_id = package.get("id")
-    package_name = package.get("name")
+    member_roles: Dict[str, str] = {}
+    for entry in members:
+        if not isinstance(entry, dict):
+            continue
+        workflow_id = entry.get("workflow_id")
+        if not isinstance(workflow_id, str):
+            continue
+        role = entry.get("role")
+        member_roles[workflow_id] = role if isinstance(role, str) else "dependency"
+    package_name = str(package.get("name") or "")
+    package_description = str(package.get("description") or "")
     old_head_id = package.get("head_workflow_id")
-    new_head_id = id_map.get(old_head_id) if isinstance(old_head_id, str) else None
+    if (
+        not member_roles
+        or not isinstance(old_head_id, str)
+        or old_head_id not in member_roles
+    ):
+        return None
+
+    normalized_roles: Dict[str, str] = {
+        workflow_id: (role if role in {"head", "dependency"} else "dependency")
+        for workflow_id, role in member_roles.items()
+    }
+    normalized_roles[old_head_id] = "head"
+
+    return PackageImportPlan(
+        name=package_name,
+        description=package_description,
+        old_head_workflow_id=old_head_id,
+        member_roles=normalized_roles,
+    )
+
+
+def _rewrite_bundle_package_metadata(
+    payloads: List[Dict[str, Any]],
+    *,
+    package_id: str,
+    package_name: str,
+    new_head_id: str,
+    member_roles: Dict[str, str],
+) -> None:
 
     for payload in payloads:
         old_id = payload.get("old_id")

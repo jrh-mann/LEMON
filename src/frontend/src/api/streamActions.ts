@@ -129,6 +129,11 @@ type WorkflowSavedPayload = {
   name?: string
 }
 
+type WorkflowValidatedPayload = {
+  workflow_id?: string
+  is_validated?: boolean
+}
+
 type PendingQuestionPayload = {
   question: string
   options: { label: string; value: string }[]
@@ -502,6 +507,23 @@ function _buildChatSSEHandlers(workflowId: string) {
           })
         }
       }
+    },
+
+    'workflow_validated': (rawData: unknown) => {
+      const data = rawData as WorkflowValidatedPayload
+      if (!data.workflow_id) return
+      const workflowStore = useWorkflowStore.getState()
+      const currentWf = workflowStore.currentWorkflow
+      if (currentWf && currentWf.id === data.workflow_id) {
+        workflowStore.setCurrentWorkflow({
+          ...currentWf,
+          metadata: {
+            ...currentWf.metadata,
+            is_validated: Boolean(data.is_validated),
+          },
+        })
+      }
+      workflowStore.incrementLibraryRefresh()
     },
 
     'pending_question': (rawData: unknown) => {

@@ -112,12 +112,16 @@ class ToolEventProjector:
                 if convo_id and current_workflow is not None:
                     try:
                         self._conversation_logger.log_workflow_snapshot(
-                            convo_id, current_workflow, task_id=self._task_id,
+                            convo_id,
+                            current_workflow,
+                            task_id=self._task_id,
                         )
                     except Exception:
                         logger.error(
                             "Failed to log workflow snapshot: tool=%s conv=%s",
-                            tool, convo_id, exc_info=True,
+                            tool,
+                            convo_id,
+                            exc_info=True,
                         )
 
         if event == "tool_batch_complete":
@@ -136,13 +140,21 @@ class ToolEventProjector:
         if tool == "update_plan" and event == "tool_complete" and isinstance(result, dict):
             self._publish("plan_updated", {"items": result.get("items", [])})
 
-        if tool == "ask_question" and event == "tool_complete" and isinstance(result, dict) and result.get("success"):
+        if (
+            tool == "ask_question"
+            and event == "tool_complete"
+            and isinstance(result, dict)
+            and result.get("success")
+        ):
             questions = result.get("questions", [])
             for q in questions:
-                self._publish("pending_question", {
-                    "question": q.get("question", ""),
-                    "options": q.get("options", []),
-                })
+                self._publish(
+                    "pending_question",
+                    {
+                        "question": q.get("question", ""),
+                        "options": q.get("options", []),
+                    },
+                )
 
         if event == "tool_complete" and isinstance(result, dict) and result.get("success"):
             payload = self._get_workflow_state_payload()
@@ -151,35 +163,60 @@ class ToolEventProjector:
                 action = result.get("action")
                 logger.info(
                     "Emitting workflow_update action=%s tool=%s workflow_id=%s",
-                    action, tool, result.get("workflow_id"),
+                    action,
+                    tool,
+                    result.get("workflow_id"),
                 )
                 self._publish("workflow_update", {"action": action, "data": result})
                 if payload:
                     self._publish_workflow_state(payload)
 
-                has_new_vars = isinstance(result.get("new_variables"), list) and result["new_variables"]
-                has_removed_vars = isinstance(result.get("removed_variable_ids"), list) and result["removed_variable_ids"]
+                has_new_vars = (
+                    isinstance(result.get("new_variables"), list) and result["new_variables"]
+                )
+                has_removed_vars = (
+                    isinstance(result.get("removed_variable_ids"), list)
+                    and result["removed_variable_ids"]
+                )
                 if has_new_vars or has_removed_vars:
                     analysis = self._get_workflow_analysis()
-                    self._publish("analysis_updated", {
-                        "variables": analysis.get("variables", []),
-                        "outputs": analysis.get("outputs", []),
-                        "task_id": self._task_id,
-                    })
+                    self._publish(
+                        "analysis_updated",
+                        {
+                            "variables": analysis.get("variables", []),
+                            "outputs": analysis.get("outputs", []),
+                            "task_id": self._task_id,
+                        },
+                    )
 
             if tool in WORKFLOW_INPUT_TOOLS and payload:
                 self._publish_workflow_state(payload)
                 analysis = self._get_workflow_analysis()
-                self._publish("analysis_updated", {
-                    "variables": analysis.get("variables", []),
-                    "outputs": analysis.get("outputs", []),
-                    "task_id": self._task_id,
-                })
+                self._publish(
+                    "analysis_updated",
+                    {
+                        "variables": analysis.get("variables", []),
+                        "outputs": analysis.get("outputs", []),
+                        "task_id": self._task_id,
+                    },
+                )
+
+            if tool == "validate_workflow":
+                self._publish(
+                    "workflow_validated",
+                    {
+                        "workflow_id": result.get("workflow_id"),
+                        "is_validated": bool(result.get("valid")),
+                    },
+                )
 
             if tool == "save_workflow_to_library":
-                self._publish("workflow_saved", {
-                    "workflow_id": result.get("workflow_id"),
-                    "name": result.get("name"),
-                    "is_draft": False,
-                    "already_saved": result.get("already_saved", False),
-                })
+                self._publish(
+                    "workflow_saved",
+                    {
+                        "workflow_id": result.get("workflow_id"),
+                        "name": result.get("name"),
+                        "is_draft": False,
+                        "already_saved": result.get("already_saved", False),
+                    },
+                )

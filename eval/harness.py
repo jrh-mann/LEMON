@@ -83,7 +83,9 @@ class EvalResult:
     wall_time_s: float
     llm_response: str  # final text response from the model
     error: Optional[str] = None
-    scores: Optional[Any] = None  # ScoreResult from eval.scorer (optional to avoid circular import)
+    scores: Optional[Any] = (
+        None  # ScoreResult from eval.scorer (optional to avoid circular import)
+    )
 
     def summary_dict(self) -> Dict[str, Any]:
         """Flat dict for CSV/summary output."""
@@ -140,10 +142,12 @@ def _install_token_patch() -> None:
         if _patch_installed:
             return
         from src.backend.utils import tokens as tokens_mod
+
         _original_record_token_usage = tokens_mod.record_token_usage
         tokens_mod.record_token_usage = _patched_record_token_usage
         # Also patch the reference in client.py (already imported).
         from src.backend.llm import client as client_mod
+
         client_mod.record_token_usage = _patched_record_token_usage
         _patch_installed = True
 
@@ -190,13 +194,15 @@ def run_sample(
         result: Optional[Dict[str, Any]],
     ) -> None:
         if event_type == "tool_complete":
-            tool_calls.append(ToolCallRecord(
-                tool_name=tool_name,
-                args=args,
-                result=result,
-                success=bool(result and result.get("success", False)),
-                timestamp=time.monotonic() - t0,
-            ))
+            tool_calls.append(
+                ToolCallRecord(
+                    tool_name=tool_name,
+                    args=args,
+                    result=result,
+                    success=bool(result and result.get("success", False)),
+                    timestamp=time.monotonic() - t0,
+                )
+            )
 
     # Set model for this run.
     old_model = os.environ.get("ANTHROPIC_MODEL")
@@ -204,7 +210,12 @@ def run_sample(
 
     error: Optional[str] = None
     llm_response = ""
-    workflow: Dict[str, Any] = {"nodes": [], "edges": [], "variables": [], "outputs": []}
+    workflow: Dict[str, Any] = {
+        "nodes": [],
+        "edges": [],
+        "variables": [],
+        "outputs": [],
+    }
     transcript: List[Dict[str, Any]] = []
 
     try:
@@ -231,7 +242,7 @@ def run_sample(
             # Replace ask_question with mock.
             orchestrator.tools._tools["ask_question"] = MockAskQuestion()
 
-            # Wire session context (same as ws_chat does for real requests).
+            # Wire runtime context to match the real chat task pipeline.
             orchestrator.workflow_store = store
             orchestrator.user_id = user_id
             orchestrator.current_workflow_id = workflow_id
@@ -239,11 +250,13 @@ def run_sample(
             orchestrator.repo_root = _REPO_ROOT
 
             # Prepare image file info.
-            has_files = [{
-                "path": str(sample.image_path),
-                "name": sample.image_path.name,
-                "file_type": "image",
-            }]
+            has_files = [
+                {
+                    "path": str(sample.image_path),
+                    "name": sample.image_path.name,
+                    "file_type": "image",
+                }
+            ]
 
             # Build scaffold overrides.
             respond_kwargs: Dict[str, Any] = {
@@ -256,7 +269,9 @@ def run_sample(
             # Run the full extraction.
             logger.info(
                 "Starting eval: sample=%s model=%s run=%s",
-                sample.name, model, run_id,
+                sample.name,
+                model,
+                run_id,
             )
             llm_response = orchestrator.respond(**respond_kwargs)
 
@@ -266,7 +281,9 @@ def run_sample(
                     break  # Don't refine a failed extraction.
                 logger.info(
                     "Refinement %d/%d: sample=%s",
-                    i + 1, len(scaffold.refinement_messages), sample.name,
+                    i + 1,
+                    len(scaffold.refinement_messages),
+                    sample.name,
                 )
                 refine_kwargs: Dict[str, Any] = {
                     "user_message": msg,
@@ -321,9 +338,12 @@ def run_sample(
 
     logger.info(
         "Eval complete: sample=%s model=%s run=%s nodes=%d cost=$%.4f time=%.1fs%s",
-        sample.name, model, run_id,
+        sample.name,
+        model,
+        run_id,
         len(workflow.get("nodes", [])),
-        cost, wall_time,
+        cost,
+        wall_time,
         f" ERROR={error}" if error else "",
     )
 

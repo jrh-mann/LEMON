@@ -25,6 +25,15 @@
     return rect.top < window.innerHeight * ratio;
   }
 
+  function slugify(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+  }
+
   function observeOnce(target, onVisible, options) {
     if (prefersReducedMotion) {
       onVisible();
@@ -130,6 +139,146 @@
     });
   }
 
+  function setupPageIndexSpy(headings, linksById) {
+    if (!headings.length) {
+      return;
+    }
+
+    var currentActiveId = null;
+
+    function setActive(id) {
+      if (!id || id === currentActiveId || !linksById[id]) {
+        return;
+      }
+
+      if (currentActiveId && linksById[currentActiveId]) {
+        linksById[currentActiveId].classList.remove('is-active');
+      }
+
+      currentActiveId = id;
+      linksById[currentActiveId].classList.add('is-active');
+    }
+
+    if (window.location.hash) {
+      var hashId = window.location.hash.slice(1);
+      if (linksById[hashId]) {
+        setActive(hashId);
+      }
+    }
+
+    if (typeof IntersectionObserver !== 'undefined') {
+      try {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              setActive(entry.target.id);
+            }
+          });
+        }, {
+          threshold: 0.18,
+          rootMargin: '-18% 0px -66% 0px'
+        });
+
+        headings.forEach(function (heading) {
+          observer.observe(heading);
+        });
+      } catch (error) {
+        // Ignore and rely on scroll fallback.
+      }
+    }
+
+    function updateActiveByScroll() {
+      var best = headings[0];
+      for (var i = 0; i < headings.length; i += 1) {
+        var heading = headings[i];
+        if (heading.getBoundingClientRect().top <= 120) {
+          best = heading;
+        } else {
+          break;
+        }
+      }
+      if (best && best.id) {
+        setActive(best.id);
+      }
+    }
+
+    updateActiveByScroll();
+    window.addEventListener('scroll', updateActiveByScroll, { passive: true });
+  }
+
+  function buildPageSidebar() {
+    var container = document.querySelector('.container');
+    if (!container) {
+      return;
+    }
+
+    var headings = Array.prototype.slice.call(container.querySelectorAll('h2'));
+    if (!headings.length) {
+      return;
+    }
+
+    var idCounts = {};
+    headings.forEach(function (heading, index) {
+      if (!heading.id) {
+        var base = slugify(heading.textContent) || ('section-' + (index + 1));
+        var count = idCounts[base] || 0;
+        idCounts[base] = count + 1;
+        heading.id = count === 0 ? base : (base + '-' + (count + 1));
+      }
+    });
+
+    var layout = document.createElement('div');
+    layout.className = 'report-layout';
+
+    container.parentNode.insertBefore(layout, container);
+
+    var sidebar = document.createElement('aside');
+    sidebar.className = 'page-sidebar';
+
+    var header = document.createElement('div');
+    header.className = 'page-sidebar-header';
+
+    var title = document.createElement('div');
+    title.className = 'page-sidebar-title';
+    title.textContent = 'On this page';
+
+    var subtitle = document.createElement('div');
+    subtitle.className = 'page-sidebar-subtitle';
+    subtitle.textContent = 'Jump to sections';
+
+    header.appendChild(title);
+    header.appendChild(subtitle);
+    sidebar.appendChild(header);
+
+    var list = document.createElement('ul');
+    list.className = 'page-index';
+
+    var linksById = {};
+    headings.forEach(function (heading) {
+      var item = document.createElement('li');
+      var link = document.createElement('a');
+      link.className = 'page-index-link';
+      link.href = '#' + heading.id;
+      link.textContent = heading.textContent.trim();
+      link.addEventListener('click', function () {
+        if (history && typeof history.replaceState === 'function') {
+          history.replaceState(null, '', '#' + heading.id);
+        }
+      });
+
+      item.appendChild(link);
+      list.appendChild(item);
+      linksById[heading.id] = link;
+    });
+
+    sidebar.appendChild(list);
+    layout.appendChild(sidebar);
+    layout.appendChild(container);
+    document.body.classList.add('has-page-sidebar');
+
+    setupPageIndexSpy(headings, linksById);
+  }
+
   function setupHeroStagger() {
     var hero = document.querySelector('.hero');
     if (!hero) {
@@ -164,9 +313,18 @@
     }
 
     try {
+      var accentPalette = [
+        'var(--color-accent)',
+        'var(--color-accent-amber)',
+        'var(--color-accent-green)',
+        'var(--color-accent-purple)',
+        'var(--color-accent-rose)'
+      ];
+
       targets.forEach(function (target, index) {
         target.classList.add('reveal');
         target.style.setProperty('--reveal-delay', String((index % 4) * 24) + 'ms');
+        target.style.setProperty('--section-accent', accentPalette[index % accentPalette.length]);
 
         observeOnce(target, function () {
           target.classList.add('is-visible');
@@ -311,6 +469,111 @@
     });
   }
 
+  function findNearestHeadingText(element) {
+    var current = element;
+    while (current) {
+      var sibling = current.previousElementSibling;
+      while (sibling) {
+        if (/^H[1-4]$/.test(sibling.tagName)) {
+          return sibling.textContent.trim();
+        }
+        sibling = sibling.previousElementSibling;
+      }
+      current = current.parentElement;
+    }
+    return '';
+  }
+
+  function ensureLazyMediaAttributes() {
+    var images = Array.prototype.slice.call(
+      document.querySelectorAll('.screenshot, .diagram img, .prototype-gallery img')
+    );
+
+    images.forEach(function (image) {
+      if (!image.hasAttribute('loading')) {
+        image.setAttribute('loading', 'lazy');
+      }
+      if (!image.hasAttribute('decoding')) {
+        image.setAttribute('decoding', 'async');
+      }
+    });
+
+    var iframes = Array.prototype.slice.call(document.querySelectorAll('iframe'));
+    iframes.forEach(function (iframe) {
+      var src = iframe.getAttribute('src') || '';
+      if (!iframe.hasAttribute('title')) {
+        var headingText = findNearestHeadingText(iframe) || 'Embedded video';
+        iframe.setAttribute('title', headingText + ' video');
+      }
+      iframe.setAttribute('loading', 'lazy');
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+
+      if (/REPLACE_[A-Z_]+/.test(src)) {
+        var placeholder = document.createElement('div');
+        placeholder.className = 'video-placeholder';
+
+        var title = document.createElement('p');
+        title.textContent = 'Monthly video link pending';
+
+        var note = document.createElement('p');
+        note.className = 'embed-note';
+        note.textContent = 'Replace this placeholder with a public YouTube or OneDrive link before submission.';
+
+        placeholder.appendChild(title);
+        placeholder.appendChild(note);
+        iframe.replaceWith(placeholder);
+      }
+    });
+  }
+
+  function enhanceFigures() {
+    var standaloneScreenshots = Array.prototype.slice.call(
+      document.querySelectorAll('img.screenshot:not(figure img)')
+    );
+
+    standaloneScreenshots.forEach(function (image) {
+      var figure = document.createElement('figure');
+      figure.className = 'report-figure report-figure-auto';
+      image.parentNode.insertBefore(figure, image);
+      figure.appendChild(image);
+
+      var caption = document.createElement('figcaption');
+      caption.textContent = image.getAttribute('alt') || 'Screenshot';
+      figure.appendChild(caption);
+    });
+
+    var captions = Array.prototype.slice.call(
+      document.querySelectorAll('figure figcaption, .diagram .caption')
+    );
+
+    captions.forEach(function (caption, index) {
+      caption.setAttribute('data-figure-number', String(index + 1));
+    });
+  }
+
+  function buildBackToTop() {
+    var button = document.createElement('button');
+    button.className = 'back-to-top';
+    button.type = 'button';
+    button.setAttribute('aria-label', 'Back to top');
+    button.innerHTML = '<span class="back-to-top-icon" aria-hidden="true">↑</span><span class="back-to-top-label">Back to top</span>';
+
+    function updateButton() {
+      button.classList.toggle('is-visible', window.scrollY > 520);
+    }
+
+    button.addEventListener('click', function () {
+      window.scrollTo({
+        top: 0,
+        behavior: prefersReducedMotion ? 'auto' : 'smooth'
+      });
+    });
+
+    updateButton();
+    window.addEventListener('scroll', updateButton, { passive: true });
+    document.body.appendChild(button);
+  }
+
   function buildFooter() {
     var footer = document.createElement('footer');
     footer.className = 'footer';
@@ -320,11 +583,15 @@
 
   buildNav();
   buildContentSections();
+  buildPageSidebar();
   setupHeroStagger();
   setupSectionReveal();
   setupGanttAnimation();
   setupDiagramDraw();
   setupPrototypeGalleryReveal();
   setupProgressBars();
+  ensureLazyMediaAttributes();
+  enhanceFigures();
+  buildBackToTop();
   buildFooter();
 })();

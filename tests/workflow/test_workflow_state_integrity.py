@@ -59,11 +59,13 @@ class WorkflowTestSession:
 
         def wrapped_execute(tool_name: str, args: Dict[str, Any], **kwargs):
             result = original_execute(tool_name, args, **kwargs)
-            self.tool_call_history.append({
-                "tool": tool_name,
-                "args": args,
-                "result": result,
-            })
+            self.tool_call_history.append(
+                {
+                    "tool": tool_name,
+                    "args": args,
+                    "result": result,
+                }
+            )
             return result
 
         self.orchestrator.tools.execute = wrapped_execute
@@ -85,7 +87,7 @@ class WorkflowTestSession:
         """
         Send message to orchestrator and get response.
 
-        This mimics the handle_socket_chat workflow:
+        This mimics the current chat task flow:
         1. Sync workflow from session to orchestrator
         2. Call LLM
         3. Write orchestrator's workflow state back to session
@@ -93,7 +95,7 @@ class WorkflowTestSession:
         # Clear tool history for this turn
         self.tool_call_history.clear()
 
-        # Sync workflow from session to orchestrator (like socket_chat.py does)
+        # Sync workflow from conversation state into orchestrator
         self.orchestrator.sync_workflow(lambda: self.workflow_state)
 
         # Call LLM — wrap in a Turn for proper state management
@@ -143,7 +145,9 @@ class WorkflowTestSession:
         Returns the matching node for further assertions.
         """
         workflow = (
-            self.orchestrator.current_workflow if in_orchestrator else self.workflow_state
+            self.orchestrator.current_workflow
+            if in_orchestrator
+            else self.workflow_state
         )
         nodes = workflow.get("nodes", [])
 
@@ -154,7 +158,7 @@ class WorkflowTestSession:
 
         state_location = "orchestrator" if in_orchestrator else "session"
         if len(matches) == 0:
-            available = [f"{n['id']}: \"{n['label']}\" ({n['type']})" for n in nodes]
+            available = [f'{n["id"]}: "{n["label"]}" ({n["type"]})' for n in nodes]
             raise AssertionError(
                 f"Node with label containing '{label_contains}' "
                 f"{'and type ' + node_type if node_type else ''} "
@@ -180,7 +184,9 @@ class WorkflowTestSession:
         - What edges are actually present
         """
         workflow = (
-            self.orchestrator.current_workflow if in_orchestrator else self.workflow_state
+            self.orchestrator.current_workflow
+            if in_orchestrator
+            else self.workflow_state
         )
         nodes = workflow.get("nodes", [])
         edges = workflow.get("edges", [])
@@ -189,7 +195,9 @@ class WorkflowTestSession:
         from_node = next(
             (n for n in nodes if from_label.lower() in n["label"].lower()), None
         )
-        to_node = next((n for n in nodes if to_label.lower() in n["label"].lower()), None)
+        to_node = next(
+            (n for n in nodes if to_label.lower() in n["label"].lower()), None
+        )
 
         if not from_node:
             raise AssertionError(f"Source node with label '{from_label}' not found")
@@ -214,7 +222,7 @@ class WorkflowTestSession:
                 f_label = f_node["label"] if f_node else "?"
                 t_label = t_node["label"] if t_node else "?"
                 label_part = f" [{e.get('label', '')}]" if e.get("label") else ""
-                available.append(f"\"{f_label}\"{label_part} → \"{t_label}\"")
+                available.append(f'"{f_label}"{label_part} → "{t_label}"')
 
             raise AssertionError(
                 f"Edge from '{from_label}' to '{to_label}' "
@@ -253,14 +261,16 @@ class WorkflowTestSession:
     def assert_node_count(self, expected: int, in_orchestrator: bool = True):
         """Assert exact node count with clear failure message."""
         workflow = (
-            self.orchestrator.current_workflow if in_orchestrator else self.workflow_state
+            self.orchestrator.current_workflow
+            if in_orchestrator
+            else self.workflow_state
         )
         actual = len(workflow.get("nodes", []))
         state_location = "orchestrator" if in_orchestrator else "session"
 
         if actual != expected:
             nodes = workflow.get("nodes", [])
-            node_list = [f"\"{n['label']}\" ({n['type']})" for n in nodes]
+            node_list = [f'"{n["label"]}" ({n["type"]})' for n in nodes]
             raise AssertionError(
                 f"Expected {expected} nodes in {state_location} state, got {actual}.\n"
                 f"Actual nodes: " + ", ".join(node_list if node_list else ["(none)"])
@@ -269,7 +279,9 @@ class WorkflowTestSession:
     def assert_edge_count(self, expected: int, in_orchestrator: bool = True):
         """Assert exact edge count with clear failure message."""
         workflow = (
-            self.orchestrator.current_workflow if in_orchestrator else self.workflow_state
+            self.orchestrator.current_workflow
+            if in_orchestrator
+            else self.workflow_state
         )
         actual = len(workflow.get("edges", []))
         state_location = "orchestrator" if in_orchestrator else "session"
@@ -281,14 +293,14 @@ class WorkflowTestSession:
 
     def print_state(self, label: str = "Workflow State"):
         """Print current workflow state for debugging (use with pytest -s)."""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"{label}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Orchestrator nodes: {len(self.orchestrator.current_workflow['nodes'])}")
         print(f"Session nodes: {len(self.workflow_state['nodes'])}")
         print(f"\nNodes:")
         for node in self.orchestrator.current_workflow["nodes"]:
-            print(f"  - {node['id']}: \"{node['label']}\" (type: {node['type']})")
+            print(f'  - {node["id"]}: "{node["label"]}" (type: {node["type"]})')
         print(f"\nEdges:")
         for edge in self.orchestrator.current_workflow["edges"]:
             nodes = self.orchestrator.current_workflow["nodes"]
@@ -297,8 +309,8 @@ class WorkflowTestSession:
             from_label = from_node["label"] if from_node else "?"
             to_label = to_node["label"] if to_node else "?"
             label = f" [{edge.get('label', '')}]" if edge.get("label") else ""
-            print(f"  - \"{from_label}\"{label} → \"{to_label}\"")
-        print(f"{'='*60}\n")
+            print(f'  - "{from_label}"{label} → "{to_label}"')
+        print(f"{'=' * 60}\n")
 
 
 # ============================================================================
@@ -316,9 +328,12 @@ def orchestrator(tmp_path) -> Orchestrator:
     test_user_id = f"test_user_{uuid4().hex[:8]}"
     workflow_id = f"wf_test_{uuid4().hex[:8]}"
     workflow_store.create_workflow(
-        workflow_id=workflow_id, user_id=test_user_id,
-        name="Test Workflow", description="State integrity test workflow",
-        output_type="string", is_draft=False,
+        workflow_id=workflow_id,
+        user_id=test_user_id,
+        name="Test Workflow",
+        description="State integrity test workflow",
+        output_type="string",
+        is_draft=False,
     )
     orch.workflow_store = workflow_store
     orch.user_id = test_user_id
@@ -364,8 +379,18 @@ def simple_workflow() -> Dict[str, Any]:
             },
         ],
         "edges": [
-            {"id": "node_start->node_process", "from": "node_start", "to": "node_process", "label": ""},
-            {"id": "node_process->node_end", "from": "node_process", "to": "node_end", "label": ""},
+            {
+                "id": "node_start->node_process",
+                "from": "node_start",
+                "to": "node_process",
+                "label": "",
+            },
+            {
+                "id": "node_process->node_end",
+                "from": "node_process",
+                "to": "node_end",
+                "label": "",
+            },
         ],
     }
 
@@ -402,7 +427,9 @@ class TestNodeStatePersistence:
 
         # Verify orchestrator state updated
         session.assert_node_count(1, in_orchestrator=True)
-        node = session.assert_node_exists("start", node_type="start", in_orchestrator=True)
+        node = session.assert_node_exists(
+            "start", node_type="start", in_orchestrator=True
+        )
 
         # Verify node has required fields
         assert "id" in node, "Node missing 'id' field"
@@ -440,7 +467,9 @@ class TestNodeStatePersistence:
 
         # Verify modify_node was called
         tool_names = session.get_tool_names()
-        assert "modify_node" in tool_names, f"Expected modify_node call, got: {tool_names}"
+        assert "modify_node" in tool_names, (
+            f"Expected modify_node call, got: {tool_names}"
+        )
 
         # CRITICAL ASSERTION: Verify orchestrator state was updated
         # This will FAIL with current implementation
@@ -477,16 +506,18 @@ class TestNodeStatePersistence:
 
         # Verify delete_node was called
         tool_names = session.get_tool_names()
-        assert "delete_node" in tool_names, f"Expected delete_node call, got: {tool_names}"
+        assert "delete_node" in tool_names, (
+            f"Expected delete_node call, got: {tool_names}"
+        )
 
         # Verify orchestrator state updated
         session.assert_node_count(initial_node_count - 1, in_orchestrator=True)
 
         # Verify node is gone
         nodes = session.orchestrator.current_workflow["nodes"]
-        assert not any(
-            "validate input" in n["label"].lower() for n in nodes
-        ), "Deleted node still present in orchestrator state"
+        assert not any("validate input" in n["label"].lower() for n in nodes), (
+            "Deleted node still present in orchestrator state"
+        )
 
         # Verify connected edges were also removed
         edges = session.orchestrator.current_workflow["edges"]
@@ -526,7 +557,9 @@ class TestEdgeStatePersistence:
 
         # Verify add_connection was called
         tool_names = session.get_tool_names()
-        assert "add_connection" in tool_names, f"Expected add_connection call, got: {tool_names}"
+        assert "add_connection" in tool_names, (
+            f"Expected add_connection call, got: {tool_names}"
+        )
 
         # Verify orchestrator state updated
         session.assert_edge_count(initial_edge_count + 1, in_orchestrator=True)
@@ -619,7 +652,9 @@ class TestBatchEditStatePersistence:
         # This will FAIL if batch_edit was used and didn't return workflow field
         session.assert_node_count(3, in_orchestrator=True)
         session.assert_node_exists("Begin", node_type="start", in_orchestrator=True)
-        session.assert_node_exists("Validate", node_type="process", in_orchestrator=True)
+        session.assert_node_exists(
+            "Validate", node_type="process", in_orchestrator=True
+        )
         session.assert_node_exists("Finish", node_type="end", in_orchestrator=True)
 
         # Verify connections exist
@@ -646,7 +681,9 @@ class TestBatchEditStatePersistence:
         )
 
         # Verify decision node exists
-        decision = session.assert_node_exists("Age Check", node_type="decision", in_orchestrator=True)
+        decision = session.assert_node_exists(
+            "Age Check", node_type="decision", in_orchestrator=True
+        )
 
         # Verify decision has exactly 2 outgoing edges
         edges = session.orchestrator.current_workflow["edges"]
@@ -657,9 +694,9 @@ class TestBatchEditStatePersistence:
 
         # Verify edges have appropriate labels
         edge_labels = {e.get("label", "").lower() for e in decision_edges}
-        assert "true" in edge_labels or "false" in edge_labels or "yes" in edge_labels, (
-            f"Expected true/false or yes/no labels, got: {edge_labels}"
-        )
+        assert (
+            "true" in edge_labels or "false" in edge_labels or "yes" in edge_labels
+        ), f"Expected true/false or yes/no labels, got: {edge_labels}"
 
         # Verify branch nodes exist
         session.assert_node_exists("Adult", in_orchestrator=True)
@@ -706,7 +743,9 @@ class TestMultiTurnStatePersistence:
     Critical for ensuring users can build workflows incrementally.
     """
 
-    def test_state_persists_across_three_modifications(self, session: WorkflowTestSession):
+    def test_state_persists_across_three_modifications(
+        self, session: WorkflowTestSession
+    ):
         """
         Test that workflow state accumulates correctly across multiple turns.
 
@@ -722,10 +761,16 @@ class TestMultiTurnStatePersistence:
         session.assert_node_exists("Begin", node_type="start", in_orchestrator=True)
 
         # Turn 2: Add process
-        response2 = session.respond("add a process node called 'Validate Email'", allow_tools=True)
+        response2 = session.respond(
+            "add a process node called 'Validate Email'", allow_tools=True
+        )
         session.assert_node_count(2, in_orchestrator=True)  # Should have BOTH nodes
-        session.assert_node_exists("Begin", in_orchestrator=True)  # Old node still there
-        session.assert_node_exists("Validate Email", in_orchestrator=True)  # New node added
+        session.assert_node_exists(
+            "Begin", in_orchestrator=True
+        )  # Old node still there
+        session.assert_node_exists(
+            "Validate Email", in_orchestrator=True
+        )  # New node added
 
         # Turn 3: Connect them
         response3 = session.respond("connect Begin to Validate Email", allow_tools=True)
@@ -737,7 +782,9 @@ class TestMultiTurnStatePersistence:
         response4 = session.respond("what's on the workflow canvas?", allow_tools=True)
         # Response should mention both nodes
         assert "begin" in response4.lower(), "Response should mention 'Begin' node"
-        assert "validate" in response4.lower(), "Response should mention 'Validate Email' node"
+        assert "validate" in response4.lower(), (
+            "Response should mention 'Validate Email' node"
+        )
 
     def test_modify_then_query_shows_updated_label(self, session: WorkflowTestSession):
         """
@@ -752,13 +799,14 @@ class TestMultiTurnStatePersistence:
         The workflow will show the old label because orchestrator state wasn't updated.
         """
         # Turn 1: Add node
-        response1 = session.respond("add a process node called 'Validator'", allow_tools=True)
+        response1 = session.respond(
+            "add a process node called 'Validator'", allow_tools=True
+        )
         session.assert_node_exists("Validator", in_orchestrator=True)
 
         # Turn 2: Modify it
         response2 = session.respond(
-            "change the Validator label to 'Validation Engine'",
-            allow_tools=True
+            "change the Validator label to 'Validation Engine'", allow_tools=True
         )
 
         # CRITICAL: Verify orchestrator state was updated
@@ -775,9 +823,10 @@ class TestMultiTurnStatePersistence:
         assert "validation engine" in response3.lower(), (
             "LLM should describe the updated label 'Validation Engine'"
         )
-        assert "validator" not in response3.lower() or "validation engine" in response3.lower(), (
-            "LLM should not mention the old label 'Validator' alone"
-        )
+        assert (
+            "validator" not in response3.lower()
+            or "validation engine" in response3.lower()
+        ), "LLM should not mention the old label 'Validator' alone"
 
     def test_batch_edit_then_individual_edit(self, session: WorkflowTestSession):
         """
@@ -793,14 +842,13 @@ class TestMultiTurnStatePersistence:
         # Turn 1: Batch add nodes
         response1 = session.respond(
             "Add three process nodes: 'Step A', 'Step B', and 'Step C'",
-            allow_tools=True
+            allow_tools=True,
         )
         session.assert_node_count(3, in_orchestrator=True)
 
         # Turn 2: Modify one node
         response2 = session.respond(
-            "change 'Step B' to 'Validation Step'",
-            allow_tools=True
+            "change 'Step B' to 'Validation Step'", allow_tools=True
         )
 
         # Turn 3: Verify all nodes present with modification
@@ -845,10 +893,7 @@ class TestErrorHandlingLoudFailures:
         session.set_initial_workflow(simple_workflow)
         initial_node_count = len(simple_workflow["nodes"])
 
-        response = session.respond(
-            "delete the 'Nonexistent Node'",
-            allow_tools=True
-        )
+        response = session.respond("delete the 'Nonexistent Node'", allow_tools=True)
 
         # Verify no nodes were deleted
         session.assert_node_count(initial_node_count, in_orchestrator=True)
@@ -857,7 +902,13 @@ class TestErrorHandlingLoudFailures:
         response_lower = response.lower()
         assert any(
             phrase in response_lower
-            for phrase in ["not found", "doesn't exist", "cannot find", "no node", "could not find"]
+            for phrase in [
+                "not found",
+                "doesn't exist",
+                "cannot find",
+                "no node",
+                "could not find",
+            ]
         ), f"Response should clearly indicate node not found. Got: {response}"
 
     def test_modify_nonexistent_node_fails_clearly(self, session: WorkflowTestSession):
@@ -870,8 +921,7 @@ class TestErrorHandlingLoudFailures:
         - Error message includes available node IDs or labels
         """
         response = session.respond(
-            "change the label of 'Ghost Node' to 'New Label'",
-            allow_tools=True
+            "change the label of 'Ghost Node' to 'New Label'", allow_tools=True
         )
 
         # State should be unchanged (empty)
@@ -900,8 +950,7 @@ class TestErrorHandlingLoudFailures:
         initial_edge_count = len(simple_workflow["edges"])
 
         response = session.respond(
-            "connect 'Ghost Node A' to 'Ghost Node B'",
-            allow_tools=True
+            "connect 'Ghost Node A' to 'Ghost Node B'", allow_tools=True
         )
 
         # No new edges should be created
@@ -944,8 +993,7 @@ class TestLLMToolSelection:
         session.set_initial_workflow(simple_workflow)
 
         response = session.respond(
-            "change 'Validate Input' to 'Check Input'",
-            allow_tools=True
+            "change 'Validate Input' to 'Check Input'", allow_tools=True
         )
 
         tool_names = session.get_tool_names()
@@ -974,11 +1022,13 @@ class TestLLMToolSelection:
         """
         response = session.respond(
             "Add a decision node 'Is Valid?' with true and false branches",
-            allow_tools=True
+            allow_tools=True,
         )
 
         # Verify decision node created with 2 branches
-        decision = session.assert_node_exists("Is Valid", node_type="decision", in_orchestrator=True)
+        decision = session.assert_node_exists(
+            "Is Valid", node_type="decision", in_orchestrator=True
+        )
         edges = session.orchestrator.current_workflow["edges"]
         decision_edges = [e for e in edges if e["from"] == decision["id"]]
 
@@ -1017,11 +1067,13 @@ class TestComplexWorkflowPatterns:
 
         response = session.respond(
             "Insert a process node called 'Sanitize' between 'Start' and 'Validate Input'",
-            allow_tools=True
+            allow_tools=True,
         )
 
         # Verify new node exists
-        sanitize = session.assert_node_exists("Sanitize", node_type="process", in_orchestrator=True)
+        sanitize = session.assert_node_exists(
+            "Sanitize", node_type="process", in_orchestrator=True
+        )
 
         # Verify edge structure: Start → Sanitize → Validate Input
         session.assert_edge_exists("Start", "Sanitize", in_orchestrator=True)
@@ -1044,11 +1096,13 @@ class TestComplexWorkflowPatterns:
         response = session.respond(
             "Create a workflow where Start splits into two parallel processes "
             "'Process A' and 'Process B', then they both connect to End",
-            allow_tools=True
+            allow_tools=True,
         )
 
         # Verify structure
-        start = session.assert_node_exists("Start", node_type="start", in_orchestrator=True)
+        start = session.assert_node_exists(
+            "Start", node_type="start", in_orchestrator=True
+        )
         end = session.assert_node_exists("End", node_type="end", in_orchestrator=True)
 
         edges = session.orchestrator.current_workflow["edges"]
@@ -1061,9 +1115,7 @@ class TestComplexWorkflowPatterns:
 
         # End should have 2 incoming edges (join)
         end_edges = [e for e in edges if e["to"] == end["id"]]
-        assert len(end_edges) >= 2, (
-            f"End should join 2 branches, got {len(end_edges)}"
-        )
+        assert len(end_edges) >= 2, f"End should join 2 branches, got {len(end_edges)}"
 
     def test_create_authentication_flow_pattern(self, session: WorkflowTestSession):
         """
@@ -1079,7 +1131,7 @@ class TestComplexWorkflowPatterns:
             "Create an authentication workflow: "
             "Start → Check if authenticated? (decision) → if yes go to Dashboard, "
             "if no go to Login Page → both paths end at End node",
-            allow_tools=True
+            allow_tools=True,
         )
 
         # Verify decision node

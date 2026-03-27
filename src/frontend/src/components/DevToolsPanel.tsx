@@ -37,7 +37,6 @@ function ExecutionLogButton({ logCount }: { logCount: number }) {
             className="devtools-log-btn"
             onClick={() => setExecutionLogModalOpen(true)}
         >
-            <span>📋</span>
             <span>Execution Log</span>
             {logCount > 0 && (
                 <span className="log-badge">{logCount}</span>
@@ -138,7 +137,7 @@ export default function DevToolsPanel() {
     return (
         <div className="devtools-panel">
             <div className="devtools-header">
-                <span className="devtools-badge">🔧 DEV</span>
+                <span className="devtools-badge">DEV MODE</span>
             </div>
 
             {/* Execution Log Button */}
@@ -199,7 +198,7 @@ export default function DevToolsPanel() {
                                     </div>
                                     {msg.tool_calls.length > 0 && (
                                         <div className="tool-count">
-                                            🔧 {msg.tool_calls.length} tool{msg.tool_calls.length !== 1 ? 's' : ''}
+                                            Tools: {msg.tool_calls.length}
                                         </div>
                                     )}
                                 </div>
@@ -377,7 +376,7 @@ function ToolExecutorModal({ tool, onClose }: { tool: ToolDefinition; onClose: (
         <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="tool-executor-modal">
                 <div className="tool-executor-header">
-                    <h3>🔧 {tool.name}</h3>
+                    <h3>{tool.name}</h3>
                     <button className="modal-close" onClick={onClose}>×</button>
                 </div>
 

@@ -24,6 +24,7 @@ from src.backend.validation.workflow_validator import WorkflowValidator
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_orchestrator_with_db(tmp_path, **db_overrides):
     """Create an Orchestrator wired to a real WorkflowStore.
 
@@ -79,18 +80,25 @@ def _ok_result(tool_name: str = "add_node", **data_overrides) -> ToolResult:
     return ToolResult(tool=tool_name, data=data, success=True, message="OK")
 
 
-def _calc_node(node_id: str, label: str, output_name: str,
-               operator: str = "add", operands: list | None = None) -> dict:
+def _calc_node(
+    node_id: str,
+    label: str,
+    output_name: str,
+    operator: str = "add",
+    operands: list | None = None,
+) -> dict:
     """Build a minimal calculation node dict."""
     return {
         "id": node_id,
         "type": "calculation",
         "label": label,
-        "x": 0, "y": 0,
+        "x": 0,
+        "y": 0,
         "calculation": {
             "output": {"name": output_name},
             "operator": operator,
-            "operands": operands or [
+            "operands": operands
+            or [
                 {"kind": "literal", "value": 1},
                 {"kind": "literal", "value": 2},
             ],
@@ -98,8 +106,12 @@ def _calc_node(node_id: str, label: str, output_name: str,
     }
 
 
-def _variable(name: str, var_type: str = "number", source: str = "calculated",
-              source_node_id: str = "") -> dict:
+def _variable(
+    name: str,
+    var_type: str = "number",
+    source: str = "calculated",
+    source_node_id: str = "",
+) -> dict:
     """Build a minimal variable dict."""
     return {
         "id": f"var_{name}_{var_type}",
@@ -114,6 +126,7 @@ def _variable(name: str, var_type: str = "number", source: str = "calculated",
 # refresh_workflow_from_db: add_node variable sync
 # ---------------------------------------------------------------------------
 
+
 class TestAddNodeVariableSync:
     """Verify refresh_workflow_from_db picks up new variables after add_node saves to DB."""
 
@@ -123,7 +136,9 @@ class TestAddNodeVariableSync:
         node = _calc_node("n1", "Total", "calc_total")
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[calc_var],
+            tmp_path,
+            nodes=[node],
+            variables=[calc_var],
         )
 
         # Orchestrator starts empty, DB has the data
@@ -151,7 +166,9 @@ class TestAddNodeVariableSync:
         node = _calc_node("n1", "BMI", "calc_bmi")
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[existing, new_var],
+            tmp_path,
+            nodes=[node],
+            variables=[existing, new_var],
         )
 
         orch.refresh_workflow_from_db()
@@ -165,6 +182,7 @@ class TestAddNodeVariableSync:
 # refresh_workflow_from_db: batch_edit variable sync
 # ---------------------------------------------------------------------------
 
+
 class TestBatchEditVariableSync:
     """Verify refresh_workflow_from_db picks up variables after batch_edit saves to DB."""
 
@@ -174,7 +192,9 @@ class TestBatchEditVariableSync:
         node = _calc_node("n1", "eGFR", "calc_egfr")
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[calc_var],
+            tmp_path,
+            nodes=[node],
+            variables=[calc_var],
         )
 
         orch.refresh_workflow_from_db()
@@ -201,7 +221,9 @@ class TestBatchEditVariableSync:
         edge = {"id": "e1", "from": "n1", "to": "n2", "label": ""}
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], edges=[edge],
+            tmp_path,
+            nodes=[node],
+            edges=[edge],
         )
 
         orch.refresh_workflow_from_db()
@@ -214,6 +236,7 @@ class TestBatchEditVariableSync:
 # Post-tool validation: chained calc doesn't fail after sync
 # ---------------------------------------------------------------------------
 
+
 class TestPostToolValidationWithSyncedVars:
     """Verify _post_tool_validate passes when calc vars are properly synced."""
 
@@ -225,7 +248,9 @@ class TestPostToolValidationWithSyncedVars:
 
         # Second calc references first calc's output by name
         calc2_node = _calc_node(
-            "n_calc2", "Adjusted eGFR", "calc_adjusted_egfr",
+            "n_calc2",
+            "Adjusted eGFR",
+            "calc_adjusted_egfr",
             operator="multiply",
             operands=[
                 {"kind": "variable", "ref": "calc_egfr"},
@@ -249,7 +274,9 @@ class TestPostToolValidationWithSyncedVars:
         before Fix 2 (derived_output_vars). Now it passes via the validator fix."""
         calc1_node = _calc_node("n_calc1", "eGFR", "calc_egfr")
         calc2_node = _calc_node(
-            "n_calc2", "Adjusted", "calc_adjusted",
+            "n_calc2",
+            "Adjusted",
+            "calc_adjusted",
             operator="multiply",
             operands=[
                 {"kind": "variable", "ref": "calc_egfr"},
@@ -274,6 +301,7 @@ class TestPostToolValidationWithSyncedVars:
 # Fix 2: WorkflowValidator accepts chained calculation operand refs
 # ---------------------------------------------------------------------------
 
+
 class TestValidatorChainedCalculations:
     """Verify WorkflowValidator._validate_calculation_node uses derived_output_vars."""
 
@@ -285,12 +313,16 @@ class TestValidatorChainedCalculations:
         workflow = {
             "nodes": [
                 _calc_node("n1", "Base", "base_value"),
-                _calc_node("n2", "Derived", "derived_value",
-                           operator="multiply",
-                           operands=[
-                               {"kind": "variable", "ref": "base_value"},
-                               {"kind": "literal", "value": 2},
-                           ]),
+                _calc_node(
+                    "n2",
+                    "Derived",
+                    "derived_value",
+                    operator="multiply",
+                    operands=[
+                        {"kind": "variable", "ref": "base_value"},
+                        {"kind": "literal", "value": 2},
+                    ],
+                ),
             ],
             "edges": [],
             "variables": [],  # No explicit variables — both are derived
@@ -303,12 +335,16 @@ class TestValidatorChainedCalculations:
         """Calc operand referencing a variable that doesn't exist should still fail."""
         workflow = {
             "nodes": [
-                _calc_node("n1", "Bad Ref", "bad_result",
-                           operator="add",
-                           operands=[
-                               {"kind": "variable", "ref": "nonexistent_var"},
-                               {"kind": "literal", "value": 1},
-                           ]),
+                _calc_node(
+                    "n1",
+                    "Bad Ref",
+                    "bad_result",
+                    operator="add",
+                    operands=[
+                        {"kind": "variable", "ref": "nonexistent_var"},
+                        {"kind": "literal", "value": 1},
+                    ],
+                ),
             ],
             "edges": [],
             "variables": [],
@@ -321,15 +357,25 @@ class TestValidatorChainedCalculations:
         """Calc operand referencing a subprocess node's output_variable is valid."""
         workflow = {
             "nodes": [
-                {"id": "n_sub", "type": "subprocess", "label": "Get eGFR",
-                 "x": 0, "y": 0, "subworkflow_id": "wf_egfr",
-                 "output_variable": "egfr_result"},
-                _calc_node("n_calc", "Adjust", "adjusted_egfr",
-                           operator="multiply",
-                           operands=[
-                               {"kind": "variable", "ref": "egfr_result"},
-                               {"kind": "literal", "value": 0.742},
-                           ]),
+                {
+                    "id": "n_sub",
+                    "type": "subprocess",
+                    "label": "Get eGFR",
+                    "x": 0,
+                    "y": 0,
+                    "subworkflow_id": "wf_egfr",
+                    "output_variable": "egfr_result",
+                },
+                _calc_node(
+                    "n_calc",
+                    "Adjust",
+                    "adjusted_egfr",
+                    operator="multiply",
+                    operands=[
+                        {"kind": "variable", "ref": "egfr_result"},
+                        {"kind": "literal", "value": 0.742},
+                    ],
+                ),
             ],
             "edges": [],
             "variables": [],
@@ -343,18 +389,26 @@ class TestValidatorChainedCalculations:
         workflow = {
             "nodes": [
                 _calc_node("n1", "Step1", "step1_out"),
-                _calc_node("n2", "Step2", "step2_out",
-                           operator="multiply",
-                           operands=[
-                               {"kind": "variable", "ref": "step1_out"},
-                               {"kind": "literal", "value": 2},
-                           ]),
-                _calc_node("n3", "Step3", "step3_out",
-                           operator="add",
-                           operands=[
-                               {"kind": "variable", "ref": "step1_out"},
-                               {"kind": "variable", "ref": "step2_out"},
-                           ]),
+                _calc_node(
+                    "n2",
+                    "Step2",
+                    "step2_out",
+                    operator="multiply",
+                    operands=[
+                        {"kind": "variable", "ref": "step1_out"},
+                        {"kind": "literal", "value": 2},
+                    ],
+                ),
+                _calc_node(
+                    "n3",
+                    "Step3",
+                    "step3_out",
+                    operator="add",
+                    operands=[
+                        {"kind": "variable", "ref": "step1_out"},
+                        {"kind": "variable", "ref": "step2_out"},
+                    ],
+                ),
             ],
             "edges": [],
             "variables": [],
@@ -367,18 +421,26 @@ class TestValidatorChainedCalculations:
         """Calc referencing a user-defined variable (in variables list) still works."""
         workflow = {
             "nodes": [
-                _calc_node("n1", "BMI", "bmi_result",
-                           operator="divide",
-                           operands=[
-                               {"kind": "variable", "ref": "patient_weight"},
-                               {"kind": "variable", "ref": "var_height_number"},
-                           ]),
+                _calc_node(
+                    "n1",
+                    "BMI",
+                    "bmi_result",
+                    operator="divide",
+                    operands=[
+                        {"kind": "variable", "ref": "patient_weight"},
+                        {"kind": "variable", "ref": "var_height_number"},
+                    ],
+                ),
             ],
             "edges": [],
             "variables": [
                 _variable("patient_weight", source="user_defined"),
-                {"id": "var_height_number", "name": "height", "type": "number",
-                 "source": "user_defined"},
+                {
+                    "id": "var_height_number",
+                    "name": "height",
+                    "type": "number",
+                    "source": "user_defined",
+                },
             ],
         }
         is_valid, errors = self.validator.validate(workflow, strict=False)
@@ -390,6 +452,7 @@ class TestValidatorChainedCalculations:
 # refresh_workflow_from_db: delete_node cleans up derived variables
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteNodeVariableCleanup:
     """Verify refresh_workflow_from_db reflects variable removal after delete_node."""
 
@@ -400,7 +463,9 @@ class TestDeleteNodeVariableCleanup:
         # DB initially has calc node + variable; tool will have already removed them
         # Simulate post-tool DB state: node and calc variable gone
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[], variables=[input_var],
+            tmp_path,
+            nodes=[],
+            variables=[input_var],
         )
 
         # Pre-set orchestrator with stale state (both variables)
@@ -416,12 +481,18 @@ class TestDeleteNodeVariableCleanup:
     def test_subprocess_variable_removed_after_node_delete(self, tmp_path):
         """After tool deletes a subprocess node, refresh reflects variable removal."""
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[], variables=[],
+            tmp_path,
+            nodes=[],
+            variables=[],
         )
 
         # Pre-set stale local state
-        sub_var = _variable("egfr_result", var_type="number",
-                            source="subprocess", source_node_id="n_sub")
+        sub_var = _variable(
+            "egfr_result",
+            var_type="number",
+            source="subprocess",
+            source_node_id="n_sub",
+        )
         orch.workflow["variables"] = [sub_var]
 
         orch.refresh_workflow_from_db()
@@ -432,7 +503,9 @@ class TestDeleteNodeVariableCleanup:
         """Deleting a process node should not affect variables in DB."""
         input_var = _variable("age", source="input")
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[], variables=[input_var],
+            tmp_path,
+            nodes=[],
+            variables=[input_var],
         )
 
         orch.refresh_workflow_from_db()
@@ -444,6 +517,7 @@ class TestDeleteNodeVariableCleanup:
 # refresh_workflow_from_db: modify_node variable changes
 # ---------------------------------------------------------------------------
 
+
 class TestModifyNodeVariableSync:
     """Verify refresh_workflow_from_db reflects variable changes after modify_node."""
 
@@ -453,7 +527,9 @@ class TestModifyNodeVariableSync:
         node = _calc_node("n_calc", "Grand Total", "calc_grand_total")
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[new_var],
+            tmp_path,
+            nodes=[node],
+            variables=[new_var],
         )
 
         # Pre-set stale orchestrator state with old variable
@@ -469,7 +545,9 @@ class TestModifyNodeVariableSync:
         """After tool changes node type from calc to process, refresh shows no variables."""
         node = {"id": "n1", "type": "process", "label": "Step", "x": 0, "y": 0}
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[],
+            tmp_path,
+            nodes=[node],
+            variables=[],
         )
 
         # Pre-set stale state
@@ -485,7 +563,9 @@ class TestModifyNodeVariableSync:
         node = _calc_node("n1", "Calculate", "calc_result")
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[new_var],
+            tmp_path,
+            nodes=[node],
+            variables=[new_var],
         )
 
         orch.refresh_workflow_from_db()
@@ -500,7 +580,9 @@ class TestModifyNodeVariableSync:
         node = _calc_node("n_calc", "BMI", "calc_bmi_adjusted")
 
         orch, wf_id, store = _make_orchestrator_with_db(
-            tmp_path, nodes=[node], variables=[input_var, new_calc_var],
+            tmp_path,
+            nodes=[node],
+            variables=[input_var, new_calc_var],
         )
 
         orch.refresh_workflow_from_db()
@@ -513,6 +595,7 @@ class TestModifyNodeVariableSync:
 # ---------------------------------------------------------------------------
 # refresh_workflow_from_db: edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestRefreshEdgeCases:
     """Verify refresh_workflow_from_db handles edge cases gracefully."""
@@ -564,6 +647,7 @@ class TestRefreshEdgeCases:
 # Fix F: lazy re-derive subprocess variable types on workflow load
 # ---------------------------------------------------------------------------
 
+
 class TestLazyReDeriveSubprocessVariables:
     """Verify load_workflow_for_tool() re-derives subprocess variable types.
 
@@ -572,7 +656,9 @@ class TestLazyReDeriveSubprocessVariables:
     """
 
     def test_subprocess_var_type_updated_when_subworkflow_output_changes(
-        self, workflow_store, test_user_id,
+        self,
+        workflow_store,
+        test_user_id,
     ):
         """Loading a workflow should update stale subprocess variable types
         to match the subworkflow's current output type."""
@@ -582,12 +668,15 @@ class TestLazyReDeriveSubprocessVariables:
 
         # Create subworkflow with output type "string"
         sub_id, _ = make_session_with_workflow(
-            workflow_store, test_user_id, name="Sub WF",
+            workflow_store,
+            test_user_id,
+            name="Sub WF",
             output_type="string",
         )
         # Set output definition on subworkflow
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "result", "type": "string"}],
         )
 
@@ -595,8 +684,11 @@ class TestLazyReDeriveSubprocessVariables:
         # The derived variable was originally registered as type "string"
         old_var_id = generate_variable_id("sub_result", "string", "subprocess")
         sub_node = {
-            "id": "n_sub", "type": "subprocess", "label": "Run Sub",
-            "x": 0, "y": 0,
+            "id": "n_sub",
+            "type": "subprocess",
+            "label": "Run Sub",
+            "x": 0,
+            "y": 0,
             "subworkflow_id": sub_id,
             "output_variable": "sub_result",
         }
@@ -609,13 +701,17 @@ class TestLazyReDeriveSubprocessVariables:
             "subworkflow_id": sub_id,
         }
         parent_id, session_state = make_session_with_workflow(
-            workflow_store, test_user_id, name="Parent WF",
-            nodes=[sub_node], variables=[sub_var],
+            workflow_store,
+            test_user_id,
+            name="Parent WF",
+            nodes=[sub_node],
+            variables=[sub_var],
         )
 
         # Now change the subworkflow's output type to "number"
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "result", "type": "number"}],
         )
 
@@ -632,7 +728,9 @@ class TestLazyReDeriveSubprocessVariables:
         assert updated_var["id"] == expected_id
 
     def test_subprocess_var_id_regenerated_on_type_change(
-        self, workflow_store, test_user_id,
+        self,
+        workflow_store,
+        test_user_id,
     ):
         """Variable ID should change because it encodes the type."""
         from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
@@ -640,18 +738,24 @@ class TestLazyReDeriveSubprocessVariables:
         from tests.conftest import make_session_with_workflow
 
         sub_id, _ = make_session_with_workflow(
-            workflow_store, test_user_id, name="Sub WF",
+            workflow_store,
+            test_user_id,
+            name="Sub WF",
             output_type="number",
         )
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "score", "type": "number"}],
         )
 
         old_var_id = generate_variable_id("score_output", "number", "subprocess")
         sub_node = {
-            "id": "n_sub", "type": "subprocess", "label": "Calc Score",
-            "x": 0, "y": 0,
+            "id": "n_sub",
+            "type": "subprocess",
+            "label": "Calc Score",
+            "x": 0,
+            "y": 0,
             "subworkflow_id": sub_id,
             "output_variable": "score_output",
         }
@@ -663,13 +767,17 @@ class TestLazyReDeriveSubprocessVariables:
             "source_node_id": "n_sub",
         }
         parent_id, session_state = make_session_with_workflow(
-            workflow_store, test_user_id, name="Parent",
-            nodes=[sub_node], variables=[sub_var],
+            workflow_store,
+            test_user_id,
+            name="Parent",
+            nodes=[sub_node],
+            variables=[sub_var],
         )
 
         # Change subworkflow output to bool
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "score", "type": "bool"}],
         )
 
@@ -680,23 +788,34 @@ class TestLazyReDeriveSubprocessVariables:
         assert updated_var["id"] != old_var_id
 
     def test_non_subprocess_variables_untouched(
-        self, workflow_store, test_user_id,
+        self,
+        workflow_store,
+        test_user_id,
     ):
         """Input and calculated variables should not be modified by re-derive."""
         from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
         from tests.conftest import make_session_with_workflow
 
         input_var = {
-            "id": "var_age_number", "name": "age", "type": "number",
-            "source": "input", "source_node_id": "",
+            "id": "var_age_number",
+            "name": "age",
+            "type": "number",
+            "source": "input",
+            "source_node_id": "",
         }
         calc_var = {
-            "id": "var_calc_bmi_number", "name": "calc_bmi", "type": "number",
-            "source": "calculated", "source_node_id": "n_calc",
+            "id": "var_calc_bmi_number",
+            "name": "calc_bmi",
+            "type": "number",
+            "source": "calculated",
+            "source_node_id": "n_calc",
         }
         calc_node = {
-            "id": "n_calc", "type": "calculation", "label": "BMI",
-            "x": 0, "y": 0,
+            "id": "n_calc",
+            "type": "calculation",
+            "label": "BMI",
+            "x": 0,
+            "y": 0,
             "calculation": {
                 "output": {"name": "calc_bmi"},
                 "operator": "divide",
@@ -707,8 +826,11 @@ class TestLazyReDeriveSubprocessVariables:
             },
         }
         wf_id, session_state = make_session_with_workflow(
-            workflow_store, test_user_id, name="No Sub WF",
-            nodes=[calc_node], variables=[input_var, calc_var],
+            workflow_store,
+            test_user_id,
+            name="No Sub WF",
+            nodes=[calc_node],
+            variables=[input_var, calc_var],
         )
 
         data, err = load_workflow_for_tool(wf_id, session_state)
@@ -719,25 +841,36 @@ class TestLazyReDeriveSubprocessVariables:
         assert types == {"age": "number", "calc_bmi": "number"}
 
     def test_subprocess_node_without_subworkflow_id_no_crash(
-        self, workflow_store, test_user_id,
+        self,
+        workflow_store,
+        test_user_id,
     ):
         """A subprocess node with missing subworkflow_id should not crash re-derive."""
         from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
         from tests.conftest import make_session_with_workflow
 
         sub_node = {
-            "id": "n_sub", "type": "subprocess", "label": "Placeholder",
-            "x": 0, "y": 0,
+            "id": "n_sub",
+            "type": "subprocess",
+            "label": "Placeholder",
+            "x": 0,
+            "y": 0,
             # No subworkflow_id
             "output_variable": "placeholder_out",
         }
         sub_var = {
-            "id": "var_sub_placeholder_out_string", "name": "placeholder_out",
-            "type": "string", "source": "subprocess", "source_node_id": "n_sub",
+            "id": "var_sub_placeholder_out_string",
+            "name": "placeholder_out",
+            "type": "string",
+            "source": "subprocess",
+            "source_node_id": "n_sub",
         }
         wf_id, session_state = make_session_with_workflow(
-            workflow_store, test_user_id, name="Partial Sub",
-            nodes=[sub_node], variables=[sub_var],
+            workflow_store,
+            test_user_id,
+            name="Partial Sub",
+            nodes=[sub_node],
+            variables=[sub_var],
         )
 
         data, err = load_workflow_for_tool(wf_id, session_state)
@@ -746,7 +879,9 @@ class TestLazyReDeriveSubprocessVariables:
         assert data["variables"][0]["type"] == "string"
 
     def test_updated_variables_persisted_to_db(
-        self, workflow_store, test_user_id,
+        self,
+        workflow_store,
+        test_user_id,
     ):
         """Re-derived variable types should be saved back to the database."""
         from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
@@ -755,32 +890,45 @@ class TestLazyReDeriveSubprocessVariables:
 
         # Create subworkflow with output type "string"
         sub_id, _ = make_session_with_workflow(
-            workflow_store, test_user_id, name="Sub WF",
+            workflow_store,
+            test_user_id,
+            name="Sub WF",
         )
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "val", "type": "string"}],
         )
 
         sub_node = {
-            "id": "n_sub", "type": "subprocess", "label": "Get Val",
-            "x": 0, "y": 0,
+            "id": "n_sub",
+            "type": "subprocess",
+            "label": "Get Val",
+            "x": 0,
+            "y": 0,
             "subworkflow_id": sub_id,
             "output_variable": "val_out",
         }
         old_var_id = generate_variable_id("val_out", "string", "subprocess")
         sub_var = {
-            "id": old_var_id, "name": "val_out", "type": "string",
-            "source": "subprocess", "source_node_id": "n_sub",
+            "id": old_var_id,
+            "name": "val_out",
+            "type": "string",
+            "source": "subprocess",
+            "source_node_id": "n_sub",
         }
         parent_id, session_state = make_session_with_workflow(
-            workflow_store, test_user_id, name="Parent",
-            nodes=[sub_node], variables=[sub_var],
+            workflow_store,
+            test_user_id,
+            name="Parent",
+            nodes=[sub_node],
+            variables=[sub_var],
         )
 
         # Change subworkflow output type
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "val", "type": "number"}],
         )
 
@@ -795,7 +943,9 @@ class TestLazyReDeriveSubprocessVariables:
         assert record.inputs[0]["id"] == expected_id
 
     def test_no_db_write_when_types_already_match(
-        self, workflow_store, test_user_id,
+        self,
+        workflow_store,
+        test_user_id,
     ):
         """If subprocess variable types already match, no DB write should occur."""
         from src.backend.tools.workflow_edit.helpers import load_workflow_for_tool
@@ -804,27 +954,39 @@ class TestLazyReDeriveSubprocessVariables:
         from unittest.mock import patch
 
         sub_id, _ = make_session_with_workflow(
-            workflow_store, test_user_id, name="Sub WF",
+            workflow_store,
+            test_user_id,
+            name="Sub WF",
         )
         workflow_store.update_workflow(
-            sub_id, test_user_id,
+            sub_id,
+            test_user_id,
             outputs=[{"name": "val", "type": "number"}],
         )
 
         sub_node = {
-            "id": "n_sub", "type": "subprocess", "label": "Get Val",
-            "x": 0, "y": 0,
+            "id": "n_sub",
+            "type": "subprocess",
+            "label": "Get Val",
+            "x": 0,
+            "y": 0,
             "subworkflow_id": sub_id,
             "output_variable": "val_out",
         }
         var_id = generate_variable_id("val_out", "number", "subprocess")
         sub_var = {
-            "id": var_id, "name": "val_out", "type": "number",
-            "source": "subprocess", "source_node_id": "n_sub",
+            "id": var_id,
+            "name": "val_out",
+            "type": "number",
+            "source": "subprocess",
+            "source_node_id": "n_sub",
         }
         parent_id, session_state = make_session_with_workflow(
-            workflow_store, test_user_id, name="Parent",
-            nodes=[sub_node], variables=[sub_var],
+            workflow_store,
+            test_user_id,
+            name="Parent",
+            nodes=[sub_node],
+            variables=[sub_var],
         )
 
         # Patch save_workflow_changes to detect if it's called
@@ -839,8 +1001,9 @@ class TestLazyReDeriveSubprocessVariables:
 # Socket-level: analysis_updated emitted for edit tools with variable changes
 # ---------------------------------------------------------------------------
 
-class TestWsVariableSyncOnEditTools:
-    """Verify ws_chat emits analysis_updated when WORKFLOW_EDIT_TOOLS
+
+class TestChatVariableSyncOnEditTools:
+    """Verify chat task event projection emits analysis_updated when edit tools
     produce new_variables or removed_variable_ids, so the frontend's
     Variables tab stays in sync without waiting for a WORKFLOW_INPUT_TOOL."""
 
@@ -944,7 +1107,8 @@ class TestWsVariableSyncOnEditTools:
         # Find the analysis_updated push call
         # sink.push(event, payload) — event is args[0], payload is args[1]
         analysis_calls = [
-            call for call in mock_sink.push.call_args_list
+            call
+            for call in mock_sink.push.call_args_list
             if call.args[0] == "analysis_updated"
         ]
         assert len(analysis_calls) == 1

@@ -53,7 +53,7 @@ def _data_model() -> str:
         "| end | 0 | Terminal — returns output |\n\n"
         "Only decision nodes branch. All others flow linearly to one next node.\n\n"
         "### Connections\n"
-        "Edges link nodes. Decision edges MUST be labeled `\"true\"` or `\"false\"`. "
+        'Edges link nodes. Decision edges MUST be labeled `"true"` or `"false"`. '
         "Other edges have no label.\n"
     )
 
@@ -77,13 +77,12 @@ def _decision_conditions() -> str:
     return (
         "## Decision Conditions\n\n"
         "Every decision node MUST have a `condition` object.\n\n"
-        "**Simple:** `{\"variable\": \"Age\", \"comparator\": \"gt\", \"value\": 60}`\n\n"
-        "**Compound:** `{\"operator\": \"and\", \"conditions\": [{...}, {...}]}`\n\n"
+        '**Simple:** `{"variable": "Age", "comparator": "gt", "value": 60}`\n\n'
+        '**Compound:** `{"operator": "and", "conditions": [{...}, {...}]}`\n\n'
         "Comparators: "
         "number: eq neq lt lte gt gte within_range(+value2) | "
         "bool: is_true is_false | "
         "string: str_eq str_neq str_contains str_starts_with str_ends_with | "
-        "date: date_eq date_before date_after date_between(+value2) | "
         "enum: enum_eq enum_neq\n\n"
         "The variable name MUST match a registered variable. The comparator MUST be valid for its type.\n"
     )
@@ -94,9 +93,9 @@ def _calculation_nodes() -> str:
     return (
         "## Calculation Nodes\n\n"
         "Compute a value from variables/literals. Required fields:\n"
-        "- `calculation.output`: `{\"name\": \"BMI\"}` — name of the derived variable created\n"
+        '- `calculation.output`: `{"name": "BMI"}` — name of the derived variable created\n'
         "- `calculation.operator`: e.g. `divide`, `add`, `sqrt`\n"
-        "- `calculation.operands`: list of `{\"kind\": \"variable\", \"ref\": \"var_weight_number\"}` or `{\"kind\": \"literal\", \"value\": 2}`\n\n"
+        '- `calculation.operands`: list of `{"kind": "variable", "ref": "var_weight_number"}` or `{"kind": "literal", "value": 2}`\n\n'
         "Operators: add, subtract, multiply, divide, power, sqrt, abs, min, max, average.\n\n"
         "To decide based on a calculated value: calculation → decision → true/false branches.\n"
     )
@@ -137,7 +136,7 @@ def _batch_edit() -> str:
         "Use `batch_edit_workflow` for decision nodes: create the decision + its two "
         "branch nodes + their connections in a single atomic operation. This is more "
         "reliable than individual tool calls for branching structures.\n\n"
-        "Assign temporary IDs (`\"id\": \"temp_decision\"`) that get mapped to real IDs. "
+        'Assign temporary IDs (`"id": "temp_decision"`) that get mapped to real IDs. '
         "In `add_connection` operations, use `from` and `to` fields (not `from_node_id`/`to_node_id`).\n\n"
         "For simple linear operations (single node + single connection), use individual tools.\n"
     )
@@ -168,7 +167,7 @@ def _image_analysis_protocol() -> str:
         "**Step 6:** Find the FIRST REAL NODE (the root of the flowchart) and connect start → root.\n"
         "- RULE: The root is the node with ONLY OUTGOING edges from other flowchart nodes "
         "- WARNING: Do NOT pick the node that seems most clinically/logically important. "
-        "\"Primary\" does not always mean \"first\". The root is determined by STRUCTURE "
+        '"Primary" does not always mean "first". The root is determined by STRUCTURE '
         "(arrow direction, which node has only outgoing edges and is uniquely coloured), NOT by domain importance.\n"
         "- Find it yourself — DO NOT ask the user.\n"
         "- After connecting start → root, IMMEDIATELY list ALL of root's outgoing edges. "
@@ -211,7 +210,7 @@ def _image_analysis_protocol() -> str:
         "- NEVER create nodes before registering their input variables (Step 4 before Step 7).\n"
         "- NEVER guess threshold values — if unclear in the image, call `ask_question` with options.\n"
         "- NEVER leave a branch unfinished — every decision MUST have both TRUE and FALSE paths built.\n"
-        "- At each node during DFS, ASK YOURSELF: \"What are the outgoing edges?\" and build ALL of them.\n"
+        '- At each node during DFS, ASK YOURSELF: "What are the outgoing edges?" and build ALL of them.\n'
         "- EVERY end node MUST have an `output` value. NEVER create an end node without setting its output.\n"
         "- NEVER skip Step 9 (self-review). You MUST call `get_current_workflow` + `view_image` and verify your work before responding.\n"
         "- To re-examine the image at any point: call `view_image`.\n\n"
@@ -245,7 +244,7 @@ def _anti_patterns() -> str:
         "(unique colour/shape, only outgoing edges).\n"
         "- DO NOT ask the user to confirm obvious node types — determine from the image.\n"
         "- DO NOT ask the user to list input variables — extract them from the image.\n"
-        "- DO NOT create a node and then ask \"should I connect it?\" — always connect immediately.\n"
+        '- DO NOT create a node and then ask "should I connect it?" — always connect immediately.\n'
         "- DO NOT output JSON, node IDs, or technical details to the user.\n"
         "- DO NOT use `ask_question` for things you can determine from the image. "
         "ONLY ask when a value is genuinely ambiguous (unreadable text, unclear threshold).\n"
@@ -275,7 +274,9 @@ def _file_instructions(uploaded: List[Dict[str, Any]]) -> str:
         )
 
     # Multiple files — check if they need classification
-    unclassified = [f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"]
+    unclassified = [
+        f for f in uploaded if f.get("purpose", "unclassified") == "unclassified"
+    ]
     if not unclassified:
         return (
             f"\n## Uploaded Files\n"
@@ -283,7 +284,7 @@ def _file_instructions(uploaded: List[Dict[str, Any]]) -> str:
         )
 
     numbered = "\n".join(
-        f"  {i+1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
+        f"  {i + 1}. {f.get('name', '?')}" for i, f in enumerate(uploaded)
     )
     return (
         f"\n## Uploaded Files\n"
@@ -315,15 +316,12 @@ def _guidance_notes(guidance: List[Dict[str, Any]]) -> str:
     standalone = [g for g in guidance if not g.get("linked_to")]
     linked = [g for g in guidance if g.get("linked_to")]
 
-    parts = [
-        "\n## Image Guidance Notes\n"
-        "Notes found alongside the workflow diagram.\n"
-    ]
+    parts = ["\n## Image Guidance Notes\nNotes found alongside the workflow diagram.\n"]
 
     for g in standalone:
         parts.append(
             f'- [{g.get("category", "note")}] "{g.get("text", "")}" '
-            f'({g.get("location", "")})'
+            f"({g.get('location', '')})"
         )
 
     if linked:

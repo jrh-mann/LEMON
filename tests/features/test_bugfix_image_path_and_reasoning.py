@@ -1,13 +1,9 @@
-"""Tests for image path resolution and reasoning (thinking_budget) wiring.
+"""Regression tests for file-path and thinking wiring in the chat pipeline.
 
-Bug 1: Uploaded image paths were relative to .lemon/ but the orchestrator
-        checked Path(f["path"]).exists() from CWD — file never found.
-Fix:    socket_chat.py now resolves to absolute path before passing to orchestrator.
-
-Bug 2: Extended thinking (reasoning) was not enabled — orchestrator never
-        passed thinking_budget to call_llm_with_tools.
-Fix:    Added thinking_budget param to call_llm_with_tools and wired through
-        orchestrator.respond() and socket_chat.py.
+Coverage focuses on:
+- ``ChatTask`` saving uploaded files as absolute paths before orchestrator use.
+- ``Orchestrator.respond`` forwarding ``thinking`` and ``on_thinking`` to
+  ``call_llm``.
 """
 
 from __future__ import annotations
@@ -19,7 +15,7 @@ import pytest
 
 
 class TestImagePathResolution:
-    """Verify socket_chat resolves uploaded file paths to absolute."""
+    """Verify ChatTask resolves uploaded file paths to absolute."""
 
     def test_save_uploaded_files_produces_absolute_paths(self, tmp_path: Path):
         """After _save_uploaded_files, each saved path must be absolute."""
@@ -29,6 +25,7 @@ class TestImagePathResolution:
 
         # Create a minimal 1x1 white PNG as a data URL
         import base64
+
         # Minimal valid PNG (1x1 white pixel)
         png_bytes = (
             b"\x89PNG\r\n\x1a\n"
@@ -52,12 +49,14 @@ class TestImagePathResolution:
             task_id="test-task",
             message="hello",
             conversation_id=None,
-            files_data=[{
-                "id": "f1",
-                "name": "test.png",
-                "data_url": data_url,
-                "purpose": "unclassified",
-            }],
+            files_data=[
+                {
+                    "id": "f1",
+                    "name": "test.png",
+                    "data_url": data_url,
+                    "purpose": "unclassified",
+                }
+            ],
             workflow=None,
             analysis=None,
         )
@@ -72,9 +71,7 @@ class TestImagePathResolution:
             f"Expected absolute path, got: {saved_path}"
         )
         # The file must actually exist on disk
-        assert Path(saved_path).exists(), (
-            f"Saved file does not exist at: {saved_path}"
-        )
+        assert Path(saved_path).exists(), f"Saved file does not exist at: {saved_path}"
 
 
 class TestReasoningWiring:
@@ -85,12 +82,8 @@ class TestReasoningWiring:
         from src.backend.llm.client import call_llm
 
         sig = inspect.signature(call_llm)
-        assert "thinking" in sig.parameters, (
-            "call_llm is missing thinking parameter"
-        )
-        assert "effort" in sig.parameters, (
-            "call_llm is missing effort parameter"
-        )
+        assert "thinking" in sig.parameters, "call_llm is missing thinking parameter"
+        assert "effort" in sig.parameters, "call_llm is missing effort parameter"
         assert "on_thinking" in sig.parameters, (
             "call_llm is missing on_thinking parameter"
         )
@@ -122,12 +115,10 @@ class TestReasoningWiring:
         with patch("src.backend.agents.orchestrator.call_llm", side_effect=fake_llm):
             orch.respond("test message", thinking=True)
 
-        assert "thinking" in captured_kwargs, (
-            "thinking not forwarded to call_llm"
-        )
+        assert "thinking" in captured_kwargs, "thinking not forwarded to call_llm"
         assert captured_kwargs["thinking"] is True
 
-    def test_ws_chat_passes_thinking(self):
+    def test_chat_task_passes_thinking(self):
         """ChatTask.run must pass thinking=True to orchestrator.respond()."""
         # Verify the source code contains thinking= in the respond() call
         from src.backend.tasks import chat_task
@@ -150,6 +141,7 @@ class TestReasoningWiring:
             return LLMResponse(text="response")
 
         thinking_chunks = []
+
         def my_thinking(chunk: str) -> None:
             thinking_chunks.append(chunk)
 
@@ -223,12 +215,19 @@ class TestReasoningWiring:
         class FakeStream:
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 pass
+
             def __iter__(self):
                 return iter([])
+
             def get_final_message(self):
-                return MagicMock(content=[], usage=MagicMock(input_tokens=0, output_tokens=0), model="test")
+                return MagicMock(
+                    content=[],
+                    usage=MagicMock(input_tokens=0, output_tokens=0),
+                    model="test",
+                )
 
         class FakeMessages:
             def stream(self, **kwargs):
@@ -238,9 +237,16 @@ class TestReasoningWiring:
         fake_client = MagicMock()
         fake_client.messages = FakeMessages()
 
-        with patch("src.backend.llm.client.get_anthropic_client", return_value=fake_client), \
-             patch("src.backend.llm.client.get_anthropic_model", return_value="claude-opus-4-6"), \
-             patch("src.backend.llm.client._record_tokens"):
+        with (
+            patch(
+                "src.backend.llm.client.get_anthropic_client", return_value=fake_client
+            ),
+            patch(
+                "src.backend.llm.client.get_anthropic_model",
+                return_value="claude-opus-4-6",
+            ),
+            patch("src.backend.llm.client._record_tokens"),
+        ):
             try:
                 call_llm(
                     [{"role": "user", "content": "test"}],

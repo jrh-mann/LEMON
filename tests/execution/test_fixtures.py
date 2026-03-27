@@ -14,13 +14,16 @@ from .fixtures import (
 class TestFixtureValidity:
     """Validate that test fixtures follow the correct schema"""
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_workflow_has_required_keys(self, workflow):
         """Test that workflow has inputs, outputs, tree"""
         assert "inputs" in workflow
@@ -30,13 +33,16 @@ class TestFixtureValidity:
         assert isinstance(workflow["outputs"], list)
         assert isinstance(workflow["tree"], dict)
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_tree_has_start_node(self, workflow):
         """Test that tree has a start node"""
         assert "start" in workflow["tree"]
@@ -44,15 +50,19 @@ class TestFixtureValidity:
         assert start["id"] == "start"
         assert start["type"] == "start"
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_all_nodes_have_required_fields(self, workflow):
         """Test that all nodes have id, type, label"""
+
         def check_node(node):
             assert "id" in node
             assert "type" in node
@@ -62,15 +72,19 @@ class TestFixtureValidity:
 
         check_node(workflow["tree"]["start"])
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_decision_nodes_have_children(self, workflow):
         """Test that decision nodes have children"""
+
         def check_node(node):
             if node["type"] == "decision":
                 assert "children" in node
@@ -80,15 +94,19 @@ class TestFixtureValidity:
 
         check_node(workflow["tree"]["start"])
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_output_nodes_have_no_children(self, workflow):
         """Test that output nodes are leaf nodes"""
+
         def check_node(node):
             if node["type"] == "output":
                 assert node.get("children", []) == []
@@ -97,13 +115,16 @@ class TestFixtureValidity:
 
         check_node(workflow["tree"]["start"])
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_all_input_ids_are_valid(self, workflow):
         """Test that all input_ids reference actual inputs"""
         valid_ids = {inp["id"] for inp in workflow["inputs"]}
@@ -116,28 +137,34 @@ class TestFixtureValidity:
 
         check_node(workflow["tree"]["start"])
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_inputs_have_required_fields(self, workflow):
         """Test that inputs have id, name, type"""
         for inp in workflow["inputs"]:
             assert "id" in inp
             assert "name" in inp
             assert "type" in inp
-            assert inp["type"] in ["number", "bool", "string", "enum", "date"]
+            assert inp["type"] in ["number", "bool", "string", "enum"]
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_enum_inputs_have_enum_values(self, workflow):
         """Test that enum type inputs have enum_values"""
         for inp in workflow["inputs"]:
@@ -146,15 +173,19 @@ class TestFixtureValidity:
                 assert isinstance(inp["enum_values"], list)
                 assert len(inp["enum_values"]) > 0
 
-    @pytest.mark.parametrize("workflow", [
-        SIMPLE_AGE_WORKFLOW,
-        CHOLESTEROL_RISK_WORKFLOW,
-        MEDICATION_WORKFLOW,
-        BMI_CLASSIFICATION_WORKFLOW,
-        ELIGIBILITY_WORKFLOW,
-    ])
+    @pytest.mark.parametrize(
+        "workflow",
+        [
+            SIMPLE_AGE_WORKFLOW,
+            CHOLESTEROL_RISK_WORKFLOW,
+            MEDICATION_WORKFLOW,
+            BMI_CLASSIFICATION_WORKFLOW,
+            ELIGIBILITY_WORKFLOW,
+        ],
+    )
     def test_workflow_has_at_least_one_output_node(self, workflow):
         """Test that workflow has at least one output node"""
+
         def count_outputs(node):
             count = 1 if node["type"] == "output" else 0
             for child in node.get("children", []):
@@ -202,15 +233,18 @@ class TestFixtureTestCases:
         required_ids = {inp["id"] for inp in workflow["inputs"]}
         for inputs, _, description in test_cases:
             for required_id in required_ids:
-                assert required_id in inputs, f"{name} - {description}: Missing input '{required_id}'"
+                assert required_id in inputs, (
+                    f"{name} - {description}: Missing input '{required_id}'"
+                )
 
     @pytest.mark.parametrize("workflow,test_cases,name", get_all_workflow_tests())
     def test_expected_outputs_are_valid(self, workflow, test_cases, name):
         """Test that expected outputs match workflow output names"""
         valid_outputs = {out["name"] for out in workflow["outputs"]}
         for _, expected_output, description in test_cases:
-            assert expected_output in valid_outputs, \
+            assert expected_output in valid_outputs, (
                 f"{name} - {description}: Invalid output '{expected_output}'"
+            )
 
     @pytest.mark.parametrize("workflow,test_cases,name", get_all_workflow_tests())
     def test_input_values_match_types(self, workflow, test_cases, name):
@@ -222,14 +256,17 @@ class TestFixtureTestCases:
                 expected_type = input_types[input_id]
 
                 if expected_type == "number":
-                    assert isinstance(value, (int, float)), \
+                    assert isinstance(value, (int, float)), (
                         f"{name} - {description}: {input_id} should be number, got {type(value)}"
+                    )
                 elif expected_type == "bool":
-                    assert isinstance(value, bool), \
+                    assert isinstance(value, bool), (
                         f"{name} - {description}: {input_id} should be bool, got {type(value)}"
+                    )
                 elif expected_type in ("string", "enum"):
-                    assert isinstance(value, str), \
+                    assert isinstance(value, str), (
                         f"{name} - {description}: {input_id} should be str, got {type(value)}"
+                    )
 
     @pytest.mark.parametrize("workflow,test_cases,name", get_all_workflow_tests())
     def test_enum_values_are_valid(self, workflow, test_cases, name):
@@ -244,8 +281,9 @@ class TestFixtureTestCases:
             for input_id, value in inputs.items():
                 if input_id in enum_inputs:
                     allowed = enum_inputs[input_id]
-                    assert value in allowed, \
+                    assert value in allowed, (
                         f"{name} - {description}: {input_id}='{value}' not in {allowed}"
+                    )
 
     @pytest.mark.parametrize("workflow,test_cases,name", get_all_workflow_tests())
     def test_numeric_values_in_range(self, workflow, test_cases, name):
@@ -261,8 +299,10 @@ class TestFixtureTestCases:
                 if input_id in input_ranges and input_ranges[input_id]:
                     range_spec = input_ranges[input_id]
                     if "min" in range_spec:
-                        assert value >= range_spec["min"], \
+                        assert value >= range_spec["min"], (
                             f"{name} - {description}: {input_id}={value} below min {range_spec['min']}"
+                        )
                     if "max" in range_spec:
-                        assert value <= range_spec["max"], \
+                        assert value <= range_spec["max"], (
                             f"{name} - {description}: {input_id}={value} above max {range_spec['max']}"
+                        )

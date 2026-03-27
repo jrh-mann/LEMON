@@ -8,7 +8,8 @@ tool loops. It centralizes:
   - History persistence (commit to ConversationManager)
 
 This replaces the scattered save_turn/finalize_cancel/save_error calls that
-were spread across orchestrator.py, ws_chat.py, and conversation_manager.py.
+were spread across orchestrator/chat task boundaries and conversation history
+management.
 """
 
 from __future__ import annotations
@@ -24,12 +25,13 @@ logger = logging.getLogger(__name__)
 
 class TurnStatus(Enum):
     """Explicit states for a conversation turn."""
-    PENDING = "pending"              # Created, not yet started
-    CALLING_LLM = "calling_llm"     # Waiting for LLM response
+
+    PENDING = "pending"  # Created, not yet started
+    CALLING_LLM = "calling_llm"  # Waiting for LLM response
     EXECUTING_TOOLS = "executing_tools"  # Running tool batch
-    COMPLETED = "completed"          # Turn finished successfully
-    CANCELLED = "cancelled"          # User cancelled mid-turn
-    FAILED = "failed"                # Turn hit an error
+    COMPLETED = "completed"  # Turn finished successfully
+    CANCELLED = "cancelled"  # User cancelled mid-turn
+    FAILED = "failed"  # Turn hit an error
 
 
 # Valid state transitions — maps current status → set of allowed next statuses
@@ -37,15 +39,15 @@ _VALID_TRANSITIONS: Dict[TurnStatus, set] = {
     TurnStatus.PENDING: {TurnStatus.CALLING_LLM},
     TurnStatus.CALLING_LLM: {
         TurnStatus.EXECUTING_TOOLS,  # LLM returned tool_calls
-        TurnStatus.COMPLETED,        # LLM returned text only
-        TurnStatus.CANCELLED,        # User cancelled during LLM call
-        TurnStatus.FAILED,           # LLM call failed
+        TurnStatus.COMPLETED,  # LLM returned text only
+        TurnStatus.CANCELLED,  # User cancelled during LLM call
+        TurnStatus.FAILED,  # LLM call failed
     },
     TurnStatus.EXECUTING_TOOLS: {
-        TurnStatus.CALLING_LLM,      # Tools done, calling LLM again
-        TurnStatus.COMPLETED,        # ask_question tool → done
-        TurnStatus.CANCELLED,        # User cancelled during tool execution
-        TurnStatus.FAILED,           # Tool threw exception
+        TurnStatus.CALLING_LLM,  # Tools done, calling LLM again
+        TurnStatus.COMPLETED,  # ask_question tool → done
+        TurnStatus.CANCELLED,  # User cancelled during tool execution
+        TurnStatus.FAILED,  # Tool threw exception
     },
     # Terminal states — no transitions out
     TurnStatus.COMPLETED: set(),
@@ -113,14 +115,17 @@ class Turn:
         if self._logger:
             try:
                 self._logger.log_user_message(
-                    self.conversation_id, self.user_message,
-                    files=file_meta, task_id=self._task_id,
+                    self.conversation_id,
+                    self.user_message,
+                    files=file_meta,
+                    task_id=self._task_id,
                 )
             except Exception:
                 self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log user message conv=%s",
-                    self.conversation_id, exc_info=True,
+                    self.conversation_id,
+                    exc_info=True,
                 )
 
     def begin_tool_execution(self) -> None:
@@ -148,7 +153,8 @@ class Turn:
         if self._logger:
             try:
                 self._logger.log_assistant_response(
-                    self.conversation_id, final_text,
+                    self.conversation_id,
+                    final_text,
                     input_tokens=input_tokens or None,
                     output_tokens=output_tokens or None,
                     task_id=self._task_id,
@@ -157,13 +163,18 @@ class Turn:
                 self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log assistant response conv=%s",
-                    self.conversation_id, exc_info=True,
+                    self.conversation_id,
+                    exc_info=True,
                 )
 
     def cancel(self, streamed_chunks: List[str]) -> None:
         """Mark turn as cancelled. Can be called from any active state."""
         # Allow cancel from any non-terminal state
-        if self.status in (TurnStatus.COMPLETED, TurnStatus.CANCELLED, TurnStatus.FAILED):
+        if self.status in (
+            TurnStatus.COMPLETED,
+            TurnStatus.CANCELLED,
+            TurnStatus.FAILED,
+        ):
             return  # Already terminal, ignore
         self.status = TurnStatus.CANCELLED
         self.partial_text = "".join(streamed_chunks)
@@ -171,20 +182,27 @@ class Turn:
     def fail(self, error: str) -> None:
         """Mark turn as failed. Logs error to audit trail."""
         # Allow fail from any non-terminal state
-        if self.status in (TurnStatus.COMPLETED, TurnStatus.CANCELLED, TurnStatus.FAILED):
+        if self.status in (
+            TurnStatus.COMPLETED,
+            TurnStatus.CANCELLED,
+            TurnStatus.FAILED,
+        ):
             return  # Already terminal, ignore
         self.status = TurnStatus.FAILED
         self.error = error
         if self._logger:
             try:
                 self._logger.log_error(
-                    self.conversation_id, error, task_id=self._task_id,
+                    self.conversation_id,
+                    error,
+                    task_id=self._task_id,
                 )
             except Exception:
                 self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log error conv=%s",
-                    self.conversation_id, exc_info=True,
+                    self.conversation_id,
+                    exc_info=True,
                 )
 
     # ------------------------------------------------------------------
@@ -223,34 +241,47 @@ class Turn:
 
         # Native Anthropic format: tool results are user messages with
         # tool_result content blocks
-        self.messages.append({
-            "role": "user",
-            "content": [{
-                "type": "tool_result",
-                "tool_use_id": tool_call_id,
-                "content": msg_content,
-            }],
-        })
+        self.messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": msg_content,
+                    }
+                ],
+            }
+        )
 
         # Structured record for frontend
-        self.tool_calls.append({
-            "tool": name,
-            "arguments": args,
-            "success": success,
-        })
+        self.tool_calls.append(
+            {
+                "tool": name,
+                "arguments": args,
+                "success": success,
+            }
+        )
 
         # Audit log
         if self._logger:
             try:
                 self._logger.log_tool_call(
-                    self.conversation_id, name, args, result, success,
-                    duration_ms, task_id=self._task_id,
+                    self.conversation_id,
+                    name,
+                    args,
+                    result,
+                    success,
+                    duration_ms,
+                    task_id=self._task_id,
                 )
             except Exception:
                 self.audit_failures += 1
                 logger.error(
                     "Turn: failed to log tool call %s conv=%s",
-                    name, self.conversation_id, exc_info=True,
+                    name,
+                    self.conversation_id,
+                    exc_info=True,
                 )
 
     def add_skipped_tool(
@@ -261,22 +292,29 @@ class Turn:
     ) -> None:
         """Record a skipped tool (previous tool in batch failed)."""
         skip_data = {
-            "success": False, "skipped": True,
+            "success": False,
+            "skipped": True,
             "error": f"Skipped {name} — previous tool failed.",
         }
-        self.messages.append({
-            "role": "user",
-            "content": [{
-                "type": "tool_result",
-                "tool_use_id": tool_call_id,
-                "content": json.dumps(skip_data),
-            }],
-        })
-        self.tool_calls.append({
-            "tool": name,
-            "arguments": args,
-            "success": False,
-        })
+        self.messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": json.dumps(skip_data),
+                    }
+                ],
+            }
+        )
+        self.tool_calls.append(
+            {
+                "tool": name,
+                "arguments": args,
+                "success": False,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Persistence — single write point for conversation history
@@ -298,7 +336,8 @@ class Turn:
             # get_conversation can read them directly instead of reconstructing
             # from ConversationLogger with fragile index-based matching.
             final_msg: Dict[str, Any] = {
-                "role": "assistant", "content": self.final_text,
+                "role": "assistant",
+                "content": self.final_text,
             }
             if self.tool_calls:
                 final_msg["tool_calls_meta"] = list(self.tool_calls)
@@ -318,10 +357,12 @@ class Turn:
                     {"role": "assistant", "content": self.partial_text}
                 )
             # Tell the LLM its generation was interrupted
-            conversation_manager.history.append({
-                "role": "user",
-                "content": "[CANCELLED] Previous response was interrupted. Resume on next turn.",
-            })
+            conversation_manager.history.append(
+                {
+                    "role": "user",
+                    "content": "[CANCELLED] Previous response was interrupted. Resume on next turn.",
+                }
+            )
             conversation_manager.history.append(
                 {"role": "assistant", "content": "[CANCELLED]"}
             )
@@ -349,11 +390,13 @@ class Turn:
 
         logger.debug(
             "Turn committed: status=%s conv=%s history_len=%d",
-            self.status.value, self.conversation_id,
+            self.status.value,
+            self.conversation_id,
             len(conversation_manager.history),
         )
 
 
 class InvalidTransitionError(Exception):
     """Raised when an invalid state transition is attempted."""
+
     pass

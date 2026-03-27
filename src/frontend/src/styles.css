@@ -963,6 +963,12 @@ body {
   border-radius: 6px;
 }
 
+.process-icon {
+  background: var(--teal-light);
+  border: 2px solid var(--teal);
+  border-radius: 6px;
+}
+
 .decision-icon {
   background: var(--amber-light);
   border: 2px solid var(--amber);
@@ -1003,6 +1009,10 @@ body {
 }
 
 .start-icon svg {
+  color: var(--teal);
+}
+
+.process-icon svg {
   color: var(--teal);
 }
 

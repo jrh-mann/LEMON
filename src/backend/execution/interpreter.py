@@ -1165,10 +1165,6 @@ class TreeInterpreter:
             "str_contains": "contains",
             "str_starts_with": "starts with",
             "str_ends_with": "ends with",
-            "date_eq": "==",
-            "date_before": "before",
-            "date_after": "after",
-            "date_between": "between",
             "enum_eq": "==",
             "enum_neq": "!=",
         }
@@ -1287,7 +1283,7 @@ class TreeInterpreter:
 
         if comparator in ("is_true", "is_false"):
             return f"{display_name} {comp_sym}"
-        if comparator in ("within_range", "date_between", "between"):
+        if comparator in ("within_range", "between"):
             return f"{display_name} {comp_sym} [{value}, {value2}]"
         return f"{display_name} {comp_sym} {value}"
 

@@ -49,17 +49,16 @@ test.describe('right sidebar — variables', () => {
           { id: 'var_b', name: 'Flag', type: 'bool', source: 'input' },
           { id: 'var_c', name: 'Name', type: 'string', source: 'input' },
           { id: 'var_d', name: 'Dept', type: 'enum', source: 'input', enum_values: ['A', 'B'] },
-          { id: 'var_e', name: 'DOB', type: 'date', source: 'input' },
         ],
       },
     })
     await page.goto(`/workflow/${WF_ID}`)
 
     // Wait for variables to load from the API mock
-    await expect(page.locator('.var-card')).toHaveCount(5)
+    await expect(page.locator('.var-card')).toHaveCount(4)
 
     const typeLabels = await page.locator('.var-type-label').allTextContents()
-    expect(typeLabels).toEqual(['Number', 'Boolean', 'String', 'Enum', 'Date'])
+    expect(typeLabels).toEqual(['Number', 'Boolean', 'String', 'Enum'])
   })
 
   test('source badges show correct source type', async ({ page }) => {

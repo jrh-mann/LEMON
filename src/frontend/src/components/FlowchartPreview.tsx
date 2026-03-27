@@ -57,9 +57,10 @@ function wrapText(text: string, maxChars: number): string[] {
 interface FlowchartPreviewProps {
     nodes: FlowNode[]
     edges: FlowEdge[]
+    svgId?: string
 }
 
-export default function FlowchartPreview({ nodes, edges }: FlowchartPreviewProps) {
+export default function FlowchartPreview({ nodes, edges, svgId = 'flowchartCanvas' }: FlowchartPreviewProps) {
     // Re-layout nodes for a clean export regardless of editor state
     const layout = useMemo(() => beautifyNodes(nodes, edges), [nodes, edges])
     const viewBox = useMemo(() => calculateViewBox(layout.nodes), [layout.nodes])
@@ -69,7 +70,7 @@ export default function FlowchartPreview({ nodes, edges }: FlowchartPreviewProps
 
     return (
         <svg
-            id="flowchartCanvas"
+            id={svgId}
             viewBox={viewBoxStr}
             preserveAspectRatio="xMidYMid meet"
             style={{ position: 'absolute', left: -9999, top: -9999, width: 1, height: 1 }}

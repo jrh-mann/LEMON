@@ -22,12 +22,11 @@ VALID_COMPARATORS_BY_TYPE = {
     "number": {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"},
     "bool": {"is_true", "is_false"},
     "string": {"str_eq", "str_neq", "str_contains", "str_starts_with", "str_ends_with"},
-    "date": {"date_eq", "date_before", "date_after", "date_between"},
     "enum": {"enum_eq", "enum_neq"},
 }
 
 # Regex to extract template variables like {var_name}
-TEMPLATE_VAR_PATTERN = re.compile(r'\{([^}]+)\}')
+TEMPLATE_VAR_PATTERN = re.compile(r"\{([^}]+)\}")
 
 
 @dataclass
@@ -43,13 +42,18 @@ class ValidationError:
 class WorkflowValidator:
     """Validates workflow structure for syntactic correctness."""
 
-    VALID_NODE_TYPES = {"start", "process", "decision", "subprocess", "calculation", "end"}
+    VALID_NODE_TYPES = {
+        "start",
+        "process",
+        "decision",
+        "subprocess",
+        "calculation",
+        "end",
+    }
     REQUIRED_NODE_FIELDS = {"id", "type", "label", "x", "y"}
 
     def validate(
-        self,
-        workflow: Dict[str, Any],
-        strict: bool = True
+        self, workflow: Dict[str, Any], strict: bool = True
     ) -> Tuple[bool, List[ValidationError]]:
         """
         Validate a workflow and return (is_valid, errors).
@@ -88,8 +92,10 @@ class WorkflowValidator:
         valid_var_names: Optional[Set[str]] = None
         workflow_variables = workflow.get("variables", [])
         if workflow_variables:
-            valid_var_names = {v.get("name") for v in workflow_variables if v.get("name")}
-        
+            valid_var_names = {
+                v.get("name") for v in workflow_variables if v.get("name")
+            }
+
         # Collect output variable names from subprocess and calculation nodes as derived variables
         # These are variables created at runtime by node execution
         derived_output_vars: Set[str] = set()
@@ -104,7 +110,7 @@ class WorkflowValidator:
                 output_name = output.get("name") if isinstance(output, dict) else None
                 if output_name:
                     derived_output_vars.add(output_name)
-        
+
         # Merge derived outputs into valid variable names
         if derived_output_vars:
             if valid_var_names is None:
@@ -152,12 +158,16 @@ class WorkflowValidator:
 
             # Validate subprocess nodes have required fields
             if node_type == "subprocess":
-                subprocess_errors = self._validate_subprocess_node(node, valid_var_names)
+                subprocess_errors = self._validate_subprocess_node(
+                    node, valid_var_names
+                )
                 errors.extend(subprocess_errors)
-            
+
             # Validate calculation nodes have required fields and valid configuration
             if node_type == "calculation":
-                calculation_errors = self._validate_calculation_node(node, workflow_variables, derived_output_vars)
+                calculation_errors = self._validate_calculation_node(
+                    node, workflow_variables, derived_output_vars
+                )
                 errors.extend(calculation_errors)
 
             # Rule 9: Validate decision nodes have structured conditions
@@ -185,7 +195,7 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
-            
+
             # Validate end/output nodes have valid templates
             if node_type in ("end", "output"):
                 template_errors = self._validate_output_template(
@@ -276,7 +286,7 @@ class WorkflowValidator:
                 # Get node label for better error message
                 node_label = next(
                     (n.get("label", from_id) for n in nodes if n.get("id") == from_id),
-                    from_id
+                    from_id,
                 )
                 errors.append(
                     ValidationError(
@@ -295,12 +305,12 @@ class WorkflowValidator:
             # Rule 11: Check for unreachable nodes
             # Find all start nodes
             start_node_ids = {n["id"] for n in nodes if n.get("type") == "start"}
-            
+
             if start_node_ids:
                 # Perform BFS traversal to find all reachable nodes
                 reachable_ids = set(start_node_ids)
                 queue = list(start_node_ids)
-                
+
                 # Build adjacency list for traversal
                 # node_id -> list of target_ids
                 adjacency_list: Dict[str, List[str]] = {}
@@ -310,7 +320,7 @@ class WorkflowValidator:
                         if u not in adjacency_list:
                             adjacency_list[u] = []
                         adjacency_list[u].append(v)
-                
+
                 while queue:
                     curr_id = queue.pop(0)
                     neighbors = adjacency_list.get(curr_id, [])
@@ -318,18 +328,22 @@ class WorkflowValidator:
                         if neighbor_id not in reachable_ids:
                             reachable_ids.add(neighbor_id)
                             queue.append(neighbor_id)
-                
+
                 # Check for unreachable nodes
                 all_node_ids = {n["id"] for n in nodes if n.get("id")}
                 unreachable_ids = all_node_ids - reachable_ids
-                
+
                 if unreachable_ids:
                     # Sort for deterministic error ordering
                     for node_id in sorted(unreachable_ids):
-                         # Get label for better message
+                        # Get label for better message
                         node_label = next(
-                            (n.get("label", node_id) for n in nodes if n.get("id") == node_id),
-                            node_id
+                            (
+                                n.get("label", node_id)
+                                for n in nodes
+                                if n.get("id") == node_id
+                            ),
+                            node_id,
                         )
                         errors.append(
                             ValidationError(
@@ -649,23 +663,23 @@ class WorkflowValidator:
         valid_var_names: Optional[Set[str]],
     ) -> List[ValidationError]:
         """Validate subprocess node has required fields and valid references.
-        
+
         Subprocess nodes reference other workflows (subflows) and must have:
         - subworkflow_id: ID of the workflow to execute
-        - input_mapping: Dict mapping parent variables to subworkflow inputs  
+        - input_mapping: Dict mapping parent variables to subworkflow inputs
         - output_variable: Name of variable to store subflow output
-        
+
         Args:
             node: The subprocess node to validate
             valid_var_names: Set of valid variable names from parent workflow
-            
+
         Returns:
             List of ValidationError objects for any issues found
         """
         errors = []
         node_id = node.get("id", "unknown")
         node_label = node.get("label", node_id)
-        
+
         # Check required fields exist
         for field in SUBPROCESS_REQUIRED_FIELDS:
             if field not in node or node[field] is None:
@@ -676,7 +690,7 @@ class WorkflowValidator:
                         node_id=node_id,
                     )
                 )
-        
+
         # Validate input_mapping is a dict
         input_mapping = node.get("input_mapping")
         if input_mapping is not None and not isinstance(input_mapping, dict):
@@ -687,7 +701,7 @@ class WorkflowValidator:
                     node_id=node_id,
                 )
             )
-        
+
         # Validate output_variable is a valid identifier
         output_var = node.get("output_variable")
         if output_var is not None:
@@ -710,7 +724,7 @@ class WorkflowValidator:
                         node_id=node_id,
                     )
                 )
-        
+
         # Validate input_mapping references existing parent variables
         if isinstance(input_mapping, dict) and valid_var_names is not None:
             for parent_var_name in input_mapping.keys():
@@ -725,7 +739,7 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
-        
+
         return errors
 
     def _validate_calculation_node(
@@ -735,28 +749,28 @@ class WorkflowValidator:
         derived_output_vars: Optional[Set[str]] = None,
     ) -> List[ValidationError]:
         """Validate calculation node has required fields and valid configuration.
-        
+
         Calculation nodes perform mathematical operations and must have:
         - calculation.output: Object with 'name' for the output variable
         - calculation.operator: Valid operator name (e.g., 'add', 'divide', 'sqrt')
         - calculation.operands: Array of operand objects
-        
+
         Each operand is either:
         - {"kind": "variable", "ref": "<variable_id>"}
         - {"kind": "literal", "value": <number>}
-        
+
         Args:
             node: The calculation node to validate
             workflow_variables: List of workflow variable definitions
             derived_output_vars: Variable names from other calc/subprocess nodes
-            
+
         Returns:
             List of ValidationError objects for any issues found
         """
         errors = []
         node_id = node.get("id", "unknown")
         node_label = node.get("label", node_id)
-        
+
         # Check calculation field exists
         calculation = node.get("calculation")
         if not calculation:
@@ -768,7 +782,7 @@ class WorkflowValidator:
                 )
             )
             return errors
-        
+
         if not isinstance(calculation, dict):
             errors.append(
                 ValidationError(
@@ -778,7 +792,7 @@ class WorkflowValidator:
                 )
             )
             return errors
-        
+
         # Validate output field
         output = calculation.get("output")
         if not output:
@@ -810,7 +824,7 @@ class WorkflowValidator:
                         node_id=node_id,
                     )
                 )
-        
+
         # Validate operator
         operator = calculation.get("operator")
         if not operator:
@@ -839,7 +853,7 @@ class WorkflowValidator:
                         node_id=node_id,
                     )
                 )
-        
+
         # Validate operands
         operands = calculation.get("operands")
         if not operands:
@@ -870,14 +884,14 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
-            
+
             # Build set of valid variable IDs and names
             var_ids = {v.get("id") for v in workflow_variables if v.get("id")}
             var_names = {v.get("name") for v in workflow_variables if v.get("name")}
             # Include derived outputs (calc/subprocess) so chained refs resolve
             if derived_output_vars:
                 var_names = var_names | derived_output_vars
-            
+
             # Validate each operand
             for i, operand in enumerate(operands):
                 if not isinstance(operand, dict):
@@ -889,7 +903,7 @@ class WorkflowValidator:
                         )
                     )
                     continue
-                
+
                 kind = operand.get("kind")
                 if kind not in ("variable", "literal"):
                     errors.append(
@@ -944,7 +958,7 @@ class WorkflowValidator:
                                 node_id=node_id,
                             )
                         )
-        
+
         return errors
 
     def _validate_output_template(
@@ -954,22 +968,22 @@ class WorkflowValidator:
         valid_var_names: Optional[Set[str]],
     ) -> List[ValidationError]:
         """Validate output/end node templates reference valid variables.
-        
+
         Checks both output_template field and label field for {variable} syntax
         and ensures all referenced variables are registered workflow variables.
-        
+
         Args:
             node: The end/output node to validate
             workflow_variables: List of workflow variable definitions
             valid_var_names: Set of valid variable names
-            
+
         Returns:
             List of ValidationError objects for any issues found
         """
         errors = []
         node_id = node.get("id", "unknown")
         node_label = node.get("label", node_id)
-        
+
         # Build set of valid variable names (variable names and variable IDs)
         valid_vars: Set[str] = set()
         if valid_var_names:
@@ -978,7 +992,7 @@ class WorkflowValidator:
         for var in workflow_variables:
             if var.get("id"):
                 valid_vars.add(var["id"])
-        
+
         # Check output_template field
         template = node.get("output_template", "")
         if template:
@@ -995,10 +1009,10 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
-        
+
         # Also check label if it contains template syntax (users often put templates in labels)
         label = node.get("label", "")
-        if '{' in label and '}' in label:
+        if "{" in label and "}" in label:
             label_vars = TEMPLATE_VAR_PATTERN.findall(label)
             for var in label_vars:
                 if var not in valid_vars:
@@ -1012,7 +1026,7 @@ class WorkflowValidator:
                             node_id=node_id,
                         )
                     )
-        
+
         return errors
 
     def _validate_end_node_output_types(
@@ -1021,29 +1035,29 @@ class WorkflowValidator:
         workflow_output_type: str,
     ) -> List[ValidationError]:
         """Validate all end nodes have output_type matching workflow's declared output_type.
-        
+
         When a workflow declares an output_type (e.g., "number"), every end node
         must explicitly set its output_type to match. This ensures type consistency
         across all possible execution paths.
-        
+
         Args:
             nodes: List of workflow nodes
             workflow_output_type: The workflow's declared output type (string, number, bool, json)
-            
+
         Returns:
             List of ValidationError objects for any mismatches found
         """
         errors = []
-        
+
         # Find all end nodes
         end_nodes = [n for n in nodes if n.get("type") == "end"]
-        
+
         for node in end_nodes:
             node_id = node.get("id", "unknown")
             node_label = node.get("label", node_id)
             # End nodes default to "string" if no output_type specified
             node_output_type = node.get("output_type", "string")
-            
+
             if node_output_type != workflow_output_type:
                 errors.append(
                     ValidationError(
@@ -1056,7 +1070,7 @@ class WorkflowValidator:
                         node_id=node_id,
                     )
                 )
-        
+
         return errors
 
     def format_errors(self, errors: List[ValidationError]) -> str:

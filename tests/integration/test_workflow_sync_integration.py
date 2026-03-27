@@ -91,13 +91,23 @@ class TestWorkflowSyncIntegration:
         orchestrator_workflow = convo.orchestrator.current_workflow
 
         print(f"\n[DEBUG] Frontend workflow: {json.dumps(frontend_workflow, indent=2)}")
-        print(f"[DEBUG] Conversation workflow_state: {json.dumps(convo.workflow_state, indent=2)}")
-        print(f"[DEBUG] Orchestrator current_workflow: {json.dumps(orchestrator_workflow, indent=2)}")
+        print(
+            f"[DEBUG] Conversation workflow_state: {json.dumps(convo.workflow_state, indent=2)}"
+        )
+        print(
+            f"[DEBUG] Orchestrator current_workflow: {json.dumps(orchestrator_workflow, indent=2)}"
+        )
 
         # ASSERTIONS
-        assert orchestrator_workflow is not None, "Orchestrator workflow should not be None"
-        assert "nodes" in orchestrator_workflow, "Orchestrator workflow should have nodes key"
-        assert "edges" in orchestrator_workflow, "Orchestrator workflow should have edges key"
+        assert orchestrator_workflow is not None, (
+            "Orchestrator workflow should not be None"
+        )
+        assert "nodes" in orchestrator_workflow, (
+            "Orchestrator workflow should have nodes key"
+        )
+        assert "edges" in orchestrator_workflow, (
+            "Orchestrator workflow should have edges key"
+        )
 
         assert len(orchestrator_workflow["nodes"]) == 2, (
             f"Expected 2 nodes in orchestrator, got {len(orchestrator_workflow['nodes'])}"
@@ -109,7 +119,9 @@ class TestWorkflowSyncIntegration:
         # Verify node content
         node_labels = [n["label"] for n in orchestrator_workflow["nodes"]]
         assert "Start" in node_labels, "Expected 'Start' node in orchestrator"
-        assert "Process Data" in node_labels, "Expected 'Process Data' node in orchestrator"
+        assert "Process Data" in node_labels, (
+            "Expected 'Process Data' node in orchestrator"
+        )
 
     def test_workflow_sync_without_explicit_sync_call(
         self, conversation_store: ConversationStore, conversation_id: str
@@ -145,15 +157,15 @@ class TestWorkflowSyncIntegration:
         # STEP 3: Backend syncs from empty workflow_state
         convo.orchestrator.sync_workflow(lambda: convo.workflow_state)
 
-        # STEP 4: Orchestrator sees empty workflow (THIS IS THE BUG)
+        # STEP 4: Orchestrator still sees empty workflow (regression case)
         orchestrator_workflow = convo.orchestrator.current_workflow
 
         print(f"\n[DEBUG] Frontend had nodes: {len(frontend_workflow['nodes'])}")
         print(f"[DEBUG] Orchestrator sees nodes: {len(orchestrator_workflow['nodes'])}")
 
-        # This test documents the bug - orchestrator sees nothing
+        # Regression expectation: without sync, orchestrator remains empty
         assert len(orchestrator_workflow["nodes"]) == 0, (
-            "Bug reproduction: orchestrator sees 0 nodes because sync never happened"
+            "Regression reproduction: orchestrator sees 0 nodes because sync never happened"
         )
 
     def test_orchestrator_state_matches_after_sync(
@@ -236,7 +248,12 @@ class TestWorkflowSyncIntegration:
                 },
             ],
             "edges": [
-                {"id": "node_abc->node_def", "from": "node_abc", "to": "node_def", "label": ""}
+                {
+                    "id": "node_abc->node_def",
+                    "from": "node_abc",
+                    "to": "node_def",
+                    "label": "",
+                }
             ],
         }
 

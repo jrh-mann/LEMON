@@ -26,11 +26,6 @@ const COMPARATOR_SYMBOL: Record<string, { true: string; false: string }> = {
   // Enum
   enum_eq:  { true: '=',  false: '≠' },
   enum_neq: { true: '≠',  false: '=' },
-  // Date
-  date_eq:      { true: '=',      false: '≠' },
-  date_before:  { true: 'before', false: 'on/after' },
-  date_after:   { true: 'after',  false: 'on/before' },
-  date_between: { true: 'in',     false: 'outside' },
 }
 
 /** Build a label string for one simple condition on a given branch. */
@@ -46,7 +41,7 @@ function formatSimpleCondition(
   const sym = symbols[branch]
 
   // Range comparators show both bounds
-  if (cond.comparator === 'within_range' || cond.comparator === 'date_between') {
+  if (cond.comparator === 'within_range') {
     const lo = cond.value ?? '?'
     const hi = cond.value2 ?? '?'
     return branch === 'true'

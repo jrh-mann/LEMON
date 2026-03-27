@@ -44,7 +44,6 @@ export function ExecutionLogModal() {
     const renderDecisionLog = (log: DecisionLogEntry) => (
         <div className="execution-log-entry decision">
             <div className="log-header">
-                <span className="log-icon">🔀</span>
                 <span className="log-type">Decision</span>
                 <span className="log-node">{log.node_label}</span>
             </div>
@@ -79,7 +78,6 @@ export function ExecutionLogModal() {
     const renderCalculationLog = (log: CalculationLogEntry) => (
         <div className="execution-log-entry calculation">
             <div className="log-header">
-                <span className="log-icon">🧮</span>
                 <span className="log-type">Calculation</span>
                 <span className="log-node">{log.node_label}</span>
             </div>
@@ -141,7 +139,6 @@ export function ExecutionLogModal() {
     const renderEndLog = (log: EndLogEntry) => (
         <div className="execution-log-entry end">
             <div className="log-header">
-                <span className="log-icon">🏁</span>
                 <span className="log-type">End</span>
                 <span className="log-node">{log.node_label}</span>
             </div>
@@ -159,7 +156,6 @@ export function ExecutionLogModal() {
     const renderSubflowLog = (log: SubflowLogEntry) => (
         <div className="execution-log-entry subflow">
             <div className="log-header">
-                <span className="log-icon">📦</span>
                 <span className="log-type">Entering Subflow</span>
                 <span className="log-node">{log.subworkflow_name}</span>
             </div>
@@ -257,7 +253,7 @@ export function ExecutionLogModal() {
         <div className="modal-overlay" onClick={handleOverlayClick}>
             <div className="execution-log-modal">
                 <div className="execution-log-header">
-                    <h3>📋 Execution Log</h3>
+                    <h3>Execution Log</h3>
                     <div className="header-actions">
                         <button className="clear-btn" onClick={handleClear} disabled={logs.length === 0}>
                             Clear

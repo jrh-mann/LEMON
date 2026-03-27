@@ -1,89 +1,170 @@
 # LEMON
 
-A conversational AI system for building and executing clinical decision workflows. Describe a workflow in natural language or upload a flowchart image, and an LLM orchestrator builds a structured, executable decision tree on a visual canvas.
+LEMON is a conversational workflow engineering platform for building, editing, validating, and executing clinical decision logic.
 
-## Features
+You can describe logic in natural language (or upload a flowchart), have the assistant build the workflow graph, edit it on a canvas, run stepped execution, and export/compile the result.
 
-- **Natural language workflow building** — describe what you want, the LLM builds it node-by-node using tool calls
-- **Image-to-workflow** — upload a flowchart photo or PDF and the system reconstructs it as an editable workflow
-- **Visual canvas editor** — interactive SVG canvas with drag-and-drop, connection drawing, and real-time updates as the LLM works
-- **Six node types** — start, process, decision, calculation, subprocess, and end nodes with conditional branching and expression evaluation
-- **Subworkflows** — extract reusable sub-procedures that can be called from parent workflows
-- **Stepped execution** — run workflows with test inputs and watch execution step through each node with live highlighting
-- **Workflow library** — save, browse, and reuse workflows across sessions
-- **Streaming** — SSE-based real-time streaming of LLM responses, tool calls, and canvas updates
+## What It Does
 
-## Tech Stack
+- Build workflows from chat with tool-driven graph edits
+- Import flowchart images/PDFs into editable workflows
+- Edit workflows visually (nodes, edges, conditions, subworkflows)
+- Validate workflow structure and expressions
+- Execute workflows with streamed, step-by-step runtime events
+- Export/import workflow JSON and bundle formats
+- Compile workflows to deterministic Python
+- Manage reusable workflow packages and public review/voting
+- Use authenticated multi-user sessions (cookie-based auth)
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, TypeScript, Zustand, Vite |
+## Architecture
+
+| Layer | Main Tech |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, Zustand |
 | Backend | FastAPI, Uvicorn, Python 3.10+ |
-| LLM | Anthropic Claude (tool use, streaming) |
-| Database | SQLite |
+| LLM Integration | Anthropic SDK with tool use and streaming |
 | Streaming | Server-Sent Events (SSE) |
-| Auth | Session-based with PBKDF2 password hashing |
+| Persistence | SQLite (`.lemon/`) |
+| Authentication | Session cookie + PBKDF2 password hashes |
 
-## Setup
+SSE is the active real-time transport for chat and execution streams.
 
-### Prerequisites
+## Repository Layout
+
+- `src/backend/` - API server, auth, storage, execution engine, tool registry, background tasks
+- `src/frontend/` - React UI (canvas, chat, library, export, auth, dev tools)
+- `tests/` - backend test suite
+- `src/frontend/tests/` - frontend unit and Playwright E2E tests
+- `scripts/` - local dev runner, user bootstrap, deployment helpers
+- `website/` - static project report content (served at `/report` when present)
+
+## Prerequisites
 
 - Python 3.10+
 - Node.js 18+
-- [uv](https://github.com/astral-sh/uv) for Python dependency management
+- [uv](https://github.com/astral-sh/uv)
 - Anthropic API key
 
-### Install
+## Setup
+
+1. Install backend dependencies:
 
 ```bash
 uv sync
+```
+
+2. Install frontend dependencies:
+
+```bash
 cd src/frontend && npm install
 ```
 
-### Configure
+3. Create environment file:
 
-Copy `.env.example` to `.env` and fill in your keys:
-
+```bash
+cp .env.example .env
 ```
+
+4. Fill required values in `.env`:
+
+```env
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-opus-4-6
+# optional
+ANTHROPIC_ENDPOINT=
+LEMON_ALLOW_REGISTRATION=true
 ```
 
-## Running
+## Run In Development
+
+Use the helper script to run backend and frontend together:
 
 ```bash
-./scripts/dev.sh            # start backend + frontend
-./scripts/dev.sh restart    # kill and restart
-./scripts/dev.sh stop       # stop all
+./scripts/dev.sh
+./scripts/dev.sh restart
+./scripts/dev.sh stop
 ```
 
-- **Backend:** http://localhost:5001
-- **Frontend:** http://localhost:5173
-- **Logs:** `/tmp/lemon-backend.log`, `/tmp/lemon-frontend.log`
+Endpoints:
 
-Or start individually:
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:5001`
+
+Logs and runtime data:
+
+- Log files: `.lemon/logs/`
+- SQLite/runtime data: `.lemon/` (or `LEMON_DATA_DIR` if set)
+
+Run services manually if needed:
 
 ```bash
-python run_api.py                        # backend
-cd src/frontend && npx vite --host       # frontend
+python run_api.py
+cd src/frontend && npx vite --host
 ```
+
+## Authentication
+
+- `LEMON_ALLOW_REGISTRATION` controls whether `POST /api/auth/register` is allowed
+- Registration is currently API-only (no dedicated frontend sign-up form)
+- Sessions are cookie-based (`lemon_session`)
+- Password hashing uses PBKDF2-SHA256
+
+If registration is enabled, create users via API:
+
+```bash
+curl -X POST http://localhost:5001/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","name":"Your Name","password":"Passw0rd123!","remember":true}'
+```
+
+If registration is disabled, create a local user from CLI:
+
+```bash
+uv run python scripts/create_user.py --email you@example.com --name "Your Name"
+```
+
+## API Surface (High Level)
+
+- Auth: `/api/auth/*`
+- Chat streaming and task resume/cancel: `/api/chat/*`
+- Workflow CRUD/import/export/public listing: `/api/workflows/*`
+- Packages and publishing: `/api/packages/*`
+- Validation: `/api/validate`
+- Compilation: `/api/workflows/compile*`
+- Stepped execution and controls: `/api/workflows/{id}/execute`, `/api/executions/*`
+- Dev tool inspection/execution: `/api/tools/*`
 
 ## Testing
 
+Backend:
+
 ```bash
-# Full backend test suite (~1200 tests)
 uv run python -m pytest tests/
+```
 
-# Frontend unit tests
+Frontend unit tests:
+
+```bash
 cd src/frontend && npm test
+```
 
-# Frontend E2E tests
+Frontend E2E tests:
+
+```bash
 cd src/frontend && npm run test:e2e
+```
 
-# Type check
+Frontend typecheck:
+
+```bash
 cd src/frontend && npx tsc --noEmit
 ```
 
+## Deployment Notes
+
+- `scripts/start_all.sh` starts the FastAPI app for hosted environments (single port)
+- `scripts/deploy_azure.py` builds frontend, packages app, and performs Azure zip deploy
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see `LICENSE`.

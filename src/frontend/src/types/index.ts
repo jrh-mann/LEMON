@@ -3,7 +3,7 @@
 
 // ============ Enums ============
 
-export type InputType = 'number' | 'bool' | 'string' | 'enum' | 'date'
+export type InputType = 'number' | 'bool' | 'string' | 'enum'
 
 // ============ Decision Condition Types ============
 // Comparators for structured decision node conditions
@@ -17,9 +17,6 @@ export type BooleanComparator = 'is_true' | 'is_false'
 // String comparators (case-insensitive)
 export type StringComparator = 'str_eq' | 'str_neq' | 'str_contains' | 'str_starts_with' | 'str_ends_with'
 
-// Date comparators (ISO format: "YYYY-MM-DD")
-export type DateComparator = 'date_eq' | 'date_before' | 'date_after' | 'date_between'
-
 // Enum comparators (same as string but uses dropdown in UI)
 export type EnumComparator = 'enum_eq' | 'enum_neq'
 
@@ -28,7 +25,6 @@ export type Comparator =
   | NumericComparator
   | BooleanComparator
   | StringComparator
-  | DateComparator
   | EnumComparator
 
 // Simple decision condition — references a single variable by ID
@@ -36,7 +32,7 @@ export interface SimpleCondition {
   input_id: string       // Which workflow variable to compare (e.g., "var_age_int")
   comparator: Comparator // The comparison operator to use
   value?: unknown        // The value to compare against
-  value2?: unknown       // Second value for range comparisons (within_range, date_between)
+  value2?: unknown       // Second value for range comparisons (within_range)
 }
 
 // Compound condition operator
@@ -60,7 +56,6 @@ export const COMPARATORS_BY_TYPE: Record<InputType, Comparator[]> = {
   number: ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'],  // Unified numeric type
   bool: ['is_true', 'is_false'],
   string: ['str_eq', 'str_neq', 'str_contains', 'str_starts_with', 'str_ends_with'],
-  date: ['date_eq', 'date_before', 'date_after', 'date_between'],
   enum: ['enum_eq', 'enum_neq'],
 }
 
@@ -83,11 +78,6 @@ export const COMPARATOR_LABELS: Record<Comparator, string> = {
   str_contains: 'contains',
   str_starts_with: 'starts with',
   str_ends_with: 'ends with',
-  // Date
-  date_eq: 'equals',
-  date_before: 'before',
-  date_after: 'after',
-  date_between: 'between',
   // Enum
   enum_eq: 'equals',
   enum_neq: 'not equals',
@@ -304,7 +294,7 @@ export type VariableSource = 'input' | 'subprocess' | 'calculated' | 'constant'
 export interface WorkflowVariable {
   id: string                          // e.g., "var_patient_age_number", "var_creditscore_number"
   name: string                        // Human-readable name, e.g., "Patient Age"
-  type: InputType                     // "number", "bool", "string", "enum", "date"
+  type: InputType                     // "number", "bool", "string", "enum"
   source: VariableSource              // Where this variable comes from
   description?: string                // Optional description
 

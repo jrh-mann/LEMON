@@ -376,14 +376,19 @@ def register_workflow_routes(
     ) -> JSONResponse:
         try:
             bundle_bytes = await file.read()
-            workflow_id, imported_count = import_workflow_bundle_zip(
+            result = import_workflow_bundle_zip(
                 workflow_store,
                 user,
                 bundle_bytes,
                 force_import=force_import,
             )
             return JSONResponse(
-                {"workflow_id": workflow_id, "imported_count": imported_count},
+                {
+                    "workflow_id": result.workflow_id,
+                    "imported_count": result.imported_count,
+                    "imported_kind": result.imported_kind,
+                    "package_id": result.package_id,
+                },
                 status_code=201,
             )
         except WorkflowImportValidationError as exc:

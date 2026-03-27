@@ -11,7 +11,7 @@ function formatSimpleConditionPreview(condition: SimpleCondition, inputs: Workfl
   if (condition.comparator === 'is_true' || condition.comparator === 'is_false') {
     return `${inputName} ${compLabel}`
   }
-  if (condition.comparator === 'within_range' || condition.comparator === 'date_between') {
+  if (condition.comparator === 'within_range') {
     return `${inputName} ${compLabel} [${condition.value ?? '?'}, ${condition.value2 ?? '?'}]`
   }
 

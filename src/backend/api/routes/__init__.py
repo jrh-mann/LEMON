@@ -1,6 +1,6 @@
 """Routes package for the LEMON API server.
 
-Replaces the monolithic routes.py with focused sub-modules.
+Organizes API endpoints into focused route modules.
 Each module registers its own FastAPI routes via a register_*() function
 that creates an APIRouter and includes it on the app.
 The top-level register_routes() delegates to all sub-modules.

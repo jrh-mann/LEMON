@@ -33,18 +33,15 @@ COMPARATOR_LABELS = {
     "str_contains": "contains",
     "str_starts_with": "starts with",
     "str_ends_with": "ends with",
-    # Date
-    "date_eq": "=",
-    "date_before": "before",
-    "date_after": "after",
-    "date_between": "between",
     # Enum
     "enum_eq": "=",
     "enum_neq": "≠",
 }
 
 
-def _format_simple_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]]) -> str:
+def _format_simple_condition(
+    condition: Dict[str, Any], variables: List[Dict[str, Any]]
+) -> str:
     """Format a single simple condition as a human-readable string."""
     input_id = condition.get("input_id", "?")
     comparator = condition.get("comparator", "?")
@@ -64,7 +61,7 @@ def _format_simple_condition(condition: Dict[str, Any], variables: List[Dict[str
     # Format based on comparator type
     if comparator in ("is_true", "is_false"):
         return f"{var_name} {comp_label}"
-    elif comparator in ("within_range", "date_between"):
+    elif comparator == "within_range":
         return f"{var_name} {comp_label} [{value}, {value2}]"
     else:
         if isinstance(value, str):
@@ -101,43 +98,43 @@ def format_condition(condition: Dict[str, Any], variables: List[Dict[str, Any]])
 
 def format_variable_description(var: Dict[str, Any]) -> str:
     """Format a single variable for human-readable display.
-    
+
     Args:
         var: Variable definition dict
-        
+
     Returns:
         Formatted string like "- var_age_int: Age (int [0-120])"
     """
-    type_info = var.get('type', 'unknown')
-    
+    type_info = var.get("type", "unknown")
+
     # Add range info for numeric types
-    if var.get('range'):
-        range_info = var['range']
-        if range_info.get('min') is not None and range_info.get('max') is not None:
+    if var.get("range"):
+        range_info = var["range"]
+        if range_info.get("min") is not None and range_info.get("max") is not None:
             type_info += f" [{range_info['min']}-{range_info['max']}]"
-        elif range_info.get('min') is not None:
+        elif range_info.get("min") is not None:
             type_info += f" [min={range_info['min']}]"
-        elif range_info.get('max') is not None:
+        elif range_info.get("max") is not None:
             type_info += f" [max={range_info['max']}]"
-    
+
     # Add enum values
-    if var.get('enum_values'):
+    if var.get("enum_values"):
         type_info += f" [{', '.join(var['enum_values'])}]"
-    
+
     # Add source info for derived variables
-    source = var.get('source', 'input')
+    source = var.get("source", "input")
     source_info = ""
-    if source != 'input':
+    if source != "input":
         source_info = f" (source: {source})"
-        if source == 'subprocess' and var.get('source_node_id'):
+        if source == "subprocess" and var.get("source_node_id"):
             source_info = f" (from: {var['source_node_id']})"
-    
+
     return f"- {var['id']}: {var.get('name', '?')} ({type_info}){source_info}"
 
 
 class GetCurrentWorkflowTool(WorkflowTool):
     """Get the current workflow from the database.
-    
+
     Returns workflow structure including nodes, edges, and variables.
     For decision nodes, includes structured condition information.
     For subprocess nodes, includes subworkflow reference information.
@@ -178,13 +175,13 @@ class GetCurrentWorkflowTool(WorkflowTool):
                 }
             return error
         workflow_id = workflow_data["workflow_id"]
-        
+
         # Deep copy to avoid any issues
         workflow = {
             "nodes": [copy.deepcopy(n) for n in workflow_data.get("nodes", [])],
             "edges": [copy.deepcopy(e) for e in workflow_data.get("edges", [])],
         }
-        
+
         # Get variables from loaded data
         variables = workflow_data.get("variables", [])
         if variables:
@@ -216,8 +213,10 @@ class GetCurrentWorkflowTool(WorkflowTool):
                     condition_str = format_condition(condition, variables)
                     condition_part = f" [Condition: {condition_str}]"
                 else:
-                    condition_part = " [Condition: NOT SET - node will fail at execution!]"
-            
+                    condition_part = (
+                        " [Condition: NOT SET - node will fail at execution!]"
+                    )
+
             output_part = ""
             if node.get("type") == "end":
                 parts = []
@@ -231,7 +230,7 @@ class GetCurrentWorkflowTool(WorkflowTool):
                     parts.append(f"value={node['output_value']}")
                 if parts:
                     output_part = f" [Output: {', '.join(parts)}]"
-            
+
             # Show subprocess configuration
             subprocess_part = ""
             if node.get("type") == "subprocess":
@@ -240,42 +239,50 @@ class GetCurrentWorkflowTool(WorkflowTool):
                     parts.append(f"calls={node['subworkflow_id']}")
                 if node.get("input_mapping"):
                     mapping_str = ", ".join(
-                        f"{k}->{v}" for k, v in node['input_mapping'].items()
+                        f"{k}->{v}" for k, v in node["input_mapping"].items()
                     )
                     parts.append(f"maps=[{mapping_str}]")
                 if node.get("output_variable"):
                     parts.append(f"output_as={node['output_variable']}")
                 if parts:
                     subprocess_part = f" [Subflow: {', '.join(parts)}]"
-            
-            desc = f"- {node['id']}: \"{node['label']}\" (type: {node['type']}){condition_part}{output_part}{subprocess_part}"
+
+            desc = f'- {node["id"]}: "{node["label"]}" (type: {node["type"]}){condition_part}{output_part}{subprocess_part}'
             node_descriptions.append(desc)
 
         edge_descriptions = []
         for edge in workflow.get("edges", []):
             from_label = next(
-                (n["label"] for n in workflow.get("nodes", []) if n["id"] == edge["from"]),
+                (
+                    n["label"]
+                    for n in workflow.get("nodes", [])
+                    if n["id"] == edge["from"]
+                ),
                 "?",
             )
             to_label = next(
-                (n["label"] for n in workflow.get("nodes", []) if n["id"] == edge["to"]),
+                (
+                    n["label"]
+                    for n in workflow.get("nodes", [])
+                    if n["id"] == edge["to"]
+                ),
                 "?",
             )
             label_part = f" [{edge.get('label', '')}]" if edge.get("label") else ""
-            desc = f"- {edge['from']} -> {edge['to']}: \"{from_label}\"{label_part} -> \"{to_label}\""
+            desc = f'- {edge["from"]} -> {edge["to"]}: "{from_label}"{label_part} -> "{to_label}"'
             edge_descriptions.append(desc)
-        
+
         # Organize variables by source for clearer display
-        input_vars = [v for v in variables if v.get('source', 'input') == 'input']
-        derived_vars = [v for v in variables if v.get('source', 'input') != 'input']
-        
+        input_vars = [v for v in variables if v.get("source", "input") == "input"]
+        derived_vars = [v for v in variables if v.get("source", "input") != "input"]
+
         # Format input variables
         input_descriptions = []
         if input_vars:
             input_descriptions.append("User Inputs:")
             for var in input_vars:
                 input_descriptions.append("  " + format_variable_description(var))
-        
+
         # Format derived variables (subprocess outputs, calculated, etc)
         if derived_vars:
             if input_descriptions:
@@ -299,10 +306,14 @@ class GetCurrentWorkflowTool(WorkflowTool):
                     "\n".join(node_descriptions) if node_descriptions else "No nodes"
                 ),
                 "edge_descriptions": (
-                    "\n".join(edge_descriptions) if edge_descriptions else "No connections"
+                    "\n".join(edge_descriptions)
+                    if edge_descriptions
+                    else "No connections"
                 ),
                 "variable_descriptions": (
-                    "\n".join(input_descriptions) if input_descriptions else "No variables"
+                    "\n".join(input_descriptions)
+                    if input_descriptions
+                    else "No variables"
                 ),
             },
         }

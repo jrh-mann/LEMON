@@ -22,15 +22,13 @@ class TestValidateWorkflowTool:
             {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
             {"id": "n2", "type": "end", "label": "End", "x": 100, "y": 0},
         ]
-        edges = [
-            {"id": "e1", "from": "n1", "to": "n2", "label": ""}
-        ]
+        edges = [{"id": "e1", "from": "n1", "to": "n2", "label": ""}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges
         )
-        
+
         result = self.tool.execute({"workflow_id": workflow_id}, session_state=session)
-        
+
         assert result["success"] is True
         assert result["valid"] is True
         assert "message" in result
@@ -42,50 +40,102 @@ class TestValidateWorkflowTool:
             {"id": "n2", "type": "end", "label": "End", "x": 100, "y": 0},
             {"id": "n3", "type": "process", "label": "Isolated", "x": 50, "y": 50},
         ]
-        edges = [
-            {"id": "e1", "from": "n1", "to": "n2", "label": ""}
-        ]
+        edges = [{"id": "e1", "from": "n1", "to": "n2", "label": ""}]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges
         )
-        
+
         result = self.tool.execute({"workflow_id": workflow_id}, session_state=session)
-        
+
         assert result["success"] is True
         assert result["valid"] is False
         assert len(result["errors"]) > 0
         assert any(e["code"] == "UNREACHABLE_NODE" for e in result["errors"])
         assert "Isolated" in result["message"]
 
+    def test_validate_persists_validated_flag_true(self, workflow_store, test_user_id):
+        """Valid validation should persist is_validated=True in storage."""
+        nodes = [
+            {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {"id": "n2", "type": "end", "label": "End", "x": 100, "y": 0},
+        ]
+        edges = [{"id": "e1", "from": "n1", "to": "n2", "label": ""}]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, nodes=nodes, edges=edges
+        )
+
+        result = self.tool.execute({"workflow_id": workflow_id}, session_state=session)
+
+        assert result["success"] is True
+        assert result["valid"] is True
+        stored = workflow_store.get_workflow(workflow_id, test_user_id)
+        assert stored is not None
+        assert stored.is_validated is True
+
+    def test_validate_persists_validated_flag_false(self, workflow_store, test_user_id):
+        """Invalid validation should persist is_validated=False in storage."""
+        nodes = [
+            {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
+            {"id": "n2", "type": "end", "label": "End", "x": 100, "y": 0},
+            {"id": "n3", "type": "process", "label": "Isolated", "x": 50, "y": 50},
+        ]
+        edges = [{"id": "e1", "from": "n1", "to": "n2", "label": ""}]
+        workflow_id, session = make_session_with_workflow(
+            workflow_store, test_user_id, nodes=nodes, edges=edges
+        )
+
+        result = self.tool.execute({"workflow_id": workflow_id}, session_state=session)
+
+        assert result["success"] is True
+        assert result["valid"] is False
+        stored = workflow_store.get_workflow(workflow_id, test_user_id)
+        assert stored is not None
+        assert stored.is_validated is False
+
     def test_validate_incomplete_decision(self, workflow_store, test_user_id):
         """Should return valid=False for decision node with insufficient branches"""
         nodes = [
             {"id": "n1", "type": "decision", "label": "Check?", "x": 0, "y": 0},
         ]
-        workflow_id, session = make_session_with_workflow(
-            workflow_store, test_user_id, nodes=nodes
-        )
-        
+        workflow_id, session = make_session_with_workflow(workflow_store, test_user_id, nodes=nodes)
+
         result = self.tool.execute({"workflow_id": workflow_id}, session_state=session)
-        
+
         assert result["success"] is True
         assert result["valid"] is False
         assert any(e["code"] == "DECISION_NEEDS_BRANCHES" for e in result["errors"])
 
     def test_validate_with_subprocess_variables(self, workflow_store, test_user_id):
         """Should recognize subprocess-derived variables when validating decision nodes.
-        
+
         Regression test for: Decision nodes referencing subprocess output variables
         were failing validation with 'references unknown variable id' error because
         validate_workflow.py was reading from 'inputs' instead of 'variables'.
         """
         nodes = [
             {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
-            {"id": "n2", "type": "subprocess", "label": "Calculate BMI", "x": 100, "y": 0,
-             "subworkflow_id": "some_workflow", "output_variable": "BMI",
-             "input_mapping": {"Height": "height_input"}},  # Required field
-            {"id": "n3", "type": "decision", "label": "BMI < 25?", "x": 200, "y": 0,
-             "condition": {"input_id": "var_sub_bmi_float", "comparator": "lt", "value": 25}},
+            {
+                "id": "n2",
+                "type": "subprocess",
+                "label": "Calculate BMI",
+                "x": 100,
+                "y": 0,
+                "subworkflow_id": "some_workflow",
+                "output_variable": "BMI",
+                "input_mapping": {"Height": "height_input"},
+            },  # Required field
+            {
+                "id": "n3",
+                "type": "decision",
+                "label": "BMI < 25?",
+                "x": 200,
+                "y": 0,
+                "condition": {
+                    "input_id": "var_sub_bmi_float",
+                    "comparator": "lt",
+                    "value": 25,
+                },
+            },
             {"id": "n4", "type": "end", "label": "Normal", "x": 300, "y": -50},
             {"id": "n5", "type": "end", "label": "Overweight", "x": 300, "y": 50},
         ]
@@ -96,9 +146,20 @@ class TestValidateWorkflowTool:
             {"id": "e4", "from": "n3", "to": "n5", "label": "false"},
         ]
         variables = [
-            {"id": "var_height_float", "name": "Height", "type": "number", "source": "input"},
-            {"id": "var_sub_bmi_float", "name": "BMI", "type": "number", "source": "subprocess",
-             "source_node_id": "n2", "subworkflow_id": "some_workflow"},
+            {
+                "id": "var_height_float",
+                "name": "Height",
+                "type": "number",
+                "source": "input",
+            },
+            {
+                "id": "var_sub_bmi_float",
+                "name": "BMI",
+                "type": "number",
+                "source": "subprocess",
+                "source_node_id": "n2",
+                "subworkflow_id": "some_workflow",
+            },
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
@@ -110,9 +171,9 @@ class TestValidateWorkflowTool:
             "tree": {},
             "doubts": [],
         }
-        
+
         result = self.tool.execute({"workflow_id": workflow_id}, session_state=session)
-        
+
         assert result["success"] is True
         # Should be valid since var_sub_bmi_float exists in variables
         assert result["valid"] is True, f"Validation failed: {result.get('message')}"
@@ -123,7 +184,7 @@ class TestEditToolsPassVariables:
 
     def test_delete_connection_with_output_template_variables(self, workflow_store, test_user_id):
         """delete_connection should pass variables so output templates validate correctly.
-        
+
         Regression test for: delete_connection was showing 'Available variables: []'
         because it wasn't passing variables to the validator.
         """
@@ -131,15 +192,26 @@ class TestEditToolsPassVariables:
         nodes = [
             {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
             {"id": "n2", "type": "process", "label": "Process", "x": 100, "y": 0},
-            {"id": "n3", "type": "end", "label": "Result", "x": 200, "y": 0,
-             "output_template": "BMI is {BMI}"},
+            {
+                "id": "n3",
+                "type": "end",
+                "label": "Result",
+                "x": 200,
+                "y": 0,
+                "output_template": "BMI is {BMI}",
+            },
         ]
         edges = [
             {"id": "e1", "from": "n1", "to": "n2", "label": ""},
             {"id": "e2", "from": "n2", "to": "n3", "label": ""},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
+            {
+                "id": "var_bmi_float",
+                "name": "BMI",
+                "type": "number",
+                "source": "subprocess",
+            },
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
@@ -151,31 +223,42 @@ class TestEditToolsPassVariables:
             "tree": {},
             "doubts": [],
         }
-        
+
         # Delete the edge from n1 to n2 - this should validate with template vars
         result = tool.execute(
             {"workflow_id": workflow_id, "from_node_id": "n1", "to_node_id": "n2"},
-            session_state=session
+            session_state=session,
         )
-        
+
         # Should succeed because BMI is a known variable
         assert result["success"] is True, f"Failed: {result.get('error')}"
-        
+
     def test_delete_connection_fails_with_unknown_template_var(self, workflow_store, test_user_id):
         """delete_connection should show available variables when template validation fails."""
         tool = DeleteConnectionTool()
         nodes = [
             {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
             {"id": "n2", "type": "process", "label": "Process", "x": 100, "y": 0},
-            {"id": "n3", "type": "end", "label": "Result", "x": 200, "y": 0,
-             "output_template": "Unknown is {UnknownVar}"},
+            {
+                "id": "n3",
+                "type": "end",
+                "label": "Result",
+                "x": 200,
+                "y": 0,
+                "output_template": "Unknown is {UnknownVar}",
+            },
         ]
         edges = [
             {"id": "e1", "from": "n1", "to": "n2", "label": ""},
             {"id": "e2", "from": "n2", "to": "n3", "label": ""},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
+            {
+                "id": "var_bmi_float",
+                "name": "BMI",
+                "type": "number",
+                "source": "subprocess",
+            },
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
@@ -186,12 +269,12 @@ class TestEditToolsPassVariables:
             "tree": {},
             "doubts": [],
         }
-        
+
         result = tool.execute(
             {"workflow_id": workflow_id, "from_node_id": "n1", "to_node_id": "n2"},
-            session_state=session
+            session_state=session,
         )
-        
+
         # Should fail because UnknownVar is not a known variable
         assert result["success"] is False
         # Should list available variables (not empty list)
@@ -202,11 +285,22 @@ class TestEditToolsPassVariables:
         tool = AddConnectionTool()
         nodes = [
             {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
-            {"id": "n2", "type": "end", "label": "Result", "x": 100, "y": 0,
-             "output_template": "BMI is {BMI}"},
+            {
+                "id": "n2",
+                "type": "end",
+                "label": "Result",
+                "x": 100,
+                "y": 0,
+                "output_template": "BMI is {BMI}",
+            },
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
+            {
+                "id": "var_bmi_float",
+                "name": "BMI",
+                "type": "number",
+                "source": "subprocess",
+            },
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, variables=variables
@@ -217,12 +311,12 @@ class TestEditToolsPassVariables:
             "tree": {},
             "doubts": [],
         }
-        
+
         result = tool.execute(
             {"workflow_id": workflow_id, "from_node_id": "n1", "to_node_id": "n2"},
-            session_state=session
+            session_state=session,
         )
-        
+
         # Should succeed because BMI is a known variable
         assert result["success"] is True, f"Failed: {result.get('error')}"
 
@@ -232,15 +326,26 @@ class TestEditToolsPassVariables:
         nodes = [
             {"id": "n1", "type": "start", "label": "Start", "x": 0, "y": 0},
             {"id": "n2", "type": "process", "label": "Middle", "x": 100, "y": 0},
-            {"id": "n3", "type": "end", "label": "Result", "x": 200, "y": 0,
-             "output_template": "BMI is {BMI}"},
+            {
+                "id": "n3",
+                "type": "end",
+                "label": "Result",
+                "x": 200,
+                "y": 0,
+                "output_template": "BMI is {BMI}",
+            },
         ]
         edges = [
             {"id": "e1", "from": "n1", "to": "n2", "label": ""},
             {"id": "e2", "from": "n2", "to": "n3", "label": ""},
         ]
         variables = [
-            {"id": "var_bmi_float", "name": "BMI", "type": "number", "source": "subprocess"},
+            {
+                "id": "var_bmi_float",
+                "name": "BMI",
+                "type": "number",
+                "source": "subprocess",
+            },
         ]
         workflow_id, session = make_session_with_workflow(
             workflow_store, test_user_id, nodes=nodes, edges=edges, variables=variables
@@ -251,12 +356,9 @@ class TestEditToolsPassVariables:
             "tree": {},
             "doubts": [],
         }
-        
+
         # Delete middle node - validation should still see BMI variable
-        result = tool.execute(
-            {"workflow_id": workflow_id, "node_id": "n2"},
-            session_state=session
-        )
-        
+        result = tool.execute({"workflow_id": workflow_id, "node_id": "n2"}, session_state=session)
+
         # Should succeed because BMI is a known variable
         assert result["success"] is True, f"Failed: {result.get('error')}"

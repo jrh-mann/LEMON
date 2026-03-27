@@ -24,14 +24,14 @@ from .reference_updates import rewrite_variable_references
 
 class ModifyWorkflowVariableTool(WorkflowTool):
     """Modify an existing workflow input variable's properties.
-    
+
     Only operates on user-input variables (source='input'). Derived variables
     from calculation or subprocess nodes are read-only — modify the producing
     node instead to update them.
-    
+
     IMPORTANT: Changing a variable's type will update its ID (since IDs include
     the type). Any decision nodes referencing the old ID will need to be updated.
-    
+
     Uses the current workflow from session state.
     """
 
@@ -57,7 +57,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             "string",
             "New type for the variable. 'number' = float, 'integer' = int.",
             required=False,
-            enum=["string", "number", "integer", "boolean", "enum", "date"],
+            enum=["string", "number", "integer", "boolean", "enum"],
         ),
         ToolParameter(
             "new_name",
@@ -115,7 +115,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         if not name or not isinstance(name, str) or not name.strip():
             return {
                 "success": False,
-                "error": "Variable 'name' is required to identify which variable to modify"
+                "error": "Variable 'name' is required to identify which variable to modify",
             }
 
         # Validate new_type if provided
@@ -124,19 +124,19 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             if not internal_type:
                 return {
                     "success": False,
-                    "error": f"Invalid type '{new_type}'. Valid types: string, number, integer, boolean, enum, date"
+                    "error": f"Invalid type '{new_type}'. Valid types: string, number, integer, boolean, enum",
                 }
-            
+
             # Enum requires enum_values
             if internal_type == "enum" and not enum_values:
                 return {
                     "success": False,
-                    "error": "enum_values is required when changing type to 'enum'"
+                    "error": "enum_values is required when changing type to 'enum'",
                 }
 
         # Find the variable by name (case-insensitive)
         normalized_name = normalize_variable_name(name)
-        
+
         target_var = None
         target_idx = None
         for idx, var in enumerate(variables):
@@ -150,7 +150,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             available = [v.get("name", "?") for v in variables]
             return {
                 "success": False,
-                "error": f"Variable '{name}' not found. Available variables: {available}"
+                "error": f"Variable '{name}' not found. Available variables: {available}",
             }
 
         # Derived variables are read-only — managed by their producing nodes
@@ -177,10 +177,13 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             # Check new name doesn't conflict with other variables
             new_normalized = normalize_variable_name(new_name)
             for idx, var in enumerate(variables):
-                if idx != target_idx and normalize_variable_name(var.get("name", "")) == new_normalized:
+                if (
+                    idx != target_idx
+                    and normalize_variable_name(var.get("name", "")) == new_normalized
+                ):
                     return {
                         "success": False,
-                        "error": f"Variable name '{new_name}' already exists"
+                        "error": f"Variable name '{new_name}' already exists",
                     }
             final_name = new_name.strip()
             changes.append(f"name: '{target_var['name']}' -> '{final_name}'")
@@ -213,7 +216,10 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             if not isinstance(enum_values, list):
                 return {"success": False, "error": "enum_values must be an array"}
             if final_type == "enum" and len(enum_values) == 0:
-                return {"success": False, "error": "enum_values cannot be empty for enum type"}
+                return {
+                    "success": False,
+                    "error": "enum_values cannot be empty for enum type",
+                }
             target_var["enum_values"] = enum_values
             changes.append(f"enum_values: {enum_values}")
 
@@ -222,7 +228,7 @@ class ModifyWorkflowVariableTool(WorkflowTool):
             if final_type != "number":
                 return {
                     "success": False,
-                    "error": f"range_min/range_max only valid for number types, not '{final_type}'"
+                    "error": f"range_min/range_max only valid for number types, not '{final_type}'",
                 }
             if "range" not in target_var:
                 target_var["range"] = {}
@@ -270,6 +276,8 @@ class ModifyWorkflowVariableTool(WorkflowTool):
         }
         if rewritten_reference_count:
             result["current_workflow"] = {"nodes": nodes}
-            result["message"] += f"; updated {rewritten_reference_count} node reference(s)"
+            result["message"] += (
+                f"; updated {rewritten_reference_count} node reference(s)"
+            )
 
         return result

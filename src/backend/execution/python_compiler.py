@@ -168,7 +168,6 @@ TYPE_MAP = {
     "bool": "bool",
     "string": "str",
     "enum": "str",
-    "date": "str",  # Dates as ISO strings for simplicity
     "json": "dict",
 }
 
@@ -248,11 +247,6 @@ class ConditionCompiler:
         "str_contains": "{val}.lower() in {var}.lower()",
         "str_starts_with": "{var}.lower().startswith({val}.lower())",
         "str_ends_with": "{var}.lower().endswith({val}.lower())",
-        # Date (assuming ISO format strings)
-        "date_eq": "{var} == {val}",
-        "date_before": "{var} < {val}",
-        "date_after": "{var} > {val}",
-        "date_between": "{val} <= {var} <= {val2}",
         # Enum (case-insensitive)
         "enum_eq": "{var}.lower() == {val}.lower()",
         "enum_neq": "{var}.lower() != {val}.lower()",
@@ -649,11 +643,6 @@ class PythonCodeGenerator:
     def _generate_imports(self, variables: List[Dict[str, Any]]) -> None:
         """Generate necessary import statements."""
         imports = set()
-
-        # Check if we need datetime for date types
-        for var in variables:
-            if var.get("type") == "date":
-                imports.add("from datetime import date")
 
         # Add typing import for type hints
         imports.add(

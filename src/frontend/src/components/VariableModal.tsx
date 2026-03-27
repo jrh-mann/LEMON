@@ -8,7 +8,6 @@ const INPUT_TYPES: { value: InputType; label: string }[] = [
   { value: 'string', label: 'String' },
   { value: 'number', label: 'Number' },
   { value: 'bool', label: 'Boolean' },
-  { value: 'date', label: 'Date' },
   { value: 'enum', label: 'Enum' },
 ]
 

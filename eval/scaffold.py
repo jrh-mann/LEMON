@@ -81,7 +81,7 @@ class Scaffold:
         "Extract this workflow image into a structured workflow. "
         "Follow the Image-to-Workflow Protocol exactly."
     )
-    # Default matches the frontend's thinking_budget=50_000.
+    # Eval default for extended thinking experiments.
     thinking_budget: Optional[int] = 50_000
     system_prompt_fn: Optional[Callable[..., str]] = field(default=None, repr=False)
     refinement_messages: List[str] = field(default_factory=list)
@@ -89,7 +89,7 @@ class Scaffold:
 
 # Pre-built scaffold configurations for common experiments.
 
-# Default scaffold matches the frontend exactly (thinking_budget=50k).
+# Default scaffold for baseline eval runs (thinking_budget=50k).
 DEFAULT_SCAFFOLD = Scaffold()
 
 # No-thinking scaffold for cost comparison experiments.

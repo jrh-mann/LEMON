@@ -17,6 +17,7 @@ def generate_workflow_id() -> str:
     """
     return f"wf_{uuid.uuid4().hex}"
 
+
 WORKFLOW_EDIT_TOOLS = frozenset(
     {
         "add_node",
@@ -45,7 +46,12 @@ WORKFLOW_INPUT_TOOLS = frozenset(
 WORKFLOW_BOUND_TOOLS = (
     WORKFLOW_EDIT_TOOLS
     | WORKFLOW_INPUT_TOOLS
-    | {"get_current_workflow", "validate_workflow", "execute_workflow", "save_workflow_to_library"}
+    | {
+        "get_current_workflow",
+        "validate_workflow",
+        "execute_workflow",
+        "save_workflow_to_library",
+    }
 )
 
 # Tools that create or modify workflow library entries
@@ -63,24 +69,23 @@ WORKFLOW_LIBRARY_TOOLS = frozenset(
 
 # The set of valid internal types for workflow variables and outputs.
 # Used by add_workflow_variable, modify_workflow_variable, set_workflow_output.
-VALID_VARIABLE_TYPES = frozenset({"string", "number", "bool", "enum", "date"})
+VALID_VARIABLE_TYPES = frozenset({"string", "number", "bool", "enum"})
 
 # Maps user-friendly type names (including common aliases) to the internal
 # type string used by condition validation and the execution interpreter.
 # 'number' is the unified numeric type (stored as float internally).
 USER_TYPE_TO_INTERNAL = {
     "string": "string",
-    "number": "number",         # Unified numeric type (stored as float)
-    "integer": "number",        # Alias for number
+    "number": "number",  # Unified numeric type (stored as float)
+    "integer": "number",  # Alias for number
     "boolean": "bool",
-    "bool": "bool",             # Accept internal name directly
+    "bool": "bool",  # Accept internal name directly
     "enum": "enum",
-    "date": "date",
 }
 
 # Valid output types at the workflow level (output_type param).
 # This is distinct from VALID_VARIABLE_TYPES — workflows can return "json"
-# but not "enum" or "date" at the top level.
+# but not "enum" at the top level.
 VALID_WORKFLOW_OUTPUT_TYPES = frozenset({"string", "number", "bool", "json"})
 
 

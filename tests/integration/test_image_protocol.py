@@ -59,7 +59,7 @@ def main() -> None:
     orchestrator = build_orchestrator(PROJECT_ROOT)
 
     # ---------------------------------------------------------------------------
-    # Set up session context — mimic what ws_chat.py does for the real app.
+    # Set up session context to mirror the real chat task pipeline.
     # The orchestrator needs a workflow_store, user_id, and a pre-created
     # canvas workflow so that tools like add_node/add_connection can persist.
     # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ def main() -> None:
     workflow_id = f"wf_{uuid.uuid4().hex}"
     user_id = "test_user"
 
-    # Create the canvas workflow in the DB (same as ws_chat auto-persist)
+    # Create the canvas workflow in the DB (same as normal chat bootstrap)
     workflow_store.create_workflow(
         workflow_id=workflow_id,
         user_id=user_id,
@@ -88,7 +88,7 @@ def main() -> None:
         is_draft=False,
     )
 
-    # Wire up the orchestrator like the real socket handler does
+    # Wire up the orchestrator the same way chat routes/tasks do
     orchestrator.workflow_store = workflow_store
     orchestrator.user_id = user_id
     orchestrator.current_workflow_id = workflow_id

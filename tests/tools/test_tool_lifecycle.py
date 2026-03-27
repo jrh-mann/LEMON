@@ -66,10 +66,10 @@ class TestFullToolLifecycle:
     # ── helpers ──────────────────────────────────────────────────────
 
     def _create_workflow_in_db(self, workflow_store, user_id, name="Age Check"):
-        """Simulate what ws_chat.py does: create a workflow record directly.
+        """Simulate chat bootstrap: create a workflow record directly.
 
-        The LLM never calls create_workflow — the WebSocket handler auto-
-        creates the DB record when the frontend connects.
+        The LLM never calls create_workflow directly; the chat bootstrap path
+        creates the DB record before edit tools run.
         """
         workflow_id = f"wf_{uuid4().hex}"
         workflow_store.create_workflow(
@@ -99,7 +99,7 @@ class TestFullToolLifecycle:
     def test_full_lifecycle(self, workflow_store, test_user_id, session_state):
         """Build, validate, execute, modify, and save a workflow."""
 
-        # ── Step 1: Create workflow (simulates ws_chat auto-create) ──
+        # ── Step 1: Create workflow (simulates chat bootstrap auto-create) ──
         wf_id = self._create_workflow_in_db(workflow_store, test_user_id)
         args = {"workflow_id": wf_id}
 
@@ -115,22 +115,30 @@ class TestFullToolLifecycle:
         assert wf_id in ids
 
         # ── Step 4: add_workflow_variable — "Age" (number) ──
-        r = self._run(self.add_var, {
-            "workflow_id": wf_id,
-            "name": "Age",
-            "type": "number",
-            "range_min": 0,
-            "range_max": 120,
-        }, session_state)
+        r = self._run(
+            self.add_var,
+            {
+                "workflow_id": wf_id,
+                "name": "Age",
+                "type": "number",
+                "range_min": 0,
+                "range_max": 120,
+            },
+            session_state,
+        )
         assert r["variable"]["name"] == "Age"
         assert r["variable"]["type"] == "number"
 
         # ── Step 5: add_workflow_variable — "Name" (string) ──
-        r = self._run(self.add_var, {
-            "workflow_id": wf_id,
-            "name": "Name",
-            "type": "string",
-        }, session_state)
+        r = self._run(
+            self.add_var,
+            {
+                "workflow_id": wf_id,
+                "name": "Name",
+                "type": "string",
+            },
+            session_state,
+        )
         assert r["variable"]["name"] == "Name"
 
         # ── Step 6: list_workflow_variables — 2 variables ──
@@ -141,11 +149,15 @@ class TestFullToolLifecycle:
         assert len(r["variables"]) == 2
 
         # ── Step 7: modify_workflow_variable — rename Name → PatientName ──
-        r = self._run(self.modify_var, {
-            "workflow_id": wf_id,
-            "name": "Name",
-            "new_name": "PatientName",
-        }, session_state)
+        r = self._run(
+            self.modify_var,
+            {
+                "workflow_id": wf_id,
+                "name": "Name",
+                "new_name": "PatientName",
+            },
+            session_state,
+        )
         assert r["variable"]["name"] == "PatientName"
 
         # ── Step 8: list_workflow_variables — verify rename ──
@@ -155,35 +167,47 @@ class TestFullToolLifecycle:
         assert "Name" not in names
 
         # ── Step 9: set_workflow_output ──
-        r = self._run(self.set_output, {
-            "workflow_id": wf_id,
-            "name": "Result",
-            "type": "string",
-        }, session_state)
+        r = self._run(
+            self.set_output,
+            {
+                "workflow_id": wf_id,
+                "name": "Result",
+                "type": "string",
+            },
+            session_state,
+        )
         assert r["output"]["name"] == "Result"
         assert r["output"]["type"] == "string"
 
         # ── Step 10: add_node (start) ──
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "start",
-            "label": "Input",
-        }, session_state)
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "start",
+                "label": "Input",
+            },
+            session_state,
+        )
         start_id = r["node"]["id"]
         assert r["node"]["type"] == "start"
 
         # ── Step 11: add_node (decision) — variable-name condition ──
         # Tests demand #1: use variable name "Age" instead of ID
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "decision",
-            "label": "Age >= 18?",
-            "condition": {
-                "variable": "Age",
-                "comparator": "gte",
-                "value": 18,
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "decision",
+                "label": "Age >= 18?",
+                "condition": {
+                    "variable": "Age",
+                    "comparator": "gte",
+                    "value": 18,
+                },
             },
-        }, session_state)
+            session_state,
+        )
         decision_id = r["node"]["id"]
         assert r["node"]["type"] == "decision"
         # Verify variable name was resolved to input_id internally
@@ -191,52 +215,72 @@ class TestFullToolLifecycle:
 
         # ── Step 12: add_node (end) — unified output as template ──
         # Tests demand #3: output="Adult: {PatientName}" → stored as output_template
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "end",
-            "label": "Adult",
-            "output": "Adult: {PatientName}",
-        }, session_state)
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "end",
+                "label": "Adult",
+                "output": "Adult: {PatientName}",
+            },
+            session_state,
+        )
         adult_id = r["node"]["id"]
         assert r["node"]["type"] == "end"
         assert r["node"].get("output_template") == "Adult: {PatientName}"
 
         # ── Step 13: add_node (end) — unified output as literal ──
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "end",
-            "label": "Child",
-            "output": "Minor",
-        }, session_state)
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "end",
+                "label": "Child",
+                "output": "Minor",
+            },
+            session_state,
+        )
         child_id = r["node"]["id"]
         assert r["node"]["type"] == "end"
         assert r["node"].get("output_value") == "Minor"
 
         # ── Step 14: add_connection — start → decision ──
-        r = self._run(self.add_conn, {
-            "workflow_id": wf_id,
-            "from_node_id": start_id,
-            "to_node_id": decision_id,
-        }, session_state)
+        r = self._run(
+            self.add_conn,
+            {
+                "workflow_id": wf_id,
+                "from_node_id": start_id,
+                "to_node_id": decision_id,
+            },
+            session_state,
+        )
         assert r["edge"]["from"] == start_id
         assert r["edge"]["to"] == decision_id
 
         # ── Step 15: add_connection — decision → Adult (true) ──
-        r = self._run(self.add_conn, {
-            "workflow_id": wf_id,
-            "from_node_id": decision_id,
-            "to_node_id": adult_id,
-            "label": "true",
-        }, session_state)
+        r = self._run(
+            self.add_conn,
+            {
+                "workflow_id": wf_id,
+                "from_node_id": decision_id,
+                "to_node_id": adult_id,
+                "label": "true",
+            },
+            session_state,
+        )
         assert r["edge"]["label"] == "true"
 
         # ── Step 16: add_connection — decision → Child (false) ──
-        r = self._run(self.add_conn, {
-            "workflow_id": wf_id,
-            "from_node_id": decision_id,
-            "to_node_id": child_id,
-            "label": "false",
-        }, session_state)
+        r = self._run(
+            self.add_conn,
+            {
+                "workflow_id": wf_id,
+                "from_node_id": decision_id,
+                "to_node_id": child_id,
+                "label": "false",
+            },
+            session_state,
+        )
         assert r["edge"]["label"] == "false"
 
         # ── Step 17: get_current_workflow — verify structure ──
@@ -249,79 +293,107 @@ class TestFullToolLifecycle:
         assert r["valid"] is True
 
         # ── Step 19: execute_workflow — Adult path ──
-        r = self._run(self.execute, {
-            "workflow_id": wf_id,
-            "input_values": {"Age": 25, "PatientName": "Alice"},
-        }, session_state)
+        r = self._run(
+            self.execute,
+            {
+                "workflow_id": wf_id,
+                "input_values": {"Age": 25, "PatientName": "Alice"},
+            },
+            session_state,
+        )
         assert r["output"] == "Adult: Alice"
         assert len(r["path"]) == 3  # start → decision → adult
 
         # ── Step 20: execute_workflow — Child path ──
-        r = self._run(self.execute, {
-            "workflow_id": wf_id,
-            "input_values": {"Age": 10, "PatientName": "Bob"},
-        }, session_state)
+        r = self._run(
+            self.execute,
+            {
+                "workflow_id": wf_id,
+                "input_values": {"Age": 10, "PatientName": "Bob"},
+            },
+            session_state,
+        )
         assert r["output"] == "Minor"
         assert len(r["path"]) == 3  # start → decision → child
 
         # ── Step 21: modify_node — resolve by label (tests resolve_node_id) ──
-        r = self._run(self.modify_node, {
-            "workflow_id": wf_id,
-            "node_id": "Adult",  # label, not UUID
-            "label": "Is Adult",
-        }, session_state)
+        r = self._run(
+            self.modify_node,
+            {
+                "workflow_id": wf_id,
+                "node_id": "Adult",  # label, not UUID
+                "label": "Is Adult",
+            },
+            session_state,
+        )
         assert r["node"]["label"] == "Is Adult"
         assert r["node"]["id"] == adult_id  # resolved to real ID
 
         # ── Step 22: delete_connection — decision → Child ──
-        r = self._run(self.delete_conn, {
-            "workflow_id": wf_id,
-            "from_node_id": decision_id,
-            "to_node_id": child_id,
-        }, session_state)
+        r = self._run(
+            self.delete_conn,
+            {
+                "workflow_id": wf_id,
+                "from_node_id": decision_id,
+                "to_node_id": child_id,
+            },
+            session_state,
+        )
 
         # ── Step 23: add_node (process) — "Log" node ──
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "process",
-            "label": "Log",
-        }, session_state)
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "process",
+                "label": "Log",
+            },
+            session_state,
+        )
         log_id = r["node"]["id"]
 
         # ── Step 24: batch_edit — reconnect via Log node ──
         # decision --(false)--> Log --> Child
-        r = self._run(self.batch_edit, {
-            "workflow_id": wf_id,
-            "operations": [
-                {
-                    "op": "add_connection",
-                    "from": decision_id,
-                    "to": log_id,
-                    "label": "false",
-                },
-                {
-                    "op": "add_connection",
-                    "from": log_id,
-                    "to": child_id,
-                },
-            ],
-        }, session_state)
+        r = self._run(
+            self.batch_edit,
+            {
+                "workflow_id": wf_id,
+                "operations": [
+                    {
+                        "op": "add_connection",
+                        "from": decision_id,
+                        "to": log_id,
+                        "label": "false",
+                    },
+                    {
+                        "op": "add_connection",
+                        "from": log_id,
+                        "to": child_id,
+                    },
+                ],
+            },
+            session_state,
+        )
         assert r["operation_count"] == 2
 
         # ── Step 25: add_node (calculation) — auto-register output var ──
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "calculation",
-            "label": "Add Numbers",
-            "calculation": {
-                "output": {"name": "Sum"},
-                "operator": "add",
-                "operands": [
-                    {"kind": "literal", "value": 1},
-                    {"kind": "literal", "value": 2},
-                ],
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "calculation",
+                "label": "Add Numbers",
+                "calculation": {
+                    "output": {"name": "Sum"},
+                    "operator": "add",
+                    "operands": [
+                        {"kind": "literal", "value": 1},
+                        {"kind": "literal", "value": 2},
+                    ],
+                },
             },
-        }, session_state)
+            session_state,
+        )
         calc_id = r["node"]["id"]
         # Calculation node auto-registers an output variable
         assert len(r["new_variables"]) == 1
@@ -329,10 +401,14 @@ class TestFullToolLifecycle:
         assert r["new_variables"][0]["source"] == "calculated"
 
         # ── Step 26: delete_node — Log node, verify edge cascade ──
-        r = self._run(self.delete_node, {
-            "workflow_id": wf_id,
-            "node_id": log_id,
-        }, session_state)
+        r = self._run(
+            self.delete_node,
+            {
+                "workflow_id": wf_id,
+                "node_id": log_id,
+            },
+            session_state,
+        )
         # Verify edges involving log_id were removed
         r2 = self._run(self.get_current, args, session_state)
         edge_nodes = set()
@@ -342,11 +418,15 @@ class TestFullToolLifecycle:
         assert log_id not in edge_nodes
 
         # ── Step 27: remove_workflow_variable — force remove ──
-        r = self._run(self.remove_var, {
-            "workflow_id": wf_id,
-            "name": "PatientName",
-            "force": True,
-        }, session_state)
+        r = self._run(
+            self.remove_var,
+            {
+                "workflow_id": wf_id,
+                "name": "PatientName",
+                "force": True,
+            },
+            session_state,
+        )
 
         # Verify variable is gone
         r2 = self._run(self.list_vars, args, session_state)
@@ -364,59 +444,88 @@ class TestFullToolLifecycle:
 
     # ── error case tests ─────────────────────────────────────────────
 
-    def test_bad_variable_ref_lists_available(self, workflow_store, test_user_id, session_state):
+    def test_bad_variable_ref_lists_available(
+        self, workflow_store, test_user_id, session_state
+    ):
         """Demand #5: bad variable reference should list available variables."""
         wf_id = self._create_workflow_in_db(workflow_store, test_user_id)
 
         # Add a variable so the error message has something to list
-        self._run(self.add_var, {
-            "workflow_id": wf_id,
-            "name": "Height",
-            "type": "number",
-        }, session_state)
+        self._run(
+            self.add_var,
+            {
+                "workflow_id": wf_id,
+                "name": "Height",
+                "type": "number",
+            },
+            session_state,
+        )
 
         # Try to add a decision node referencing a nonexistent variable
-        r = self._run(self.add_node, {
-            "workflow_id": wf_id,
-            "type": "decision",
-            "label": "Bad Check",
-            "condition": {
-                "variable": "NonExistent",
-                "comparator": "gte",
-                "value": 10,
+        r = self._run(
+            self.add_node,
+            {
+                "workflow_id": wf_id,
+                "type": "decision",
+                "label": "Bad Check",
+                "condition": {
+                    "variable": "NonExistent",
+                    "comparator": "gte",
+                    "value": 10,
+                },
             },
-        }, session_state, expect_success=False)
+            session_state,
+            expect_success=False,
+        )
 
         # Error should mention available variables
         assert "NonExistent" in r["error"]
         assert "Height" in r["error"]
 
-    def test_duplicate_variable_name_rejected(self, workflow_store, test_user_id, session_state):
+    def test_duplicate_variable_name_rejected(
+        self, workflow_store, test_user_id, session_state
+    ):
         """Adding a variable with a duplicate name should fail."""
         wf_id = self._create_workflow_in_db(workflow_store, test_user_id)
 
-        self._run(self.add_var, {
-            "workflow_id": wf_id,
-            "name": "Age",
-            "type": "number",
-        }, session_state)
+        self._run(
+            self.add_var,
+            {
+                "workflow_id": wf_id,
+                "name": "Age",
+                "type": "number",
+            },
+            session_state,
+        )
 
         # Adding same name again should fail
-        r = self._run(self.add_var, {
-            "workflow_id": wf_id,
-            "name": "Age",
-            "type": "number",
-        }, session_state, expect_success=False)
+        r = self._run(
+            self.add_var,
+            {
+                "workflow_id": wf_id,
+                "name": "Age",
+                "type": "number",
+            },
+            session_state,
+            expect_success=False,
+        )
         assert "Age" in r["error"].lower() or "already exists" in r["error"].lower()
 
-    def test_delete_nonexistent_node_fails(self, workflow_store, test_user_id, session_state):
+    def test_delete_nonexistent_node_fails(
+        self, workflow_store, test_user_id, session_state
+    ):
         """Deleting a nonexistent node should fail with a clear error."""
         wf_id = self._create_workflow_in_db(workflow_store, test_user_id)
 
-        r = self._run(self.delete_node, {
-            "workflow_id": wf_id,
-            "node_id": "nonexistent_node_id",
-        }, session_state, expect_success=False)
+        r = self._run(
+            self.delete_node,
+            {
+                "workflow_id": wf_id,
+                "node_id": "nonexistent_node_id",
+            },
+            session_state,
+            expect_success=False,
+        )
         assert "error" in r
 
 
@@ -457,17 +566,19 @@ class TestUITools:
 
     def test_ask_question_with_options(self):
         """Should normalize questions and return them."""
-        r = self.ask_question.execute({
-            "questions": [
-                {
-                    "question": "What threshold for age?",
-                    "options": [
-                        {"label": "18", "value": "18"},
-                        {"label": "21", "value": "21"},
-                    ],
-                },
-            ],
-        })
+        r = self.ask_question.execute(
+            {
+                "questions": [
+                    {
+                        "question": "What threshold for age?",
+                        "options": [
+                            {"label": "18", "value": "18"},
+                            {"label": "21", "value": "21"},
+                        ],
+                    },
+                ],
+            }
+        )
         assert r["success"] is True
         assert r["action"] == "question_asked"
         assert len(r["questions"]) == 1
@@ -476,9 +587,11 @@ class TestUITools:
 
     def test_ask_question_bare_strings(self):
         """Should accept bare strings as shorthand."""
-        r = self.ask_question.execute({
-            "questions": ["What is the patient's name?"],
-        })
+        r = self.ask_question.execute(
+            {
+                "questions": ["What is the patient's name?"],
+            }
+        )
         assert r["success"] is True
         assert r["questions"][0]["question"] == "What is the patient's name?"
         assert r["questions"][0]["options"] == []
@@ -491,13 +604,15 @@ class TestUITools:
 
     def test_ask_question_multiple(self):
         """Should handle multiple questions in one call."""
-        r = self.ask_question.execute({
-            "questions": [
-                {"question": "Q1?", "options": []},
-                {"question": "Q2?", "options": [{"label": "Yes", "value": "yes"}]},
-                "Q3?",
-            ],
-        })
+        r = self.ask_question.execute(
+            {
+                "questions": [
+                    {"question": "Q1?", "options": []},
+                    {"question": "Q2?", "options": [{"label": "Yes", "value": "yes"}]},
+                    "Q3?",
+                ],
+            }
+        )
         assert r["success"] is True
         assert len(r["questions"]) == 3
 
@@ -505,13 +620,15 @@ class TestUITools:
 
     def test_update_plan(self):
         """Should return plan items."""
-        r = self.update_plan.execute({
-            "items": [
-                {"text": "Add variables", "done": True},
-                {"text": "Build decision tree", "done": False},
-                {"text": "Validate workflow", "done": False},
-            ],
-        })
+        r = self.update_plan.execute(
+            {
+                "items": [
+                    {"text": "Add variables", "done": True},
+                    {"text": "Build decision tree", "done": False},
+                    {"text": "Validate workflow", "done": False},
+                ],
+            }
+        )
         assert r["success"] is True
         assert r["action"] == "plan_updated"
         assert len(r["items"]) == 3
@@ -535,11 +652,11 @@ class TestUITools:
         """Should read image from disk and return base64-encoded content."""
         # Create a tiny 1x1 PNG (smallest valid PNG)
         png_bytes = (
-            b'\x89PNG\r\n\x1a\n'  # PNG signature
-            b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
-            b'\x08\x02\x00\x00\x00\x90wS\xde'
-            b'\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05'
-            b'\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+            b"\x89PNG\r\n\x1a\n"  # PNG signature
+            b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x02\x00\x00\x00\x90wS\xde"
+            b"\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05"
+            b"\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
         )
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(png_bytes)
@@ -566,15 +683,17 @@ class TestUITools:
 
     def test_view_image_specific_filename(self):
         """Should select the correct image when filename is specified."""
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f1, \
-             tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f2:
+        with (
+            tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f1,
+            tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f2,
+        ):
             # Write minimal PNG bytes to both
             png_bytes = (
-                b'\x89PNG\r\n\x1a\n'
-                b'\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
-                b'\x08\x02\x00\x00\x00\x90wS\xde'
-                b'\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05'
-                b'\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+                b"\x89PNG\r\n\x1a\n"
+                b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x02\x00\x00\x00\x90wS\xde"
+                b"\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05"
+                b"\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
             )
             f1.write(png_bytes)
             f2.write(png_bytes)
@@ -588,7 +707,8 @@ class TestUITools:
                 ],
             }
             r = self.view_image.execute(
-                {"filename": "second.png"}, session_state=session_state,
+                {"filename": "second.png"},
+                session_state=session_state,
             )
             assert r["success"] is True
             assert "second.png" in r["content"][1]["text"]
@@ -605,7 +725,7 @@ class TestUITools:
     def test_view_image_missing_filename(self):
         """Should fail when requested filename doesn't exist."""
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b'\x89PNG\r\n\x1a\n')  # partial PNG, enough for name lookup
+            f.write(b"\x89PNG\r\n\x1a\n")  # partial PNG, enough for name lookup
             img_path = f.name
 
         try:
@@ -615,7 +735,8 @@ class TestUITools:
                 ],
             }
             r = self.view_image.execute(
-                {"filename": "nonexistent.png"}, session_state=session_state,
+                {"filename": "nonexistent.png"},
+                session_state=session_state,
             )
             assert r["success"] is False
             assert "nonexistent.png" in r["error"]
@@ -665,7 +786,12 @@ class TestSubworkflowTools:
     def test_create_invalid_output_type(self, workflow_store, test_user_id):
         """Should reject invalid output_type."""
         r = self.create_sub.execute(
-            {"name": "Test", "output_type": "invalid", "brief": "Build it", "inputs": []},
+            {
+                "name": "Test",
+                "output_type": "invalid",
+                "brief": "Build it",
+                "inputs": [],
+            },
             session_state=self._session(workflow_store, test_user_id),
         )
         assert r["success"] is False
@@ -683,7 +809,12 @@ class TestSubworkflowTools:
     def test_create_invalid_inputs(self, workflow_store, test_user_id):
         """Should reject when inputs is not an array."""
         r = self.create_sub.execute(
-            {"name": "Test", "output_type": "number", "brief": "Build it", "inputs": "bad"},
+            {
+                "name": "Test",
+                "output_type": "number",
+                "brief": "Build it",
+                "inputs": "bad",
+            },
             session_state=self._session(workflow_store, test_user_id),
         )
         assert r["success"] is False
@@ -693,7 +824,12 @@ class TestSubworkflowTools:
         """Should reject when repo_root is not in session_state."""
         session = {"workflow_store": workflow_store, "user_id": test_user_id}
         r = self.create_sub.execute(
-            {"name": "Test", "output_type": "number", "brief": "Build it", "inputs": []},
+            {
+                "name": "Test",
+                "output_type": "number",
+                "brief": "Build it",
+                "inputs": [],
+            },
             session_state=session,
         )
         assert r["success"] is False
@@ -776,7 +912,9 @@ class TestSubworkflowTools:
         assert wf is not None
 
     @patch("src.backend.tools.workflow_analysis.create_subworkflow.threading.Thread")
-    def test_create_skips_invalid_inputs(self, mock_thread_cls, workflow_store, test_user_id):
+    def test_create_skips_invalid_inputs(
+        self, mock_thread_cls, workflow_store, test_user_id
+    ):
         """Should skip malformed input entries without failing."""
         mock_thread_cls.return_value = MagicMock()
 
@@ -903,8 +1041,11 @@ class TestSubworkflowTools:
     @patch("src.backend.tools.workflow_analysis.update_subworkflow.threading.Thread")
     @patch("src.backend.tools.workflow_analysis.create_subworkflow.threading.Thread")
     def test_create_then_update_lifecycle(
-        self, mock_create_thread_cls, mock_update_thread_cls,
-        workflow_store, test_user_id,
+        self,
+        mock_create_thread_cls,
+        mock_update_thread_cls,
+        workflow_store,
+        test_user_id,
     ):
         """Full lifecycle: create subworkflow, simulate build completion, then update."""
         mock_create_thread_cls.return_value = MagicMock()
@@ -940,7 +1081,8 @@ class TestSubworkflowTools:
 
         # Step 3: Simulate build completion (background thread would do this)
         workflow_store.update_workflow(
-            wf_id, test_user_id,
+            wf_id,
+            test_user_id,
             building=False,
             build_history=[{"role": "user", "content": "Build it"}],
         )
@@ -963,7 +1105,10 @@ class TestInterpreterStepLimit:
 
     def test_infinite_loop_aborted(self, workflow_store, test_user_id):
         """A cyclic workflow must be stopped by the step limit."""
-        from src.backend.execution.interpreter import TreeInterpreter, _MAX_EXECUTION_STEPS
+        from src.backend.execution.interpreter import (
+            TreeInterpreter,
+            _MAX_EXECUTION_STEPS,
+        )
         from src.backend.utils.flowchart import tree_from_flowchart
 
         # Build a workflow with a self-loop: start → process → process (cycle)

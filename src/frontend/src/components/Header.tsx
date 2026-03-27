@@ -31,7 +31,6 @@ export default function Header() {
       clickCountRef.current = 0
       toggleDevMode()
       toast(devMode ? 'Developer mode disabled' : 'Developer mode enabled', {
-        icon: devMode ? '🔒' : '🔧',
         duration: 2000,
       })
     }
@@ -39,6 +38,7 @@ export default function Header() {
 
   const canExport = currentWorkflow || flowchart.nodes.length > 0
   const isPublicReadOnly = location.pathname.startsWith('/workflow/public/')
+  const isPackageExportPage = /^\/export\/pkg_[^/]+$/.test(location.pathname)
 
   const handleNewSession = useCallback(() => {
     if (isDirty) {
@@ -99,7 +99,7 @@ export default function Header() {
             Browse Library
           </button>
 
-          {!isPublicReadOnly && (
+          {!isPublicReadOnly && !isPackageExportPage && (
             <button
               className="primary"
               disabled={!canExport}
@@ -121,7 +121,7 @@ export default function Header() {
             New Session
           </button>
 
-          {!isPublicReadOnly && (
+          {!isPublicReadOnly && !isPackageExportPage && (
             <button
               className="ghost"
               disabled={!canExport}

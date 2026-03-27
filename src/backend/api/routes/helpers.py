@@ -1,7 +1,6 @@
 """Shared helper functions for route handlers.
 
-Extracted from the monolithic routes.py to eliminate duplication
-and provide reusable utilities across route modules.
+Provides reusable utilities shared across route modules.
 """
 
 from __future__ import annotations

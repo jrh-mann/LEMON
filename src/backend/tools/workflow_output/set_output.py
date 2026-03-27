@@ -22,11 +22,11 @@ from ..workflow_edit.helpers import save_workflow_changes
 
 class SetWorkflowOutputTool(WorkflowTool):
     """Set the workflow's output definition including its type.
-    
+
     The output type is required for subprocess variable inference. When this
     workflow is used as a subprocess, the calling workflow needs to know what
     type of value to expect.
-    
+
     Uses the current workflow from session state.
     """
 
@@ -51,7 +51,7 @@ class SetWorkflowOutputTool(WorkflowTool):
             "string",
             "Output type - determines derived variable type in calling workflows. Use 'number' for all numeric values.",
             required=True,
-            enum=["string", "number", "bool", "enum", "date"],
+            enum=["string", "number", "bool", "enum"],
         ),
         ToolParameter(
             "description",
@@ -79,20 +79,20 @@ class SetWorkflowOutputTool(WorkflowTool):
         if not name or not isinstance(name, str) or not name.strip():
             return {
                 "success": False,
-                "error": "Output 'name' is required and must be a non-empty string"
+                "error": "Output 'name' is required and must be a non-empty string",
             }
 
         # Validate type is provided and valid
         if not output_type:
             return {
                 "success": False,
-                "error": "Output 'type' is required. Valid types: string, int, float, bool, enum, date"
+                "error": "Output 'type' is required. Valid types: string, int, float, bool, enum",
             }
-        
+
         if output_type not in VALID_VARIABLE_TYPES:
             return {
                 "success": False,
-                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_VARIABLE_TYPES))}"
+                "error": f"Invalid output type '{output_type}'. Valid types: {', '.join(sorted(VALID_VARIABLE_TYPES))}",
             }
 
         # Create output definition with required type
@@ -100,21 +100,21 @@ class SetWorkflowOutputTool(WorkflowTool):
             "name": name.strip(),
             "type": output_type,
         }
-        
+
         if description:
             output_def["description"] = description
 
         # Check if an output with this name already exists and update it
         normalized_name = name.strip().lower()
         found = False
-        
+
         for i, existing in enumerate(outputs):
             if existing.get("name", "").strip().lower() == normalized_name:
                 # Update existing output
                 outputs[i] = output_def
                 found = True
                 break
-        
+
         if not found:
             # Add new output
             outputs.append(output_def)

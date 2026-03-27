@@ -6,8 +6,15 @@ from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 
 
-def find_variable_references(nodes: List[Dict[str, Any]], variable_id: str) -> List[Dict[str, str]]:
-    """Return all node references to a variable ID."""
+def find_variable_references(
+    nodes: List[Dict[str, Any]], variable_id: str
+) -> List[Dict[str, str]]:
+    """Return node references that literally match a variable identifier.
+
+    Conditions and calculation operands are stored as variable IDs.
+    ``output_variable`` is compared as a literal value for backwards-safe
+    matching when older node payloads contain ID-like values.
+    """
     references: List[Dict[str, str]] = []
     for node in nodes:
         node_id = str(node.get("id", "unknown"))
@@ -17,20 +24,44 @@ def find_variable_references(nodes: List[Dict[str, Any]], variable_id: str) -> L
             if "operator" in condition:
                 for sub in condition.get("conditions", []):
                     if isinstance(sub, dict) and sub.get("input_id") == variable_id:
-                        references.append({"node_id": node_id, "node_label": node_label, "field": "condition"})
+                        references.append(
+                            {
+                                "node_id": node_id,
+                                "node_label": node_label,
+                                "field": "condition",
+                            }
+                        )
                         break
             elif condition.get("input_id") == variable_id:
-                references.append({"node_id": node_id, "node_label": node_label, "field": "condition"})
+                references.append(
+                    {"node_id": node_id, "node_label": node_label, "field": "condition"}
+                )
 
         calculation = node.get("calculation")
         if isinstance(calculation, dict):
             for operand in calculation.get("operands", []):
-                if isinstance(operand, dict) and operand.get("kind") == "variable" and operand.get("ref") == variable_id:
-                    references.append({"node_id": node_id, "node_label": node_label, "field": "calculation.operands"})
+                if (
+                    isinstance(operand, dict)
+                    and operand.get("kind") == "variable"
+                    and operand.get("ref") == variable_id
+                ):
+                    references.append(
+                        {
+                            "node_id": node_id,
+                            "node_label": node_label,
+                            "field": "calculation.operands",
+                        }
+                    )
                     break
 
         if node.get("output_variable") == variable_id:
-            references.append({"node_id": node_id, "node_label": node_label, "field": "output_variable"})
+            references.append(
+                {
+                    "node_id": node_id,
+                    "node_label": node_label,
+                    "field": "output_variable",
+                }
+            )
 
     return references
 
@@ -41,7 +72,12 @@ def rewrite_variable_references(
     old_variable_id: str,
     new_variable_id: str,
 ) -> Tuple[List[Dict[str, Any]], int]:
-    """Rewrite all node references from one variable ID to another."""
+    """Rewrite literal node references from one variable ID to another.
+
+    This is used for fields that persist variable identifiers directly
+    (conditions and calculation operands). ``output_variable`` is only
+    rewritten when its stored value exactly matches ``old_variable_id``.
+    """
     rewritten_nodes = deepcopy(nodes)
     rewrite_count = 0
     for node in rewritten_nodes:
@@ -59,7 +95,11 @@ def rewrite_variable_references(
         calculation = node.get("calculation")
         if isinstance(calculation, dict):
             for operand in calculation.get("operands", []):
-                if isinstance(operand, dict) and operand.get("kind") == "variable" and operand.get("ref") == old_variable_id:
+                if (
+                    isinstance(operand, dict)
+                    and operand.get("kind") == "variable"
+                    and operand.get("ref") == old_variable_id
+                ):
                     operand["ref"] = new_variable_id
                     rewrite_count += 1
 

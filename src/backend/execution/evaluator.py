@@ -1,15 +1,15 @@
 """Structured condition evaluator for decision nodes.
 
 Evaluates DecisionCondition objects against execution context.
-Supports type-specific comparators for int, float, bool, string, date, and enum types.
+Supports type-specific comparators for int, float, bool, string, and enum types.
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, date
 
 
 class EvaluationError(Exception):
     """Raised when condition evaluation fails."""
+
     pass
 
 
@@ -26,18 +26,19 @@ def is_compound_condition(condition: Any) -> bool:
 
 # ============ Valid Comparators by Type ============
 
-NUMERIC_COMPARATORS = {'eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'within_range'}
-BOOLEAN_COMPARATORS = {'is_true', 'is_false'}
-STRING_COMPARATORS = {'str_eq', 'str_neq', 'str_contains', 'str_starts_with', 'str_ends_with'}
-DATE_COMPARATORS = {'date_eq', 'date_before', 'date_after', 'date_between'}
-ENUM_COMPARATORS = {'enum_eq', 'enum_neq'}
+NUMERIC_COMPARATORS = {"eq", "neq", "lt", "lte", "gt", "gte", "within_range"}
+BOOLEAN_COMPARATORS = {"is_true", "is_false"}
+STRING_COMPARATORS = {
+    "str_eq",
+    "str_neq",
+    "str_contains",
+    "str_starts_with",
+    "str_ends_with",
+}
+ENUM_COMPARATORS = {"enum_eq", "enum_neq"}
 
 ALL_COMPARATORS = (
-    NUMERIC_COMPARATORS |
-    BOOLEAN_COMPARATORS |
-    STRING_COMPARATORS |
-    DATE_COMPARATORS |
-    ENUM_COMPARATORS
+    NUMERIC_COMPARATORS | BOOLEAN_COMPARATORS | STRING_COMPARATORS | ENUM_COMPARATORS
 )
 
 
@@ -72,16 +73,18 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bo
     """
     # Validate condition structure
     if not isinstance(condition, dict):
-        raise EvaluationError(f"Condition must be a dict, got {type(condition).__name__}")
+        raise EvaluationError(
+            f"Condition must be a dict, got {type(condition).__name__}"
+        )
 
     # Dispatch: compound (AND/OR) vs simple
     if is_compound_condition(condition):
         return _evaluate_compound_condition(condition, context)
 
-    input_id = condition.get('input_id')
-    comparator = condition.get('comparator')
-    compare_value = condition.get('value')
-    compare_value2 = condition.get('value2')
+    input_id = condition.get("input_id")
+    comparator = condition.get("comparator")
+    compare_value = condition.get("value")
+    compare_value2 = condition.get("value2")
 
     if not input_id:
         raise EvaluationError("Condition missing 'input_id'")
@@ -100,7 +103,9 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bo
     return _apply_comparator(actual_value, comparator, compare_value, compare_value2)
 
 
-def _evaluate_compound_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+def _evaluate_compound_condition(
+    condition: Dict[str, Any], context: Dict[str, Any]
+) -> bool:
     """Evaluate a compound (AND/OR) condition against execution context.
 
     Args:
@@ -136,10 +141,7 @@ def _evaluate_compound_condition(condition: Dict[str, Any], context: Dict[str, A
 
 
 def _apply_comparator(
-    actual: Any,
-    comparator: str,
-    value: Any,
-    value2: Optional[Any] = None
+    actual: Any, comparator: str, value: Any, value2: Optional[Any] = None
 ) -> bool:
     """Apply a comparator to compare actual value against expected value(s).
 
@@ -156,90 +158,67 @@ def _apply_comparator(
         EvaluationError: If comparator is invalid or types don't match.
     """
     # ============ Numeric Comparators ============
-    if comparator == 'eq':
+    if comparator == "eq":
         return actual == value
 
-    if comparator == 'neq':
+    if comparator == "neq":
         return actual != value
 
-    if comparator == 'lt':
-        _ensure_numeric(actual, 'lt')
-        _ensure_numeric(value, 'lt')
+    if comparator == "lt":
+        _ensure_numeric(actual, "lt")
+        _ensure_numeric(value, "lt")
         return actual < value
 
-    if comparator == 'lte':
-        _ensure_numeric(actual, 'lte')
-        _ensure_numeric(value, 'lte')
+    if comparator == "lte":
+        _ensure_numeric(actual, "lte")
+        _ensure_numeric(value, "lte")
         return actual <= value
 
-    if comparator == 'gt':
-        _ensure_numeric(actual, 'gt')
-        _ensure_numeric(value, 'gt')
+    if comparator == "gt":
+        _ensure_numeric(actual, "gt")
+        _ensure_numeric(value, "gt")
         return actual > value
 
-    if comparator == 'gte':
-        _ensure_numeric(actual, 'gte')
-        _ensure_numeric(value, 'gte')
+    if comparator == "gte":
+        _ensure_numeric(actual, "gte")
+        _ensure_numeric(value, "gte")
         return actual >= value
 
-    if comparator == 'within_range':
-        _ensure_numeric(actual, 'within_range')
-        _ensure_numeric(value, 'within_range')
-        _ensure_numeric(value2, 'within_range')
+    if comparator == "within_range":
+        _ensure_numeric(actual, "within_range")
+        _ensure_numeric(value, "within_range")
+        _ensure_numeric(value2, "within_range")
         # Inclusive range: value <= actual <= value2
         return value <= actual <= value2
 
     # ============ Boolean Comparators ============
-    if comparator == 'is_true':
+    if comparator == "is_true":
         return actual is True
 
-    if comparator == 'is_false':
+    if comparator == "is_false":
         return actual is False
 
     # ============ String Comparators (case-insensitive) ============
-    if comparator == 'str_eq':
+    if comparator == "str_eq":
         return str(actual).lower() == str(value).lower()
 
-    if comparator == 'str_neq':
+    if comparator == "str_neq":
         return str(actual).lower() != str(value).lower()
 
-    if comparator == 'str_contains':
+    if comparator == "str_contains":
         return str(value).lower() in str(actual).lower()
 
-    if comparator == 'str_starts_with':
+    if comparator == "str_starts_with":
         return str(actual).lower().startswith(str(value).lower())
 
-    if comparator == 'str_ends_with':
+    if comparator == "str_ends_with":
         return str(actual).lower().endswith(str(value).lower())
 
-    # ============ Date Comparators ============
-    if comparator == 'date_eq':
-        actual_date = _parse_date(actual)
-        compare_date = _parse_date(value)
-        return actual_date == compare_date
-
-    if comparator == 'date_before':
-        actual_date = _parse_date(actual)
-        compare_date = _parse_date(value)
-        return actual_date < compare_date
-
-    if comparator == 'date_after':
-        actual_date = _parse_date(actual)
-        compare_date = _parse_date(value)
-        return actual_date > compare_date
-
-    if comparator == 'date_between':
-        actual_date = _parse_date(actual)
-        start_date = _parse_date(value)
-        end_date = _parse_date(value2)
-        # Inclusive range: start <= actual <= end
-        return start_date <= actual_date <= end_date
-
     # ============ Enum Comparators (case-insensitive string comparison) ============
-    if comparator == 'enum_eq':
+    if comparator == "enum_eq":
         return str(actual).lower() == str(value).lower()
 
-    if comparator == 'enum_neq':
+    if comparator == "enum_neq":
         return str(actual).lower() != str(value).lower()
 
     # Should never reach here if ALL_COMPARATORS is in sync
@@ -267,46 +246,3 @@ def _ensure_numeric(value: Any, comparator: str) -> None:
             f"'{comparator}' comparator requires numeric value, "
             f"got {type(value).__name__}: {value}"
         )
-
-
-def _parse_date(value: Any) -> date:
-    """Parse a date value from various formats.
-
-    Accepts:
-        - datetime.date object
-        - datetime.datetime object (extracts date)
-        - ISO format string "YYYY-MM-DD"
-        - ISO format string with time "YYYY-MM-DDTHH:MM:SS..."
-
-    Args:
-        value: Value to parse as date.
-
-    Returns:
-        datetime.date object.
-
-    Raises:
-        EvaluationError: If value cannot be parsed as date.
-    """
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-
-    if isinstance(value, datetime):
-        return value.date()
-
-    if isinstance(value, str):
-        try:
-            # Try ISO format with time first
-            if 'T' in value:
-                return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
-            # Try date-only format
-            return datetime.strptime(value, '%Y-%m-%d').date()
-        except ValueError:
-            raise EvaluationError(
-                f"Cannot parse date from string: '{value}'. "
-                f"Expected ISO format 'YYYY-MM-DD'."
-            )
-
-    raise EvaluationError(
-        f"Cannot parse date from {type(value).__name__}: {value}. "
-        f"Expected date object or ISO format string."
-    )
