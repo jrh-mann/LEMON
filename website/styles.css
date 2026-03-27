@@ -907,12 +907,17 @@ pre code {
    Requirements Table
    --------------------------------------------------------- */
 .req-table td:first-child {
-  width: 60px;
+  width: 80px;
   white-space: nowrap;
 }
 
 .req-table td:nth-child(2) {
-  width: 200px;
+  width: auto;
+}
+
+.req-table td:last-child {
+  width: 90px;
+  white-space: nowrap;
 }
 
 .priority-must {
