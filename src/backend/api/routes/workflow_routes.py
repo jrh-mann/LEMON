@@ -90,6 +90,13 @@ def _serialize_workflow_summary(wf: Any) -> Dict[str, Any]:
     return serialize_workflow_summary(wf)
 
 
+def _normalize_upload_rel_path(file_path: str) -> str:
+    normalized = Path(file_path).as_posix().lstrip("/")
+    if normalized.startswith("uploads/"):
+        return normalized
+    return f"uploads/{normalized}"
+
+
 def register_workflow_routes(
     app: FastAPI,
     *,
@@ -446,8 +453,8 @@ def register_workflow_routes(
             return JSONResponse({"message": "No changes to apply"})
 
         # Recompute tree if nodes/edges changed
-        nodes = update_kwargs.get("nodes") or existing.nodes
-        edges = update_kwargs.get("edges") or existing.edges
+        nodes = update_kwargs["nodes"] if "nodes" in update_kwargs else existing.nodes
+        edges = update_kwargs["edges"] if "edges" in update_kwargs else existing.edges
         update_kwargs["tree"] = tree_from_flowchart(nodes, edges)
         if any(field in payload for field in ("nodes", "edges", "variables")):
             update_kwargs["is_validated"] = False
@@ -497,23 +504,29 @@ def register_workflow_routes(
             )
 
         # Extract workflow data from payload
-        name = payload.get("name") or existing.name
-        description = payload.get("description") or existing.description
-        domain = payload.get("domain") or existing.domain
-        tags = payload.get("tags") or existing.tags
-        output_type = payload.get("output_type") or existing.output_type or "string"
+        name = payload["name"] if "name" in payload else existing.name
+        description = (
+            payload["description"] if "description" in payload else existing.description
+        )
+        domain = payload["domain"] if "domain" in payload else existing.domain
+        tags = payload["tags"] if "tags" in payload else existing.tags
+        output_type = (
+            payload["output_type"]
+            if "output_type" in payload
+            else existing.output_type or "string"
+        )
 
         # Extract workflow structure
-        nodes = payload.get("nodes") or existing.nodes
-        edges = payload.get("edges") or existing.edges
-        variables = payload.get("variables") or existing.inputs
-        doubts = payload.get("doubts") or existing.doubts
+        nodes = payload["nodes"] if "nodes" in payload else existing.nodes
+        edges = payload["edges"] if "edges" in payload else existing.edges
+        variables = payload["variables"] if "variables" in payload else existing.inputs
+        doubts = payload["doubts"] if "doubts" in payload else existing.doubts
 
         # ALWAYS compute tree from nodes/edges
         tree = tree_from_flowchart(nodes, edges)
 
         # Infer outputs from end nodes using workflow-level output_type
-        outputs = payload.get("outputs") or []
+        outputs = payload["outputs"] if "outputs" in payload else []
         if not outputs:
             outputs = _infer_outputs_from_nodes(nodes, output_type)
 
@@ -588,16 +601,24 @@ def register_workflow_routes(
         file_path: str,
         user: AuthUser = Depends(require_auth),
     ) -> Response:
-        """Serve an uploaded file from the data directory.
-
-        Only serves files under the uploads/ subdirectory to prevent
-        path traversal attacks.
-        """
+        """Serve an uploaded file owned by the authenticated user."""
         data_dir = lemon_data_dir(repo_root)
-        resolved = (data_dir / file_path).resolve()
-        # Guard: must be inside the data directory (is_relative_to is symlink-safe)
-        if not resolved.is_relative_to(data_dir.resolve()):
+        uploads_dir = (data_dir / "uploads").resolve()
+        requested_rel_path = _normalize_upload_rel_path(file_path)
+        resolved = (data_dir / requested_rel_path).resolve()
+        if not resolved.is_relative_to(uploads_dir):
             return JSONResponse({"error": "forbidden"}, status_code=403)
+        authorized_paths = {
+            _normalize_upload_rel_path(rel_path)
+            for workflow in workflow_store.list_workflows(
+                user.id, limit=1000, offset=0
+            )[0]
+            for file_info in workflow.uploaded_files
+            for rel_path in [file_info.get("rel_path")]
+            if isinstance(rel_path, str) and rel_path
+        }
+        if requested_rel_path not in authorized_paths:
+            return JSONResponse({"error": "file not found"}, status_code=404)
         if not resolved.is_file():
             return JSONResponse({"error": "file not found"}, status_code=404)
         return FileResponse(resolved)
