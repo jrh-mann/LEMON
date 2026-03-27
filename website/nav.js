@@ -36,14 +36,26 @@
       return;
     }
 
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          onVisible();
-          observer.unobserve(entry.target);
-        }
-      });
-    }, options || { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    if (typeof IntersectionObserver === 'undefined') {
+      onVisible();
+      return;
+    }
+
+    var observer;
+
+    try {
+      observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            onVisible();
+            observer.unobserve(entry.target);
+          }
+        });
+      }, options || { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    } catch (error) {
+      onVisible();
+      return;
+    }
 
     observer.observe(target);
   }
@@ -151,14 +163,28 @@
       return;
     }
 
-    targets.forEach(function (target, index) {
-      target.classList.add('reveal');
-      target.style.setProperty('--reveal-delay', String((index % 4) * 24) + 'ms');
+    try {
+      targets.forEach(function (target, index) {
+        target.classList.add('reveal');
+        target.style.setProperty('--reveal-delay', String((index % 4) * 24) + 'ms');
 
-      observeOnce(target, function () {
+        observeOnce(target, function () {
+          target.classList.add('is-visible');
+        });
+      });
+    } catch (error) {
+      targets.forEach(function (target) {
         target.classList.add('is-visible');
       });
-    });
+    }
+
+    window.setTimeout(function () {
+      targets.forEach(function (target) {
+        if (!target.classList.contains('is-visible')) {
+          target.classList.add('is-visible');
+        }
+      });
+    }, 1200);
   }
 
   function setupGanttAnimation() {
