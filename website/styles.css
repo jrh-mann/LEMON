@@ -256,11 +256,17 @@ a:hover {
 .hero .subtitle {
   font-size: 1.05rem;
   color: var(--color-text-muted);
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
 }
 
 .hero .partners {
   color: var(--color-text-muted);
   font-size: 0.98rem;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
 }
 
 /* ---------------------------------------------------------
