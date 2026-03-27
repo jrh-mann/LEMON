@@ -628,6 +628,10 @@
       </tbody>
     </table>
 
+    <h3>Developer Tooling Endpoints</h3>
+    <p>Two internal endpoints support development work around the tool system. <code>GET /api/tools</code> exposes the currently registered tools together with the schemas sent to Claude, while <code>POST /api/tools/{tool_name}/execute</code> runs one tool directly against supplied input.</p>
+    <p>Architecturally, these endpoints sit alongside the normal application routes but serve an engineering purpose rather than an end-user one. They make it easier to inspect the backend tool surface, debug tool behavior in isolation, and verify registry changes without depending on a full orchestrator conversation.</p>
+
     <!-- =========================================================
          References
          ========================================================= -->

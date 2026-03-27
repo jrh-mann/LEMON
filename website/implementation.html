@@ -36,6 +36,10 @@ def run_turn(self, user_message):
             self.conversation.add_tool_result(tool_call.id, result)
 </pre>
 
+    <h3>Developer Tooling</h3>
+    <p>The same ToolRegistry that powers Claude's tool-use loop also supports internal developer tooling. LEMON exposes endpoints that list the registered tools and their generated schemas, and can execute an individual tool directly without running a full chat turn.</p>
+    <p>This was useful during development because we could inspect schema drift, verify that a new tool had been registered correctly, and reproduce tool-level bugs in isolation before involving the orchestrator, SSE layer, or frontend.</p>
+
     <!-- Real-time Streaming (SSE) -->
     <h2>Real-time Streaming (SSE)</h2>
 

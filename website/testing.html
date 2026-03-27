@@ -157,6 +157,7 @@
 
     <h3>How Tests Are Conducted</h3>
     <p>Tests in <code>tests/integration/</code> and <code>tests/features/</code> set up scenarios involving multiple backend components. These cover event bus communication between the orchestrator and the streaming transport layer, database schema migration sequences up to the current package-aware schema, workflow save-load cycles ensuring data integrity, package CRUD/publish flows, and API route handling with authentication dependencies.</p>
+    <p>The internal developer tooling around <code>/api/tools</code> also helped here. It gave us a quick way to inspect generated schemas and execute a single tool in isolation, which made it easier to reproduce failures without always going through a full chat request and SSE stream.</p>
 
     <h3>Results</h3>
     <table>
@@ -183,7 +184,7 @@
     <p>52 integration/feature files in total. All tests are automated and run locally via pytest.</p>
 
     <h3>Analysis</h3>
-    <p>These tests were especially useful once the package system, bundle import/export, and resumable SSE flows were added. They catch the kinds of regressions that only appear when storage, auth, streaming, and workflow logic all have to cooperate.</p>
+    <p>These tests were especially useful once the package system, bundle import/export, resumable SSE flows, and direct tool-inspection endpoints were added. They catch the kinds of regressions that only appear when storage, auth, streaming, and workflow logic all have to cooperate.</p>
 
     <h2>End-to-End Testing</h2>
 
