@@ -679,6 +679,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isDirty: false,
       selectedNodeId: null,
       selectedNodeIds: [],
+      selectedEdge: null,
+      highlightedNodeId: null,
       connectMode: false,
       connectFromId: null,
       history: [],
@@ -687,6 +689,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       filesSent: false,
       plan: [],
       execution: { ...initialExecutionState },
+      subflowStack: [],
     }),
 
   // Execution actions

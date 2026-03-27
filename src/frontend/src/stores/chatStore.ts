@@ -61,11 +61,18 @@ const resilientLocalStorage = {
 // Shape of a single inline question from the ask_question tool
 type PendingQuestion = { question: string; options: { label: string; value: string }[] }
 
+type LegacyPersistedChatState = {
+  activeWorkflowId?: string | null
+  pendingQuestions?: PendingQuestion[]
+  conversations?: Record<string, Partial<ConversationState>>
+}
+
 // Per-workflow conversation state — each workflow gets its own independent conversation.
 // Background builder conversations and user orchestrator conversations use the same structure.
 export interface ConversationState {
   messages: Message[]
   conversationId: string | null
+  pendingQuestions: PendingQuestion[]
   isStreaming: boolean
   streamingContent: string
   // Whether the last appended chunk was thinking (used to open/close <span class="reasoning"> tags)
@@ -80,6 +87,7 @@ export interface ConversationState {
 const emptyConversation: ConversationState = {
   messages: [],
   conversationId: null,
+  pendingQuestions: [],
   isStreaming: false,
   streamingContent: '',
   _inThinkingBlock: false,
@@ -99,7 +107,6 @@ interface ChatState {
 
   // Global state (not per-workflow)
   cancelledTaskIds: Record<string, number>
-  pendingQuestions: PendingQuestion[]
 
   // Workflow targeting
   setActiveWorkflowId: (id: string | null) => void
@@ -127,8 +134,8 @@ interface ChatState {
   // Global actions
   markTaskCancelled: (taskId: string) => void
   isTaskCancelled: (taskId: string) => boolean
-  enqueuePendingQuestion: (question: PendingQuestion) => void
-  clearPendingQuestion: () => void
+  enqueuePendingQuestion: (workflowId: string, question: PendingQuestion) => void
+  clearPendingQuestion: (workflowId: string) => void
 
   // Cleanup
   clearConversation: (workflowId: string) => void
@@ -172,7 +179,6 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   conversations: {},
   activeWorkflowId: null,
   cancelledTaskIds: {},
-  pendingQuestions: [],
 
   // --- Workflow targeting ---
 
@@ -322,11 +328,21 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
     return true
   },
 
-  enqueuePendingQuestion: (question) =>
-    set((state) => ({ pendingQuestions: [...state.pendingQuestions, question] })),
+  enqueuePendingQuestion: (workflowId, question) =>
+    set((state) => {
+      const conv = getConv(state, workflowId)
+      return updateConv(state, workflowId, {
+        pendingQuestions: [...conv.pendingQuestions, question],
+      })
+    }),
 
-  clearPendingQuestion: () =>
-    set((state) => ({ pendingQuestions: state.pendingQuestions.slice(1) })),
+  clearPendingQuestion: (workflowId) =>
+    set((state) => {
+      const conv = getConv(state, workflowId)
+      return updateConv(state, workflowId, {
+        pendingQuestions: conv.pendingQuestions.slice(1),
+      })
+    }),
 
   // --- Cleanup ---
 
@@ -343,24 +359,47 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
       conversations: {},
       activeWorkflowId: null,
       cancelledTaskIds: {},
-      pendingQuestions: [],
     }),
 }), {
   name: 'lemon-chat',
+  version: 1,
   // createJSONStorage wraps the raw string-based adapter with JSON
   // serialization so the persist middleware can read/write objects correctly.
   storage: createJSONStorage(() => resilientLocalStorage),
+  migrate: (persistedState, version) => {
+    const state = (persistedState ?? {}) as LegacyPersistedChatState
+    const conversations = { ...(state.conversations ?? {}) }
+
+    if (version < 1) {
+      const activeWorkflowId = state.activeWorkflowId
+      const legacyQuestions = Array.isArray(state.pendingQuestions)
+        ? state.pendingQuestions
+        : []
+      if (activeWorkflowId && legacyQuestions.length > 0) {
+        const existingConversation = conversations[activeWorkflowId] ?? {}
+        conversations[activeWorkflowId] = {
+          ...existingConversation,
+          pendingQuestions: legacyQuestions,
+        }
+      }
+    }
+
+    return {
+      ...state,
+      conversations,
+    }
+  },
   // Only persist durable state — skip transient streaming/processing fields.
   // Trim messages to MAX_PERSISTED_MESSAGES to prevent localStorage bloat.
   partialize: (state) => ({
     activeWorkflowId: state.activeWorkflowId,
-    pendingQuestions: state.pendingQuestions,
     conversations: Object.fromEntries(
       Object.entries(state.conversations).map(([wfId, conv]) => [
         wfId,
         {
           messages: conv.messages.slice(-MAX_PERSISTED_MESSAGES),
           conversationId: conv.conversationId,
+          pendingQuestions: conv.pendingQuestions,
           // Reset transient fields so they don't leak across sessions
           isStreaming: false,
           streamingContent: '',

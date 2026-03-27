@@ -27,17 +27,18 @@ def _make_user() -> AuthUser:
     )
 
 
-def _build_client(tmp_path: Path) -> TestClient:
+def _build_client(tmp_path: Path) -> tuple[TestClient, WorkflowStore]:
     """Wire up a minimal app with the workflow routes and a temp data dir."""
     app = FastAPI()
     wf_store = WorkflowStore(tmp_path / "workflows.sqlite")
-    workflow_routes.register_workflow_routes(app, workflow_store=wf_store, repo_root=tmp_path)
+    workflow_routes.register_workflow_routes(
+        app, workflow_store=wf_store, repo_root=tmp_path
+    )
     app.dependency_overrides[workflow_routes.require_auth] = _make_user
-    return TestClient(app)
+    return TestClient(app), wf_store
 
 
 class TestUploadPathTraversal:
-
     def test_traversal_with_dotdot_blocked(self, tmp_path):
         """Traversal attempts must never return the file outside data dir."""
         data_dir = tmp_path / "data"
@@ -46,7 +47,7 @@ class TestUploadPathTraversal:
         secret.write_text("top secret")
 
         with patch.dict(os.environ, {"LEMON_DATA_DIR": str(data_dir)}):
-            client = _build_client(tmp_path)
+            client, _ = _build_client(tmp_path)
             # TestClient may normalize `..` before routing; use encoded form
             resp = client.get("/api/uploads/subdir/../../secret.txt")
 
@@ -56,12 +57,30 @@ class TestUploadPathTraversal:
 
     def test_valid_file_returns_200(self, tmp_path):
         data_dir = tmp_path / "data"
-        data_dir.mkdir()
-        test_file = data_dir / "image.png"
+        uploads_dir = data_dir / "uploads"
+        uploads_dir.mkdir(parents=True)
+        test_file = uploads_dir / "image.png"
         test_file.write_bytes(b"\x89PNG fake data")
 
         with patch.dict(os.environ, {"LEMON_DATA_DIR": str(data_dir)}):
-            client = _build_client(tmp_path)
+            client, workflow_store = _build_client(tmp_path)
+            workflow_store.create_workflow(
+                "wf1",
+                "u1",
+                "Workflow",
+                "",
+            )
+            workflow_store.update_workflow(
+                "wf1",
+                "u1",
+                uploaded_files=[
+                    {
+                        "name": "image.png",
+                        "rel_path": "uploads/image.png",
+                        "file_type": "image",
+                    }
+                ],
+            )
             resp = client.get("/api/uploads/image.png")
 
         assert resp.status_code == 200
@@ -71,7 +90,7 @@ class TestUploadPathTraversal:
         data_dir.mkdir()
 
         with patch.dict(os.environ, {"LEMON_DATA_DIR": str(data_dir)}):
-            client = _build_client(tmp_path)
+            client, _ = _build_client(tmp_path)
             resp = client.get("/api/uploads/nope.txt")
 
         assert resp.status_code == 404

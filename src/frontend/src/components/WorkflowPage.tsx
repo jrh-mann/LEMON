@@ -568,7 +568,7 @@ export default function WorkflowPage() {
         if (homeImportInputRef.current) {
             homeImportInputRef.current.value = ''
         }
-    }, [completeImportedNavigation, setImportError])
+    }, [completeImportedNavigation, handleImportFailure, setImportError])
 
     const revealedClass = isPublicReadOnly || workspaceRevealed ? 'workspace-revealed' : 'workspace-hidden'
 

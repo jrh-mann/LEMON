@@ -128,6 +128,7 @@ class TestExecutionStateMachine:
     def test_register_stores_user_id(self):
         """register_execution stores user_id in the state dict."""
         from src.backend.tasks.execution_task import _EXECUTION_STATE, _EXECUTION_LOCK
+
         register_execution("test_exec_uid", "owner_123")
         with _EXECUTION_LOCK:
             assert _EXECUTION_STATE["test_exec_uid"]["user_id"] == "owner_123"
@@ -136,6 +137,47 @@ class TestExecutionStateMachine:
 
 class TestExecutionTaskStop:
     """Stop interrupts a running execution."""
+
+    def test_stop_during_step_delay_emits_stopped_completion(self):
+        """Stopping mid-step should halt execution instead of continuing."""
+        sink = EventSink()
+        exec_id = "exec_stop_mid_step"
+        register_execution(exec_id, "u1")
+
+        task = SteppedExecutionTask(
+            sink=sink,
+            workflow_store=None,  # type: ignore
+            user_id="u1",
+            execution_id=exec_id,
+            workflow={
+                "nodes": [
+                    {"id": "start", "type": "start", "label": "Start", "x": 0, "y": 0},
+                    {"id": "end", "type": "end", "label": "Done", "x": 100, "y": 0},
+                ],
+                "edges": [
+                    {"id": "edge_1", "from": "start", "to": "end", "label": ""},
+                ],
+                "variables": [],
+                "outputs": [],
+            },
+            inputs={},
+            speed_ms=500,
+        )
+
+        thread = threading.Thread(target=task.run)
+        thread.start()
+        time.sleep(0.1)
+        assert stop_execution(exec_id, "u1")
+        thread.join(timeout=5)
+
+        assert not thread.is_alive()
+        events = _collect_events(sink)
+        completion_events = [
+            payload for event, payload in events if event == "execution_complete"
+        ]
+        assert completion_events, "Expected an execution_complete event"
+        assert completion_events[-1]["success"] is False
+        assert completion_events[-1]["error"] == "Execution stopped by user"
 
     def test_stop_during_delay(self):
         """Stopping during the speed delay interrupts execution."""

@@ -1,19 +1,31 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { getWorkflow } from '../api/workflows'
 import { useWorkflowStore } from '../stores/workflowStore'
 import { exportAsJSON, exportAsJSONWithOptions, exportAsPNG, exportAsPython } from '../utils/exportUtils'
+import { hydrateWorkflowDetail } from '../utils/workflowHydration'
 import FlowchartPreview from './FlowchartPreview'
 import '../styles/ExportPage.css'
 
 export default function ExportPage() {
     const navigate = useNavigate()
     const { id: routeWorkflowId } = useParams<{ id?: string }>()
-    const { currentWorkflow, flowchart, currentAnalysis } = useWorkflowStore()
+    const {
+        currentWorkflow,
+        flowchart,
+        currentAnalysis,
+        setCurrentWorkflow,
+        setFlowchartSilent,
+        setAnalysis,
+        markSavedSnapshot,
+    } = useWorkflowStore()
     const [exporting, setExporting] = useState<string | null>(null)
     const [lastResult, setLastResult] = useState<Record<string, string | null>>({})
     const [includeSubflowsInJson, setIncludeSubflowsInJson] = useState(false)
+    const [isHydrating, setIsHydrating] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
 
-    const canExport = currentWorkflow || flowchart.nodes.length > 0
+    const canExport = Boolean(currentWorkflow?.id) || flowchart.nodes.length > 0 || flowchart.edges.length > 0
     const resolvedWorkflowId = routeWorkflowId || currentWorkflow?.id || null
     const workflowRoute = resolvedWorkflowId ? `/workflow/${resolvedWorkflowId}` : '/workflow'
     const isPackageContext = Boolean(currentWorkflow?.package_id)
@@ -23,6 +35,54 @@ export default function ExportPage() {
             navigate(`/export/${currentWorkflow.id}`, { replace: true })
         }
     }, [routeWorkflowId, currentWorkflow?.id, navigate])
+
+    useEffect(() => {
+        if (!routeWorkflowId) {
+            setIsHydrating(false)
+            setLoadError(null)
+            return
+        }
+        if (currentWorkflow?.id === routeWorkflowId) {
+            setIsHydrating(false)
+            setLoadError(null)
+            return
+        }
+
+        let isActive = true
+        setIsHydrating(true)
+        setLoadError(null)
+
+        const loadWorkflowFromRoute = async () => {
+            try {
+                const workflowData = await getWorkflow(routeWorkflowId)
+                if (!isActive) return
+                const hydrated = hydrateWorkflowDetail(workflowData)
+                setCurrentWorkflow(hydrated.workflow)
+                setFlowchartSilent(hydrated.flowchart)
+                setAnalysis(hydrated.analysis)
+                markSavedSnapshot()
+            } catch (err) {
+                if (!isActive) return
+                setLoadError(err instanceof Error ? err.message : 'Failed to load workflow')
+            } finally {
+                if (isActive) {
+                    setIsHydrating(false)
+                }
+            }
+        }
+
+        void loadWorkflowFromRoute()
+        return () => {
+            isActive = false
+        }
+    }, [
+        currentWorkflow?.id,
+        markSavedSnapshot,
+        routeWorkflowId,
+        setAnalysis,
+        setCurrentWorkflow,
+        setFlowchartSilent,
+    ])
 
     const handleExport = useCallback(async (format: string) => {
         const ctx = { currentWorkflow, flowchart, currentAnalysis }
@@ -98,9 +158,13 @@ export default function ExportPage() {
             </header>
 
             <main className="export-body">
-                {!canExport ? (
+                {isHydrating ? (
                     <div className="export-empty">
-                        <p>No workflow to export. Create or open a workflow first.</p>
+                        <p>Loading workflow for export...</p>
+                    </div>
+                ) : !canExport ? (
+                    <div className="export-empty">
+                        <p>{loadError || 'No workflow to export. Create or open a workflow first.'}</p>
                         <button className="primary" onClick={() => navigate(workflowRoute)}>
                             Go to Workflow Editor
                         </button>

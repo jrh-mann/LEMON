@@ -16,18 +16,20 @@ import pytest
 class TestDeletedModulesGone:
     """Deleted subagent-related modules must not be importable."""
 
-    @pytest.mark.parametrize("module", [
-        "src.backend.agents.subagent",
-        "src.backend.tools.workflow_analysis.analyze",
-        "src.backend.tools.workflow_analysis.publish",
-        "src.backend.utils.analysis",
-        "src.backend.storage.history",
-        "src.backend.validation.tree_validator",
-        "src.backend.validation.retry_harness",
-        "src.backend.mcp_bridge",
-        "src.backend.mcp_bridge.server",
-        "src.backend.mcp_bridge.client",
-    ])
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "src.backend.agents.subagent",
+            "src.backend.tools.workflow_analysis.analyze",
+            "src.backend.tools.workflow_analysis.publish",
+            "src.backend.utils.analysis",
+            "src.backend.storage.history",
+            "src.backend.validation.tree_validator",
+            "src.backend.validation.retry_harness",
+            "src.backend.mcp_bridge.server",
+            "src.backend.mcp_bridge.client",
+        ],
+    )
     def test_deleted_module_not_importable(self, module: str):
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module(module)
@@ -36,20 +38,23 @@ class TestDeletedModulesGone:
 class TestRemainingModulesImport:
     """Active modules must still import without errors."""
 
-    @pytest.mark.parametrize("module", [
-        "src.backend.agents.orchestrator",
-        "src.backend.agents.system_prompt",
-        "src.backend.tools.schema_gen",
-        "src.backend.tasks.conversations",
-        "src.backend.tasks.chat_task",
-        "src.backend.api.response_utils",
-        "src.backend.tasks.tool_summaries",
-        "src.backend.tools",
-        "src.backend.tools.workflow_analysis",
-        "src.backend.validation",
-        "src.backend.utils.flowchart",
-        "src.backend.utils.logging",
-    ])
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "src.backend.agents.orchestrator",
+            "src.backend.agents.system_prompt",
+            "src.backend.tools.schema_gen",
+            "src.backend.tasks.conversations",
+            "src.backend.tasks.chat_task",
+            "src.backend.api.response_utils",
+            "src.backend.tasks.tool_summaries",
+            "src.backend.tools",
+            "src.backend.tools.workflow_analysis",
+            "src.backend.validation",
+            "src.backend.utils.flowchart",
+            "src.backend.utils.logging",
+        ],
+    )
     def test_module_imports(self, module: str):
         mod = importlib.import_module(module)
         assert mod is not None
@@ -59,14 +64,22 @@ class TestNoStaleReferences:
     """Verify no stale references to deleted concepts in key modules."""
 
     def test_tool_summaries_no_analyze(self):
-        from src.backend.tasks.tool_summaries import TOOL_STATUS_MESSAGES, TOOL_FAILURE_MESSAGES
+        from src.backend.tasks.tool_summaries import (
+            TOOL_STATUS_MESSAGES,
+            TOOL_FAILURE_MESSAGES,
+        )
+
         assert "analyze_workflow" not in TOOL_STATUS_MESSAGES
         assert "publish_latest_analysis" not in TOOL_STATUS_MESSAGES
         assert "analyze_workflow" not in TOOL_FAILURE_MESSAGES
         assert "publish_latest_analysis" not in TOOL_FAILURE_MESSAGES
 
     def test_tool_summaries_has_new_tools(self):
-        from src.backend.tasks.tool_summaries import TOOL_STATUS_MESSAGES, TOOL_FAILURE_MESSAGES
+        from src.backend.tasks.tool_summaries import (
+            TOOL_STATUS_MESSAGES,
+            TOOL_FAILURE_MESSAGES,
+        )
+
         assert "view_image" in TOOL_STATUS_MESSAGES
         assert "update_plan" in TOOL_STATUS_MESSAGES
         assert "view_image" in TOOL_FAILURE_MESSAGES
@@ -74,11 +87,13 @@ class TestNoStaleReferences:
 
     def test_validation_no_tree_validator(self):
         import src.backend.validation as val
+
         assert not hasattr(val, "TreeValidator")
         assert not hasattr(val, "validate_and_retry")
 
     def test_tools_export_new_not_old(self):
         from src.backend.tools import __all__ as tools_all
+
         assert "ViewImageTool" in tools_all
         assert "UpdatePlanTool" in tools_all
         assert "AnalyzeWorkflowTool" not in tools_all

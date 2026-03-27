@@ -506,7 +506,7 @@ function _buildChatSSEHandlers(workflowId: string) {
 
     'pending_question': (rawData: unknown) => {
       const data = rawData as PendingQuestionPayload
-      useChatStore.getState().enqueuePendingQuestion(data)
+      useChatStore.getState().enqueuePendingQuestion(workflowId, data)
     },
 
     'plan_updated': (rawData: unknown) => {

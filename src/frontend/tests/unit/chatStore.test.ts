@@ -138,6 +138,42 @@ describe('chatStore', () => {
     })
   })
 
+  describe('pending questions', () => {
+    it('stores pending questions per workflow', () => {
+      const store = useChatStore.getState()
+      store.enqueuePendingQuestion('wf_1', {
+        question: 'Question A',
+        options: [{ label: 'Yes', value: 'yes' }],
+      })
+      store.enqueuePendingQuestion('wf_2', {
+        question: 'Question B',
+        options: [{ label: 'No', value: 'no' }],
+      })
+
+      expect(useChatStore.getState().conversations['wf_1'].pendingQuestions).toHaveLength(1)
+      expect(useChatStore.getState().conversations['wf_2'].pendingQuestions).toHaveLength(1)
+      expect(useChatStore.getState().conversations['wf_1'].pendingQuestions[0].question).toBe('Question A')
+      expect(useChatStore.getState().conversations['wf_2'].pendingQuestions[0].question).toBe('Question B')
+    })
+
+    it('clears pending questions only for the targeted workflow', () => {
+      const store = useChatStore.getState()
+      store.enqueuePendingQuestion('wf_1', {
+        question: 'Question A',
+        options: [{ label: 'Yes', value: 'yes' }],
+      })
+      store.enqueuePendingQuestion('wf_2', {
+        question: 'Question B',
+        options: [{ label: 'No', value: 'no' }],
+      })
+
+      store.clearPendingQuestion('wf_1')
+
+      expect(useChatStore.getState().conversations['wf_1'].pendingQuestions).toEqual([])
+      expect(useChatStore.getState().conversations['wf_2'].pendingQuestions).toHaveLength(1)
+    })
+  })
+
   describe('clearConversation', () => {
     it('removes the conversation entry', () => {
       const store = useChatStore.getState()

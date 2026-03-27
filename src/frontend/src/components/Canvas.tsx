@@ -152,7 +152,10 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
   // nodes can be rendered outside the visible viewBox.
   const workflowId = currentWorkflow?.id
   useEffect(() => {
-    setPanOffset({ x: 0, y: 0 })
+    const frame = requestAnimationFrame(() => {
+      setPanOffset({ x: 0, y: 0 })
+    })
+    return () => cancelAnimationFrame(frame)
   }, [workflowId])
 
   // Track last click for double-click detection on canvas
@@ -185,7 +188,10 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
 
         // Smooth transition could be handled by CSS if we applied pan via CSS, 
         // but here we use state. For now momentary jump is acceptable for "tracking".
-        setPanOffset({ x: targetX, y: targetY })
+        const frame = requestAnimationFrame(() => {
+          setPanOffset({ x: targetX, y: targetY })
+        })
+        return () => cancelAnimationFrame(frame)
       }
     }
   }, [trackExecution, execution.isExecuting, execution.executingNodeId, flowchart.nodes, zoom, viewBox.x, viewBox.y, viewBox.width, viewBox.height])
@@ -252,7 +258,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
 
       svgRef.current?.setPointerCapture(e.pointerId)
     },
-    [screenToSVG]
+    [readOnly, screenToSVG]
   )
 
   // Handle pointer down on node
@@ -309,7 +315,7 @@ export default function Canvas({ readOnly = false }: { readOnly?: boolean }) {
       // Capture pointer on SVG for reliable tracking
       svgRef.current?.setPointerCapture(e.pointerId)
     },
-    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes, readOnly, focusCanvasContainer]
+    [connectMode, connectFromId, completeConnect, screenToSVG, selectNode, selectNodes, selectedNodeIds, flowchart.nodes, focusCanvasContainer]
   )
 
   // Handle pointer move

@@ -74,8 +74,7 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
   const currentTaskId = conv?.currentTaskId ?? null
   const contextUsagePct = conv?.contextUsagePct ?? 0
 
-  // Global state (not per-workflow)
-  const pendingQuestions = useChatStore(s => s.pendingQuestions)
+  const pendingQuestions = conv?.pendingQuestions ?? []
   const clearPendingQuestion = useChatStore(s => s.clearPendingQuestion)
   const sendUserMessage = useChatStore(s => s.sendUserMessage)
   const markTaskCancelled = useChatStore(s => s.markTaskCancelled)
@@ -246,7 +245,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
       markFilesSent()
     }
 
-    clearPendingQuestion()
+    if (activeWorkflowId) {
+      clearPendingQuestion(activeWorkflowId)
+    }
     setInputValue('')
     baseTextRef.current = ''
   }
@@ -260,7 +261,9 @@ export default function Chat({ revealedClass }: { revealedClass?: string }) {
 
     sendUserMessage(optionLabel)
     collectedAnswers.current.push(answer)
-    clearPendingQuestion()
+    if (activeWorkflowId) {
+      clearPendingQuestion(activeWorkflowId)
+    }
     setShowCustomAnswer(false)
     setCustomAnswer('')
     setInputValue('')
