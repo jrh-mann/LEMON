@@ -116,6 +116,11 @@ export default function WorkflowPage() {
     useEffect(() => {
         let isActive = true
         const checkAuth = async () => {
+            if (isPublicReadOnly) {
+                if (!isActive) return
+                setAuthReady(true)
+                return
+            }
             try {
                 await getCurrentUser()
                 if (!isActive) return
@@ -131,7 +136,7 @@ export default function WorkflowPage() {
         }
         checkAuth()
         return () => { isActive = false }
-    }, [setError, navigate])
+    }, [isPublicReadOnly, setError, navigate])
 
     // Load workflow from URL params, or sync URL ID to store for new workflows
     useEffect(() => {

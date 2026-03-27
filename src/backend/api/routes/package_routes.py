@@ -6,7 +6,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.responses import JSONResponse
 
-from ..deps import require_auth
+from ..deps import optional_auth, require_auth
 from ...storage.auth import AuthUser
 from ...storage.workflows import WorkflowStore
 from ...workflow_package_service import WorkflowPackageService
@@ -103,7 +103,7 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
 
     @router.get("/api/packages/public/{package_id}")
     async def get_public_package(
-        package_id: str, user: AuthUser = Depends(require_auth)
+        package_id: str, user: AuthUser | None = Depends(optional_auth)
     ) -> JSONResponse:
         try:
             package, owner_id = service._require_any_package(package_id)
@@ -112,7 +112,9 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
         if not package.is_published:
             return JSONResponse({"error": "Package not published"}, status_code=404)
         body = _serialize_package(package, workflow_store, owner_id)
-        body["user_vote"] = service.package_store.get_user_vote(package.id, user.id)
+        body["user_vote"] = (
+            service.package_store.get_user_vote(package.id, user.id) if user else None
+        )
         body["is_publishable"] = False
         return JSONResponse(body)
 
@@ -120,7 +122,7 @@ def register_package_routes(app: FastAPI, *, workflow_store: WorkflowStore) -> N
     async def get_public_package_workflow(
         package_id: str,
         workflow_id: str,
-        user: AuthUser = Depends(require_auth),
+        user: AuthUser | None = Depends(optional_auth),
     ) -> JSONResponse:
         try:
             package, owner_id = service._require_any_package(package_id)
