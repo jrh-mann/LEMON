@@ -32,7 +32,7 @@
         <rect x="185" y="40" width="120" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
         <text x="245" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Chat Panel</text>
         <rect x="320" y="40" width="100" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
-        <text x="370" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Library</text>
+        <text x="370" y="63" text-anchor="middle" font-size="10" fill="#1e40af">Library / Packages</text>
         <rect x="435" y="40" width="100" height="36" rx="4" fill="#fff" stroke="#93c5fd"/>
         <text x="485" y="63" text-anchor="middle" font-size="11" fill="#1e40af">Export</text>
 
@@ -59,7 +59,7 @@
         <rect x="50" y="226" width="130" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
         <text x="115" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Chat Routes</text>
         <rect x="195" y="226" width="130" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
-        <text x="260" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Workflow Routes</text>
+        <text x="260" y="249" text-anchor="middle" font-size="10" fill="#9a3412">Workflow / Packages</text>
         <rect x="340" y="226" width="140" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
         <text x="410" y="249" text-anchor="middle" font-size="11" fill="#9a3412">Execution Routes</text>
         <rect x="495" y="226" width="130" height="36" rx="4" fill="#fff" stroke="#fdba74"/>
@@ -129,7 +129,7 @@
       </svg>
     </div>
 
-    <p>LEMON follows a layered architecture. The React [1] frontend, with Zustand [5] for state management, communicates with the FastAPI [2] backend via REST API calls and receives real-time updates through Server-Sent Events [3]. The backend orchestrates Claude API [6] interactions through a tool-use loop, with the Event Bus decoupling tool execution from the transport layer. Workflow execution is handled by a dedicated interpreter that evaluates conditions using a custom expression parser.</p>
+    <p>LEMON follows a layered architecture. The React [1] frontend, with Zustand [5] for state management and a library view that handles both workflows and packages, communicates with the FastAPI [2] backend via REST API calls and receives real-time updates through Server-Sent Events [3]. On the client, those SSE responses are consumed with <code>fetch()</code> and stream parsing so chat and execution runs can stay POST-based and abortable. The backend orchestrates Claude API [6] interactions through a tool-use loop, while the same storage layer supports workflow CRUD, package management, peer review, and execution.</p>
 
     <!-- =========================================================
          Site Map
@@ -161,7 +161,7 @@
         <!-- /library -->
         <rect x="305" y="80" width="100" height="32" rx="5" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
         <text x="355" y="101" text-anchor="middle" font-size="12" fill="#374151">/library</text>
-        <text x="355" y="130" text-anchor="middle" font-size="10" fill="#6b7280">Saved Workflows</text>
+        <text x="355" y="130" text-anchor="middle" font-size="10" fill="#6b7280">Workflows + Packages</text>
 
         <!-- /export  (nested under /workflow or standalone) -->
         <line x1="355" y1="112" x2="355" y2="160" stroke="#94a3b8" stroke-width="1.2"/>
@@ -322,9 +322,9 @@
         <line x1="55" y1="60" x2="188" y2="60" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
         <text x="121" y="55" text-anchor="middle" font-size="9" fill="#333">Click Execute, enter inputs</text>
 
-        <!-- 2. React -> FastAPI: POST /api/execute/{id} -->
+        <!-- 2. React -> FastAPI: POST /api/workflows/{id}/execute -->
         <line x1="195" y1="84" x2="343" y2="84" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
-        <text x="269" y="79" text-anchor="middle" font-size="9" fill="#333">POST /api/execute/{id}</text>
+        <text x="269" y="79" text-anchor="middle" font-size="9" fill="#333">POST /api/workflows/{id}/execute</text>
 
         <!-- 3. FastAPI -> TreeInterpreter: execute(workflow, inputs) -->
         <line x1="350" y1="108" x2="508" y2="108" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
@@ -351,17 +351,17 @@
         <path d="M 521 276 L 560 276 L 560 292 L 521 292" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
         <text x="572" y="287" font-size="9" fill="#333">Recurse subworkflows</text>
 
-        <!-- 9. TreeInterpreter -> FastAPI: Return result -->
+        <!-- 9. TreeInterpreter -> FastAPI: Emit execution state -->
         <line x1="515" y1="318" x2="357" y2="318" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
-        <text x="436" y="313" text-anchor="middle" font-size="9" fill="#333">{output, path, context}</text>
+        <text x="436" y="313" text-anchor="middle" font-size="9" fill="#333">{step, path, output}</text>
 
-        <!-- 10. FastAPI -> React: JSON response -->
+        <!-- 10. FastAPI -> React: SSE events -->
         <line x1="350" y1="346" x2="202" y2="346" stroke="#333" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
-        <text x="276" y="341" text-anchor="middle" font-size="9" fill="#333">JSON response</text>
+        <text x="276" y="341" text-anchor="middle" font-size="9" fill="#333">SSE events</text>
 
         <!-- 11. React -> React: Highlight execution path -->
         <path d="M 201 370 L 240 370 L 240 386 L 201 386" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#arrow2)"/>
-        <text x="252" y="381" font-size="9" fill="#333">Highlight execution path on canvas</text>
+        <text x="252" y="381" font-size="9" fill="#333">Highlight step/output on canvas</text>
       </svg>
     </div>
 
@@ -550,12 +550,36 @@
       </svg>
     </div>
 
-    <p>LEMON uses three separate SQLite [4] databases to isolate concerns. Workflow data (definitions, votes, schema version) is kept in workflows.sqlite. Authentication data (users, sessions) is in auth.sqlite. Conversation history for audit purposes is in conversation_log.sqlite. The schema uses version-based migrations, currently at version 8.</p>
+    <p>LEMON uses three separate SQLite [4] databases to isolate concerns. Workflow data is kept in <code>workflows.sqlite</code>, authentication data in <code>auth.sqlite</code>, and conversation history in <code>conversation_log.sqlite</code>. The workflow database now stores both individual workflows and reusable workflow packages, and its migration system currently runs up to version 11. For readability, the diagram above focuses on the core tables and the package-specific tables are summarised separately below.</p>
+
+    <h3>Package Tables</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Table</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>workflow_packages</td>
+          <td>Package metadata, publication state, head workflow, and vote totals</td>
+        </tr>
+        <tr>
+          <td>workflow_package_members</td>
+          <td>Maps workflows into packages and records whether each member is the head or a dependency</td>
+        </tr>
+        <tr>
+          <td>workflow_package_votes</td>
+          <td>Stores community votes on published packages</td>
+        </tr>
+      </tbody>
+    </table>
 
     <!-- =========================================================
          API Endpoints
          ========================================================= -->
-    <h2>API Endpoints</h2>
+    <h2>Representative API Endpoints</h2>
 
     <table>
       <thead>
@@ -566,36 +590,41 @@
         </tr>
       </thead>
       <tbody>
-        <tr><td>POST</td><td>/api/chat/send</td><td>Send chat message, returns SSE stream</td></tr>
-        <tr><td>POST</td><td>/api/chat/cancel</td><td>Cancel in-progress chat task</td></tr>
-        <tr><td>POST</td><td>/api/chat/resume</td><td>Re-attach to running task SSE stream</td></tr>
-        <tr><td>GET</td><td>/api/chat/{conversation_id}</td><td>Get conversation history</td></tr>
-        <tr><td>GET</td><td>/api/workflows</td><td>List user's workflows</td></tr>
-        <tr><td>POST</td><td>/api/workflows</td><td>Create new workflow</td></tr>
-        <tr><td>GET</td><td>/api/workflows/{id}</td><td>Get workflow by ID</td></tr>
-        <tr><td>PUT</td><td>/api/workflows/{id}</td><td>Full workflow update</td></tr>
-        <tr><td>PATCH</td><td>/api/workflows/{id}</td><td>Incremental update (preserves draft status)</td></tr>
-        <tr><td>DELETE</td><td>/api/workflows/{id}</td><td>Delete workflow</td></tr>
-        <tr><td>GET</td><td>/api/uploads/{file_path}</td><td>Serve uploaded file</td></tr>
-        <tr><td>GET</td><td>/api/workflows/public</td><td>List published workflows for peer review</td></tr>
-        <tr><td>GET</td><td>/api/workflows/public/{id}</td><td>Get a published workflow</td></tr>
-        <tr><td>POST</td><td>/api/workflows/public/{id}/vote</td><td>Vote on a published workflow</td></tr>
-        <tr><td>POST</td><td>/api/execute/{workflow_id}</td><td>Execute workflow with inputs</td></tr>
-        <tr><td>POST</td><td>/api/workflows/{id}/execute</td><td>Start stepped execution (SSE)</td></tr>
-        <tr><td>POST</td><td>/api/executions/{id}/pause</td><td>Pause stepped execution</td></tr>
-        <tr><td>POST</td><td>/api/executions/{id}/resume</td><td>Resume stepped execution</td></tr>
-        <tr><td>POST</td><td>/api/executions/{id}/stop</td><td>Stop stepped execution</td></tr>
+        <tr><td>POST</td><td>/api/chat/send</td><td>Send chat message and return an SSE stream</td></tr>
+        <tr><td>POST</td><td>/api/chat/cancel</td><td>Cancel an in-progress chat task</td></tr>
+        <tr><td>POST</td><td>/api/chat/resume</td><td>Re-attach to a running chat stream</td></tr>
+        <tr><td>GET</td><td>/api/chat/{conversation_id}</td><td>Load stored conversation history</td></tr>
+        <tr><td>GET</td><td>/api/workflows</td><td>List a user's workflows</td></tr>
+        <tr><td>POST</td><td>/api/workflows</td><td>Create a new workflow</td></tr>
+        <tr><td>GET</td><td>/api/workflows/{workflow_id}</td><td>Get a workflow by ID</td></tr>
+        <tr><td>PATCH</td><td>/api/workflows/{workflow_id}</td><td>Incremental workflow update</td></tr>
+        <tr><td>PUT</td><td>/api/workflows/{workflow_id}</td><td>Full workflow replacement</td></tr>
+        <tr><td>GET</td><td>/api/workflows/{workflow_id}/export-bundle</td><td>Export a workflow bundle</td></tr>
+        <tr><td>POST</td><td>/api/workflows/import-bundle</td><td>Import a workflow bundle</td></tr>
+        <tr><td>GET</td><td>/api/workflows/public</td><td>List published packages for peer review</td></tr>
+        <tr><td>GET</td><td>/api/workflows/public/{package_id}</td><td>Get the head workflow for a published package</td></tr>
+        <tr><td>POST</td><td>/api/workflows/public/{package_id}/vote</td><td>Vote on a published package</td></tr>
+        <tr><td>GET</td><td>/api/packages</td><td>List a user's workflow packages</td></tr>
+        <tr><td>POST</td><td>/api/packages</td><td>Create a new package</td></tr>
+        <tr><td>POST</td><td>/api/packages/{package_id}/members</td><td>Add a workflow to a package</td></tr>
+        <tr><td>POST</td><td>/api/packages/{package_id}/publish</td><td>Publish a package for peer review</td></tr>
+        <tr><td>POST</td><td>/api/packages/{package_id}/autofetch-subflows/apply</td><td>Pull referenced subflows into a package</td></tr>
+        <tr><td>GET</td><td>/api/packages/{package_id}/export-bundle</td><td>Export a package bundle</td></tr>
+        <tr><td>POST</td><td>/api/packages/{package_id}/compile-python</td><td>Compile a package head workflow and subflows to Python</td></tr>
+        <tr><td>POST</td><td>/api/packages/{package_id}/clone</td><td>Clone a package into the current user's library</td></tr>
+        <tr><td>POST</td><td>/api/workflows/{workflow_id}/execute</td><td>Start stepped execution as an SSE stream</td></tr>
+        <tr><td>POST</td><td>/api/executions/{execution_id}/pause</td><td>Pause stepped execution</td></tr>
+        <tr><td>POST</td><td>/api/executions/{execution_id}/resume</td><td>Resume stepped execution</td></tr>
+        <tr><td>POST</td><td>/api/executions/{execution_id}/stop</td><td>Stop stepped execution</td></tr>
         <tr><td>POST</td><td>/api/validate</td><td>Validate workflow structure</td></tr>
-        <tr><td>POST</td><td>/api/workflows/compile</td><td>Compile workflow to Python</td></tr>
-        <tr><td>GET</td><td>/api/search</td><td>Search workflows</td></tr>
-        <tr><td>GET</td><td>/api/domains</td><td>List unique workflow domains</td></tr>
-        <tr><td>GET</td><td>/api/info</td><td>Server metadata and endpoint listing</td></tr>
-        <tr><td>GET</td><td>/api/tools</td><td>List available tools with schemas</td></tr>
-        <tr><td>POST</td><td>/api/tools/{tool_name}/execute</td><td>Execute a tool directly</td></tr>
-        <tr><td>POST</td><td>/api/auth/register</td><td>Register new user</td></tr>
-        <tr><td>POST</td><td>/api/auth/login</td><td>Login</td></tr>
-        <tr><td>POST</td><td>/api/auth/logout</td><td>Logout</td></tr>
-        <tr><td>GET</td><td>/api/auth/me</td><td>Current user info</td></tr>
+        <tr><td>POST</td><td>/api/workflows/compile</td><td>Compile an in-memory workflow to Python</td></tr>
+        <tr><td>POST</td><td>/api/workflows/compile-stored</td><td>Compile a stored workflow to Python</td></tr>
+        <tr><td>GET</td><td>/api/tools</td><td>List available tools and schemas</td></tr>
+        <tr><td>POST</td><td>/api/tools/{tool_name}/execute</td><td>Execute a tool directly for development/testing</td></tr>
+        <tr><td>POST</td><td>/api/auth/register</td><td>Register a new user</td></tr>
+        <tr><td>POST</td><td>/api/auth/login</td><td>Log in</td></tr>
+        <tr><td>POST</td><td>/api/auth/logout</td><td>Log out</td></tr>
+        <tr><td>GET</td><td>/api/auth/me</td><td>Get the current authenticated user</td></tr>
       </tbody>
     </table>
 

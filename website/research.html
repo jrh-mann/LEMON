@@ -90,7 +90,7 @@
         </tr>
       </tbody>
     </table>
-    <p>We started with Flask [5] for the initial prototype because of its simplicity, but migrated to FastAPI [12] in March 2026. As the project grew, we needed native async support and SSE streaming, which Flask could not provide without heavy extensions. FastAPI's Pydantic integration also saved us a lot of manual request validation, and the auto-generated OpenAPI docs were useful during development.</p>
+    <p>We started with Flask [5] for the initial prototype because of its simplicity, but migrated to FastAPI [12] in March 2026. As the project grew, we needed native async support and SSE streaming, which Flask could not provide without heavy extensions. FastAPI's routing model, middleware support, and auto-generated OpenAPI docs were all useful once the API surface became larger.</p>
 
     <h3>Frontend Framework</h3>
     <table class="comparison-table">
@@ -156,7 +156,7 @@
         </tr>
       </tbody>
     </table>
-    <p>We started with Socket.IO but realised partway through development that we only actually needed server-to-client streaming (LLM responses, tool call updates, execution events). We never used the client-to-server channel that WebSockets provide. We migrated to SSE in March 2026, which simplified the infrastructure considerably [7].</p>
+    <p>We started with Socket.IO but realised partway through development that we only actually needed server-to-client streaming (LLM responses, tool call updates, execution events). We never used the client-to-server channel that WebSockets provide. We migrated to SSE in March 2026, which simplified the infrastructure considerably [7]. In the current frontend, those SSE responses are consumed with <code>fetch()</code> and <code>ReadableStream</code> parsing rather than <code>EventSource</code>, because the chat and execution streams are POST-based and need request bodies, cookies, and cancellation support.</p>
 
     <h3>Database</h3>
     <table class="comparison-table">
@@ -218,6 +218,40 @@
     </table>
     <p>Zustand was the obvious pick for state management [9]. The canvas state updates constantly as nodes get added, moved, and connected, and Zustand handles that without the boilerplate that Redux would have required.</p>
 
+    <h3>Frontend Support Libraries</h3>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Library</th>
+          <th>Role in LEMON</th>
+          <th>Why we used it</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>react-router-dom</td>
+          <td>Client-side routing between auth, editor, library, and export views</td>
+          <td>Keeps navigation declarative without introducing a larger framework</td>
+        </tr>
+        <tr>
+          <td>marked + DOMPurify</td>
+          <td>Render assistant responses as markdown safely in the chat panel</td>
+          <td>Lets the UI show structured output without trusting raw HTML</td>
+        </tr>
+        <tr>
+          <td>react-hot-toast</td>
+          <td>Non-blocking success/error notifications</td>
+          <td>Good fit for save, export, publish, and validation feedback while editing</td>
+        </tr>
+        <tr>
+          <td>JSZip</td>
+          <td>Client-side assembly of workflow and package export bundles</td>
+          <td>Makes multi-file downloads possible without pushing every export formatting step onto the server</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>These libraries are small compared with the main React/Zustand stack, but they remove a lot of incidental complexity. Routing, safe chat rendering, lightweight notifications, and bundle assembly are all delegated to focused libraries instead of being rebuilt from scratch.</p>
+
     <!-- Technical Decisions Summary -->
     <h2>Technical Decisions Summary</h2>
     <table>
@@ -237,7 +271,7 @@
         <tr>
           <td>Backend Framework</td>
           <td>FastAPI</td>
-          <td>Async support, SSE streaming, Pydantic validation</td>
+          <td>Async support, API routing, and StreamingResponse-based SSE endpoints</td>
         </tr>
         <tr>
           <td>Frontend Framework</td>
@@ -247,7 +281,7 @@
         <tr>
           <td>Real-time Communication</td>
           <td>Server-Sent Events</td>
-          <td>Unidirectional streaming sufficient, simpler than WebSocket</td>
+          <td>Unidirectional streaming is sufficient, and the frontend can consume it with fetch + ReadableStream</td>
         </tr>
         <tr>
           <td>Database</td>
@@ -258,6 +292,11 @@
           <td>State Management</td>
           <td>Zustand</td>
           <td>Minimal API, works with React hooks, no boilerplate</td>
+        </tr>
+        <tr>
+          <td>Frontend Support Libraries</td>
+          <td>React Router, marked, DOMPurify, react-hot-toast, JSZip</td>
+          <td>Routing, safe markdown rendering, lightweight feedback, and client-side export bundles</td>
         </tr>
         <tr>
           <td>Package Manager</td>
@@ -272,12 +311,12 @@
         <tr>
           <td>Testing (Backend)</td>
           <td>pytest</td>
-          <td>Standard Python testing, 1300+ tests</td>
+          <td>Standard Python testing across unit, integration, and feature suites</td>
         </tr>
         <tr>
           <td>Testing (Frontend)</td>
-          <td>Playwright</td>
-          <td>Real browser E2E testing</td>
+          <td>Vitest + Playwright</td>
+          <td>Store/unit coverage plus real-browser end-to-end testing</td>
         </tr>
         <tr>
           <td>Deployment</td>

@@ -18,14 +18,14 @@
       <div class="progress-row">
         <div class="progress-row-header">
           <span class="progress-label">Backend automation maturity</span>
-          <span class="progress-value">1300+ tests across 93 files</span>
+            <span class="progress-value">1300+ tests across 97 pytest files</span>
         </div>
         <div class="progress-track"><div class="progress-fill" data-progress="100"></div></div>
       </div>
       <div class="progress-row">
         <div class="progress-row-header">
           <span class="progress-label">Integration automation</span>
-          <span class="progress-value">47 integration/feature files</span>
+            <span class="progress-value">52 integration/feature files</span>
         </div>
         <div class="progress-track"><div class="progress-fill" data-progress="100"></div></div>
       </div>
@@ -58,19 +58,19 @@
         <tr>
           <td>Unit</td>
           <td>pytest [1]</td>
-          <td>46 test files</td>
+          <td>45 test files</td>
           <td>Verify individual functions and modules</td>
         </tr>
         <tr>
           <td>Integration</td>
           <td>pytest [1]</td>
-          <td>47 test files (integration + features)</td>
+          <td>52 test files (integration + features)</td>
           <td>Verify cross-module interactions</td>
         </tr>
         <tr>
           <td>Frontend Unit</td>
           <td>Vitest [4]</td>
-          <td>4 test files</td>
+          <td>6 test files</td>
           <td>Verify frontend stores and utility functions</td>
         </tr>
         <tr>
@@ -88,12 +88,12 @@
         <tr>
           <td>User Acceptance</td>
           <td>Manual</td>
-          <td>TBD</td>
+          <td>3 participants</td>
           <td>Validate with project partners</td>
         </tr>
       </tbody>
     </table>
-    <p>Altogether the backend test suite has over 1,300 automated tests across 93 test files.</p>
+    <p>Altogether the backend pytest suite has over 1,300 automated tests across 97 test files.</p>
 
     <h2>Unit Testing</h2>
 
@@ -133,8 +133,8 @@
         </tr>
         <tr>
           <td>Workflow</td>
-          <td>14</td>
-          <td>CRUD operations, persistence, library management, save/load contract</td>
+          <td>13</td>
+          <td>CRUD operations, persistence, library management, and save/load contract</td>
         </tr>
         <tr>
           <td>Evaluation</td>
@@ -156,7 +156,7 @@
     <p>pytest [1], using the same framework as unit tests but with fixtures that set up multi-component environments.</p>
 
     <h3>How Tests Are Conducted</h3>
-    <p>Tests in <code>tests/integration/</code> and <code>tests/features/</code> set up scenarios involving multiple backend components. These cover event bus communication between the orchestrator and the frontend transport layer, database schema migration sequences from version 0 through 8, workflow save-load cycles ensuring data integrity, and API route handling with authentication middleware.</p>
+    <p>Tests in <code>tests/integration/</code> and <code>tests/features/</code> set up scenarios involving multiple backend components. These cover event bus communication between the orchestrator and the streaming transport layer, database schema migration sequences up to the current package-aware schema, workflow save-load cycles ensuring data integrity, package CRUD/publish flows, and API route handling with authentication dependencies.</p>
 
     <h3>Results</h3>
     <table>
@@ -170,20 +170,20 @@
       <tbody>
         <tr>
           <td>Features</td>
-          <td>24</td>
-          <td>Feature-level integration (subworkflows, export, cancellation, streaming)</td>
+          <td>29</td>
+          <td>Feature-level integration (subworkflows, packages, export, cancellation, streaming)</td>
         </tr>
         <tr>
           <td>Integration</td>
           <td>23</td>
-          <td>Event bus, schema migrations, API routes with auth, cross-module flows</td>
+          <td>Event bus, schema migrations, package routes, API routes with auth, cross-module flows</td>
         </tr>
       </tbody>
     </table>
-    <p>47 test files in total. All tests are automated and run locally via pytest.</p>
+    <p>52 integration/feature files in total. All tests are automated and run locally via pytest.</p>
 
     <h3>Analysis</h3>
-    <p>These tests were especially useful during the Socket.IO to SSE migration. The existing suite caught several regressions where the new SSE layer didn't propagate tool events the same way Socket.IO had.</p>
+    <p>These tests were especially useful once the package system, bundle import/export, and resumable SSE flows were added. They catch the kinds of regressions that only appear when storage, auth, streaming, and workflow logic all have to cooperate.</p>
 
     <h2>End-to-End Testing</h2>
 
@@ -383,9 +383,19 @@
       </thead>
       <tbody>
         <tr>
-          <td>TBD</td>
-          <td>TBD</td>
-          <td>TBD</td>
+          <td>Decision logic mattered more than UI polish</td>
+          <td>Dr Valeed</td>
+          <td>Put more effort into execution correctness, validation rules, and branch handling in the final stretch</td>
+        </tr>
+        <tr>
+          <td>Manual editing terminology and connection gestures were not obvious</td>
+          <td>Luca</td>
+          <td>Kept the chat path as the main onboarding route and simplified labels/visual cues in the editor</td>
+        </tr>
+        <tr>
+          <td>Branch labels and compound conditions needed clearer presentation</td>
+          <td>Observed across testing sessions</td>
+          <td>Enforced true/false edge labels, simplified condition text, and improved visibility of execution feedback</td>
         </tr>
       </tbody>
     </table>
