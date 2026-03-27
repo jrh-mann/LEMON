@@ -20,15 +20,7 @@ def register_frontend_routes(app: FastAPI, frontend_dist: Path) -> None:
         app: FastAPI application instance.
         frontend_dist: Path to the built frontend dist directory.
     """
-    if not frontend_dist.exists():
-        return
-
-    # Mount static assets directory (JS/CSS bundles, fonts, etc.)
-    assets_dir = frontend_dist / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-    # Mount the project report website at /report
+    # Mount the project report website at /report (independent of frontend build)
     report_dir = frontend_dist.parent.parent.parent / "website"
     if report_dir.exists():
         app.mount(
@@ -36,6 +28,14 @@ def register_frontend_routes(app: FastAPI, frontend_dist: Path) -> None:
             StaticFiles(directory=report_dir, html=True),
             name="report",
         )
+
+    if not frontend_dist.exists():
+        return
+
+    # Mount static assets directory (JS/CSS bundles, fonts, etc.)
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     # SPA catch-all — serves index.html for all non-API, non-WS paths
     @app.get("/{full_path:path}")
