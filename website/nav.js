@@ -268,9 +268,17 @@
       figure.style.setProperty('--gallery-index', String(index));
     });
 
+    gallery.classList.add('gallery-animate');
+
     observeOnce(gallery, function () {
       gallery.classList.add('is-visible');
     }, { threshold: 0.15, rootMargin: '0px 0px -6% 0px' });
+
+    window.setTimeout(function () {
+      if (!gallery.classList.contains('is-visible')) {
+        gallery.classList.add('is-visible');
+      }
+    }, 1300);
   }
 
   function setupProgressBars() {

@@ -796,7 +796,7 @@ img {
   transform: none;
 }
 
-.animations-ready .prototype-gallery .gallery-reveal {
+.animations-ready .prototype-gallery.gallery-animate .gallery-reveal {
   opacity: 0;
   transform: translateY(8px);
   transition: opacity var(--motion-base) var(--ease-smooth),
@@ -804,7 +804,7 @@ img {
   transition-delay: calc(var(--gallery-index, 0) * 60ms);
 }
 
-.animations-ready .prototype-gallery.is-visible .gallery-reveal {
+.animations-ready .prototype-gallery.gallery-animate.is-visible .gallery-reveal {
   opacity: 1;
   transform: translateY(0);
 }
