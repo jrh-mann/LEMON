@@ -266,6 +266,7 @@ class WorkflowPackageService:
         additions: List[Dict[str, str]] = []
         conflicts: List[Dict[str, str]] = []
         visited: set[str] = set()
+        seen_external_ids: set[str] = set()
         member_ids = {member.workflow_id for member in package.members}
         stack = [package.head_workflow_id]
 
@@ -284,10 +285,14 @@ class WorkflowPackageService:
                 if sub_id in member_ids:
                     stack.append(sub_id)
                     continue
+                if sub_id in seen_external_ids:
+                    continue
                 existing_package_id = self.package_store.get_workflow_package_id(sub_id)
                 subflow = self.workflow_store.get_workflow(sub_id, user_id)
                 if subflow is None:
                     continue
+                seen_external_ids.add(sub_id)
+                stack.append(sub_id)
                 if existing_package_id and existing_package_id != package_id:
                     conflicts.append(
                         {
@@ -307,7 +312,6 @@ class WorkflowPackageService:
                             "from_workflow_name": workflow.name,
                         }
                     )
-                    stack.append(sub_id)
         return {"additions": additions, "conflicts": conflicts}
 
     def autofetch_subflows_apply(
