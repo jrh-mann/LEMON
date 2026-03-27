@@ -599,6 +599,7 @@
         <tr><td>GET</td><td>/api/workflows/{workflow_id}</td><td>Get a workflow by ID</td></tr>
         <tr><td>PATCH</td><td>/api/workflows/{workflow_id}</td><td>Incremental workflow update</td></tr>
         <tr><td>PUT</td><td>/api/workflows/{workflow_id}</td><td>Full workflow replacement</td></tr>
+        <tr><td>GET</td><td>/api/uploads/{file_path}</td><td>Serve an uploaded image or PDF linked to a workflow</td></tr>
         <tr><td>GET</td><td>/api/workflows/{workflow_id}/export-bundle</td><td>Export a workflow bundle</td></tr>
         <tr><td>POST</td><td>/api/workflows/import-bundle</td><td>Import a workflow bundle</td></tr>
         <tr><td>GET</td><td>/api/workflows/public</td><td>List published packages for peer review</td></tr>
@@ -627,6 +628,14 @@
         <tr><td>GET</td><td>/api/auth/me</td><td>Get the current authenticated user</td></tr>
       </tbody>
     </table>
+
+    <h3>Bundle Transfer and Compilation</h3>
+    <p>The transfer and compilation endpoints form a small interoperability layer around the workflow engine. Bundle routes preserve workflow/package relationships during import and export, while the compilation routes expose the same underlying workflow graph as executable Python for downstream systems.</p>
+    <p>Architecturally, this keeps workflow authoring separate from workflow exchange. Users may design a workflow in the editor, but transfer and compilation are handled by dedicated backend services that validate dependencies, preserve package structure, and warn when referenced subflows are missing.</p>
+
+    <h3>Uploads and Public Review</h3>
+    <p>Uploaded images and PDFs are treated as workflow-linked assets rather than anonymous files. They are saved in managed storage, referenced from the workflow record, and re-served through a backend route so the same upload can support authoring, refresh recovery, and later review.</p>
+    <p>Public review is package-oriented. The published object is the package, the head workflow is its public entry point, and voting attaches to package metadata rather than to isolated workflows. That matches the way LEMON handles reuse, cloning, and dependent subflows elsewhere in the architecture.</p>
 
     <h3>Developer Tooling Endpoints</h3>
     <p>Two internal endpoints support development work around the tool system. <code>GET /api/tools</code> exposes the currently registered tools together with the schemas sent to Claude, while <code>POST /api/tools/{tool_name}/execute</code> runs one tool directly against supplied input.</p>

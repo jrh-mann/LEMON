@@ -110,10 +110,12 @@ class TokenType(Enum):
     <p>Subworkflow execution follows a recursive pattern: the interpreter calls itself with the child workflow and mapped inputs, then injects the result back into the parent context. Depth limiting prevents infinite recursion from circular references.</p>
     <p>Runtime support: Python threading [12], SQLite [11] for workflow storage.</p>
 
-    <!-- Image-to-Workflow -->
-    <h2>Image-to-Workflow</h2>
+    <!-- Upload Pipeline and Image-to-Workflow -->
+    <h2>Upload Pipeline and Image-to-Workflow</h2>
 
-    <p>Users can upload a photo of a flowchart (or a PDF) and the system will reconstruct it as an editable workflow. The backend detects the actual file type from magic bytes rather than trusting the file extension (a security measure), then passes the image to Claude's Vision API. The orchestrator looks at the image, figures out what the nodes, connections, and conditions are, and uses its normal tool-use loop to build the workflow on the canvas. It's the same process as building from text, just with an image as the starting point.</p>
+    <p>Users can upload flowchart images or PDFs and have them reconstructed as editable workflows. Uploaded files are stored in managed server-side storage, linked back to the current workflow, and reused when the session is resumed or the page is refreshed.</p>
+    <p>The upload pipeline is deliberately stricter than a normal file picker flow. The backend decodes the incoming file, detects the real type from the payload rather than trusting the filename, saves it under a controlled uploads directory, and only then passes the content into the image-analysis path. That reduces the risk of malformed or mislabeled files entering the workflow reconstruction pipeline.</p>
+    <p>Once a file is accepted, the orchestrator treats it as another authoring input. Claude's Vision API extracts nodes, connections, and conditions from the uploaded diagram, and the same tool-use loop used for chat authoring rebuilds the workflow on the canvas. In practice this means image/PDF authoring and text authoring converge on the same internal workflow model.</p>
     <p>Libraries: Pillow [7] for image format detection and processing, Anthropic Vision API [8] for image understanding.</p>
 
     <!-- Authentication -->
@@ -125,10 +127,25 @@ class TokenType(Enum):
     <!-- Library, Peer Review, and Workflow Packages -->
     <h2>Library, Peer Review, and Workflow Packages</h2>
 
-    <p>The library manages both standalone workflows and multi-workflow packages. A package has one head workflow and zero or more dependency workflows, which keeps reusable subworkflows together for review, export, and cloning. Package membership and head/dependency roles are stored explicitly in the database and exposed through dedicated <code>/api/packages/*</code> routes.</p>
-    <p>The community review flow is package-oriented rather than just workflow-oriented. Published packages appear in the peer review views, users can upvote or downvote them, and the head workflow acts as the package's public entry point. Voting still uses a simple net-vote threshold (currently 1) to promote a package from <code>unreviewed</code> to <code>reviewed</code>.</p>
-    <p>Packages also have operations beyond simple library CRUD: users can clone a package, preview missing external subflows, autofetch those subflows into the package, export a package bundle, and compile the package head workflow to Python with dependent subflows included.</p>
+    <p>The library manages both standalone workflows and multi-workflow packages. A package has one head workflow and zero or more dependency workflows, which keeps reusable subworkflows together for review, transfer, compilation, and cloning. Package membership and head/dependency roles are stored explicitly in the database and exposed through dedicated <code>/api/packages/*</code> routes.</p>
+    <p>The public review flow is package-first rather than workflow-first. When a user publishes something for peer review, the package becomes the review unit and the head workflow becomes its public entry point. Other users browse published packages, inspect the head workflow, and vote on the package as a whole rather than on disconnected workflows.</p>
+    <p>This matters because review is tied to reuse. A reviewed package can be cloned into another user's library, keep its internal workflow relationships, and carry along any dependent subflows that the head workflow needs. The package service also supports autofetching referenced subflows so reusable workflow groups stay internally consistent.</p>
+    <p>Voting still uses a simple net-vote threshold (currently 1) to promote a package from <code>unreviewed</code> to <code>reviewed</code>, but the storage model is richer than a vote counter: package metadata, package membership, public visibility, and vote history are all part of the same subsystem.</p>
     <p>Libraries: FastAPI [3] for package and peer review API routes, SQLite [11] for package membership, publishing metadata, and vote storage.</p>
+
+    <!-- Bundle Import and Export -->
+    <h2>Bundle Import and Export</h2>
+
+    <p>LEMON supports both simple workflow transfer and bundle-based transfer. A single workflow can be exported as JSON for straightforward interoperability, but bundle import/export exists for cases where one workflow depends on others or where a full package needs to move as a unit.</p>
+    <p>Bundles preserve more context than plain JSON. They can carry multiple workflows, package membership, head/dependency roles, and warnings about missing subflows so the receiving side knows whether the transfer is complete. This makes reuse and collaboration much safer than exporting one workflow at a time.</p>
+    <p>On import, the backend validates the payload, remaps workflow IDs, reconstructs package relationships where needed, and reports warnings instead of silently dropping broken references. On export, the frontend can package multi-file artifacts cleanly for the user while the backend remains responsible for the canonical workflow/package data.</p>
+
+    <!-- Compile-to-Python -->
+    <h2>Compile-to-Python</h2>
+
+    <p>Exporting to Python is not just a download format; it is a compilation step that turns the workflow tree into executable code outside LEMON. The backend supports compilation of an in-memory workflow, a stored workflow, or a full package headed by a chosen workflow.</p>
+    <p>The compiler lowers workflow nodes into a standalone Python function, generates helper functions when needed for shared branches or subprocesses, and follows subworkflow references so package compilation can include dependent workflows as part of the generated output.</p>
+    <p>Compilation also produces warnings when the source graph is incomplete, for example if a referenced subworkflow cannot be fetched or a recursive dependency is detected. That way the export path stays useful for downstream engineering systems without pretending every workflow can be compiled perfectly.</p>
 
     <!-- Workflow Persistence -->
     <h2>Workflow Persistence</h2>
@@ -171,7 +188,6 @@ class WorkflowRecord:
     <p>[10] L. Montague, "slowapi: A rate limiting library for FastAPI." [Online]. Available: https://github.com/laurentS/slowapi. [Accessed: Mar. 2026].</p>
     <p>[11] Python Software Foundation, "sqlite3: DB-API 2.0 interface for SQLite databases." [Online]. Available: https://docs.python.org/3/library/sqlite3.html. [Accessed: Mar. 2026].</p>
     <p>[12] Python Software Foundation, "threading - Thread-based parallelism." [Online]. Available: https://docs.python.org/3/library/threading.html. [Accessed: Mar. 2026].</p>
-    <p>[13] S. Colvin, "Pydantic: Data validation using Python type annotations." [Online]. Available: https://docs.pydantic.dev/. [Accessed: Mar. 2026].</p>
 
   </div>
   <script src="nav.js"></script>
